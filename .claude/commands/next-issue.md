@@ -190,33 +190,48 @@ label gate plus the branch protection rule on `main` — rather than in a decisi
 mid-cycle and visible only in a transcript. It is also what lets the loop run unattended:
 an agent merging to `main` on its own is blocked by permission checks, and labelling is not.
 
-Confirm the queue took the request:
+Confirm the label was acted on. There are **two** successful outcomes, and checking only for
+an armed auto-merge request will report a false failure on the more common one:
 
 ```
-gh pr view <pr> --json autoMergeRequest -q '.autoMergeRequest.enabledAt // "auto-merge NOT enabled"'
+gh pr view <pr> --json state,autoMergeRequest -q '"\(.state) \(.autoMergeRequest.enabledAt // "not-armed")"'
 ```
 
-An empty result means the workflow did not fire or the repository has auto-merge disabled —
-report that rather than falling back to a manual merge.
+- `MERGED …` — already merged. `gh pr merge --auto` merges immediately when the required
+  checks have already passed, and since this cycle labels only after they pass, this is the
+  usual result. `not-armed` beside `MERGED` is correct, not a fault.
+- `OPEN <timestamp>` — auto-merge is armed and waiting on a check still running.
+- `OPEN not-armed` — the label was not acted on. Check the workflow run before doing
+  anything else:
+
+```
+gh run list --repo z5labs/dfcad --workflow auto-merge.yaml --limit 1
+```
+
+A failed run means the workflow itself is broken — report it rather than falling back to a
+manual merge, which is what this whole step exists to avoid.
 
 ## 10. Clean up
 
 The merge is asynchronous: labelling queues it, and GitHub completes it when the checks
-finish. Wait for it before touching the worktree, using `Monitor` rather than Bash
-`run_in_background` — the background-Bash path has been observed exiting immediately
-without polling:
+finish. Wait for it before touching the worktree. Pass the script below as the `command` of
+a `Monitor` call — not to Bash with `run_in_background`, which has been observed exiting
+immediately without ever polling:
 
 ```
 for i in $(seq 1 40); do
   s=$(gh pr view <pr> --json state -q .state 2>/dev/null || echo "")
   case "$s" in
     MERGED) echo "PR <pr> MERGED"; exit 0;;
-    CLOSED) echo "PR <pr> CLOSED without merging"; exit 0;;
+    CLOSED) echo "PR <pr> CLOSED without merging"; exit 1;;
   esac
   sleep 15
 done
-echo "PR <pr> still OPEN after 10m"
+echo "PR <pr> still OPEN after 10m"; exit 1
 ```
+
+Both failure paths exit non-zero so an unmerged close or a timeout cannot be mistaken for
+success by anything that reads the exit code rather than the emitted line.
 
 If it merged, verify the issue closed, then clean up:
 
