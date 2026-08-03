@@ -1,0 +1,22 @@
+(node site:S-101
+  (label "Meeting Room B")
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (frame frame:building)
+  (frame frame:survey-grid))
+
+; Two readings of one corner are two claims, not a duplicate: the disagreement
+; between them is the point of the format, and nothing below is an error.
+(vertex geom:V-02
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-18"))
+  (position
+    (value (4.05 0.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06")))

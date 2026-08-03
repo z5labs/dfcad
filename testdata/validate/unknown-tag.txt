@@ -1,0 +1,27 @@
+testdata/validate/unknown-tag.dfc:1:1: error: expected a top-level form, found (ndoe ...), which is not a known form
+1 | (ndoe site:S-101
+  | ^^^^^^^^^^^^^^^^
+2 |   (kind Space)
+  | ^^^^^^^^^^^^^^
+3 |   (type MeetingRoom))
+  | ^^^^^^^^^^^^^^^^^^^^^
+  = hint: did you mean (node ...)?
+testdata/validate/unknown-tag.dfc:5:1: error: expected a top-level form, found (sproket ...), which is not a known form
+5 | (sproket geom:V-01)
+  | ^^^^^^^^^^^^^^^^^^^
+  = hint: the top level of a file takes (project ...), (namespace ...), (type ...), (predicate ...), (tolerance ...), (frame ...), (node ...), (vertex ...), (edge ...) and (loop ...)
+testdata/validate/unknown-tag.dfc:7:1: error: expected a (globalid-namespace ...) child of the project form, found none
+7 | (project
+  | ^^^^^^^^
+8 |   (label "Riverside example")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9 |   (globalid-namesapce "https://example.org/models/riverside"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/unknown-tag.dfc:9:3: error: expected a child of the project form, found (globalid-namesapce ...), which is not a known form
+9 |   (globalid-namesapce "https://example.org/models/riverside"))
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: did you mean (globalid-namespace ...)?
+testdata/validate/unknown-tag.dfc:13:3: error: expected a child of the tolerance form, found (colour ...), which is not a known form
+13 |   (colour "slate"))
+   |   ^^^^^^^^^^^^^^^^
+   = hint: the tolerance form takes (value ...) and (description ...)

@@ -1,0 +1,13 @@
+(ndoe site:S-101)
+
+(vertex geom:V-01
+  (label "South west corner")
+  (label "SW corner"))
+
+(edge geom:E-01
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02 geom:V-03))
+
+(loop geom:L-01
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))

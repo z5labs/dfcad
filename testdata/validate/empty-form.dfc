@@ -1,0 +1,9 @@
+(vertex geom:V-01
+  (frame frame:building)
+  (position
+    (value)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy)
+    (date "2026-02-18"))
+  (width))

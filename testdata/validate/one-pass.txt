@@ -1,0 +1,20 @@
+testdata/validate/one-pass.dfc:1:1: error: expected a top-level form, found (ndoe ...), which is not a known form
+1 | (ndoe site:S-101)
+  | ^^^^^^^^^^^^^^^^^
+  = hint: did you mean (node ...)?
+testdata/validate/one-pass.dfc:3:1: error: expected a (frame ...) child of the vertex form, found none
+3 | (vertex geom:V-01
+  | ^^^^^^^^^^^^^^^^^
+4 |   (label "South west corner")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |   (label "SW corner"))
+  | ^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/one-pass.dfc:5:3: error: expected at most one (label ...) child of the vertex form, found another
+5 |   (label "SW corner"))
+  |   ^^^^^^^^^^^^^^^^^^^
+testdata/validate/one-pass.dfc:4:3: note: first written here
+4 |   (label "South west corner")
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/one-pass.dfc:9:33: error: expected two vertex ids after the vertices tag, found 3
+9 |   (vertices geom:V-01 geom:V-02 geom:V-03))
+  |                                 ^^^^^^^^^
