@@ -1,0 +1,3 @@
+testdata/diagnostics/level-1.dfc:11:3: warning: expected a unit after the value, found none
+11 |   (occupancy (value 8))
+   |   ^^^^^^^^^^^^^^^^^^^^^

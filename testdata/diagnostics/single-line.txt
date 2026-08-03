@@ -1,0 +1,4 @@
+testdata/diagnostics/level-1.dfc:2:10: error: expected a label of at most 64 characters, found one of 80
+2 |   (label "Meeting Room B")
+  |          ^^^^^^^^^^^^^^^^
+  = hint: a longer name belongs in a claim under a registered predicate

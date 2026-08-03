@@ -1,0 +1,8 @@
+testdata/diagnostics/level-1.dfc:6:1: error: expected at most one (position ...) child, found two
+ 6 | (node site:S-101
+   | ^^^^^^^^^^^^^^^^
+ 7 |   (label "Salle de réunion B")
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   ... 4 lines omitted
+12 |   (position (value (1.0 4.05 0.0) m) (dimension 3)))
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

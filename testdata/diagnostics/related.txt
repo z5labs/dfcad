@@ -1,0 +1,7 @@
+testdata/diagnostics/level-1.dfc:6:7: error: expected an unused id, found site:S-101, which is already defined
+6 | (node site:S-101
+  |       ^^^^^^^^^^
+  = hint: an id is immutable and unique across the whole model; a second reading of one node is a claim on it
+testdata/diagnostics/level-1.dfc:1:7: note: first defined here
+1 | (node site:S-101
+  |       ^^^^^^^^^^

@@ -27,22 +27,29 @@ import (
 // span of text wants the offset.
 type Position struct {
 	// Path is the file this position is in, exactly as the loader reached it.
-	Path string
+	Path string `json:"path"`
 
 	// Line is the 1-based line number.
-	Line int
+	Line int `json:"line"`
 
 	// Column is the 1-based byte offset into Line.
-	Column int
+	Column int `json:"column"`
 
 	// Offset is the 0-based byte offset into the file.
-	Offset int
+	Offset int `json:"offset"`
 }
 
 // String renders the position as path:line:column, which is the spelling every
 // editor and every terminal already knows how to jump to.
 func (p Position) String() string {
 	return fmt.Sprintf("%s:%d:%d", p.Path, p.Line, p.Column)
+}
+
+// Span returns the empty span at the position, which is what something with no
+// source text of its own — a token that is missing, the end of the file —
+// points at.
+func (p Position) Span() Span {
+	return Span{Start: p, End: p}
 }
 
 // Span is the extent of the source text one node was written in.
@@ -53,8 +60,8 @@ func (p Position) String() string {
 // extent be expressed at all, and it makes the arithmetic of underlining a
 // range subtraction rather than a subtraction and a correction.
 type Span struct {
-	Start Position
-	End   Position
+	Start Position `json:"start"`
+	End   Position `json:"end"`
 }
 
 // lineIndex answers where a byte offset is, and where a position the underlying
