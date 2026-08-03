@@ -1,0 +1,3 @@
+testdata/diagnostics/level-1.dfc:13:1: error: expected a closing parenthesis, found the end of the file
+13 |
+   | ^

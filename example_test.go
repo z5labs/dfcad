@@ -8,6 +8,7 @@ package dfcad_test
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/z5labs/dfcad"
@@ -62,4 +63,91 @@ func ExampleLoad() {
 	// Output:
 	// testdata/model/entities/level-1.dfc: 2 top-level forms
 	// testdata/model/registry/registry.dfc: 4 top-level forms
+}
+
+func ExampleDiagnostic_Render() {
+	const path = "entities/level-1.dfc"
+
+	source := `(node site:S-101
+  (label "Meeting Room B")
+  (position (value (0.0 4.05 0.0))))
+`
+
+	file, err := dfcad.Parse(path, strings.NewReader(source))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// The value written without the unit which has to follow it.
+	value := file.Nodes[0].Children[3].Children[1]
+
+	diagnostic := dfcad.Diagnostic{
+		Severity: dfcad.SeverityError,
+		Span:     value.Span,
+		Message:  "expected a unit after the value, found none",
+		Hint:     "units are registry data; a frame declares the one its coordinates are in",
+	}
+
+	if err := diagnostic.Render(os.Stdout, dfcad.Sources{path: []byte(source)}); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// entities/level-1.dfc:3:13: error: expected a unit after the value, found none
+	// 3 |   (position (value (0.0 4.05 0.0))))
+	//   |             ^^^^^^^^^^^^^^^^^^^^^^
+	//   = hint: units are registry data; a frame declares the one its coordinates are in
+}
+
+func ExampleDiagnostics() {
+	const path = "entities/level-1.dfc"
+
+	source := `(node site:S-101
+  (label "Meeting Room B"))
+(node site:S-101
+  (label "Meeting Room C"))
+`
+
+	file, err := dfcad.Parse(path, strings.NewReader(source))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// One pass reports every problem it finds, in a deterministic order, even
+	// though these two are collected in the order they happen to be noticed.
+	var diagnostics dfcad.Diagnostics
+
+	diagnostics.Add(dfcad.Diagnostic{
+		Severity: dfcad.SeverityError,
+		Span:     file.Nodes[1].Children[1].Span,
+		Message:  "expected an unused id, found site:S-101, which is already defined",
+		Related: []dfcad.RelatedLocation{
+			{Span: file.Nodes[0].Children[1].Span, Message: "first defined here"},
+		},
+	})
+	diagnostics.Add(dfcad.Diagnostic{
+		Severity: dfcad.SeverityWarning,
+		Span:     file.Nodes[0].Children[2].Span,
+		Message:  "expected a (type ...) child before the claims, found none",
+	})
+
+	if err := diagnostics.Render(os.Stdout, dfcad.Sources{path: []byte(source)}); err != nil {
+		fmt.Println(err)
+	}
+
+	fmt.Println(diagnostics.HasErrors())
+
+	// Output:
+	// entities/level-1.dfc:2:3: warning: expected a (type ...) child before the claims, found none
+	// 2 |   (label "Meeting Room B"))
+	//   |   ^^^^^^^^^^^^^^^^^^^^^^^^
+	// entities/level-1.dfc:3:7: error: expected an unused id, found site:S-101, which is already defined
+	// 3 | (node site:S-101
+	//   |       ^^^^^^^^^^
+	// entities/level-1.dfc:1:7: note: first defined here
+	// 1 | (node site:S-101
+	//   |       ^^^^^^^^^^
+	// true
 }

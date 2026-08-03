@@ -1,0 +1,9 @@
+testdata/diagnostics/level-1.dfc:1:1: error: expected a (type ...) child of every node form, found none
+1 | (node site:S-101
+  | ^^^^^^^^^^^^^^^^
+2 |   (label "Meeting Room B")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 |   (kind Space)
+  | ^^^^^^^^^^^^^^
+4 |   (position (value (0.0 4.05 0.0) m) (dimension 3)))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
