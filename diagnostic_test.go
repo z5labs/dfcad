@@ -615,3 +615,62 @@ func TestDiagnosticsCollectInOnePass(t *testing.T) {
 		assert.Contains(t, buf.String(), node.Children[1].Span.Start.String())
 	}
 }
+
+// TestDiagnosticRenderCarriageReturn pins the rendering of a file written with
+// CRLF line endings, where the last byte of every line is a carriage return
+// that no reader can see.
+//
+// Positions stay byte-based over the source as written — a carriage return is
+// whitespace and not a terminator, so it is part of the line it ends and
+// columns count it. What is quoted leaves it out: writing it would return the
+// cursor to the start of the line and overwrite the whole quotation. Both hold
+// at once because a carriage return is only ever the last byte of its line, so
+// the only column it can be given is one past the text, which is where a caret
+// for something missing from the end of a line belongs anyway.
+func TestDiagnosticRenderCarriageReturn(t *testing.T) {
+	const path = "crlf.dfc"
+	const source = "(node site:S-101\r\n  (label \"B\")\r\n"
+
+	lines := newLineIndex(path, []byte(source))
+
+	testCases := []struct {
+		name     string
+		span     Span
+		expected string
+	}{
+		{
+			name:     "quotes the line without the carriage return which ends it",
+			span:     Span{Start: lines.at(6), End: lines.at(16)},
+			expected: "1 | (node site:S-101\n  |       ^^^^^^^^^^\n",
+		},
+		{
+			name:     "puts the caret one past the text for a position at the line terminator",
+			span:     lines.at(16).Span(),
+			expected: "1 | (node site:S-101\n  |                 ^\n",
+		},
+		{
+			name:     "underlines a span covering nothing but the carriage return",
+			span:     Span{Start: lines.at(16), End: lines.at(17)},
+			expected: "1 | (node site:S-101\n  |                 ^\n",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			diagnostic := Diagnostic{
+				Severity: SeverityError,
+				Span:     testCase.span,
+				Message:  "expected a closing parenthesis, found the end of the line",
+			}
+
+			var buf bytes.Buffer
+			require.NoError(t, diagnostic.Render(&buf, Sources{path: []byte(source)}))
+
+			header, quoted, found := strings.Cut(buf.String(), "\n")
+			require.True(t, found)
+
+			assert.Equal(t, testCase.span.Start.String(), strings.SplitN(header, ": ", 2)[0])
+			assert.Equal(t, testCase.expected, quoted)
+		})
+	}
+}
