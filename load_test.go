@@ -435,7 +435,33 @@ func TestParseErrorUnwrapsToItsCause(t *testing.T) {
 	err := ParseError{Position: Position{Path: "a.dfc", Line: 1, Column: 1}, Err: cause}
 
 	assert.Equal(t, cause, errors.Unwrap(err))
-	assert.Contains(t, err.Error(), "a.dfc:1:1")
+	assert.Equal(t, cause, err.Err)
+	assert.ErrorAs(t, error(err), &sexpr.UnterminatedStringError{})
+}
+
+func TestPositionString(t *testing.T) {
+	testCases := []struct {
+		name     string
+		position Position
+		expected string
+	}{
+		{
+			name:     "renders a position as path, line and column",
+			position: Position{Path: "entities/level-1.dfc", Line: 12, Column: 5, Offset: 240},
+			expected: "entities/level-1.dfc:12:5",
+		},
+		{
+			name:     "leaves the byte offset out, which is for a tool rather than a reader",
+			position: Position{Path: "a.dfc", Line: 1, Column: 1, Offset: 0},
+			expected: "a.dfc:1:1",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, testCase.position.String())
+		})
+	}
 }
 
 func TestLoadFile(t *testing.T) {

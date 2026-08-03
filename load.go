@@ -160,9 +160,12 @@ func firstInvalidUTF8(src []byte) int {
 // in.
 //
 // The parser records where a node starts and not where it ends, so the end has
-// to come from somewhere. Re-lexing the source to find it would be a second
-// tokenizer to keep in step with the first, so the tokens are used instead:
-// they already say how long every lexeme is and which parenthesis closes which.
+// to come from somewhere. It comes from a second pass over the same bytes with
+// sexpr's own tokenizer, whose tokens already say how long every lexeme is and
+// which parenthesis closes which. Scanning for the end here instead would mean
+// a hand-written lexer in this package, duplicating rules — string escapes,
+// nested block comments, where a number ends — that would then have to be kept
+// in step with the one the parser actually uses.
 type spanner struct {
 	lines lineIndex
 
