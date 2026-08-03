@@ -6,7 +6,10 @@
 package dfcad
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 
 	sexpr "github.com/z5labs/sexpr-go"
 )
@@ -26,7 +29,14 @@ type EncodingError struct {
 
 // Error implements the [error] interface.
 func (e EncodingError) Error() string {
-	return fmt.Sprintf("%s: invalid UTF-8: byte %#02x begins no valid encoding", e.Position, e.Byte)
+	return fmt.Sprintf("%s: %s", e.Position, e.message())
+}
+
+// message is the failure without the position in front of it, which is what a
+// diagnostic carries: a diagnostic holds its span as a field and renders the
+// position itself, so a message repeating it would print it twice.
+func (e EncodingError) message() string {
+	return fmt.Sprintf("invalid UTF-8: byte %#02x begins no valid encoding", e.Byte)
 }
 
 // ByteOrderMarkError reports a file beginning with a UTF-8 byte order mark.
@@ -43,7 +53,12 @@ type ByteOrderMarkError struct {
 
 // Error implements the [error] interface.
 func (e ByteOrderMarkError) Error() string {
-	return fmt.Sprintf("%s: file begins with a UTF-8 byte order mark, which must be removed", e.Position)
+	return fmt.Sprintf("%s: %s", e.Position, e.message())
+}
+
+// message is the failure without the position in front of it.
+func (e ByteOrderMarkError) message() string {
+	return "file begins with a UTF-8 byte order mark, which must be removed"
 }
 
 // ParseError reports a failure from the underlying S-expression tokenizer or
@@ -63,11 +78,67 @@ type ParseError struct {
 
 // Error implements the [error] interface.
 func (e ParseError) Error() string {
-	return fmt.Sprintf("%s: %v", e.Position, e.Err)
+	return fmt.Sprintf("%s: %s", e.Position, e.message())
+}
+
+// message is the failure without the position in front of it.
+func (e ParseError) message() string {
+	return e.Err.Error()
 }
 
 // Unwrap returns the underlying failure.
 func (e ParseError) Unwrap() error {
+	return e.Err
+}
+
+// WriteError reports a file that could not be replaced.
+//
+// The path is carried because the failure the operating system reports names
+// the temporary file being written rather than the file being replaced, and
+// the temporary one is not a name anybody asked for or can act on.
+type WriteError struct {
+	// Path is the file that was to be replaced.
+	Path string
+
+	// Err is the failure that stopped it.
+	Err error
+}
+
+// Error implements the [error] interface.
+func (e WriteError) Error() string {
+	return fmt.Sprintf("%s: %s", e.Path, e.cause())
+}
+
+// cause is the failure with the name of the temporary file taken out of it.
+//
+// The operating system reports a failed replacement against whichever file the
+// call it refused named, which for every step of a replacement but the last is
+// the temporary one — a name nobody asked for and nobody can act on. Carrying
+// Path and then printing that name beside it would put two paths in one
+// message, one of which is noise.
+//
+// What is worth keeping is the operation and the reason, because which step of
+// the replacement failed says whether the trouble is with the directory, the
+// device or the target: "open: permission denied" and "rename: invalid
+// cross-device link" are different problems.
+func (e WriteError) cause() string {
+	var path *fs.PathError
+	if errors.As(e.Err, &path) {
+		return fmt.Sprintf("%s: %v", path.Op, path.Err)
+	}
+
+	// Renaming names two files, so it reports its own type rather than a
+	// PathError.
+	var link *os.LinkError
+	if errors.As(e.Err, &link) {
+		return fmt.Sprintf("%s: %v", link.Op, link.Err)
+	}
+
+	return e.Err.Error()
+}
+
+// Unwrap returns the underlying failure.
+func (e WriteError) Unwrap() error {
 	return e.Err
 }
 

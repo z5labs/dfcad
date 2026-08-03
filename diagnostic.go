@@ -7,8 +7,10 @@ package dfcad
 
 import (
 	"cmp"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -137,6 +139,61 @@ type Sources map[string][]byte
 func (s Sources) Source(path string) ([]byte, bool) {
 	src, ok := s[path]
 	return src, ok
+}
+
+// FileSources is the [SourceMap] that reads each file from disk as a
+// diagnostic asks for it. The zero value is ready to use.
+//
+// It is what a command rendering diagnostics over a tree uses. A pass over a
+// tree reads every file and holds almost none of them, and keeping each one
+// against the chance that it turns out to have a problem would cost the whole
+// tree in memory to quote a handful of lines.
+//
+// A file it cannot read reports no source, which is exactly the case
+// [Diagnostic.Render] already handles: the header lines are still written and
+// the quoting is left out.
+type FileSources struct{}
+
+// Source implements [SourceMap].
+func (FileSources) Source(path string) ([]byte, bool) {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	return src, true
+}
+
+// diagnose is a load failure rendered as a diagnostic.
+//
+// A load failure is reported to a caller as an error and to whoever wrote the
+// file as a diagnostic, and the two are not interchangeable: a command
+// formatting a tree carries on past a file that does not parse, so what it has
+// to report is where in that file the problem is, not that a function returned
+// something.
+//
+// path is the file the failure was found in, which is only needed for a
+// failure carrying no position of its own.
+func diagnose(path string, err error) Diagnostic {
+	var (
+		parse    ParseError
+		encoding EncodingError
+		mark     ByteOrderMarkError
+	)
+
+	switch {
+	case errors.As(err, &parse):
+		return Diagnostic{Severity: SeverityError, Span: parse.Position.Span(), Message: parse.message()}
+	case errors.As(err, &encoding):
+		return Diagnostic{Severity: SeverityError, Span: encoding.Position.Span(), Message: encoding.message()}
+	case errors.As(err, &mark):
+		return Diagnostic{Severity: SeverityError, Span: mark.Position.Span(), Message: mark.message()}
+	}
+
+	// A failure with nowhere to point is still a diagnostic about a file, so
+	// it points at the start of that file. A position that is merely coarse
+	// can be followed; one that is absent cannot.
+	at := Position{Path: path, Line: 1, Column: 1}
+	return Diagnostic{Severity: SeverityError, Span: at.Span(), Message: err.Error()}
 }
 
 // DefaultDiagnosticLimit is how many diagnostics a [Diagnostics] retains when

@@ -50,14 +50,47 @@ var byteOrderMark = []byte{0xef, 0xbb, 0xbf}
 // sum of all of them.
 func Load(root string) iter.Seq2[*File, error] {
 	return func(yield func(*File, error) bool) {
+		for path, err := range Walk(root) {
+			if err != nil {
+				if !yield(nil, err) {
+					return
+				}
+				continue
+			}
+			if !yield(LoadFile(path)) {
+				return
+			}
+		}
+	}
+}
+
+// Walk yields the path of every entity file under root, in the order [Load]
+// reads them.
+//
+// root may name a single file, which is yielded whatever its extension, or a
+// directory, beneath which every file whose extension is [Extension] is
+// yielded and everything else is ignored. A directory holding no entity file
+// yields nothing and is not an error.
+//
+// A path that cannot be reached at all — the root does not exist, a directory
+// beneath it cannot be read — is yielded with the error that stopped it, and
+// the walk carries on. The path is still reported alongside the error, so a
+// caller collecting one result per file has something to key it on.
+//
+// It is separate from [Load] because reading a file is not the only thing a
+// caller does with one. Formatting reads the bytes itself, so that it can
+// compare them against what the canonical printer would write; it wants the
+// same enumeration and not the same reading.
+func Walk(root string) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
 		info, err := os.Stat(root)
 		if err != nil {
-			yield(nil, err)
+			yield(root, err)
 			return
 		}
 
 		if !info.IsDir() {
-			yield(LoadFile(root))
+			yield(root, nil)
 			return
 		}
 
@@ -65,7 +98,7 @@ func Load(root string) iter.Seq2[*File, error] {
 		// and the callback yields everything it has rather than returning it.
 		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
 			if err != nil {
-				if !yield(nil, err) {
+				if !yield(path, err) {
 					return fs.SkipAll
 				}
 				return nil
@@ -73,7 +106,7 @@ func Load(root string) iter.Seq2[*File, error] {
 			if entry.IsDir() || filepath.Ext(path) != Extension {
 				return nil
 			}
-			if !yield(LoadFile(path)) {
+			if !yield(path, nil) {
 				return fs.SkipAll
 			}
 			return nil
