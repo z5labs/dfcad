@@ -99,9 +99,8 @@ modelling a different subject, it is not an engine change.
   it. The identity, claim and uncertainty decisions are recorded, as are the
   engine-boundary, CLI and authoring ones.
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
-  arity and ordering, and the canonical printing of each. Not written yet; it
-  lands before the loader it specifies.
-  ([#9](https://github.com/z5labs/dfcad/issues/9))
+  arity and ordering, and the canonical printing of each. It is the definition
+  of the format; the loader is implemented against it, not the other way round.
 
 ## Install
 
