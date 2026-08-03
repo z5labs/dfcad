@@ -94,16 +94,15 @@ modelling a different subject, it is not an engine change.
 
 ## Documentation
 
-Neither of these is written yet; both are tracked and land before the loader
-they specify.
-
-- [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
-  arity and ordering, and the canonical printing of each.
-  ([#9](https://github.com/z5labs/dfcad/issues/9))
 - [`docs/decisions/`](./docs/decisions/) — the architecture decision records.
   Each states the decision, its reasoning, what it costs and what would reverse
-  it. ([#7](https://github.com/z5labs/dfcad/issues/7),
-  [#8](https://github.com/z5labs/dfcad/issues/8))
+  it. The identity, claim and uncertainty decisions are recorded; the
+  engine-boundary, CLI and authoring decisions are still to come
+  ([#8](https://github.com/z5labs/dfcad/issues/8)).
+- [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
+  arity and ordering, and the canonical printing of each. Not written yet; it
+  lands before the loader it specifies.
+  ([#9](https://github.com/z5labs/dfcad/issues/9))
 
 ## Install
 
