@@ -113,13 +113,19 @@ polling:
 
 ```
 for i in $(seq 1 40); do
-  n=$(gh api repos/z5labs/dfcad/issues/<pr>/timeline \
-        --jq '[.[]|select(.event=="reviewed")]|length' 2>/dev/null || echo 0)
+  n=$(gh api --paginate repos/z5labs/dfcad/issues/<pr>/timeline \
+        --jq '.[]|select(.event=="reviewed")|.id' 2>/dev/null | wc -l)
   if [ "$n" -gt 0 ]; then echo "copilot review landed"; exit 0; fi
   sleep 15
 done
 echo "copilot review timed out"; exit 1
 ```
+
+`--paginate` is load bearing. The timeline returns thirty events per page by default, and a
+pull request that saw several pushes, check runs and comments will push the `reviewed` event
+off the first page — where an unpaginated read reports zero and the loop times out on a
+reviewed pull request, which is the exact failure this step exists to avoid. Counting `.id`
+lines rather than taking a `length` per page is what makes the count work across pages.
 
 The wait polls the **timeline**, not `pulls/<pr>/reviews`. The reviews endpoint — and the
 equivalent GraphQL query — have been seen returning an empty array for as long as forty
@@ -130,9 +136,14 @@ reviewed, and that reads as a missing review rather than as the API lagging.
 **Never report `BLOCKED` for a missing review without checking the timeline first:**
 
 ```
-gh api repos/z5labs/dfcad/issues/<pr>/timeline \
-  --jq '[.[]|select(.event=="reviewed")]|sort_by(.submitted_at)|last|{user:.user.login,state,body}'
+gh api --paginate repos/z5labs/dfcad/issues/<pr>/timeline \
+  --jq '.[]|select(.event=="reviewed")' \
+  | jq -s 'sort_by(.submitted_at)|last|{user:.user.login,state,body}'
 ```
+
+`--paginate` for the same reason as above, and `jq -s` because it slurps the per-page
+objects back into one array before sorting — sorting inside `--jq` would sort each page
+separately and give you the last review *of the last page*, not the last review.
 
 A non-empty `reviews` array does **not** mean the PR was reviewed. Copilot posts a review
 whose body declines the work — most often `"Copilot wasn't able to review this pull request
