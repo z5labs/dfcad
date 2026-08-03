@@ -60,3 +60,10 @@ the code in front of them and needs the part that is not in the code.
 | [0007](./0007-rank-is-closed.md)                      | Rank is closed: normal and deprecated                    | Accepted |
 | [0008](./0008-a-bare-scalar-is-a-load-error.md)       | A bare scalar where a claim belongs is a load error      | Accepted |
 | [0009](./0009-derived-values-are-never-written-back.md) | Derived values are never written back to source        | Accepted |
+| [0010](./0010-the-engine-carries-no-domain-vocabulary.md) | The engine carries no domain vocabulary             | Accepted |
+| [0011](./0011-assertions-are-named-parameterised-checks.md) | Assertions are named parameterised checks, not expressions | Accepted |
+| [0012](./0012-tolerances-are-registry-data.md)        | Tolerances are registry data                             | Accepted |
+| [0013](./0013-variants-are-branches.md)               | Variants are branches                                    | Accepted |
+| [0014](./0014-the-machine-output-contract-is-part-of-the-interface.md) | The machine output contract is part of the interface | Accepted |
+| [0015](./0015-the-cli-is-the-primary-write-path.md)   | The CLI is the primary write path                        | Accepted |
+| [0016](./0016-writes-are-all-or-nothing.md)           | Writes are all-or-nothing                                | Accepted |

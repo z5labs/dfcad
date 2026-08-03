@@ -96,9 +96,8 @@ modelling a different subject, it is not an engine change.
 
 - [`docs/decisions/`](./docs/decisions/) — the architecture decision records.
   Each states the decision, its reasoning, what it costs and what would reverse
-  it. The identity, claim and uncertainty decisions are recorded; the
-  engine-boundary, CLI and authoring decisions are still to come
-  ([#8](https://github.com/z5labs/dfcad/issues/8)).
+  it. The identity, claim and uncertainty decisions are recorded, as are the
+  engine-boundary, CLI and authoring ones.
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
   arity and ordering, and the canonical printing of each. Not written yet; it
   lands before the loader it specifies.
