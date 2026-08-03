@@ -121,18 +121,23 @@ func TestPrint(t *testing.T) {
 }
 
 // corpus is every file the printing properties below are checked against: the
-// inputs of the table above, the canonical printings they produce, and the
-// fixtures the validator already keeps — which between them hold every form of
-// the format, and hold malformed input too.
+// inputs of the table above, the canonical printings they produce, the fixture
+// corpus of the format's constructs, and the fixtures the validator already
+// keeps — which between them hold every form of the format, and hold malformed
+// input too.
 //
 // Printing something which does not load has to be as stable as printing
 // something which does. A file somebody is part way through fixing is exactly
 // the file they run fmt on.
+//
+// The invalid corpus is deliberately not here. Every file below has to parse,
+// because a property about what printing preserves has nothing to say about a
+// file there is no tree for; what those fixtures assert is in corpus_test.go.
 func corpus(t *testing.T) []string {
 	t.Helper()
 
 	var paths []string
-	for _, pattern := range []string{"testdata/print/*", "testdata/validate/*.dfc", "testdata/model/*/*.dfc"} {
+	for _, pattern := range []string{"testdata/print/*", "testdata/corpus/valid/*", "testdata/validate/*.dfc", "testdata/model/*/*.dfc"} {
 		matched, err := filepath.Glob(pattern)
 		require.NoError(t, err)
 		paths = append(paths, matched...)

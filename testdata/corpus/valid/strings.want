@@ -1,0 +1,10 @@
+; Specification section 8.5. A string prints double-quoted, escaping exactly
+; what has to be escaped for the same text to read back and nothing else. A
+; letter which is not ASCII is written as itself, and because a line feed is
+; escaped, canonical form never holds a raw line break inside a string.
+(project
+  (label "Grünstraße 12, 一メートル")
+  (globalid-namespace "https://example.org/models/riverside")
+  (description "A \"quoted\" phrase, a back\\slash, a\ttab and a\nline break."))
+(namespace survey (description "Control \u0007 issued by Acme Surveys."))
+(node site:S-101 (label "") (kind Space) (type MeetingRoom))

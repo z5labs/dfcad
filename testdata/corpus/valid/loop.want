@@ -1,0 +1,9 @@
+; Specification section 6.4. The order of the edges is the order the loop is
+; traversed, which is data and is never sorted.
+(loop
+  geom:L-01
+  (label "Meeting Room B boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04)
+  (assert boundary-loops-close (tolerance boundary-closure)))
+(loop geom:L-03 (frame frame:building) (edges geom:E-08))

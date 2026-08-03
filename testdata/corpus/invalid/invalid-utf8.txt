@@ -1,0 +1,3 @@
+testdata/corpus/invalid/invalid-utf8.dfc:2:24: error: invalid UTF-8: byte 0xff begins no valid encoding
+2 |   (label "Meeting Room ÿ")
+  |                        ^

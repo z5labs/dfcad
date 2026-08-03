@@ -1,0 +1,22 @@
+; Specification section 4.1. An id is namespace:local, split on the first
+; colon: the namespace is ASCII and begins with a letter, and the local part
+; is any run of the delegated symbol characters, further colons included. Ids
+; compare byte-wise — no case folding, no normalisation, no trimming.
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(namespace acme-surveys_2026
+  (description "The namespace an authority renamed itself into."))
+
+(node acme-surveys_2026:lot/17.3
+  (kind Site)
+  (type Parcel))
+
+(node survey:CP-3:north-west
+  (kind Element)
+  (type ControlPoint)
+  (label "A local part may hold further colons; the namespace never does."))
+
+(node survey:Sté-Générale
+  (kind Element)
+  (type ControlPoint)
+  (label "A local part is not confined to ASCII."))

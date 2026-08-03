@@ -1,0 +1,21 @@
+; Specification section 4.5. A unit is a plain symbol from the set the engine
+; fixes; there is no unit registry. ft and usft are pinned to different exact
+; definitions and one is never a synonym for the other, in any position.
+(frame frame:survey-grid (unit m))
+
+(frame frame:site-imperial (unit ft))
+
+(frame frame:state-plane (unit usft))
+
+(tolerance boundary-closure (value 0.005 m))
+
+(tolerance imperial-closure (value 0.02 ft))
+
+(vertex geom:V-11
+  (frame frame:state-plane)
+  (position
+    (value (1315748.42 6841122.09 145.6) usft)
+    (source "State plane control SP-3, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.03 usft))
+    (date "2026-02-11")))

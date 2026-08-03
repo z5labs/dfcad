@@ -1,0 +1,10 @@
+testdata/corpus/invalid/nil.dfc:3:1: error: expected a top-level form, found nil
+3 | nil
+  | ^^^
+testdata/corpus/invalid/nil.dfc:8:10: error: expected a value, found nil
+8 |   (label nil)
+  |          ^^^
+  = hint: absence is expressed by omitting a child, never by writing a placeholder
+testdata/corpus/invalid/nil.dfc:9:3: error: expected a child of the node form, found nil
+9 |   nil)
+  |   ^^^

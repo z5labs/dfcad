@@ -1,0 +1,14 @@
+; Specification section 4.4. A date is a string in RFC 3339 full-date form. It
+; is quoted because it has to be: 2026-03-14 begins like a number, so the
+; tokenizer classifies it as a malformed number before this format is reached.
+(node site:W-14
+  (kind Element)
+  (type Partition)
+  (width
+    (value 0.15 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:tape)
+    (date "2026-05-06"))
+  (retired
+    (date "2026-12-31")
+    (reason "Removed during the fit out.")))

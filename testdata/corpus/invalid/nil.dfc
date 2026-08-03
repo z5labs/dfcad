@@ -1,0 +1,9 @@
+; Specification section 2. Absence is expressed by omitting a child, never by
+; writing a placeholder — in the arguments of a form as much as in place of one.
+nil
+
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (label nil)
+  nil)

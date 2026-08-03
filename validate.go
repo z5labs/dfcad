@@ -107,8 +107,14 @@ func (v *validator) check(node *Node, f *form, tag string) {
 		elements = elements[1:]
 	}
 
+	v.improper(node)
+
 	written, children := split(elements)
 	v.args(node, f, tag, written)
+
+	for _, argument := range written {
+		v.excluded(argument)
+	}
 
 	if len(elements) < f.minElements {
 		v.add(node.Span, fmt.Sprintf("expected at least one element after the %s tag, found none", tag), "")
@@ -199,6 +205,58 @@ func (v *validator) claim(node *Node, tag string) {
 	}
 
 	v.check(node, claimForm, tag)
+}
+
+// improper reports a list written as a dotted pair.
+//
+// A dotted pair is a legal S-expression and is no form of this format: every
+// list in a dfcad file is proper. It is reported against the whole list rather
+// than against the tail because the list is the construct which is wrong — the
+// tail is a datum which would be unremarkable one space to the left.
+//
+// The tail is otherwise left where it was written, and whatever else is wrong
+// with the form is still reported. Reading the pair as though the dot were not
+// there would be this package guessing, and dropping the tail would turn one
+// mistake into a form which is also missing whatever the tail held.
+func (v *validator) improper(node *Node) {
+	if list, ok := node.Datum.(sexpr.List); !ok || list.Tail == nil {
+		return
+	}
+
+	v.add(node.Span, "expected a proper list, found a dotted pair", "every list in a dfcad file is proper: write the tail as a further element")
+}
+
+// excluded reports a datum written as a positional argument which is a legal
+// S-expression and is no part of this format.
+//
+// The same four constructs written where a child belongs are reported by
+// [validator.children], which names what it found there instead of a form. An
+// argument is not a child and nothing above looks at one: `(label nil)` writes
+// exactly the one argument the label form permits, and that argument is the
+// placeholder specification section 2 excludes.
+//
+// It recurses because an argument may itself be a list. The components of a
+// coordinate are written as one, and a dotted pair or a placeholder inside it is
+// as excluded there as anywhere else.
+func (v *validator) excluded(node *Node) {
+	switch datum := node.Datum.(type) {
+	case sexpr.Nil:
+		v.add(node.Span, "expected a value, found nil", "absence is expressed by omitting a child, never by writing a placeholder")
+
+	case sexpr.Quote:
+		v.add(node.Span, "expected a value, found a quoted datum", "the quote shorthands have no meaning in a dfcad file")
+
+	case sexpr.List:
+		if len(datum.Elements) == 0 {
+			v.add(node.Span, "expected a value, found an empty list", "every form has a tag")
+			return
+		}
+
+		v.improper(node)
+		for _, child := range node.Children {
+			v.excluded(child)
+		}
+	}
 }
 
 // misplaced reports a form of the format written where it does not belong.

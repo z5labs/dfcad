@@ -1,0 +1,20 @@
+; Specification section 6.6.2. An ordered list of two or three reals and the
+; unit of the declaring node's frame, which must be that frame's unit exactly
+; rather than a convertible one. The order of the components is data.
+(vertex
+  geom:V-01
+  (frame frame:building)
+  (position
+    (value (401235.117 3.172884902e+06 44.318) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+(vertex
+  geom:V-09
+  (frame frame:plan)
+  (plan-position
+    (value (4.05 3.0) m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))

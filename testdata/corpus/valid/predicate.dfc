@@ -1,0 +1,22 @@
+; Specification section 7.4. One predicate of each of the four value shapes,
+; with the two booleans written at the value which is not their default.
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate nominal-width
+  (unit m)
+  (shape scalar)
+  (claim-bearing #f)
+  (description "The width a partition was specified at."))
+
+(predicate colour
+  (shape text)
+  (strict #t)
+  (description "A finish named rather than measured."))

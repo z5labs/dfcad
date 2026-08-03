@@ -53,3 +53,23 @@ jobs:
 
       - name: Test
         run: go test -race ./...
+
+      # The goldens under testdata are how a change to the printer or to the
+      # diagnostic renderer is reviewed: the diff is what says what the change
+      # did. That only holds while every one of them is what this package
+      # actually produces, so they are regenerated here and the tree is required
+      # to come back unchanged. A golden edited by hand, or left stale by a
+      # change nobody regenerated, fails here rather than quietly becoming the
+      # recorded behaviour.
+      #
+      # Only the root package is run, because -update is its flag: passing it to
+      # a test binary which does not define one is an error rather than a no-op.
+      - name: Check the golden files are what the code produces
+        run: |
+          go test . -update
+          if ! git diff --quiet -- testdata; then
+            echo "::error::these golden files are stale; regenerate them with: go test . -update"
+            git diff --stat -- testdata
+            git diff -- testdata
+            exit 1
+          fi

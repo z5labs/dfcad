@@ -1,0 +1,15 @@
+; Specification section 2. The quote shorthands parse and have no meaning here,
+; wherever they are written: as a top-level datum, as a child of a form, and in
+; the positional arguments where nothing else looks at them.
+'site:S-101
+
+`(node site:S-102 (kind Space) (type Corridor))
+
+,site:S-103
+
+,@site:S-104
+
+(node site:S-105
+  (kind 'Space)
+  (type MeetingRoom)
+  ,@(label "East Corridor"))

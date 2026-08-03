@@ -1,0 +1,3 @@
+testdata/corpus/invalid/unterminated-string.dfc:2:10: error: unterminated string literal at line 2, column 10
+2 |   (label "Meeting Room B
+  |          ^
