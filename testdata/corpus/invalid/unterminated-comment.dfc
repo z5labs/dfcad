@@ -1,0 +1,4 @@
+(node site:S-101 (kind Space) (type MeetingRoom))
+
+#| The block comment nobody closed.
+(node site:S-102 (kind Space) (type Corridor))

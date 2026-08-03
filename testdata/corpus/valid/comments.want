@@ -1,0 +1,21 @@
+; Specification section 8.6. A comment attaches to the next sibling written
+; after it and travels with that sibling when it sorts. This one is at the top
+; of the file, so it attaches to the first top-level form and travels with it.
+(node
+  site:S-101
+  ; Above a structural child.
+  (kind Space)
+  (type MeetingRoom)
+  #| A block comment spans lines and #| nests |#, and its text is written back
+     exactly as it appeared, delimiters included. |#
+  (occupancy
+    (value 12.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    ; Inside a claim, above the child it annotates.
+    (date "2026-03-02"))
+  ; No sibling follows this one, so it stays at the end of the form it was
+  ; written in.
+)
+; A comment which annotates a whole form rather than a child of one.
+(vertex geom:V-01 (frame frame:building))

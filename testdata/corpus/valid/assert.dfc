@@ -1,0 +1,16 @@
+; Specification section 6.8. An assertion names a check and supplies its
+; parameters, and nothing else — there is no expression language. A tolerance
+; parameter takes a name from the registry rather than a numeric literal, and
+; the value of a parameter is one datum of whichever sort the check declares.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (assert within-resolves)
+  (assert boundary-loops-close (tolerance boundary-closure))
+  (assert clearance-at-least
+    (of site:W-14)
+    (tolerance vertex-coincidence)
+    (minimum 0.9)
+    (label "Egress route")
+    (required #t)
+    (kinds (Space Element))))

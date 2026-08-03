@@ -1,0 +1,10 @@
+testdata/corpus/invalid/empty-list.dfc:3:1: error: expected a top-level form, found an empty list
+3 | ()
+  | ^^
+testdata/corpus/invalid/empty-list.dfc:5:50: error: expected a child of the node form, found an empty list
+5 | (node site:S-101 (kind Space) (type MeetingRoom) ())
+  |                                                  ^^
+testdata/corpus/invalid/empty-list.dfc:10:17: error: expected a value, found an empty list
+10 |     (value (0.0 () 0.0) m)
+   |                 ^^
+   = hint: every form has a tag

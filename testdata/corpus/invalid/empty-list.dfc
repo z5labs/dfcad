@@ -1,0 +1,13 @@
+; Specification section 2. Every form has a tag, so the empty list is no form —
+; as a top-level datum, as a child, or inside the arguments of one.
+()
+
+(node site:S-101 (kind Space) (type MeetingRoom) ())
+
+(vertex geom:V-01
+  (frame frame:building)
+  (position
+    (value (0.0 () 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-18")))

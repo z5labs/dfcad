@@ -1,0 +1,19 @@
+(node
+  site:S-104
+  (kind Space)
+  (type Corridor)
+  (retired
+    (date "2026-07-14")
+    (reason "The floor plate it was on was never built.")))
+; Specification section 6.7. Retiring is not deleting: the id stays in the
+; graph and is never issued again. A reason is required because a retirement
+; with no reason is a deletion wearing a hat; a replacement is not, because a
+; thing which stopped existing did not necessarily get replaced.
+(node
+  site:W-14
+  (kind Element)
+  (type Partition)
+  (retired
+    (date "2026-06-01")
+    (reason "Removed during the fit out.")
+    (superseded-by site:W-15)))

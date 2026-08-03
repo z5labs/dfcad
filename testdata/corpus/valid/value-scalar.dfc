@@ -1,0 +1,17 @@
+; Specification section 6.6.1. A dimensional scalar carries the unit token its
+; predicate declares; a non-dimensional one is written with no unit at all,
+; because there is no token which spells the absence of one.
+(node site:W-14
+  (kind Element)
+  (type Partition)
+  (width
+    (value 0.15 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.005 m))
+    (date "2026-05-06"))
+  (fire-rating
+    (value 60.0)
+    (source "Fire strategy FS-2026-001")
+    (method method:document-review)
+    (date "2026-01-20")))

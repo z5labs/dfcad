@@ -1,0 +1,28 @@
+; Specification section 6.1. One semantic node writing every child the form
+; permits, and one writing only the two it requires — a node with no geometry
+; is an ordinary state rather than an omission.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:B-01)
+  (member-of site:Z-02)
+  (member-of site:Z-01)
+  (boundary geom:L-02)
+  (boundary geom:L-01)
+  (retired
+    (date "2026-07-14")
+    (reason "Merged into the corridor.")
+    (superseded-by site:S-103))
+  (occupancy
+    (value 12.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02"))
+  (assert boundary-loops-close (tolerance boundary-closure)))
+
+(node site:Z-01
+  (kind Zone)
+  (type OccupancyZone))

@@ -1,0 +1,6 @@
+; Specification section 7.1. The one project declaration a model carries, and
+; the pinned URL every derived GlobalId is built from.
+(project
+  (label "Riverside example")
+  (description "Two rooms and the partition between them.")
+  (globalid-namespace "https://example.org/models/riverside"))

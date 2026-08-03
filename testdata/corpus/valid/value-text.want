@@ -1,0 +1,12 @@
+; Specification section 6.6.4. A text claim is a statement with a source, a
+; method and a date, which is what makes it something other than a label.
+(node
+  site:W-14
+  (label "Partition, room B to corridor")
+  (kind Element)
+  (type Partition)
+  (colour
+    (value "slate")
+    (source "Finishes schedule FS-2026-004")
+    (method method:document-review)
+    (date "2026-04-02")))

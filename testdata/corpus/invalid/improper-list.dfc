@@ -1,0 +1,14 @@
+; Specification section 2. A dotted pair is a legal S-expression and is no form
+; of this format: every list in a dfcad file is proper. The tail is left where
+; it was written, so whatever else is wrong with the form is still reported.
+(node site:S-101 (kind Space) . (type MeetingRoom))
+
+(vertex geom:V-01 . geom:V-02)
+
+(vertex geom:V-02
+  (frame frame:building)
+  (position
+    (value (0.0 4.05 . 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-18")))

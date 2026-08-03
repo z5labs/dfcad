@@ -1,0 +1,3 @@
+testdata/corpus/invalid/unclosed-list.dfc:3:20: error: unexpected end of tokens at line 3, column 20, expected one of: RParen
+3 |   (type MeetingRoom)
+  |                    ^

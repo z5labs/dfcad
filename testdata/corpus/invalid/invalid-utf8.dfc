@@ -1,0 +1,4 @@
+(node site:S-101
+  (label "Meeting Room ÿ")
+  (kind Space)
+  (type MeetingRoom))

@@ -1,0 +1,33 @@
+; Specification section 6.6.5. Every magnitude is a standard uncertainty at one
+; sigma. A systematic term names the source it is shared with as an id, so that
+; a term reaching two inputs of one derivation is counted once; the terms are
+; unordered and the canonical printer sorts them.
+(vertex geom:V-01
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-05
+  (frame frame:building)
+  (position
+    (value (8.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (systematic 0.008 m survey:CP-3) (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-06
+  (frame frame:building)
+  (position
+    (value (8.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy
+      (systematic 0.008 m survey:CP-3)
+      (systematic 0.002 m survey:IC-01)
+      (independent 0.004 m))
+    (date "2026-02-18")))

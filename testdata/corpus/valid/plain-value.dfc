@@ -1,0 +1,11 @@
+; Specification section 6.5. A predicate the registry declares non-claim-bearing
+; takes a plain value and no children, written exactly as the same predicate's
+; value child would be written, unit token included. Which of the two spellings
+; a predicate takes is registry data, so both load here.
+(node site:W-14
+  (kind Element)
+  (type Partition)
+  (colour "slate")
+  (nominal-width 0.15 m)
+  (catalogue-reference "AC-8823-B")
+  (stud-count 24.0))

@@ -1,0 +1,6 @@
+(namespace geom (description "Geometric nodes minted by this model."))
+; Specification section 7.2. An id namespace and the authority which issues
+; its local parts.
+(namespace
+  survey
+  (description "Claim ids and control points issued by Acme Surveys."))

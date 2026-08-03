@@ -1,0 +1,19 @@
+testdata/corpus/invalid/quote-shorthand.dfc:4:1: error: expected a top-level form, found a quoted datum
+4 | 'site:S-101
+  | ^^^^^^^^^^^
+testdata/corpus/invalid/quote-shorthand.dfc:6:1: error: expected a top-level form, found a quoted datum
+6 | `(node site:S-102 (kind Space) (type Corridor))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/corpus/invalid/quote-shorthand.dfc:8:1: error: expected a top-level form, found a quoted datum
+8 | ,site:S-103
+  | ^^^^^^^^^^^
+testdata/corpus/invalid/quote-shorthand.dfc:10:1: error: expected a top-level form, found a quoted datum
+10 | ,@site:S-104
+   | ^^^^^^^^^^^^
+testdata/corpus/invalid/quote-shorthand.dfc:13:9: error: expected a value, found a quoted datum
+13 |   (kind 'Space)
+   |         ^^^^^^
+   = hint: the quote shorthands have no meaning in a dfcad file
+testdata/corpus/invalid/quote-shorthand.dfc:15:3: error: expected a child of the node form, found a quoted datum
+15 |   ,@(label "East Corridor"))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^

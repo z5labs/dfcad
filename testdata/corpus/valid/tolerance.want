@@ -1,0 +1,7 @@
+; Specification section 7.6. A named tolerance is the only way an operation
+; anywhere in this system names a number to compare against.
+(tolerance
+  boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+(tolerance vertex-coincidence (value 0.001 m))

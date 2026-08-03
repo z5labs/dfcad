@@ -1,0 +1,16 @@
+; Specification section 7.3. A type entry with one permitted kind and one
+; permitted geometry, and one which permits several of each including absent.
+(type MeetingRoom
+  (description "An enclosed room used for meetings.")
+  (kind Space)
+  (geometry area)
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+
+(type OccupancyZone
+  (kind Zone)
+  (kind Space)
+  (geometry area)
+  (geometry absent)
+  (description "A region occupancy is counted over.")
+  (invariant within-resolves)
+  (invariant zone-members-resolve))

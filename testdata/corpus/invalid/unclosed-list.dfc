@@ -1,0 +1,3 @@
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)

@@ -1,0 +1,18 @@
+testdata/corpus/invalid/improper-list.dfc:4:1: error: expected a proper list, found a dotted pair
+4 | (node site:S-101 (kind Space) . (type MeetingRoom))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: every list in a dfcad file is proper: write the tail as a further element
+testdata/corpus/invalid/improper-list.dfc:6:1: error: expected a (frame ...) child of the vertex form, found none
+6 | (vertex geom:V-01 . geom:V-02)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/corpus/invalid/improper-list.dfc:6:1: error: expected a proper list, found a dotted pair
+6 | (vertex geom:V-01 . geom:V-02)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: every list in a dfcad file is proper: write the tail as a further element
+testdata/corpus/invalid/improper-list.dfc:6:21: error: expected an id after the vertex tag, found 2
+6 | (vertex geom:V-01 . geom:V-02)
+  |                     ^^^^^^^^^
+testdata/corpus/invalid/improper-list.dfc:11:12: error: expected a proper list, found a dotted pair
+11 |     (value (0.0 4.05 . 0.0) m)
+   |            ^^^^^^^^^^^^^^^^
+   = hint: every list in a dfcad file is proper: write the tail as a further element

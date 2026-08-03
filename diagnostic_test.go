@@ -17,10 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// updateGolden rewrites the fixtures under testdata/diagnostics from what the
-// renderer produced, so that a deliberate change to the rendering is a diff to
-// review rather than a set of string literals to retype.
-var updateGolden = flag.Bool("update", false, "rewrite the golden diagnostic renderings under testdata")
+// updateGolden rewrites every golden file under testdata from what this
+// package produced, so that a deliberate change to a rendering or to canonical
+// form is a diff to review rather than a set of string literals to retype.
+//
+//	go test . -update
+//
+// It is one flag rather than one per directory because a change to the printer
+// or to the renderer reaches all of them at once, and regenerating half a
+// corpus leaves a tree nobody can read a diff of. CI regenerates and then
+// requires the tree to be unchanged, so a golden which was edited by hand — or
+// left behind by a change nobody regenerated — fails there.
+var updateGolden = flag.Bool("update", false, "rewrite the golden files under testdata")
 
 // diagnosticFixture is the source every rendering fixture points into. Paths
 // are written with forward slashes because they are printed into the golden

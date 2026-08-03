@@ -1,0 +1,14 @@
+; Specification section 6.2. A vertex is always in exactly one frame, and its
+; position is a claim like any other rather than a field of the form.
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18"))
+  (assert position-resolves))
+
+(vertex geom:V-02 (frame frame:building))

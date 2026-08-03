@@ -1,0 +1,19 @@
+; Specification section 6.6.3. The three children are in fixed order and the
+; numbers within each are ordered; none of them is sorted. The value carries no
+; unit token, because translation is pinned to the parent frame's unit and the
+; other two are dimensionless.
+(frame
+  frame:building
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (frame-transform
+    (id survey:C-0031)
+    (value
+      (transform
+        (translation 401235.117 3.172884902e+06 44.318)
+        (rotation 0.9999985 -0.0017453 0.0 0.0017453 0.9999985 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (date "2026-02-11")))

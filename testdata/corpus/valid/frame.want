@@ -1,0 +1,21 @@
+(frame
+  frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (frame-transform
+    (id survey:C-0031)
+    (value
+      (transform
+        (translation 401235.117 3.172884902e+06 44.318)
+        (rotation 0.9999985 -0.0017453 0.0 0.0017453 0.9999985 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-11")))
+; Specification section 7.5. A root frame, which has neither a parent nor a
+; transform, and a child frame whose relationship to it is a measurement with
+; a source, a method and an accuracy like any other.
+(frame frame:survey-grid (label "Site survey grid") (unit m))

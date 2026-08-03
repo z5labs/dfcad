@@ -1,0 +1,3 @@
+testdata/corpus/invalid/invalid-escape.dfc:2:24: error: invalid escape sequence '\q' at line 2, column 24
+2 |   (label "Meeting Room \q B")
+  |                        ^
