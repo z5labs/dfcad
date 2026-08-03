@@ -3,7 +3,7 @@
 Every layer of this engine treats the parse and print layer as ground truth. A
 defect there does not announce itself as a parse failure — it surfaces much
 later as a value which is subtly wrong, in a system whose whole purpose is being
-able to trust its values. These directories are what keeps that from happening
+able to trust its values. These directories are what keep that from happening
 quietly.
 
 A directory walk reads only files whose extension is `.dfc`, so this file and
