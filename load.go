@@ -178,10 +178,10 @@ type spanner struct {
 	closes map[int]int
 }
 
-// token is as much of a token as spanning needs: what it is, and where it
-// begins and ends.
+// token is as much of a token as spanning needs: where its source text begins
+// and where it ends. Which token it was has already been used, by the time one
+// of these exists, to pair the parentheses.
 type token struct {
-	typ   sexpr.TokenType
 	start int
 	end   int
 }
@@ -220,7 +220,7 @@ func newSpanner(lines lineIndex, src []byte) (*spanner, error) {
 		}
 
 		s.index[tok.Pos] = len(s.toks)
-		s.toks = append(s.toks, token{typ: tok.Type, start: start, end: end})
+		s.toks = append(s.toks, token{start: start, end: end})
 	}
 
 	return s, nil
