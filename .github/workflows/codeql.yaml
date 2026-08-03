@@ -1,0 +1,63 @@
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  # The alert set is only as fresh as the queries that produced it. A weekly run
+  # re-analyses main against the current query pack, so a newly published rule
+  # surfaces on its own rather than waiting for the next unrelated commit.
+  schedule:
+    - cron: "37 9 * * 1"
+
+# Same reasoning as CI: a pull request only needs an answer about its newest
+# commit, so superseded runs are cancelled. Pushes to main and scheduled runs
+# keep theirs — those are what the Security tab reports against.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Default deny. Each job grants only what it needs, below.
+permissions: {}
+
+jobs:
+  analyze:
+    name: analyze
+    runs-on: ubuntu-latest
+    permissions:
+      # Read the repository to check it out and build it.
+      contents: read
+      # Upload the SARIF results so they appear under the Security tab.
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Go is the only language in the tree. Listing it as a matrix keeps the
+        # shape ready for a second pack (workflows, say) without restructuring.
+        include:
+          - language: go
+            build-mode: autobuild
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          # Analyse with the same toolchain CI builds with, rather than whatever
+          # the runner image happens to ship.
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
