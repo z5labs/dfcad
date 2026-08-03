@@ -188,3 +188,46 @@ func ExampleDiagnostics() {
 	//   |       ^^^^^^^^^^
 	// true
 }
+
+func ExamplePrint() {
+	source := `(node site:S-101
+  (frame frame:building)
+  ; The corner the survey started from.
+  (position
+    (rank normal)
+    (date "2026-02-18")
+    (value (0.0 0.00 0.0) m)
+    (method method:total-station)
+    (source "Interior control set IC-01"))
+  (kind Space)
+  (label "Meeting Room B")
+  (type MeetingRoom))
+`
+
+	file, err := dfcad.Parse("entities/level-1.dfc", strings.NewReader(source))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Canonical form puts the children in the order the format gives them,
+	// leaves out the rank which is already the default, and carries the comment
+	// along with the claim it annotates.
+	if err := dfcad.Print(os.Stdout, file); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// (node
+	//   site:S-101
+	//   (label "Meeting Room B")
+	//   (kind Space)
+	//   (type MeetingRoom)
+	//   (frame frame:building)
+	//   ; The corner the survey started from.
+	//   (position
+	//     (value (0.0 0.0 0.0) m)
+	//     (source "Interior control set IC-01")
+	//     (method method:total-station)
+	//     (date "2026-02-18")))
+}

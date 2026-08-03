@@ -1,0 +1,7 @@
+; Written with carriage returns, trailing spaces and no final line break.
+(node site:S-101   
+  (label "Meeting Room B")	
+  (kind Space) (type MeetingRoom))
+
+
+(vertex geom:V-01 (frame frame:building))

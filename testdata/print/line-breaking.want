@@ -1,0 +1,11 @@
+(namespace
+  survey
+  (description
+    "Claim ids and control points issued by Acme Surveys, whose description does not fit"))
+(node site:S-101 (label "Meeting Room B") (kind Space) (type MeetingRoom))
+(node
+  site:S-102
+  (label
+    "A corridor whose label is long enough to push this form past eighty columns")
+  (kind Space)
+  (type Corridor))

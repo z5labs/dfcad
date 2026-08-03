@@ -1,0 +1,21 @@
+(vertex geom:V-02
+  (assert position-resolves)
+  (position
+    (date "2026-05-06")
+    (id survey:C-0181)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (value (4.05 0.0 0.0) m)
+    (accuracy (systematic 0.008 m survey:CP-3) (independent 0.003 m))
+    (method method:total-station))
+  (assert coordinates-are-finite)
+  (position
+    (superseded-by survey:C-0181)
+    (rank deprecated)
+    (id survey:C-0104)
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18"))
+  (frame frame:building)
+  (clearance (value 0.9 m) (source "AB-2026-009") (method method:tape) (date "2026-05-06")))

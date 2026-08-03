@@ -96,16 +96,35 @@ type child struct {
 
 	// form describes the child itself.
 	form *form
+
+	// omitted is this child's canonical printing when it holds its default,
+	// which canonical form leaves out — `(rank normal)` is written back as
+	// nothing at all. Empty means the child has no default and is written back
+	// whenever it was written.
+	//
+	// It is the printing rather than the value because that is what the printer
+	// already has in hand, and because it settles the spellings a value has more
+	// than one of: `#true` prints as `#t`, so a default written the long way is
+	// still recognised as the default.
+	omitted string
 }
 
 // child returns the description of the child written with tag, and whether the
 // form permits one at all.
 func (f *form) child(tag string) (child, bool) {
+	_, c, ok := f.childAt(tag)
+	return c, ok
+}
+
+// childAt returns the description of the child written with tag together with
+// its place in the canonical child order, and whether the form permits one at
+// all.
+func (f *form) childAt(tag string) (int, child, bool) {
 	i := slices.IndexFunc(f.children, func(c child) bool { return c.tag == tag })
 	if i < 0 {
-		return child{}, false
+		return 0, child{}, false
 	}
-	return f.children[i], true
+	return i, f.children[i], true
 }
 
 // tags is the tags of the children the form permits, in canonical order.
@@ -243,7 +262,7 @@ var (
 			{tag: "method", arity: exactly(1), form: args(exactly(1), "a method id")},
 			{tag: "accuracy", arity: atMost(1), form: accuracyForm},
 			{tag: "date", arity: exactly(1), form: args(exactly(1), "a date string")},
-			{tag: "rank", arity: atMost(1), form: args(exactly(1), "normal or deprecated")},
+			{tag: "rank", arity: atMost(1), form: args(exactly(1), "normal or deprecated"), omitted: "(rank normal)"},
 			{tag: "superseded-by", arity: atMost(1), form: args(exactly(1), "a claim id")},
 		},
 	}
@@ -351,8 +370,8 @@ var (
 			{tag: "unit", arity: atMost(1), form: args(exactly(1), "a unit")},
 			{tag: "shape", arity: exactly(1), form: args(exactly(1), "a value shape")},
 			{tag: "dimension", arity: atMost(1), form: args(exactly(1), "an integer")},
-			{tag: "claim-bearing", arity: atMost(1), form: args(exactly(1), "#t or #f")},
-			{tag: "strict", arity: atMost(1), form: args(exactly(1), "#t or #f")},
+			{tag: "claim-bearing", arity: atMost(1), form: args(exactly(1), "#t or #f"), omitted: "(claim-bearing #t)"},
+			{tag: "strict", arity: atMost(1), form: args(exactly(1), "#t or #f"), omitted: "(strict #f)"},
 			{tag: "description", arity: atMost(1), form: args(exactly(1), "a string")},
 		},
 	}

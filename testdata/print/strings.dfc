@@ -1,0 +1,9 @@
+; A string escapes exactly what has to be escaped for the same text to read
+; back, and nothing else. These are written under a tag the format does not
+; know, so that the fixture is about the strings alone.
+(a-escapes "a \"quoted\" word" "a back\\slash" "a\ttab" "a\nbreak" "a\rreturn")
+(b-escapes "a \b backspace and a \f form feed")
+(c-escapes "\u0000 nul, \u001F unit separator, \u007f delete, \u0085 next line")
+(d-escapes "un mètre, 一メートル, ǅ, a letter is written as itself")
+(e-escapes "a line break written raw
+reads back the same as one written as an escape")
