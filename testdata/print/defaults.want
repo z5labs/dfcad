@@ -19,6 +19,7 @@
     (method method:total-station)
     (date "2026-05-06")
     ; Nothing is printed after this one, so it ends up at the end of the claim.
+    ; A comment written inside a child which is not printed survives too.
   )
   (position
     (value (0.0 0.0 0.0) m)

@@ -67,7 +67,9 @@ import (
 // write what it could not classify would be one nobody could run on the file
 // they were fixing.
 //
-// A nil file writes nothing, as does a file holding no forms.
+// A nil file writes nothing. A file holding no forms writes the comments it
+// holds and nothing else, which is nothing at all when it holds none either: a
+// file of comments is still a file somebody wrote.
 func Print(w io.Writer, file *File) error {
 	if file == nil {
 		return nil
@@ -163,11 +165,11 @@ func arrange(children []*Node, groups [][]*Comment, f *form, order func(a, b *la
 		carried = nil
 
 		if at.omitted != "" && item.inline == at.omitted {
-			// A child equal to its default is not printed, and whatever was
-			// written above it annotates whatever comes next instead. Dropping
-			// the comment along with the child would be this package deleting
-			// something a person wrote.
-			carried = item.before
+			// A child equal to its default is not printed, and every comment it
+			// was written with — above it and inside it alike — annotates
+			// whatever comes next instead. Dropping one along with the child
+			// would be this package deleting something a person wrote.
+			carried = slices.Concat(item.before, held(node))
 			continue
 		}
 
@@ -367,6 +369,25 @@ func attach(comments []*Comment, nodes []*Node) [][]*Comment {
 		groups[i] = append(groups[i], comment)
 	}
 	return groups
+}
+
+// held is every comment written anywhere inside a node, in source order.
+//
+// It is what a child which is not printed at all owes to whatever follows it. A
+// comment can be written inside a form as well as above one, and a default
+// written as `(rank ; measured, not assumed` / `normal)` holds a line nothing
+// else in the file does.
+func held(node *Node) []*Comment {
+	out := slices.Clone(node.Comments)
+	for _, child := range node.Children {
+		out = append(out, held(child)...)
+	}
+
+	slices.SortFunc(out, func(a, b *Comment) int {
+		return cmp.Compare(a.Span.Start.Offset, b.Span.Start.Offset)
+	})
+
+	return out
 }
 
 // nextSibling is the index of the first node written after the comment, or one

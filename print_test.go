@@ -369,6 +369,16 @@ func TestPrintStrings(t *testing.T) {
 			text: "",
 			want: `""`,
 		},
+		{
+			// The loader rejects a byte which begins no valid encoding, so a
+			// replacement character in a loaded file is one somebody wrote. It
+			// is escaped rather than written as itself, which is what the
+			// underlying printer does and so what the sort key has to agree
+			// with; the point of the case is that it still reads back.
+			name: "escapes a replacement character somebody wrote",
+			text: "\uFFFD",
+			want: `"\uFFFD"`,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -393,13 +403,15 @@ func TestPrintStrings(t *testing.T) {
 	}
 }
 
-// TestPrintEmptyInput is its own function because a file with nothing in it has
-// no canonical printing to compare against — the assertion is that there are no
-// bytes at all, not that they are the right ones.
+// TestPrintEmptyInput is its own function because a file with no forms in it
+// has no canonical printing to compare against — the assertion is about how
+// little comes out, not about which bytes.
 func TestPrintEmptyInput(t *testing.T) {
 	testCases := []struct {
-		name string
-		file *File
+		name   string
+		file   *File
+		source string
+		want   string
 	}{
 		{
 			name: "writes nothing for a file which holds no forms",
@@ -409,14 +421,26 @@ func TestPrintEmptyInput(t *testing.T) {
 			name: "writes nothing for a file which was never loaded",
 			file: nil,
 		},
+		{
+			name:   "writes back a file which holds comments and nothing else",
+			source: "; A file nobody has written a form into yet.\n",
+			want:   "; A file nobody has written a form into yet.\n",
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			file := testCase.file
+			if testCase.source != "" {
+				var err error
+				file, err = Parse("entities/level-1.dfc", strings.NewReader(testCase.source))
+				require.NoError(t, err)
+			}
+
 			var out strings.Builder
 
-			require.NoError(t, Print(&out, testCase.file))
-			assert.Empty(t, out.String())
+			require.NoError(t, Print(&out, file))
+			assert.Equal(t, testCase.want, out.String())
 		})
 	}
 }
