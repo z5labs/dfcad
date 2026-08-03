@@ -3,6 +3,10 @@
 A data-first CAD engine: a declarative entity graph in text, queried and edited
 with provenance and error budgets intact.
 
+> **Status: under construction.** This README describes the engine's scope — the
+> boundary it is being built to, and the boundary it is not allowed to cross.
+> Most of what follows is not implemented yet.
+
 ## What it does
 
 A model is a set of plain text files under version control. The engine works on
@@ -90,11 +94,16 @@ modelling a different subject, it is not an engine change.
 
 ## Documentation
 
+Neither of these is written yet; both are tracked and land before the loader
+they specify.
+
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
   arity and ordering, and the canonical printing of each.
+  ([#9](https://github.com/z5labs/dfcad/issues/9))
 - [`docs/decisions/`](./docs/decisions/) — the architecture decision records.
   Each states the decision, its reasoning, what it costs and what would reverse
-  it.
+  it. ([#7](https://github.com/z5labs/dfcad/issues/7),
+  [#8](https://github.com/z5labs/dfcad/issues/8))
 
 ## Install
 
