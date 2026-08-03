@@ -114,18 +114,28 @@ polling:
 ```
 for i in $(seq 1 40); do
   n=$(gh api --paginate repos/z5labs/dfcad/issues/<pr>/timeline \
-        --jq '.[]|select(.event=="reviewed")|.id' 2>/dev/null | wc -l)
+        --jq '.[]|select(.event=="reviewed")
+              |select(.user.login|test("copilot";"i"))|.id' 2>/dev/null | wc -l)
   if [ "$n" -gt 0 ]; then echo "copilot review landed"; exit 0; fi
   sleep 15
 done
 echo "copilot review timed out"; exit 1
 ```
 
-`--paginate` is load bearing. The timeline returns thirty events per page by default, and a
-pull request that saw several pushes, check runs and comments will push the `reviewed` event
-off the first page — where an unpaginated read reports zero and the loop times out on a
-reviewed pull request, which is the exact failure this step exists to avoid. Counting `.id`
-lines rather than taking a `length` per page is what makes the count work across pages.
+Two filters, both load bearing.
+
+`--paginate`, because the timeline returns thirty events per page by default, and a pull
+request that saw several pushes, check runs and comments will push the `reviewed` event off
+the first page — where an unpaginated read reports zero and the loop times out on a reviewed
+pull request, which is the exact failure this step exists to avoid. Counting `.id` lines
+rather than taking a `length` per page is what makes the count work across pages.
+
+The `copilot` login filter, because a `reviewed` event from *anyone* would otherwise end the
+wait. The repository owner reviewing a pull request while Copilot was still working would
+satisfy this loop, and step 9 would then be deciding on a review that never arrived. The
+gate is specifically that Copilot completed; the wait has to be specific in the same way.
+Matching is case-insensitive on purpose — the timeline reports this reviewer as `Copilot`
+while the `pulls/` endpoints report `copilot-pull-request-reviewer[bot]`.
 
 The wait polls the **timeline**, not `pulls/<pr>/reviews`. The reviews endpoint — and the
 equivalent GraphQL query — have been seen returning an empty array for as long as forty
@@ -137,13 +147,15 @@ reviewed, and that reads as a missing review rather than as the API lagging.
 
 ```
 gh api --paginate repos/z5labs/dfcad/issues/<pr>/timeline \
-  --jq '.[]|select(.event=="reviewed")' \
+  --jq '.[]|select(.event=="reviewed")|select(.user.login|test("copilot";"i"))' \
   | jq -s 'sort_by(.submitted_at)|last|{user:.user.login,state,body}'
 ```
 
-`--paginate` for the same reason as above, and `jq -s` because it slurps the per-page
-objects back into one array before sorting — sorting inside `--jq` would sort each page
-separately and give you the last review *of the last page*, not the last review.
+Same two filters, for the same two reasons — without the login filter this returns whichever
+review is newest, which after a human comment is not Copilot's. And `jq -s` because it
+slurps the per-page objects back into one array before sorting: sorting inside `--jq` would
+sort each page separately and give you the last review *of the last page*, not the last
+review.
 
 A non-empty `reviews` array does **not** mean the PR was reviewed. Copilot posts a review
 whose body declines the work — most often `"Copilot wasn't able to review this pull request
