@@ -1,0 +1,8 @@
+(project
+  (label "Riverside example")
+  (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
