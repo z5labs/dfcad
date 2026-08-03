@@ -282,11 +282,22 @@ echo "PR <pr> still OPEN after 10m"; exit 1
 Both failure paths exit non-zero so an unmerged close or a timeout cannot be mistaken for
 success by anything that reads the exit code rather than the emitted line.
 
-If it merged, make sure the issue actually closed. **Do not treat this as a formality.** A
-`Closes #<n>` line in the pull request body has been observed not closing the issue when the
-merge was performed by the workflow's `GITHUB_TOKEN` rather than by a person. An issue left
-open is one the next invocation of this command selects again, so the loop re-implements
-work it has already merged:
+If it merged, two things the repository normally does on your behalf will not have happened,
+both for the same reason: a merge performed by the workflow's `GITHUB_TOKEN` does not trigger
+them the way a merge performed by a person does. Neither is a formality — do both.
+
+**Delete the remote branch.** `deleteBranchOnMerge` is enabled on the repository and does not
+fire here, so every cycle leaves its branch behind. That is harmless until a cycle has to be
+retried: `git worktree add -b issue-<n>` fails against an existing branch, and the retry then
+reports `BLOCKED` on a name collision rather than on anything real.
+
+```
+git push origin --delete issue-<n>
+```
+
+**Close the issue.** A `Closes #<n>` line in the pull request body has been observed not
+closing it. An issue left open is one the next invocation of this command selects again, so
+the loop re-implements work it has already merged:
 
 ```
 gh issue view <n> --json state -q .state
