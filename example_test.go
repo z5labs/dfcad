@@ -231,3 +231,20 @@ func ExamplePrint() {
 	//     (method method:total-station)
 	//     (date "2026-02-18")))
 }
+
+func ExampleFormatter() {
+	// The zero value writes nothing, so this reports what a rewrite would do
+	// without doing any of it. Setting Rewrite is what replaces the files.
+	for _, file := range (dfcad.Formatter{}).Format("testdata/model") {
+		switch {
+		case file.Failed():
+			fmt.Printf("%s: could not be formatted\n", file.Path)
+		case file.Changed:
+			fmt.Printf("%s: not in canonical form\n", file.Path)
+		}
+	}
+
+	// Output:
+	// testdata/model/entities/level-1.dfc: not in canonical form
+	// testdata/model/registry/registry.dfc: not in canonical form
+}
