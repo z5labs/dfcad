@@ -1,0 +1,32 @@
+; A child equal to its default is not printed, whichever way it was spelled.
+(predicate colour (shape text) (claim-bearing #true) (strict #false))
+
+(predicate nominal-width (shape scalar) (unit m) (claim-bearing #f) (strict #t))
+
+(vertex geom:V-01
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    ; A comment above a child which is not printed annotates the next child
+    ; instead, because deleting it along with the default would be deleting
+    ; something a person wrote.
+    (rank normal)
+    (method method:total-station)
+    (date "2026-02-18"))
+  (position
+    (id survey:C-0104)
+    (value (0.1 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-11")
+    (rank deprecated)
+    (superseded-by survey:C-0181))
+  (position
+    (id survey:C-0181)
+    (value (0.2 0.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06")
+    ; Nothing is printed after this one, so it ends up at the end of the claim.
+    (rank normal)))

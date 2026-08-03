@@ -1,0 +1,27 @@
+(type
+  OccupancyZone
+  (kind Space)
+  (kind Zone)
+  (geometry absent)
+  (geometry area)
+  (description "A region occupancy is counted over.")
+  (invariant zone-members-resolve))
+(predicate
+  nominal-width
+  (unit m)
+  (shape scalar)
+  (dimension 1)
+  (description "The width a partition was specified at."))
+(node
+  site:S-201
+  (label "Store")
+  (kind Space)
+  (type OccupancyZone)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-101)
+  (member-of site:Z-01)
+  (member-of site:Z-02)
+  (boundary geom:L-01)
+  (boundary geom:L-02)
+  (retired (date "2026-07-14") (reason "Merged into the corridor.")))

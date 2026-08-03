@@ -1,0 +1,22 @@
+; This one is at the top of the file and annotates the first form written
+; after it, which is the vertex below and not the node it sorts behind.
+(vertex geom:V-02
+  (frame frame:building)
+  ; Shot twice: the 2026-02-18 value was taken before the partition moved.
+  (position
+    (id survey:C-0181)
+    (value (4.05 0.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06"))
+  ; Nothing follows this one, so it stays at the end of the vertex.
+  )
+
+(node site:S-101
+  ; A comment before the first child pushes that child off the opening line.
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom))
+
+#| A block comment is written back exactly as it appeared, delimiters and all. |#
+(node site:S-102 (kind Space) (type Corridor))
