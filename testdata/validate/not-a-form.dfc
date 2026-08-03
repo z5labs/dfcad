@@ -1,0 +1,9 @@
+site:S-101
+
+(node site:S-102
+  (kind Space)
+  (type MeetingRoom)
+  extra
+  (0.0 4.05 0.0))
+
+()

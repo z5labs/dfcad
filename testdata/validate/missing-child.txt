@@ -1,0 +1,28 @@
+testdata/validate/missing-child.dfc:1:1: error: expected a (kind ...) child of the node form, found none
+1 | (node site:S-101
+  | ^^^^^^^^^^^^^^^^
+2 |   (label "Meeting Room B"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/missing-child.dfc:1:1: error: expected a (type ...) child of the node form, found none
+1 | (node site:S-101
+  | ^^^^^^^^^^^^^^^^
+2 |   (label "Meeting Room B"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/missing-child.dfc:4:1: error: expected a (frame ...) child of the vertex form, found none
+4 | (vertex geom:V-01)
+  | ^^^^^^^^^^^^^^^^^^
+testdata/validate/missing-child.dfc:6:1: error: expected a (description ...) child of the type form, found none
+6 | (type MeetingRoom
+  | ^^^^^^^^^^^^^^^^^
+7 |   (invariant boundary-loops-close (tolerance boundary-closure)))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/missing-child.dfc:6:1: error: expected at least one (geometry ...) child of the type form, found none
+6 | (type MeetingRoom
+  | ^^^^^^^^^^^^^^^^^
+7 |   (invariant boundary-loops-close (tolerance boundary-closure)))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/missing-child.dfc:6:1: error: expected at least one (kind ...) child of the type form, found none
+6 | (type MeetingRoom
+  | ^^^^^^^^^^^^^^^^^
+7 |   (invariant boundary-loops-close (tolerance boundary-closure)))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

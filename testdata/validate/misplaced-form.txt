@@ -1,0 +1,12 @@
+testdata/validate/misplaced-form.dfc:3:3: error: expected a child of the vertex form, found (kind ...), which is not permitted here
+3 |   (kind Space))
+  |   ^^^^^^^^^^^^
+  = hint: (kind ...) belongs in a node form or a type form
+testdata/validate/misplaced-form.dfc:8:3: error: expected a child of the node form, found (vertices ...), which is not permitted here
+8 |   (vertices geom:V-01 geom:V-02))
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: (vertices ...) belongs in an edge form
+testdata/validate/misplaced-form.dfc:12:3: error: expected a child of the project form, found (node ...), which is not permitted here
+12 |   (node site:S-102))
+   |   ^^^^^^^^^^^^^^^^^
+   = hint: (node ...) belongs in the top level of a file

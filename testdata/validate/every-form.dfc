@@ -1,0 +1,71 @@
+; What the worked example of the specification does not happen to use. Between
+; this file and the two halves of that example, every child of every form is
+; written at least once, which is what TestValidateAcceptsEveryForm reads.
+(namespace zone (description "Zones minted by this model."))
+
+(type OccupancyZone
+  (kind Zone)
+  (kind Space)
+  (geometry area)
+  (geometry absent)
+  (description "A region occupancy is counted over.")
+  (invariant zone-members-resolve))
+
+(predicate nominal-width
+  (unit m)
+  (shape scalar)
+  (claim-bearing #f)
+  (description "The width a partition was specified at."))
+
+(predicate colour
+  (shape text)
+  (strict #t))
+
+(frame frame:survey-grid
+  (label "Site survey grid")
+  (unit m))
+
+(node site:Z-01
+  (kind Zone)
+  (type OccupancyZone))
+
+(node site:S-201
+  (label "Store")
+  (kind Space)
+  (type OccupancyZone)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-101)
+  (member-of site:Z-01)
+  (boundary geom:L-01)
+  (boundary geom:L-02)
+  (colour
+    (value "slate")
+    (source "Finishes schedule FS-2026-004")
+    (method method:document-review)
+    (date "2026-04-02"))
+  (nominal-width 0.15 m)
+  (retired
+    (date "2026-07-14")
+    (reason "Merged into the corridor."))
+  (assert within-resolves)
+  (assert zone-members-resolve (tolerance boundary-closure)))
+
+(edge geom:E-08
+  (label "Party wall")
+  (frame frame:building)
+  (vertices geom:V-05 geom:V-06)
+  (backed-by site:W-14)
+  (backed-by site:W-15)
+  (clearance
+    (value 0.9 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:tape)
+    (accuracy (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06")))
+
+(loop geom:L-03
+  (label "Store boundary")
+  (frame frame:building)
+  (edges geom:E-08)
+  (assert boundary-loops-close (tolerance boundary-closure)))

@@ -100,6 +100,43 @@ func ExampleDiagnostic_Render() {
 	//   = hint: units are registry data; a frame declares the one its coordinates are in
 }
 
+func ExampleValidate() {
+	const path = "registry/registry.dfc"
+
+	source := `(project
+  (label "Riverside example")
+  (globalid-namesapce "https://example.org/models/riverside"))
+`
+
+	file, err := dfcad.Parse(path, strings.NewReader(source))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// One pass reports both the misspelled tag and the required child the
+	// misspelling leaves missing, rather than stopping at the first.
+	var diagnostics dfcad.Diagnostics
+	diagnostics.Add(dfcad.Validate(file)...)
+
+	if err := diagnostics.Render(os.Stdout, dfcad.Sources{path: []byte(source)}); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// registry/registry.dfc:1:1: error: expected a (globalid-namespace ...) child of the project form, found none
+	// 1 | (project
+	//   | ^^^^^^^^
+	// 2 |   (label "Riverside example")
+	//   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+	// 3 |   (globalid-namesapce "https://example.org/models/riverside"))
+	//   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+	// registry/registry.dfc:3:3: error: expected a child of the project form, found (globalid-namesapce ...), which is not a known form
+	// 3 |   (globalid-namesapce "https://example.org/models/riverside"))
+	//   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+	//   = hint: did you mean (globalid-namespace ...)?
+}
+
 func ExampleDiagnostics() {
 	const path = "entities/level-1.dfc"
 

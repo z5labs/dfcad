@@ -1,0 +1,13 @@
+(ndoe site:S-101
+  (kind Space)
+  (type MeetingRoom))
+
+(sproket geom:V-01)
+
+(project
+  (label "Riverside example")
+  (globalid-namesapce "https://example.org/models/riverside"))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (colour "slate"))

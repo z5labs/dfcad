@@ -1,0 +1,19 @@
+testdata/validate/argument-count.dfc:1:1: error: expected an id after the node tag, found none
+1 | (node
+  | ^^^^^
+2 |   (kind Space)
+  | ^^^^^^^^^^^^^^
+3 |   (type MeetingRoom))
+  | ^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/argument-count.dfc:5:19: error: expected an id after the vertex tag, found 2
+5 | (vertex geom:V-01 geom:V-02
+  |                   ^^^^^^^^^
+testdata/validate/argument-count.dfc:10:3: error: expected two vertex ids after the vertices tag, found 1
+10 |   (vertices geom:V-01))
+   |   ^^^^^^^^^^^^^^^^^^^^
+testdata/validate/argument-count.dfc:14:3: error: expected one or more edge ids after the edges tag, found none
+14 |   (edges))
+   |   ^^^^^^^
+testdata/validate/argument-count.dfc:16:10: error: expected no arguments after the project tag, found 1
+16 | (project site:S-101
+   |          ^^^^^^^^^^

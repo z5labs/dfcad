@@ -1,0 +1,9 @@
+testdata/validate/empty-form.dfc:4:5: error: expected at least one element after the value tag, found none
+4 |     (value)
+  |     ^^^^^^^
+testdata/validate/empty-form.dfc:7:5: error: expected at least one element after the accuracy tag, found none
+7 |     (accuracy)
+  |     ^^^^^^^^^^
+testdata/validate/empty-form.dfc:9:3: error: expected a value or the children of a claim after the width tag, found none
+9 |   (width))
+  |   ^^^^^^^

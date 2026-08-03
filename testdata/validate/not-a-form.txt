@@ -1,0 +1,12 @@
+testdata/validate/not-a-form.dfc:1:1: error: expected a top-level form, found the symbol site:S-101
+1 | site:S-101
+  | ^^^^^^^^^^
+testdata/validate/not-a-form.dfc:6:3: error: expected a child of the node form, found the symbol extra
+6 |   extra
+  |   ^^^^^
+testdata/validate/not-a-form.dfc:7:3: error: expected a child of the node form, found a list with no tag
+7 |   (0.0 4.05 0.0))
+  |   ^^^^^^^^^^^^^^
+testdata/validate/not-a-form.dfc:9:1: error: expected a top-level form, found an empty list
+9 | ()
+  | ^^

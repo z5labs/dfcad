@@ -1,0 +1,17 @@
+(node
+  (kind Space)
+  (type MeetingRoom))
+
+(vertex geom:V-01 geom:V-02
+  (frame frame:building))
+
+(edge geom:E-01
+  (frame frame:building)
+  (vertices geom:V-01))
+
+(loop geom:L-01
+  (frame frame:building)
+  (edges))
+
+(project site:S-101
+  (globalid-namespace "https://example.org/models/riverside"))

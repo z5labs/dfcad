@@ -1,0 +1,12 @@
+testdata/validate/repeated-child.dfc:3:3: error: expected at most one (label ...) child of the node form, found another
+3 |   (label "Meeting Room C")
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/repeated-child.dfc:2:3: note: first written here
+2 |   (label "Meeting Room B")
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/repeated-child.dfc:7:3: error: expected at most one (frame ...) child of the node form, found another
+7 |   (frame frame:survey-grid))
+  |   ^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/repeated-child.dfc:6:3: note: first written here
+6 |   (frame frame:building)
+  |   ^^^^^^^^^^^^^^^^^^^^^^

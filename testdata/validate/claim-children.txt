@@ -1,0 +1,39 @@
+testdata/validate/claim-children.dfc:3:3: error: expected a (date ...) child of the position claim, found none
+3 |   (position
+  |   ^^^^^^^^^
+4 |     (value (0.0 0.0 0.0) m)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |     (value (0.1 0.0 0.0) m)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     (source "Interior control set IC-01, Acme Surveys")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |     (rnak deprecated)
+  | ^^^^^^^^^^^^^^^^^^^^^
+8 |     (accuracy (independent 0.004 m) (systematic 0.008 m))))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/claim-children.dfc:3:3: error: expected a (method ...) child of the position claim, found none
+3 |   (position
+  |   ^^^^^^^^^
+4 |     (value (0.0 0.0 0.0) m)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5 |     (value (0.1 0.0 0.0) m)
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+6 |     (source "Interior control set IC-01, Acme Surveys")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |     (rnak deprecated)
+  | ^^^^^^^^^^^^^^^^^^^^^
+8 |     (accuracy (independent 0.004 m) (systematic 0.008 m))))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/claim-children.dfc:5:5: error: expected at most one (value ...) child of the position claim, found another
+5 |     (value (0.1 0.0 0.0) m)
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/claim-children.dfc:4:5: note: first written here
+4 |     (value (0.0 0.0 0.0) m)
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+testdata/validate/claim-children.dfc:7:5: error: expected a child of the position claim, found (rnak ...), which is not a known form
+7 |     (rnak deprecated)
+  |     ^^^^^^^^^^^^^^^^^
+  = hint: did you mean (rank ...)?
+testdata/validate/claim-children.dfc:8:37: error: expected a magnitude, a unit and a term id after the systematic tag, found 2
+8 |     (accuracy (independent 0.004 m) (systematic 0.008 m))))
+  |                                     ^^^^^^^^^^^^^^^^^^^^
