@@ -431,7 +431,7 @@ attach a value to a node.
 | `value`         | `1`    | See [6.6](#66-value-shapes).                                                    |
 | `source`        | `1`    | A string naming the evidence — a report, a drawing, a person, an instrument log. |
 | `method`        | `1`    | An id naming how the value was obtained.                                        |
-| `accuracy`      | `0..1` | One or more uncertainty terms. See [6.6.5](#665-accuracy-terms).                 |
+| `accuracy`      | `0..1` | Optional; at most one. When present it holds one or more terms — see [6.6.5](#665-accuracy-terms). |
 | `date`          | `1`    | The date the value was obtained, per [4.4](#44-dates).                           |
 | `rank`          | `0..1` | `normal` or `deprecated`. Omitted means `normal`, and canonical form omits it — see [8.2](#82-defaults-are-omitted). |
 | `superseded-by` | `0..1` | A claim id. Required when `rank` is `deprecated`, forbidden otherwise.           |
