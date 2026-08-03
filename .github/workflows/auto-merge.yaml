@@ -1,0 +1,47 @@
+name: Auto-merge
+
+# The `/next-issue` loop runs unattended, so the merge that ends a cycle has to
+# happen without a human at the keyboard. Rather than let the agent driving the
+# loop run `gh pr merge` itself, the loop labels the pull request and this
+# workflow hands it to GitHub's native auto-merge.
+#
+# The point is where the policy lives. A merge the agent performs is a judgement
+# made mid-cycle and visible only in a transcript; a merge this workflow performs
+# is governed by two things you can read and change: the label gate below, and
+# the branch protection rule on `main` that requires `build`. Auto-merge cannot
+# bypass a required check — GitHub holds the pull request until it passes, and
+# closes it unmerged if it fails.
+#
+# Adding the label is itself a permission boundary: it takes write access to the
+# repository, so a pull request from a fork cannot trigger this by labelling
+# itself.
+
+on:
+  pull_request:
+    types:
+      - labeled
+
+# Enabling auto-merge is a write to the pull request, not to the repository
+# contents. `contents: read` is enough to satisfy the checkout-free job below.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  enable-auto-merge:
+    name: enable auto-merge
+    # Every other label on a pull request — `story`, `blocked`, whatever arrives
+    # later — leaves this workflow inert.
+    if: github.event.label.name == 'auto-merge'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        # `--auto` queues the merge instead of performing it: GitHub squashes the
+        # pull request when the required checks pass, and does nothing if they
+        # never do. The repository allows squash merges only and has
+        # `deleteBranchOnMerge` set, so the branch is removed on the way out.
+        run: gh pr merge "$PR" --repo "$REPO" --squash --auto
