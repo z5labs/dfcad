@@ -6,7 +6,10 @@
 package dfcad
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 
 	sexpr "github.com/z5labs/sexpr-go"
 )
@@ -103,7 +106,35 @@ type WriteError struct {
 
 // Error implements the [error] interface.
 func (e WriteError) Error() string {
-	return fmt.Sprintf("%s: %v", e.Path, e.Err)
+	return fmt.Sprintf("%s: %s", e.Path, e.cause())
+}
+
+// cause is the failure with the name of the temporary file taken out of it.
+//
+// The operating system reports a failed replacement against whichever file the
+// call it refused named, which for every step of a replacement but the last is
+// the temporary one — a name nobody asked for and nobody can act on. Carrying
+// Path and then printing that name beside it would put two paths in one
+// message, one of which is noise.
+//
+// What is worth keeping is the operation and the reason, because which step of
+// the replacement failed says whether the trouble is with the directory, the
+// device or the target: "open: permission denied" and "rename: invalid
+// cross-device link" are different problems.
+func (e WriteError) cause() string {
+	var path *fs.PathError
+	if errors.As(e.Err, &path) {
+		return fmt.Sprintf("%s: %v", path.Op, path.Err)
+	}
+
+	// Renaming names two files, so it reports its own type rather than a
+	// PathError.
+	var link *os.LinkError
+	if errors.As(e.Err, &link) {
+		return fmt.Sprintf("%s: %v", link.Op, link.Err)
+	}
+
+	return e.Err.Error()
 }
 
 // Unwrap returns the underlying failure.

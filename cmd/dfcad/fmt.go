@@ -70,13 +70,18 @@ type fmtResult struct {
 	// result knows which contract it is reading.
 	Command string `json:"command"`
 
-	// Files is one entry per file the command reached, in walk order.
+	// Files is one entry per file the command reached, in walk order, plus one
+	// for each path it could not reach at all.
 	Files []fmtFile `json:"files"`
 }
 
-// fmtFile is what formatting did to one file.
+// fmtFile is what formatting did to one file, or, where the status is failed
+// and an error is carried, what stopped a path being reached.
 type fmtFile struct {
-	// Path is the file, exactly as the walk reached it.
+	// Path is the file, exactly as the walk reached it. A path that could not
+	// be reached is reported here as it was given, which need not name a file:
+	// a directory that cannot be read and a name that is not there both land
+	// here with a failed status.
 	Path string `json:"path"`
 
 	// Status is one of the fmtStatus values below.

@@ -438,6 +438,12 @@ func TestFormatLeavesTheFileAloneWhenItCannotBeReplaced(t *testing.T) {
 	assert.Equal(t, path, failure.Path)
 	assert.ErrorIs(t, failure, fs.ErrPermission)
 
+	// The failure names the file somebody asked to have replaced, and not the
+	// temporary one the operating system refused to open, which is a name
+	// nobody can act on.
+	assert.Contains(t, failure.Error(), path)
+	assert.NotContains(t, failure.Error(), filepath.Join(dir, ".a.dfc."))
+
 	src, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.Equal(t, asWritten, string(src))

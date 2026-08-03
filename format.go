@@ -44,9 +44,12 @@ type Formatter struct {
 	Diff bool
 }
 
-// Formatted is what formatting did to one file.
+// Formatted is what formatting did to one file, or, where Err says a path
+// could not be reached at all, what stopped it.
 type Formatted struct {
-	// Path is the file, exactly as the walk reached it.
+	// Path is the file, exactly as the walk reached it. On a path that could
+	// not be reached it is that path, which need not name a file: a directory
+	// that cannot be read and a name that is not there are both reported here.
 	Path string
 
 	// Changed reports whether what is on disk differs from its canonical form.
@@ -88,6 +91,13 @@ func (f Formatted) Failed() bool {
 // a directory, in the lexical order [Walk] yields. The order is therefore the
 // same for every run over the same tree, which is what makes two runs' output
 // worth diffing.
+//
+// A path the walk cannot reach at all comes back as a result too, carrying the
+// error that stopped it. Its Path is then whatever could not be reached, which
+// is a directory rather than a file when a directory is what could not be
+// read, and it names something that does not exist when that is what was
+// asked for. Leaving those out would mean a caller counting results could not
+// tell a tree it formatted from a tree it mostly failed to open.
 //
 // Formatting is idempotent: a second pass over what a first one wrote reports
 // every file unchanged, because canonical form is the fixed point the printer
