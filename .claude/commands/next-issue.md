@@ -201,15 +201,22 @@ gh pr view <pr> --json state,autoMergeRequest -q '"\(.state) \(.autoMergeRequest
   checks have already passed, and since this cycle labels only after they pass, this is the
   usual result. `not-armed` beside `MERGED` is correct, not a fault.
 - `OPEN <timestamp>` — auto-merge is armed and waiting on a check still running.
-- `OPEN not-armed` — the label was not acted on. Check the workflow run before doing
-  anything else:
+- `OPEN not-armed` — **usually just means the workflow has not started yet.** The run is
+  queued for a few seconds after the label lands, and reading the pull request immediately
+  will show this every time. It is not evidence of a failure on its own.
+
+Do not conclude anything from `OPEN not-armed` until the workflow run has actually finished.
+The run list is what disambiguates:
 
 ```
 gh run list --repo z5labs/dfcad --workflow auto-merge.yaml --limit 1
 ```
 
-A failed run means the workflow itself is broken — report it rather than falling back to a
-manual merge, which is what this whole step exists to avoid.
+Wait for it to leave `queued` and `in_progress`. A `success` conclusion with the pull
+request still open means auto-merge is armed and waiting on a check. A `failure` conclusion
+means the workflow itself is broken — report it, with the output of
+`gh run view <id> --log-failed`, rather than falling back to a manual merge, which is what
+this whole step exists to avoid.
 
 ## 10. Clean up
 
@@ -233,11 +240,24 @@ echo "PR <pr> still OPEN after 10m"; exit 1
 Both failure paths exit non-zero so an unmerged close or a timeout cannot be mistaken for
 success by anything that reads the exit code rather than the emitted line.
 
-If it merged, verify the issue closed, then clean up:
+If it merged, make sure the issue actually closed. **Do not treat this as a formality.** A
+`Closes #<n>` line in the pull request body has been observed not closing the issue when the
+merge was performed by the workflow's `GITHUB_TOKEN` rather than by a person. An issue left
+open is one the next invocation of this command selects again, so the loop re-implements
+work it has already merged:
 
 ```
 gh issue view <n> --json state -q .state
 ```
+
+If that says `OPEN`, close it explicitly and say in the comment which pull request did the
+work, so the trail is not just a bare state change:
+
+```
+gh issue close <n> --repo z5labs/dfcad --comment "Implemented in #<pr>, merged as <sha>."
+```
+
+Re-read the state afterwards and confirm it is `CLOSED` before moving on.
 
 ```
 ExitWorktree(action: "remove")
