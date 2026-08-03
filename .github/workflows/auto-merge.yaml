@@ -23,8 +23,23 @@ name: Auto-merge
 # repository, so a pull request from a fork cannot trigger this by labelling
 # itself.
 
+# `pull_request_target`, not `pull_request`. The usual advice is the reverse,
+# because `pull_request_target` runs with a write token and it is easy to pair
+# that with a checkout of the pull request's own code — which executes untrusted
+# code with write access. This job checks out nothing, so that hazard does not
+# apply, and the trigger's other property is the one that matters here: workflow
+# files are read from the base branch. Under `pull_request`, they are read from
+# the pull request's head, so a pull request could rewrite the steps below and
+# have them run with the `contents: write` token granted underneath.
+#
+# That is not theoretical in this repository. The label is applied by an
+# unattended loop, on branches that same loop creates, with no human reading the
+# diff first.
+#
+# If a checkout is ever added to this job, it must pin an explicit ref from the
+# base branch. Never check out `github.event.pull_request.head.sha` here.
 on:
-  pull_request:
+  pull_request_target:
     types:
       - labeled
 
