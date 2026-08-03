@@ -9,8 +9,10 @@ name: Auto-merge
 # made mid-cycle and visible only in a transcript; a merge this workflow performs
 # is governed by two things you can read and change: the label gate below, and
 # the branch protection rule on `main` that requires `build`. Auto-merge cannot
-# bypass a required check — GitHub holds the pull request until it passes, and
-# closes it unmerged if it fails.
+# bypass a required check — GitHub holds the pull request until the check passes
+# and simply never merges it if it does not. A failing check leaves the pull
+# request open with auto-merge still armed, so pushing a fix is enough to let it
+# through; nothing is closed on your behalf.
 #
 # Adding the label is itself a permission boundary: it takes write access to the
 # repository, so a pull request from a fork cannot trigger this by labelling

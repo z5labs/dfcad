@@ -196,27 +196,31 @@ Confirm the queue took the request:
 gh pr view <pr> --json autoMergeRequest -q '.autoMergeRequest.enabledAt // "auto-merge NOT enabled"'
 ```
 
-An empty result means the workflow did not fire or the repository has auto-merge disabled —
-report that rather than falling back to a manual merge.
+A timestamp means auto-merge is armed. The literal string `auto-merge NOT enabled` means the
+workflow did not fire, the repository has auto-merge disabled, or `main` has no required
+check for auto-merge to wait on. Report that rather than falling back to a manual merge.
 
 ## 10. Clean up
 
 The merge is asynchronous: labelling queues it, and GitHub completes it when the checks
-finish. Wait for it before touching the worktree, using `Monitor` rather than Bash
-`run_in_background` — the background-Bash path has been observed exiting immediately
-without polling:
+finish. Wait for it before touching the worktree. Pass the script below as the `command` of
+a `Monitor` call — not to Bash with `run_in_background`, which has been observed exiting
+immediately without ever polling:
 
 ```
 for i in $(seq 1 40); do
   s=$(gh pr view <pr> --json state -q .state 2>/dev/null || echo "")
   case "$s" in
     MERGED) echo "PR <pr> MERGED"; exit 0;;
-    CLOSED) echo "PR <pr> CLOSED without merging"; exit 0;;
+    CLOSED) echo "PR <pr> CLOSED without merging"; exit 1;;
   esac
   sleep 15
 done
-echo "PR <pr> still OPEN after 10m"
+echo "PR <pr> still OPEN after 10m"; exit 1
 ```
+
+Both failure paths exit non-zero so an unmerged close or a timeout cannot be mistaken for
+success by anything that reads the exit code rather than the emitted line.
 
 If it merged, verify the issue closed, then clean up:
 
