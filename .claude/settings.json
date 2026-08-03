@@ -1,12 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "permissions": {
-    "autoMode": {
-      "allow": [
-        "$defaults",
-        "The /next-issue loop in this repository is authorized by the repository owner to run unattended. Spawning a subagent per story issue is expected. Merging a pull request to main once CI passes and Copilot's automated review has landed is the intended workflow: no human approval is required on these pull requests by design, and their absence is not a reason to block."
-      ]
-    },
     "allow": [
       "Read",
       "Glob",
