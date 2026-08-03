@@ -11,7 +11,7 @@ Repo: `z5labs/dfcad`. Default branch: `main`.
 ## 1. Pick the issue
 
 ```
-gh issue list --state open --label story --json number,title --jq 'sort_by(.number)[]'
+gh issue list --state open --label story --limit 200 --json number,title --jq 'sort_by(.number)[]'
 ```
 
 Walk the list in ascending number order. For each candidate, read its body
