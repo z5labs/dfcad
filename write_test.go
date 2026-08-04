@@ -416,6 +416,11 @@ func TestTxDryRun(t *testing.T) {
 	assert.Contains(t, out.Files[0].Diff, "+(node site:Z-03 (kind Zone) (type Campus))")
 	assert.Contains(t, out.Files[0].Diff, "--- "+out.Files[0].Path)
 
+	// A dry run wrote nothing, whatever it would have written, so the files it
+	// wrote are none. A caller reading this as "the files this run touched"
+	// would otherwise report a dry run as having changed the tree.
+	assert.Empty(t, out.Written())
+
 	assert.Equal(t, before, contents(t, root), "a dry run writes nothing")
 }
 

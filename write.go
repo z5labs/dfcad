@@ -225,7 +225,7 @@ type Commit struct {
 	Files []Change `json:"files"`
 }
 
-// Effects iterates every effect of the change, file by file.
+// Effects returns every effect of the change, file by file.
 //
 // It is here because "what did this command do to the model" is the question an
 // author asks, and answering it from [Commit.Files] means a nested loop over a
@@ -238,8 +238,18 @@ func (c Commit) Effects() []Effect {
 	return out
 }
 
-// Written iterates the files the change actually wrote.
+// Written returns the files the change actually wrote.
+//
+// A dry run wrote none, whatever it would have written, so it returns nothing.
+// A caller which read this as "the files this run touched" would otherwise
+// report a dry run as having changed the tree, which is the one thing a dry run
+// promises it did not do. What it would have written is [Commit.Files], with
+// the status and the diff of each.
 func (c Commit) Written() []string {
+	if c.DryRun {
+		return nil
+	}
+
 	var out []string
 	for _, file := range c.Files {
 		if file.Status != FileUnchanged {
@@ -687,6 +697,13 @@ func (s *staged) record(op Op, form *Node) {
 // are the diagnostics that load would have raised, because they came from the
 // same passes over the text which would have been on disk.
 //
+// The diagnostics come back whether or not the change was refused. An error
+// refuses it and a warning does not, and a warning about the model that was
+// just written is exactly as worth reading as one about the model that was not;
+// dropping it because the write succeeded would hide it from the only run that
+// could have reported it. Refusal is [Diagnostics.HasErrors] over what comes
+// back, which is the same test every other pass is judged by.
+//
 // A change which validates is written atomically. Every file's complete new
 // contents go to a temporary file beside it and are flushed to durable storage
 // before any of them is renamed into place, so an interruption before the
@@ -724,14 +741,14 @@ func (tx *Tx) Commit() (Commit, []Diagnostic, error) {
 	}
 
 	if tx.DryRun {
-		return out, nil, nil
+		return out, diags, nil
 	}
 
 	if err := write(pending); err != nil {
-		return Commit{}, nil, err
+		return Commit{}, diags, err
 	}
 
-	return out, nil, nil
+	return out, diags, nil
 }
 
 // pending is one file on its way to disk: what is there now, what would be
