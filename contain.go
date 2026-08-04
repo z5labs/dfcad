@@ -452,12 +452,12 @@ func nestingHint(kind Kind) string {
 		return fmt.Sprintf("%s is a root of the containment hierarchy and is never written within anything", kindName(kind))
 	}
 
-	named := make([]string, 0, len(permitted))
-	for _, kind := range permitted {
-		named = append(named, kindName(kind))
+	parents := make([]string, 0, len(permitted))
+	for _, parent := range permitted {
+		parents = append(parents, kindName(parent))
 	}
 
-	return fmt.Sprintf("%s is written within %s", kindName(kind), join(named, "or"))
+	return fmt.Sprintf("%s is written within %s", kindName(kind), join(parents, "or"))
 }
 
 // kindName names a kind for a diagnostic, with the article it reads with, so
@@ -490,13 +490,13 @@ func (l *nodeLoader) named(node *SemanticNode) Span {
 // is that the reference names what it says it names, which is a rule about the
 // writing and not about the shape of the relation.
 func (l *nodeLoader) member() {
-	// named is where each node first named each zone, which is what a repeated
-	// membership points its reader back at.
+	// firstNamed is where each node first named each zone, which is what a
+	// repeated membership points its reader back at.
 	type naming struct {
 		node *SemanticNode
 		zone ID
 	}
-	named := make(map[naming]Span, len(l.memberships))
+	firstNamed := make(map[naming]Span, len(l.memberships))
 
 	for _, written := range l.memberships {
 		node := written.node
@@ -514,7 +514,7 @@ func (l *nodeLoader) member() {
 			continue
 		}
 
-		if first, ok := named[naming{node: node, zone: written.zone}]; ok {
+		if first, ok := firstNamed[naming{node: node, zone: written.zone}]; ok {
 			l.add(Diagnostic{
 				Severity: SeverityError,
 				Span:     written.at,
@@ -527,7 +527,7 @@ func (l *nodeLoader) member() {
 			})
 			continue
 		}
-		named[naming{node: node, zone: written.zone}] = written.at
+		firstNamed[naming{node: node, zone: written.zone}] = written.at
 
 		zone, ok := l.nodes.Node(written.zone)
 		if !ok {
