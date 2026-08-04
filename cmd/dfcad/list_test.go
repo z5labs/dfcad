@@ -469,6 +469,65 @@ func TestCheckFiltersAcceptsWhatTheModelDeclares(t *testing.T) {
 	}
 }
 
+// TestParseEndsTheFlagsAtADoubleDash is its own function because it is about
+// the shared parsing rather than about either listing: resuming after an
+// argument must not resume past a `--`, which is the one spelling there is for
+// a path or a name that begins with a dash.
+func TestParseEndsTheFlagsAtADoubleDash(t *testing.T) {
+	testCases := []struct {
+		name               string
+		args               []string
+		expectedPositional []string
+	}{
+		{
+			name:               "takes everything after a double dash as an argument",
+			args:               []string{"--", "-a.dfc", "-b.dfc"},
+			expectedPositional: []string{"-a.dfc", "-b.dfc"},
+		},
+		{
+			name:               "takes a flag written after a double dash as an argument",
+			args:               []string{"--", "MeetingRoom", "--kind", "Space"},
+			expectedPositional: []string{"MeetingRoom", "--kind", "Space"},
+		},
+		{
+			name:               "still reads the flags written before it",
+			args:               []string{"--format", formatHuman, "--", "-a.dfc"},
+			expectedPositional: []string{"-a.dfc"},
+		},
+		{
+			name:               "ends the flags after an argument as well",
+			args:               []string{"a.dfc", "--", "-b.dfc"},
+			expectedPositional: []string{"a.dfc", "-b.dfc"},
+		},
+		{
+			name:               "reads a lone dash as an argument rather than as a terminator",
+			args:               []string{"-", "--format", formatHuman},
+			expectedPositional: []string{"-"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dir := t.TempDir()
+
+			cmd, ok := lookup("fmt")
+			require.True(t, ok)
+
+			globals := &globals{}
+			flags := newFlagSet(cmd.name, globals)
+
+			var stderr bytes.Buffer
+
+			positional, code, done := parse(cmd, flags, globals,
+				append([]string{"--root", dir}, testCase.args...), &stderr)
+
+			require.False(t, done, stderr.String())
+			require.Equal(t, exitSuccess, code)
+			assert.Equal(t, testCase.expectedPositional, positional)
+		})
+	}
+}
+
 // TestRunListStillAnswersOnAModelWithDiagnostics is its own function because it
 // is about a run over a model which is not sound: the listing is still a
 // listing of what is there, the diagnostics still reach the person who wrote

@@ -139,6 +139,11 @@ func (v *verbosity) IsBoolFlag() bool {
 	return true
 }
 
+// endOfFlags is the argument which says that nothing after it is a flag,
+// however it is spelled. It is the flag package's own spelling, and is named
+// here because [parse] has to recognise one the flag package has already eaten.
+const endOfFlags = "--"
+
 // globals are the flags every subcommand takes, and takes identically.
 //
 // They are defined here once rather than per subcommand so that --root cannot
@@ -276,15 +281,31 @@ func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, st
 			return nil, exitUsage, true
 		}
 
-		args = flags.Args()
-		if len(args) == 0 {
+		rest := flags.Args()
+
+		// A `--` ends the flags for good, and everything after it is an
+		// argument however it is spelled. Resuming past one would reject
+		// `dfcad fmt -- -a.dfc -b.dfc`, which is the one spelling there is for
+		// a file whose name begins with a dash, and would read the `--kind` of
+		// `dfcad list-instances -- MeetingRoom --kind Space` as a filter after
+		// being told not to.
+		//
+		// The flag package consumes the `--` and does not report that it did,
+		// so where it was is what says so: it is the last argument consumed
+		// before what came back.
+		if consumed := len(args) - len(rest); consumed > 0 && args[consumed-1] == endOfFlags {
+			positional = append(positional, rest...)
 			break
 		}
 
-		// Everything the flag package stopped at is an argument only as far as
-		// its first element: what follows it may be a flag again.
-		positional = append(positional, args[0])
-		args = args[1:]
+		if len(rest) == 0 {
+			break
+		}
+
+		// Everything else the flag package stopped at is an argument only as
+		// far as its first element: what follows it may be a flag again.
+		positional = append(positional, rest[0])
+		args = rest[1:]
 	}
 
 	if err := globals.validate(); err != nil {

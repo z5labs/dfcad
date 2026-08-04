@@ -498,9 +498,6 @@ func permitted(declared listedType) []string {
 	if declared.Absent {
 		out = append(out, "none at all")
 	}
-	if len(out) == 0 {
-		return []string{"none"}
-	}
 	return out
 }
 

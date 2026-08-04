@@ -253,9 +253,16 @@ Instances come back in id order rather than in walk order, so the listing does n
 when a node is moved between files while the model it describes stays the same.
 
 A type, a kind or a frame the model does not declare is a **usage error** — exit `3`, with
-nothing on stdout — naming what was asked for and pointing at `list-types`. It is not an
-empty list: a type nobody declared and a type nothing instantiates are different answers,
-and a caller that cannot tell them apart retries a misspelling forever.
+nothing on stdout — naming what was asked for. It is not an empty list: a type nobody
+declared and a type nothing instantiates are different answers, and a caller that cannot
+tell them apart retries a misspelling forever.
+
+Each of the three says where to look, and they do not all say the same thing, because the
+three sets are not the same size. An unknown **type** points at `list-types`: a registry
+worth discovering is one too large to print into an error. An unknown **kind** lists the
+seven, which are a closed set compiled into the engine and are not in `list-types` at all.
+An unknown **frame** lists the frames the registry declares, which `list-types` does not
+list either.
 
 ### Diagnostics and the exit code of a listing
 
