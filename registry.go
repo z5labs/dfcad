@@ -170,8 +170,11 @@ type Project struct {
 	Label string
 
 	// GlobalIDNamespace is the URL every IFC GlobalId is derived from
-	// ([0004](docs/decisions/0004-globalid-derives-from-a-pinned-namespace.md)).
-	// Changing it re-identifies every node in the model.
+	// ([0004](docs/decisions/0004-globalid-derives-from-a-pinned-namespace.md)),
+	// by [DeriveGlobalID]. Changing it re-identifies every node in the model:
+	// every downstream system holding a previously exported identifier sees the
+	// whole model deleted and re-created, and the old values can only be
+	// recomputed from the old URL.
 	GlobalIDNamespace string
 
 	// Description is free text. Empty when it was not written.
