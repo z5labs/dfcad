@@ -90,6 +90,22 @@ type SemanticNode struct {
 	// is many to many, so the field is a slice and its emptiness is ordinary.
 	zones []ID
 
+	// boundaries are the ids this node wrote where a loop id belongs, in the
+	// order they were written and with a repeated one held once.
+	//
+	// They are the ids as written and not the loops they reached. This pass has
+	// read one family, so it cannot know that an id names a loop, that it names
+	// a vertex, or that it names nothing at all
+	// ([0001](docs/decisions/0001-two-node-families.md)); each of those is a
+	// diagnostic from [ResolveBoundaries], and every one of them is still an id
+	// somebody wrote here and has to be shown where.
+	//
+	// What is held is the reference and never the shape. A node bounded by a
+	// loop carries no coordinate of its own, which is what makes the wall
+	// between two rooms one edge with one identity rather than two copies which
+	// drift.
+	boundaries []ID
+
 	// span is where the node form was written.
 	span Span
 }
@@ -157,6 +173,31 @@ func (n *SemanticNode) Within() (ID, bool) { return n.within, n.hasWithin }
 // with the relation which produced them.
 func (n *SemanticNode) MemberOf() []ID { return slices.Clone(n.zones) }
 
+// Boundaries returns the ids this node wrote where a loop id belongs, in the
+// order they were written.
+//
+// A semantic node references a loop and never carries coordinates. That is what
+// makes a shared wall shared: two spaces either side of a partition reference
+// one edge through their loops, so moving it moves both of them and a sliver
+// gap between them is not a state this model can express
+// ([0001](docs/decisions/0001-two-node-families.md)).
+//
+// A node with no boundary is ordinary rather than incomplete, and a node with
+// two is as well: an outline and the void it encloses are two loops on one
+// node. Nothing here says which is which, because the format does not.
+//
+// **These are the ids as they were written, and not the loops they reached.** An
+// id naming a vertex, and one naming nothing this model holds, are each a
+// diagnostic from [ResolveBoundaries] and are each still here, because a caller
+// reporting on a node wants to say what it says as well as what is wrong with
+// it. A caller which wants only the loops walks [Boundaries.Loops], which yields
+// what resolved and nothing else. A repeated id — which is a load error — is
+// held once.
+//
+// Resolving them is a question about both families at once, and this pass has
+// read one, which is why the answer is not here.
+func (n *SemanticNode) Boundaries() []ID { return slices.Clone(n.boundaries) }
+
 // Span returns where the node form was written, which is what a diagnostic
 // about the node as a whole points at.
 func (n *SemanticNode) Span() Span { return n.span }
@@ -191,6 +232,22 @@ type Nodes struct {
 	// members is the nodes which declared membership of the zone each id names,
 	// in the order the walk read them, and is indexed for the reason above.
 	members map[ID][]*SemanticNode
+
+	// namedAt is where the id of each node was written, which is what a
+	// diagnostic pointing back at a definition points at. It is the id rather
+	// than the form, because a span over the whole form quotes a dozen lines to
+	// point at one.
+	namedAt map[ID]Span
+
+	// boundaries are the `boundary` references the nodes wrote, in the order
+	// they were read, with the spans a diagnostic about one needs.
+	//
+	// They are kept unresolved because this pass cannot resolve them. A
+	// `boundary` names a loop, the loops are the geometric family's, and no
+	// loader which has read one family answers a question about both
+	// ([0001](docs/decisions/0001-two-node-families.md)). [ResolveBoundaries]
+	// is the pass which has read both, and this is what it reads them from.
+	boundaries []boundaryReference
 }
 
 // Len reports how many nodes were read.
@@ -281,15 +338,22 @@ func (n *Nodes) Node(id ID) (*SemanticNode, bool) {
 //
 // The geometric family — `vertex`, `edge` and `loop` — is not read here. Those
 // carry neither kind nor type and validate under their own rules
-// ([0001](docs/decisions/0001-two-node-families.md)).
+// ([0001](docs/decisions/0001-two-node-families.md)). The one reference which
+// crosses to it, a `boundary` naming a loop, is read and left unresolved for the
+// same reason: this pass has read one family, and no pass which has read one
+// family can say whether an id names a member of the other. [ResolveBoundaries]
+// is the pass which has read both, and [SemanticNode.Boundaries] is the ids as
+// they were written.
 //
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadNodes(root string, registry *Registry) (*Nodes, []Diagnostic) {
 	l := &nodeLoader{
 		registry: registry,
-		nodes:    &Nodes{byID: make(map[ID]*SemanticNode)},
-		defined:  make(map[ID]Span),
+		nodes: &Nodes{
+			byID:    make(map[ID]*SemanticNode),
+			namedAt: make(map[ID]Span),
+		},
 	}
 
 	for path, err := range Walk(root) {
@@ -319,12 +383,12 @@ type nodeLoader struct {
 	// registry is what the nodes are judged against. It is not written to.
 	registry *Registry
 
-	// nodes are the nodes read so far, in the order they were reached.
+	// nodes are the nodes read so far, in the order they were reached. Where
+	// the node holding each id was written is kept there rather than here,
+	// because a duplicate is not the only thing which points back at a
+	// definition: a `boundary` naming a semantic node rather than a loop is
+	// reported by a later pass, which has only the [Nodes] to point with.
 	nodes *Nodes
-
-	// defined is where the node holding each id was written, which is what a
-	// duplicate points its reader back at.
-	defined map[ID]Span
 
 	// containments and memberships are the two relations as they were written.
 	// Both are checked once every file has been read, because a node in the
@@ -429,19 +493,22 @@ func (l *nodeLoader) declare(form *Node) {
 	l.nodes.inOrder = append(l.nodes.inOrder, d.node)
 }
 
-// relations reads the two relations a node writes to other nodes — the one node
-// which contains it, and the zones it is a member of — and records each of them
-// to be checked once every file has been read.
+// relations reads the references a node writes to other things — the one node
+// which contains it, the zones it is a member of, and the loops which bound it
+// — and records each of them to be checked once enough has been read to check
+// it.
 //
-// The two are read together and kept apart, which is the whole point of them.
+// The three are read together and kept apart, which is the whole point of them.
 // They are different relations with different shapes: containment is at most one
-// and nests, membership is any number and does not, and neither is ever derived
-// from the other.
+// and nests, membership is any number and does not, a boundary is any number and
+// leaves the semantic family altogether, and none is ever derived from another.
 //
 // Nothing is resolved here. Whether the ids name nodes this model holds, whether
 // the hierarchy permits the pairing and whether following the containment
 // terminates are questions about the whole source tree, and [nodeLoader.relate]
-// asks them once it has been read.
+// asks them once it has been read. Whether a `boundary` names a loop is not a
+// question about this tree at all but about the geometric family read beside it,
+// so it is recorded here and answered by [ResolveBoundaries].
 func (l *nodeLoader) relations(d nodeDeclaration, form *Node) {
 	// A diagnostic about a reference points back at the node making it, named by
 	// its own id where it wrote one: a related location spanning the whole node
@@ -478,6 +545,32 @@ func (l *nodeLoader) relations(d nodeDeclaration, form *Node) {
 
 		l.memberships = append(l.memberships, membership{node: d.node, zone: zone, at: arg.Span, where: where})
 	}
+
+	for _, child := range childForms(form, boundaryChild) {
+		arg, ok := argument(child, 0)
+		if !ok {
+			continue
+		}
+
+		loop, ok := l.id(arg, "a loop id")
+		if !ok {
+			continue
+		}
+
+		// A loop named twice is a load error and is held once, so that walking
+		// a node's boundaries reports the shape it references rather than the
+		// number of times somebody wrote it down.
+		if !slices.Contains(d.node.boundaries, loop) {
+			d.node.boundaries = append(d.node.boundaries, loop)
+		}
+
+		l.nodes.boundaries = append(l.nodes.boundaries, boundaryReference{
+			node:  d.node,
+			loop:  loop,
+			at:    arg.Span,
+			where: where,
+		})
+	}
 }
 
 // identify checks a node's id: that its namespace is one the registry declares,
@@ -502,12 +595,12 @@ func (l *nodeLoader) identify(d nodeDeclaration) {
 		return
 	}
 
-	if first, ok := l.defined[d.node.id]; ok {
+	if first, ok := l.nodes.namedAt[d.node.id]; ok {
 		l.taken(d, first, "first defined here")
 		return
 	}
 
-	l.defined[d.node.id] = d.id
+	l.nodes.namedAt[d.node.id] = d.id
 	l.nodes.byID[d.node.id] = d.node
 }
 

@@ -1,0 +1,32 @@
+; Every way a boundary reference fails to reach a loop.
+;
+; The four on the room are the four answers a reference can get: the loop it
+; names, the same loop a second time, a member of the geometric family which is
+; not a loop, and a name nothing in the model holds. The one on the corridor
+; reaches the other family altogether.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-01)
+  (boundary geom:V-01)
+  (boundary geom:L-99))
+
+(node site:S-102
+  (label "East Corridor")
+  (kind Space)
+  (type Corridor)
+  (geometry area)
+  (frame frame:building)
+  (boundary site:S-101))
+
+(vertex geom:V-01 (frame frame:building))
+
+(vertex geom:V-02 (frame frame:building))
+
+(edge geom:E-01 (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+(loop geom:L-01 (frame frame:building) (edges geom:E-01))

@@ -1,0 +1,109 @@
+; Two rooms which share a wall.
+;
+; Neither room holds a coordinate. Each references a loop, the loops reference
+; edges, and the edge between the rooms is named by both — one node with one
+; identity. Moving it moves both rooms, and a sliver gap between them is not a
+; state this file can express.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+(node site:S-102
+  (label "East Corridor")
+  (kind Space)
+  (type Corridor)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-02
+  (label "The shared wall, north end")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-03
+  (label "The shared wall, south end")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-04
+  (label "Room B, south-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-05
+  (label "Corridor, north-east corner")
+  (frame frame:building)
+  (position
+    (value (8.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-06
+  (label "Corridor, south-east corner")
+  (frame frame:building)
+  (position
+    (value (8.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-01 (label "Room B, north wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+; The shared partition, written once and referenced from both rooms.
+(edge geom:E-02 (label "Partition, room B to corridor") (frame frame:building) (vertices geom:V-02 geom:V-03))
+
+(edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+(edge geom:E-04 (label "Room B, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+
+(edge geom:E-05 (label "Corridor, north wall") (frame frame:building) (vertices geom:V-02 geom:V-05))
+
+(edge geom:E-06 (label "Corridor, east wall") (frame frame:building) (vertices geom:V-05 geom:V-06))
+
+(edge geom:E-07 (label "Corridor, south wall") (frame frame:building) (vertices geom:V-06 geom:V-03))
+
+(loop geom:L-01
+  (label "Meeting Room B boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; The corridor traverses the shared partition the other way round, which is what
+; an edge being one node rather than two costs: a direction per traversal, and
+; not a second copy of the wall.
+(loop geom:L-02
+  (label "East Corridor boundary")
+  (frame frame:building)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-02))

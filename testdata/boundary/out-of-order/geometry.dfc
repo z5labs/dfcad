@@ -1,0 +1,26 @@
+; A ring whose edges are all there and are not written in the order it is
+; walked.
+;
+; Nothing here is missing and nothing has to move. The south wall is written
+; where the east wall belongs, and the fix is to rewrite the list rather than to
+; go looking for a corner which drifted.
+(vertex geom:V-31 (frame frame:building))
+
+(vertex geom:V-32 (frame frame:building))
+
+(vertex geom:V-33 (frame frame:building))
+
+(vertex geom:V-34 (frame frame:building))
+
+(edge geom:E-31 (label "North wall") (frame frame:building) (vertices geom:V-31 geom:V-32))
+
+(edge geom:E-32 (label "East wall") (frame frame:building) (vertices geom:V-32 geom:V-33))
+
+(edge geom:E-33 (label "South wall") (frame frame:building) (vertices geom:V-33 geom:V-34))
+
+(edge geom:E-34 (label "West wall") (frame frame:building) (vertices geom:V-34 geom:V-31))
+
+(loop geom:L-21
+  (label "The ring written out of order")
+  (frame frame:building)
+  (edges geom:E-31 geom:E-33 geom:E-32 geom:E-34))

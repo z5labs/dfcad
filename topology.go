@@ -176,6 +176,17 @@ type Loop struct {
 	// order they were written and with a repeated one held as many times as it
 	// was written.
 	edges []ID
+
+	// at is where each of those ids was written, one per entry of edges and in
+	// the same order.
+	//
+	// The two are parallel rather than one slice of pairs because the ids are
+	// what a caller reads and the spans are what a diagnostic points at, and a
+	// pair would put a position into the value every caller of [Loop.Edges]
+	// handles. A diagnostic about the third edge of a ring has to underline the
+	// third edge of the ring: pointing at the whole form instead would quote a
+	// dozen lines and say "somewhere in here".
+	at []Span
 }
 
 // ID returns the loop's id.
@@ -240,6 +251,14 @@ type Topology struct {
 	vertexByID map[ID]*Vertex
 	edgeByID   map[ID]*Edge
 	loopByID   map[ID]*Loop
+
+	// defined is what each id names and where the id was written.
+	//
+	// It is what a diagnostic about a reference points back at, and the pass
+	// which resolves the references leaving this family needs it as much as the
+	// one which resolved the references within it: a `boundary` naming a vertex
+	// has to be able to say that it is a vertex, and to show where.
+	defined map[ID]definition
 }
 
 // Len reports how many geometric nodes were read, of all three sorts together.
@@ -331,6 +350,20 @@ func (t *Topology) Loop(id ID) (*Loop, bool) {
 	return loop, ok
 }
 
+// definitionOf returns what an id names within this family and where the id was
+// written, for the pass which resolves the references reaching into it.
+//
+// It answers about the whole family rather than about one member, which is the
+// question a reference from outside asks: a `boundary` naming a vertex is
+// wrong, and saying so means being able to say that a vertex is what it named.
+func (t *Topology) definitionOf(id ID) (definition, bool) {
+	if t == nil {
+		return definition{}, false
+	}
+	declared, ok := t.defined[id]
+	return declared, ok
+}
+
 // LoadTopology reads every geometric node beneath root, checked against
 // registry.
 //
@@ -376,7 +409,12 @@ func (t *Topology) Loop(id ID) (*Loop, bool) {
 // The references which leave the family are not resolved here. A `backed-by` on
 // an edge names a semantic node and a `boundary` on a semantic node names a
 // loop, and neither pass has read both families; they are questions for the one
-// which has.
+// which has, which for `boundary` is [ResolveBoundaries].
+//
+// Whether a loop closes is not asked here either. It is a question about the
+// positions of the vertices its edges run between, judged against a named
+// tolerance, and neither of those is something reading the references answers.
+// [Topology.Assemble] is what asks it.
 //
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
@@ -387,8 +425,8 @@ func LoadTopology(root string, registry *Registry) (*Topology, []Diagnostic) {
 			vertexByID: make(map[ID]*Vertex),
 			edgeByID:   make(map[ID]*Edge),
 			loopByID:   make(map[ID]*Loop),
+			defined:    make(map[ID]definition),
 		},
-		defined: make(map[ID]definition),
 	}
 
 	for path, err := range Walk(root) {
@@ -418,13 +456,11 @@ type topologyLoader struct {
 	// registry is what the nodes are judged against. It is not written to.
 	registry *Registry
 
-	// topology is what has been read so far, in the order it was reached.
+	// topology is what has been read so far, in the order it was reached. What
+	// each id names and where it was written is kept there rather than here,
+	// because the pass which resolves the references leaving this family needs
+	// it too and has only the [Topology] to read it from.
 	topology *Topology
-
-	// defined is what each id names and where it was written, which is what a
-	// duplicate points its reader back at and what says which sort of node a
-	// reference reached.
-	defined map[ID]definition
 
 	// references are the ids the geometric nodes wrote naming one another. They
 	// are resolved once every file has been read, because an edge in the first
@@ -671,6 +707,7 @@ func (l *topologyLoader) loop(form *Node) {
 		}
 
 		loop.edges = append(loop.edges, id)
+		loop.at = append(loop.at, arg.Span)
 
 		l.references = append(l.references, reference{
 			id:    id,
@@ -723,12 +760,12 @@ func (l *topologyLoader) identify(tag string, id ID, at Span) bool {
 		return false
 	}
 
-	if first, ok := l.defined[id]; ok {
+	if first, ok := l.topology.defined[id]; ok {
 		l.taken(id, at, first.at, fmt.Sprintf("first defined here, as %s %s", article(first.tag), first.tag))
 		return false
 	}
 
-	l.defined[id] = definition{tag: tag, at: at}
+	l.topology.defined[id] = definition{tag: tag, at: at}
 	return true
 }
 
@@ -761,7 +798,7 @@ func (l *topologyLoader) resolve() {
 // an id naming nothing has no sort to report, and saying that a vertex which
 // does not exist is not an edge would be true of every id nobody wrote.
 func (l *topologyLoader) refers(written reference) {
-	declared, ok := l.defined[written.id]
+	declared, ok := l.topology.defined[written.id]
 	if !ok {
 		l.add(Diagnostic{
 			Severity: SeverityError,

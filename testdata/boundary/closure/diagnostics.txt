@@ -1,0 +1,10 @@
+testdata/boundary/closure/geometry.dfc:65:40: error: expected the loop geom:L-11 to close, found a gap of 0.25 m between geom:V-14 and geom:V-15
+65 |   (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+   |                                        ^^^^^^^^^
+   = hint: a loop is a ring: each edge begins at the corner the last one ended at, and the last ends where the first began; two corners no further apart than the tolerance boundary-closure, which is 0.005 m, count as one
+testdata/boundary/closure/geometry.dfc:35:9: note: the corner the traversal had reached
+35 | (vertex geom:V-14
+   |         ^^^^^^^^^
+testdata/boundary/closure/geometry.dfc:44:9: note: the corner the next edge begins at
+44 | (vertex geom:V-15
+   |         ^^^^^^^^^

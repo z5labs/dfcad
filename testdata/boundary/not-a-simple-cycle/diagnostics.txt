@@ -1,0 +1,24 @@
+testdata/boundary/not-a-simple-cycle/geometry.dfc:23:7: error: expected every corner of the loop geom:L-31 to meet two of its edges, found geom:V-43, where 3 meet
+23 | (loop geom:L-31
+   |       ^^^^^^^^^
+   = hint: a loop is a simple cycle: each corner joins the edge the traversal arrives by and the one it leaves by, so a corner joining a third is a branch and not a ring
+testdata/boundary/not-a-simple-cycle/geometry.dfc:26:20: note: geom:E-42 meets it here
+26 |   (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+   |                    ^^^^^^^^^
+testdata/boundary/not-a-simple-cycle/geometry.dfc:26:30: note: geom:E-43 meets it here
+26 |   (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+   |                              ^^^^^^^^^
+testdata/boundary/not-a-simple-cycle/geometry.dfc:26:40: note: geom:E-44 meets it here
+26 |   (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+   |                                        ^^^^^^^^^
+testdata/boundary/not-a-simple-cycle/geometry.dfc:32:30: error: expected an edge the loop geom:L-32 does not already traverse, found geom:E-41 a second time
+32 |   (edges geom:E-41 geom:E-42 geom:E-41))
+   |                              ^^^^^^^^^
+   = hint: a loop is a simple cycle: it runs through each of its edges once, so an edge written twice is a ring which doubles back along itself
+testdata/boundary/not-a-simple-cycle/geometry.dfc:32:10: note: first traversed here
+32 |   (edges geom:E-41 geom:E-42 geom:E-41))
+   |          ^^^^^^^^^
+testdata/boundary/not-a-simple-cycle/geometry.dfc:59:7: error: expected the edges of the loop geom:L-33 to form one ring, found 2 separate ones
+59 | (loop geom:L-33
+   |       ^^^^^^^^^
+   = hint: a loop is one simple cycle; a region bounded by more than one ring references one loop per ring, written (boundary <loop-id>) once for each

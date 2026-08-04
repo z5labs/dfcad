@@ -20,6 +20,7 @@ the goldens beside the fixtures are invisible to it.
 | `node`                     | The semantic node loader's own fixtures. One *directory* per case, each a registry and the nodes judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `claim`                    | The claim loader's own fixtures. One *directory* per case, each a registry and the claims judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `topology`                 | The geometric node loader's own fixtures. One *directory* per case, each a registry and the vertices, edges and loops judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
+| `boundary`                 | The fixtures of the pass which joins the two families. One *directory* per case, each a registry and whichever families the case needs, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `print`                    | The printer's own fixtures: one per printing behaviour, each with its canonical printing as `.want`. |
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `model`                    | A two-file model the runnable examples load.                                                |
@@ -111,6 +112,10 @@ tests of that layer read them from.
 | 6.3, 6.4, 6.9 | A `vertices` or an `edges` naming nothing this model holds, and one naming the wrong sort of geometric node | `topology/dangling-reference/` |
 | 6.3           | An edge which starts and ends at one vertex           | `topology/degenerate-edge/`                 |
 | 4.1, 6.2–6.4  | One id written on two geometric nodes across two files, on nodes of two sorts, and on a node and a frame | `topology/duplicate-id/` |
+| 6.1, 6.9      | A `boundary` naming nothing this model holds, one naming a geometric node which is not a loop, one naming a semantic node, and a loop named twice | `boundary/dangling-boundary/` |
+| 6.4, 7.6      | A loop which does not close, beside one which closes within the declared tolerance | `boundary/closure/`         |
+| 6.4           | A loop whose edges form one ring written in the order it is not traversed | `boundary/out-of-order/`     |
+| 6.4           | A loop with a branch, one which traverses an edge twice, and one whose edges form two rings | `boundary/not-a-simple-cycle/` |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could
@@ -121,13 +126,12 @@ diagnostics one run retains.
 boolean written outside the positions which take one. Which positions those are
 is partly registry data — a check's parameters are declared by the check
 registry — so the engine cannot decide it until that registry loads, and it
-belongs with the layer which reads it. So does what is left of section 6.9: the
-references which cross between the two families — `boundary`, written on a
-semantic node and naming a loop, and `backed-by`, written on an edge and naming
-a semantic node — are questions about the whole graph rather than about any one
-family of it, and they are answered by the pass which has read every family. The
-references written within one family are answered above, because one pass reads
-both ends of each: `within` and `member-of` in `node`, and `vertices` and
+belongs with the layer which reads it. What is left of section 6.9 is
+`backed-by`, written on an edge and naming a semantic node: it is a question
+about both families rather than about either, so it belongs to a pass which has
+read both, as `boundary` does in `boundary/` above. The references written
+within one family are answered by the loader of that family, because one pass
+reads both ends of each: `within` and `member-of` in `node`, and `vertices` and
 `edges` in `topology`.
 
 ## The properties

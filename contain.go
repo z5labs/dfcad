@@ -446,7 +446,7 @@ func (l *nodeLoader) contained(written containment) {
 			kindName(node.kind), parent.id, kindName(parent.kind),
 		),
 		Hint:    nestingHint(node.kind),
-		Related: []RelatedLocation{{Span: l.named(parent), Message: fmt.Sprintf("the %s named as the parent is written here", parent.kind)}},
+		Related: []RelatedLocation{{Span: l.nodes.named(parent), Message: fmt.Sprintf("the %s named as the parent is written here", parent.kind)}},
 	})
 }
 
@@ -483,9 +483,14 @@ func kindName(kind Kind) string {
 // It is the id rather than the form, because a span over the whole form quotes a
 // dozen lines to point at one. A node whose id is not indexed — one which wrote
 // none, or one whose id was already taken — has only its form to point at.
-func (l *nodeLoader) named(node *SemanticNode) Span {
-	if at, ok := l.defined[node.id]; ok {
-		return at
+func (n *Nodes) named(node *SemanticNode) Span {
+	if node == nil {
+		return Span{}
+	}
+	if n != nil {
+		if at, ok := n.namedAt[node.id]; ok {
+			return at
+		}
 	}
 	return node.span
 }
@@ -568,7 +573,7 @@ func (l *nodeLoader) member() {
 				KindZone, zone.id, kindName(zone.kind),
 			),
 			Hint:    "membership groups nodes into zones and never says where a node is; a node inside another is written (within <node-id>)",
-			Related: []RelatedLocation{{Span: l.named(zone), Message: fmt.Sprintf("the %s named as the zone is written here", zone.kind)}},
+			Related: []RelatedLocation{{Span: l.nodes.named(zone), Message: fmt.Sprintf("the %s named as the zone is written here", zone.kind)}},
 		})
 	}
 }

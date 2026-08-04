@@ -1,0 +1,7 @@
+testdata/boundary/out-of-order/geometry.dfc:26:20: error: expected the edges of the loop geom:L-21 in the order it is traversed, found geom:E-33, which does not begin at geom:V-32, where geom:E-31 ended
+26 |   (edges geom:E-31 geom:E-33 geom:E-32 geom:E-34))
+   |                    ^^^^^^^^^
+   = hint: these edges do form one ring, but not in this order; the order of a loop's edges is the order the loop is traversed, and is never sorted
+testdata/boundary/out-of-order/geometry.dfc:9:9: note: the corner the traversal had reached
+9 | (vertex geom:V-32 (frame frame:building))
+  |         ^^^^^^^^^
