@@ -488,8 +488,9 @@ func (r *Registry) Tolerances() iter.Seq[Tolerance] {
 
 // ordered iterates the entries of one registry in key order.
 //
-// The key is a string of some sort rather than a string, because a frame is
-// keyed by its [ID] and the other four registries by a plain name.
+// The key type is a parameter because the five registries do not share one: a
+// frame is keyed by its [ID] and the other four by a plain name. Both have a
+// string underneath, which is what the constraint says and all this needs.
 func ordered[K ~string, T any](entries map[K]T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, name := range slices.Sorted(maps.Keys(entries)) {
