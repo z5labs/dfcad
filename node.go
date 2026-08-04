@@ -16,6 +16,16 @@ import (
 // as a value.
 const nodeTag = "node"
 
+// The children of a node which name other nodes, per specification sections
+// 6.1 and 6.9. They are named here because more than one pass writes them: the
+// loader reads them, and a change which redirects the references to a node it
+// is retiring rewrites them.
+const (
+	labelChild    = "label"
+	withinChild   = "within"
+	memberOfChild = "member-of"
+)
+
 // SemanticNode is one node of the semantic family, per specification section
 // 6.1.
 //
@@ -105,6 +115,16 @@ type SemanticNode struct {
 	// between two rooms one edge with one identity rather than two copies which
 	// drift.
 	boundaries []ID
+
+	// retirement is how the node stopped existing, and is nil for one which did
+	// not — which is very nearly every node of a model.
+	//
+	// It is a pointer where the other optional axes are a value beside a
+	// boolean, because it is the one of them which is not a word or two: a
+	// retirement carries a date, a reason, a replacement and the span they were
+	// written in, and holding all of that on every node to say that almost none
+	// of them stopped existing is most of a node's size spent on nothing.
+	retirement *Retirement
 
 	// span is where the node form was written.
 	span Span
@@ -390,6 +410,12 @@ type nodeLoader struct {
 	// the order the directory happened to be listed in.
 	containments []containment
 	memberships  []membership
+
+	// supersessions are the replacements the retirements named, checked once
+	// every file has been read for the reason the two relations above are: a
+	// node retired in the first file the walk reaches may be replaced by one
+	// written in the last.
+	supersessions []nodeSupersession
 }
 
 // file interprets the node forms of one loaded file.
@@ -451,7 +477,7 @@ func (l *nodeLoader) declare(form *Node) {
 		}
 	}
 
-	if arg, ok := argumentOf(form, "label"); ok {
+	if arg, ok := argumentOf(form, labelChild); ok {
 		d.node.label, _ = l.text(arg, "a string")
 	}
 
@@ -476,6 +502,10 @@ func (l *nodeLoader) declare(form *Node) {
 
 	if arg, ok := argumentOf(form, "frame"); ok {
 		d.node.frame, d.node.hasFrame = l.id(arg, "a frame id")
+	}
+
+	if child, ok := childForm(form, retiredChild); ok {
+		l.retire(&d, form, child)
 	}
 
 	l.relations(d, form)
@@ -511,14 +541,14 @@ func (l *nodeLoader) relations(d nodeDeclaration, form *Node) {
 		where = tagSpan(form)
 	}
 
-	if arg, ok := argumentOf(form, "within"); ok {
+	if arg, ok := argumentOf(form, withinChild); ok {
 		if within, ok := l.id(arg, "a node id"); ok {
 			d.node.within, d.node.hasWithin = within, true
 			l.containments = append(l.containments, containment{node: d.node, at: arg.Span, where: where})
 		}
 	}
 
-	for _, child := range childForms(form, "member-of") {
+	for _, child := range childForms(form, memberOfChild) {
 		arg, ok := argument(child, 0)
 		if !ok {
 			continue

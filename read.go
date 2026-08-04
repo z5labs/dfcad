@@ -175,6 +175,43 @@ func (r *reader) real(node *Node, what string) (float64, bool) {
 // Gregorian, hyphen separated. No time, no zone and no other spelling.
 const dateLayout = time.DateOnly
 
+// dateSpelling is that layout as somebody writing one reads it, which is what a
+// message about a date which is not one says.
+const dateSpelling = "YYYY-MM-DD"
+
+// MalformedDateError reports something written where a date belongs which is
+// not one.
+//
+// There is one spelling of a date in this format and it is the engine's rather
+// than the caller's, so the parse and the refusal are here: a command taking a
+// date on its command line and a file carrying one are held to the same
+// spelling, and neither has a second copy of it to drift from.
+type MalformedDateError struct {
+	// Written is what was there instead.
+	Written string
+}
+
+// Error implements the [error] interface.
+func (e MalformedDateError) Error() string {
+	return fmt.Sprintf(
+		"malformed date %s: a date is written as %s, with no time and no zone",
+		strconv.Quote(e.Written), dateSpelling,
+	)
+}
+
+// ParseDate reads a date written the one way this format writes one, per
+// specification section 4.4.
+//
+// It is what every date in the engine goes through, whether it was read out of
+// a file or handed in by a caller authoring a change.
+func ParseDate(written string) (time.Time, error) {
+	date, err := time.Parse(dateLayout, written)
+	if err != nil {
+		return time.Time{}, MalformedDateError{Written: written}
+	}
+	return date, nil
+}
+
 // date reads a date, reporting the spelling it was meant to have where what was
 // written is not one.
 //
@@ -193,13 +230,13 @@ func (r *reader) date(node *Node, what string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	date, err := time.Parse(dateLayout, written)
+	date, err := ParseDate(written)
 	if err != nil {
 		r.add(Diagnostic{
 			Severity: SeverityError,
 			Span:     node.Span,
 			Message:  fmt.Sprintf("expected %s, found %s", what, strconv.Quote(written)),
-			Hint:     `a date is written as a string in RFC 3339 full-date form, "YYYY-MM-DD", with no time and no zone`,
+			Hint:     `a date is written as a string in RFC 3339 full-date form, "` + dateSpelling + `", with no time and no zone`,
 		})
 		return time.Time{}, false
 	}

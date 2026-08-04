@@ -509,16 +509,16 @@ type membership struct {
 	where Span
 }
 
-// relate checks that the containment and the membership the tree wrote hold
-// together: that every reference names a node, that containment nests the way
-// the hierarchy permits, that following it terminates, and that membership
-// names zones.
+// relate checks that the references between nodes which the tree wrote hold
+// together: that every one of them names a node, that containment nests the way
+// the hierarchy permits, that following it terminates, that membership names
+// zones, and that a retirement was replaced by something other than itself.
 //
-// It is a second pass because both relations are properties of the source tree
-// rather than of a file: a space in the first file the walk reaches sits inside
-// a storey which may be written in the last, and a loader which resolved as it
-// read would report it missing for no reason but the order the directory
-// happened to be listed in.
+// It is a second pass because every one of those relations is a property of the
+// source tree rather than of a file: a space in the first file the walk reaches
+// sits inside a storey which may be written in the last, and a loader which
+// resolved as it read would report it missing for no reason but the order the
+// directory happened to be listed in.
 func (l *nodeLoader) relate() {
 	l.nodes.link()
 
@@ -527,6 +527,7 @@ func (l *nodeLoader) relate() {
 	}
 
 	l.member()
+	l.supersede()
 	l.cycles()
 }
 

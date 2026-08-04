@@ -293,7 +293,7 @@ type combinedUncertainty struct {
 // runResolve is the resolve command.
 func runResolve(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	auditing := flags.Bool("candidates", false, "")
 	into := flags.String("frame", "", "")

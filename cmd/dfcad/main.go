@@ -31,6 +31,15 @@ type command struct {
 	// invocation.
 	usage string
 
+	// writes reports whether the subcommand changes the model, which is what
+	// says it takes --dry-run and holds the model root while it runs.
+	//
+	// It is a field rather than something a test lists, for the reason the
+	// table itself is one: a write command added later takes the flag because
+	// it is a write command, and the walk which checks that reaches it without
+	// anybody remembering to add it.
+	writes bool
+
 	// run does the work and returns the exit code.
 	run func(cmd command, args []string, stdout, stderr io.Writer) int
 }
@@ -91,6 +100,27 @@ var commands = []command{
 		usage:   routeUsage,
 		run:     runRoute,
 	},
+	{
+		name:    "add-node",
+		summary: "write a new semantic node",
+		usage:   addNodeUsage,
+		run:     runAddNode,
+		writes:  true,
+	},
+	{
+		name:    "set-label",
+		summary: "change what a thing is called, and nothing else",
+		usage:   setLabelUsage,
+		run:     runSetLabel,
+		writes:  true,
+	},
+	{
+		name:    "retire",
+		summary: "record that a thing stopped existing",
+		usage:   retireUsage,
+		run:     runRetire,
+		writes:  true,
+	},
 }
 
 // lookup is the subcommand of that name.
@@ -117,6 +147,19 @@ const globalFlagsHelp = `Global flags, taken by every command:
 	-v, --verbose    say more on stderr about what the run is doing and about
 	                 what it found; repeat for more
 	-h, --help       print this message and exit
+`
+
+// writeFlagsHelp describes the flags every command which changes the model
+// takes beyond the global ones.
+//
+// It is written once, for the reason [globalFlagsHelp] is: a dry run which
+// meant one thing for one command and something else for another is a flag
+// nobody can rely on, and a command added later cannot forget it.
+const writeFlagsHelp = `Flags every command which changes the model takes:
+
+	--dry-run        do everything except the writing: load, apply the change,
+	                 validate the model it would produce, and report what would
+	                 have changed with the diff of every file
 `
 
 // outputContractHelp describes the two streams, the versioning rule and the

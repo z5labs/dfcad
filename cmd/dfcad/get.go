@@ -230,6 +230,16 @@ type getEntity struct {
 	// wrote them.
 	Edges []string `json:"edges,omitempty"`
 
+	// Retired is how a semantic node stopped existing. Absent for one which did
+	// not, which is the ordinary case.
+	//
+	// A retrieval by id answers whether or not the thing was retired, which is
+	// the half of retirement a listing does not do: a reference written years
+	// ago resolves either to the thing it always named or to a node which says
+	// what happened to it, and the second is only an answer if this call gives
+	// it.
+	Retired *retiredEntry `json:"retired,omitempty"`
+
 	// Span is where it was written: the file, the line and the column, which is
 	// what sends a reader to the definition rather than to a search.
 	Span dfcad.Span `json:"span"`
@@ -237,6 +247,20 @@ type getEntity struct {
 	// Claims are the claims written on it, in predicate order. Empty rather
 	// than null when nothing is claimed about it.
 	Claims []claimEntry `json:"claims"`
+}
+
+// retiredEntry is how a node stopped existing, as get reports it.
+type retiredEntry struct {
+	// Date is when it ceased to exist in the model, written as YYYY-MM-DD.
+	Date string `json:"date"`
+
+	// Reason is why, in the author's words.
+	Reason string `json:"reason"`
+
+	// SupersededBy is the node which stands in its place. Absent where nothing
+	// does, which is ordinary: a thing which stopped existing did not
+	// necessarily get replaced.
+	SupersededBy string `json:"superseded-by,omitempty"`
 }
 
 // claimEntry is one claim as get reports it: the value, and the evidence for
@@ -351,7 +375,7 @@ type accuracyTerm struct {
 // runGet is the get command.
 func runGet(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	selection := flags.String("claims", claimsFull, "")
 	deprecated := flags.Bool("deprecated", false, "")
@@ -443,6 +467,16 @@ func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, depreca
 		}
 		out.MemberOf = spellings(found.MemberOf())
 		out.Boundaries = spellings(found.Boundaries())
+		if retirement, ok := found.Retirement(); ok {
+			entry := retiredEntry{
+				Date:   retirement.Date().Format(time.DateOnly),
+				Reason: retirement.Reason(),
+			}
+			if replacement, ok := retirement.SupersededBy(); ok {
+				entry.SupersededBy = string(replacement)
+			}
+			out.Retired = &entry
+		}
 
 	case *dfcad.Vertex:
 		out.Family = familyVertex

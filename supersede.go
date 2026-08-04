@@ -233,7 +233,7 @@ func (l *claimLoader) retraction(claim *Claim, form *Node, id Span) {
 		written.rank = child.Span
 	}
 
-	if child, ok := childForm(form, "superseded-by"); ok {
+	if child, ok := childForm(form, supersededByChild); ok {
 		written.named = child.Span
 
 		if arg, ok := argument(child, 0); ok {

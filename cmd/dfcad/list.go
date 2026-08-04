@@ -55,8 +55,15 @@ Flags:
 
 	--kind <kind>    only instances which declare this kind
 	--frame <id>     only instances which declare this coordinate frame
+	--retired        include the instances which stopped existing
 
 Filters combine: an instance is listed when it satisfies every filter given.
+
+A retired node is left out unless it is asked for. It is still a node the model
+holds — its id is never issued again, and a reference to it still resolves — but
+a listing is a question about what is there, and answering it with things which
+stopped existing makes every caller filter them out again. Asked for, they come
+back marked, so a caller reading a mixed listing can tell which is which.
 
 Instances come back in id order, so the list does not change when a node moves
 between files, and two runs over one model diff against each other.
@@ -214,12 +221,17 @@ type listedInstance struct {
 	// Frame is the coordinate frame it is expressed in. Empty when it declares
 	// none.
 	Frame string `json:"frame,omitempty"`
+
+	// Retired reports whether the thing it names stopped existing. It is absent
+	// on the ordinary node rather than written false, because a listing which
+	// was not asked for the retired ones holds nothing else.
+	Retired bool `json:"retired,omitempty"`
 }
 
 // runListTypes is the list-types command.
 func runListTypes(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	extra, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -264,10 +276,11 @@ func runListTypes(cmd command, args []string, stdout, stderr io.Writer) int {
 // runListInstances is the list-instances command.
 func runListInstances(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	kind := flags.String("kind", "", "")
 	frame := flags.String("frame", "", "")
+	retired := flags.Bool("retired", false, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -305,15 +318,16 @@ func runListInstances(cmd command, args []string, stdout, stderr io.Writer) int 
 		nodes = graph.OfType(declaredType)
 	}
 	for node := range nodes {
-		if !matches(node, *kind, *frame) {
+		if !matches(node, *kind, *frame, *retired) {
 			continue
 		}
 
 		entry := listedInstance{
-			ID:    string(node.ID()),
-			Label: node.Label(),
-			Type:  node.Type(),
-			Kind:  string(node.Kind()),
+			ID:      string(node.ID()),
+			Label:   node.Label(),
+			Type:    node.Type(),
+			Kind:    string(node.Kind()),
+			Retired: node.Retired(),
 		}
 		if id, ok := node.Frame(); ok {
 			entry.Frame = string(id)
@@ -369,7 +383,17 @@ func checkFilters(registry *dfcad.Registry, declaredType, kind, frame string) er
 }
 
 // matches reports whether a node satisfies the filters which are not the type.
-func matches(node *dfcad.SemanticNode, kind, frame string) bool {
+//
+// Retirement is one of them rather than a test beside them, so that "an instance
+// is listed when it satisfies every filter" has one place which decides it. It
+// is the one filter which is on by default: a listing is a question about what
+// is there, and a node which stopped existing answers it only when it was asked
+// for.
+func matches(node *dfcad.SemanticNode, kind, frame string, retired bool) bool {
+	if node.Retired() && !retired {
+		return false
+	}
+
 	if kind != "" && node.Kind() != dfcad.Kind(kind) {
 		return false
 	}
@@ -431,18 +455,10 @@ func permittedGeometries(declared dfcad.Type) []string {
 // a call that refuses to describe a tree until the tree is finished is a call
 // nobody reaches for.
 func loadModel(cmd command, globals *globals, stderr io.Writer) *dfcad.Graph {
-	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: loading the model beneath %s\n", cmd.name, globals.Root)
-	}
+	reportLoading(cmd, globals, stderr)
 
 	graph, found := dfcad.LoadGraph(globals.Root)
-
-	var diags dfcad.Diagnostics
-	diags.Add(found...)
-
-	// The files are re-read from disk to quote them, which is correct because a
-	// listing writes to none of them.
-	_ = diags.Render(stderr, dfcad.FileSources{})
+	render(found, stderr)
 
 	return graph
 }

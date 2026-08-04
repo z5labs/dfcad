@@ -98,7 +98,7 @@ const (
 // runFmt is the fmt command.
 func runFmt(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	check := flags.Bool("check", false, "")
 	diff := flags.Bool("diff", false, "")

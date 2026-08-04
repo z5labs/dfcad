@@ -238,6 +238,24 @@ func (c Commit) Effects() []Effect {
 	return out
 }
 
+// Changed returns the files the change wrote or, on a dry run, would have
+// written.
+//
+// It is the count a report for a person wants: "would write nothing" is what a
+// dry run of a change which does nothing should say, and reporting every dry run
+// that way says the change was pointless rather than that it was not made.
+// [Commit.Written] is the other question — which files this run actually put on
+// disk — and the two differ only under [Tx.DryRun].
+func (c Commit) Changed() []string {
+	var out []string
+	for _, file := range c.Files {
+		if file.Status != FileUnchanged {
+			out = append(out, file.Path)
+		}
+	}
+	return out
+}
+
 // Written returns the files the change actually wrote.
 //
 // A dry run wrote none, whatever it would have written, so it returns nothing.
@@ -249,14 +267,7 @@ func (c Commit) Written() []string {
 	if c.DryRun {
 		return nil
 	}
-
-	var out []string
-	for _, file := range c.Files {
-		if file.Status != FileUnchanged {
-			out = append(out, file.Path)
-		}
-	}
-	return out
+	return c.Changed()
 }
 
 // staged is one file of the model as a transaction holds it: what is on disk,

@@ -1,0 +1,44 @@
+; Specification section 6.7. A retirement says when the thing stopped existing
+; and why; where something stands in its place, it says which node that is, and
+; that node has to be one this model holds.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (retired
+    (date "2026-06-01")
+    (reason "Knocked through into the room beside it.")
+    (superseded-by site:S-102)))
+
+(node site:S-102
+  (label "Meeting Room B and C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+; A replacement nothing in this model defines.
+(node site:S-103
+  (label "Meeting Room D")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (retired
+    (date "2026-06-02")
+    (reason "Never built.")
+    (superseded-by site:S-999)))
+
+; A node which stands in its own place, which is not a state anything is in.
+(node site:S-104
+  (label "Meeting Room E")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (retired
+    (date "2026-06-03")
+    (reason "Renumbered.")
+    (superseded-by site:S-104)))

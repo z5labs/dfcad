@@ -223,9 +223,16 @@ two filters.
 |------|---------|
 | `--kind <kind>` | Only instances that declare this kind. |
 | `--frame <id>` | Only instances that declare this coordinate frame. |
+| `--retired` | Include the instances that stopped existing. |
 
 Filters combine: an instance is listed when it satisfies every filter given. Flags and the
 type argument may be written in either order.
+
+A **retired** node is left out unless it is asked for. It is still a node the model holds —
+its id is never issued again, and a reference to it still resolves — but a listing is a
+question about what is there, and answering it with things that stopped existing makes every
+caller filter them out again. Asked for, they come back carrying `"retired": true`, so a
+caller reading a mixed listing can tell which is which without asking about each of them.
 
 ```json
 {
@@ -257,6 +264,7 @@ type argument may be written in either order.
 | `instances[].type` | string | The type it declares, reported whether or not a type was filtered on. It need not be one the registry declares: a node naming an undeclared type is a diagnostic and is still a node of the type it named. |
 | `instances[].kind` | string | The kind it declares, reported whether or not a kind was filtered on. |
 | `instances[].frame` | string, optional | The coordinate frame it is expressed in. Absent when it declares none. |
+| `instances[].retired` | boolean, optional | Whether the thing it names stopped existing. Absent on a node that did not, so a listing that was not asked for the retired ones holds nothing else. |
 
 Instances come back in id order rather than in walk order, so the listing does not change
 when a node is moved between files while the model it describes stays the same.
@@ -342,6 +350,7 @@ which came back and so which of the fields to expect.
 | `entity.start`, `entity.end` | string, optional | The ids of the vertices an edge runs between. |
 | `entity.backed-by` | array, optional | The ids of the elements that physically realise an edge. |
 | `entity.edges` | array, optional | The ids of the edges a loop is assembled from, in the order it wrote them. |
+| `entity.retired` | object, optional | How a semantic node stopped existing: `date`, `reason`, and `superseded-by` where something stands in its place. Absent for a node that was not retired. |
 | `entity.span` | object | Where it was written: file, line, column and byte offset, at both ends of the form. |
 | `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
 
@@ -375,6 +384,13 @@ deprecated claim is retracted rather than out-ranked, and resolution never consi
 
 References are ids and are never the things they name, so the answer is the size of the
 thing that was asked for rather than of the model behind it. Following one is another call.
+
+A **retired** node answers here whether or not it was retired, which is the half of
+retirement a listing does not do: `list-instances` leaves retired nodes out unless asked,
+and a retrieval by id resolves to the node and says what happened to it. That is what makes
+a reference written years ago answerable — it either names the thing it always named, or
+names something that says it stopped existing and, where there is one, what replaced it
+([0002](./decisions/0002-immutable-id-mutable-label.md)).
 
 An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
 naming it, and naming the nearest id there is when one is close enough to be the id that
@@ -891,6 +907,114 @@ A refused change writes nothing at all, and its diagnostics are the ones a load 
 result would have raised — every independent problem, each with its position, rather than
 the first. Because the model is unchanged, the correct response to a refusal is to fix the
 command and reissue it: there is no partial state to inspect and nothing to reconcile.
+
+A refused change also writes nothing to **stdout**. It produced no result, and an object
+describing a change that did not happen reads exactly like one describing a change that did.
+
+### `add-node`
+
+A new semantic node. It takes the id it will be written with, and the axes it declares.
+
+| Flag | Meaning |
+|------|---------|
+| `--kind <kind>` | The kind it declares. |
+| `--type <name>` | The type it declares. |
+| `--geometry <form>` | The geometry form it declares. Omitted for a node with no geometry, which its type has to permit. |
+| `--frame <id>` | The coordinate frame it is expressed in. |
+| `--label "<text>"` | Its display text, which nothing resolves through. |
+| `--file <path>` | Write it here instead, overriding the routing rules. |
+
+Every axis is checked against the registry before anything is written. An unregistered id
+namespace, a kind or a geometry form that is not one, a type nothing declares, a type that
+does not permit the kind or the geometry form written here, and a frame the registry does
+not declare are each a **usage error** — exit `3`, with nothing on stdout — naming what was
+asked for and what would have been permitted.
+
+The axes are checked before the routing rules are consulted, because the rules match on
+three of them: a misspelled kind reported as a node no rule places is an answer about the
+wrong mistake.
+
+An id something already holds is refused, naming where that thing is defined. **A retired id
+is refused the same way.** Retiring says the thing stopped existing, not that its name came
+free, and an id is never issued twice
+([0002](./decisions/0002-immutable-id-mutable-label.md)).
+
+```json
+{
+  "version": 1,
+  "command": "add-node",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/site.dfc",
+      "status": "rewritten",
+      "effects": [{"op": "created", "tag": "node", "id": "site:S-104"}],
+      "diff": "--- entities/site.dfc.orig\n+++ entities/site.dfc\n@@ -7,3 +7,4 @@\n..."
+    }
+  ]
+}
+```
+
+### `set-label`
+
+The display text of one thing, and nothing else. It takes an id and a label.
+
+A label carries no meaning to anything in the engine: nothing resolves through it, nothing
+is derived from it, and no two things are required to have different ones. Renaming is
+therefore a one-line diff rather than a re-identification — the id, the global id derived
+from it and every reference written to it are what they were
+([0002](./decisions/0002-immutable-id-mutable-label.md)).
+
+An empty label, written `dfcad set-label site:S-101 ""`, removes it, which is how a thing
+goes back to having none. Leaving the argument out altogether is a usage error rather than
+the same thing.
+
+### `retire`
+
+That a thing stopped existing. It takes the id, and says why.
+
+| Flag | Meaning |
+|------|---------|
+| `--reason "<text>"` | Why it stopped existing. Required. |
+| `--replacement <id>` | The node that stands in its place, where one does. |
+| `--date <YYYY-MM-DD>` | When it stopped existing. Today by default. |
+
+Retiring is **not** deleting. The node stays in the file, its id stays in the graph and
+every claim ever written on it is still there to be read, so a reference written years ago
+resolves either to the thing it always named or to a retired node that says what happened to
+it.
+
+A reason is required because a retirement with no reason is a deletion wearing a hat: what
+the record loses is not the node, which is still there, but the one sentence explaining why
+it stopped being true.
+
+A node other things still reference is a **usage error** naming every referrer and the
+relation each wrote. Supply a replacement and those references are redirected to it in the
+same change, which is the whole of what a replacement is for — and is why redirecting them
+is not left as a second command somebody may not run. A replacement that is itself retired
+is refused: that is the same problem one reference further along.
+
+```json
+{
+  "version": 1,
+  "command": "retire",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/site.dfc",
+      "status": "rewritten",
+      "effects": [
+        {"op": "modified", "tag": "node", "id": "site:S-102"},
+        {"op": "modified", "tag": "node", "id": "site:S-101"}
+      ],
+      "diff": "--- entities/site.dfc.orig\n+++ entities/site.dfc\n@@ -37,6 +37,11 @@\n..."
+    }
+  ]
+}
+```
+
+The effects of a retirement with a replacement are the referrers that were redirected and
+then the node itself, in the order the change applied them.
 
 ### Diagnostics and the exit code of a read
 

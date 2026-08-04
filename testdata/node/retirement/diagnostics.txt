@@ -1,0 +1,11 @@
+testdata/node/retirement/nodes.dfc:32:20: error: expected a node id something in this model holds, found site:S-999, which names no node
+32 |     (superseded-by site:S-999)))
+   |                    ^^^^^^^^^^
+   = hint: a retirement says what replaced the thing as (superseded-by <node-id>); a retirement which replaced it with nothing writes no such child at all
+testdata/node/retirement/nodes.dfc:23:7: note: the retired node is written here
+23 | (node site:S-103
+   |       ^^^^^^^^^^
+testdata/node/retirement/nodes.dfc:44:20: error: expected the node which replaced site:S-104, found site:S-104, which is the node itself
+44 |     (superseded-by site:S-104)))
+   |                    ^^^^^^^^^^
+   = hint: a retired node is replaced by another node, and a node which stands in its own place did not stop existing
