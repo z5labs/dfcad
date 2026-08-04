@@ -203,10 +203,13 @@ func TestBudgetTermsAreNamedAndAttributed(t *testing.T) {
 		assert.Equal(t, "survey:CP-3", dominant.Name)
 	})
 
-	t.Run("copies the terms it hands out", func(t *testing.T) {
+	t.Run("copies the terms it hands out, down to the claims attributed to each", func(t *testing.T) {
 		terms[0].Magnitude = 99.0
+		terms[1].Contributors = append(terms[1].Contributors[:1], nil)
 
-		assert.Equal(t, 0.004, budget.Terms()[0].Magnitude)
+		fresh := budget.Terms()
+		assert.Equal(t, 0.004, fresh[0].Magnitude)
+		assert.Equal(t, []*Claim{claims[0], claims[1]}, fresh[1].Contributors)
 	})
 }
 

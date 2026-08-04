@@ -242,6 +242,14 @@ type BudgetTerm struct {
 // Shared reports whether more than one claim contributed this term.
 func (t BudgetTerm) Shared() bool { return len(t.Contributors) > 1 }
 
+// clone is the term with contributors of its own, which is what a reader hands
+// out: a term whose slice is the budget's own would let an append reach back
+// into the budget it came from.
+func (t BudgetTerm) clone() BudgetTerm {
+	t.Contributors = slices.Clone(t.Contributors)
+	return t
+}
+
 // Budget is the accumulated uncertainty of one computed answer, broken out by
 // contributing term.
 //
@@ -361,8 +369,16 @@ func (b *Budget) contribute(claim *Claim, term AccuracyTerm) {
 // Terms returns the accumulated terms, in the order they were first
 // contributed.
 //
-// The terms are a copy, so re-ordering them re-orders nothing in the budget.
-func (b Budget) Terms() []BudgetTerm { return slices.Clone(b.terms) }
+// The terms are a copy, down to the claims attributed to each, so neither
+// re-ordering them nor appending to one's contributors reaches back into the
+// budget.
+func (b Budget) Terms() []BudgetTerm {
+	out := make([]BudgetTerm, 0, len(b.terms))
+	for _, term := range b.terms {
+		out = append(out, term.clone())
+	}
+	return out
+}
 
 // Unknown returns the accumulated claims which stated no usable accuracy, in
 // the order they arrived.
@@ -398,7 +414,7 @@ func (b Budget) Dominant() (BudgetTerm, bool) {
 			dominant = term
 		}
 	}
-	return dominant, true
+	return dominant.clone(), true
 }
 
 // Combined reduces the budget to one standard uncertainty.
