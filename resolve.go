@@ -129,8 +129,8 @@ func (e AmbiguousResolutionError) Error() string {
 	)
 }
 
-// Resolve decides which claim about one subject under one predicate is current,
-// per decision record
+// Resolve decides which claim about one subject under one predicate is
+// current, per decision record
 // [0007](docs/decisions/0007-rank-is-closed.md).
 //
 // The rule is stated once, here, and is the whole of it:
