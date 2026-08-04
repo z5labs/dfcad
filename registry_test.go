@@ -80,6 +80,10 @@ func TestLoadRegistry(t *testing.T) {
 			fixture: "dangling",
 		},
 		{
+			name:    "names the set when a frame declares a unit which is no linear unit",
+			fixture: "unknown-unit",
+		},
+		{
 			name:    "names every frame in a parent chain which never reaches a root",
 			fixture: "cycle",
 		},
@@ -462,4 +466,60 @@ func TestClosedSets(t *testing.T) {
 	// vocabulary by editing what it was handed.
 	Kinds()[0] = "Sproket"
 	assert.Equal(t, KindZone, Kinds()[0])
+}
+
+// TestLinearUnitDefinitions pins the definitions every cross-frame answer is
+// computed through.
+//
+// The set is the engine's and there is no unit registry: a model which could
+// declare its own would be a model in which ft means whatever the last registry
+// said. The two feet are the case which makes that matter — they differ by two
+// parts per million, which is invisible on a room and is four feet on a state
+// plane coordinate — so the last assertion is that they are not each other
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
+func TestLinearUnitDefinitions(t *testing.T) {
+	testCases := []struct {
+		name     string
+		unit     Unit
+		expected float64
+	}{
+		{name: "defines the metre as itself", unit: UnitMetre, expected: 1},
+		{name: "defines the millimetre", unit: UnitMillimetre, expected: 0.001},
+		{name: "defines the centimetre", unit: UnitCentimetre, expected: 0.01},
+		{name: "defines the kilometre", unit: UnitKilometre, expected: 1000},
+		{name: "pins the international foot at exactly 0.3048 m", unit: UnitFoot, expected: 0.3048},
+		{name: "pins the US survey foot at exactly 1200/3937 m", unit: UnitSurveyFoot, expected: 1200.0 / 3937.0},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			length, ok := Unit(testCase.unit).Metres()
+
+			require.True(t, ok)
+			assert.Equal(t, testCase.expected, length)
+		})
+	}
+
+	t.Run("defines no unit it was not given", func(t *testing.T) {
+		_, ok := Unit("furlong").Metres()
+
+		assert.False(t, ok)
+	})
+
+	t.Run("never treats the survey foot as a synonym for the foot", func(t *testing.T) {
+		foot, _ := UnitFoot.Metres()
+		survey, _ := UnitSurveyFoot.Metres()
+
+		assert.NotEqual(t, foot, survey)
+		assert.Greater(t, survey, foot)
+	})
+
+	t.Run("gives the closed set by value", func(t *testing.T) {
+		assert.Equal(t, []Unit{
+			UnitMillimetre, UnitCentimetre, UnitMetre, UnitKilometre, UnitFoot, UnitSurveyFoot,
+		}, LinearUnits())
+
+		LinearUnits()[0] = "furlong"
+		assert.Equal(t, UnitMillimetre, LinearUnits()[0])
+	})
 }

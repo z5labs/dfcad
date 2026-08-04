@@ -872,3 +872,49 @@ func ExampleTopology_Assemble() {
 	//   geom:E-07: geom:V-06 to geom:V-03, reversed: false
 	//   geom:E-02: geom:V-03 to geom:V-02, reversed: true
 }
+
+// ExampleResolveFrames relates an indoor floor plan to the survey it sits on,
+// and says how well that relationship is actually known.
+//
+// A shape lives in exactly one frame and is transformed on demand. Storing one
+// corner in two frames is two sources of truth which drift the moment the
+// georeference is re-fitted — and the relationship between the frames is not a
+// configuration constant either. It is a fit, produced by a method on a date
+// with an accuracy, so it is a claim like every other measurement in the model.
+func ExampleResolveFrames() {
+	root := "testdata/frame/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	claims, _ := dfcad.LoadClaims(root, registry)
+
+	// The frames are registry data and the transforms between them are claims,
+	// so relating the two is a pass of its own.
+	frames, _ := dfcad.ResolveFrames(registry, claims)
+
+	// The building is modelled in millimetres and the survey grid is in metres.
+	// Neither number is converted where it was written; the conversion happens
+	// here, through the linear unit each frame declares.
+	corner := dfcad.Point{3000.0, 4000.0, 0.0}
+
+	on, err := frames.TransformPoint(corner, "frame:building", "frame:survey-grid")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("%.1f mm becomes %.3f m\n", corner, on)
+
+	// And the evidence for the step which put it there, which is the whole
+	// reason the transform is a claim: a cross-frame answer can say how well the
+	// relationship it was computed through is known.
+	measurement, _ := frames.Measurement("frame:site")
+	accuracy, _ := measurement.Accuracy()
+
+	fmt.Printf("%s, by %s on %s, +/- %g %s\n",
+		measurement.Source(), measurement.Method(),
+		measurement.Date().Format("2006-01-02"),
+		accuracy.Terms[0].Magnitude, accuracy.Terms[0].Unit)
+
+	// Output:
+	// [3000.0 4000.0 0.0] mm becomes [113.000 224.000 0.000] m
+	// Georeferencing report GR-2026-002, Acme Surveys, by method:gnss-static on 2026-02-11, +/- 0.012 m
+}

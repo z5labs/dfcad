@@ -76,6 +76,10 @@ func TestLoadTopology(t *testing.T) {
 			name:    "names both definitions of an id the model already holds, in whichever files they are",
 			fixture: "duplicate-id",
 		},
+		{
+			name:    "names both frames of a shape assembled out of two of them",
+			fixture: "two-frames",
+		},
 	}
 
 	for _, testCase := range testCases {

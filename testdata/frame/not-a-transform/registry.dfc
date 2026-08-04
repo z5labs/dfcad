@@ -1,0 +1,39 @@
+; A frame whose transform names a claim which is not a transform.
+;
+; Nothing below this pass can say so. The reference reaches a claim, and the
+; claim is a perfectly good one: it has a value, a source, a method, a date and
+; an accuracy. What it does not carry is a fit between two frames, so the
+; relationship between the building and the survey grid is not measured by
+; anything.
+(project
+  (label "Frame fixture")
+  (globalid-namespace "https://example.org/models/frames"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "The clear width between two faces."))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (width
+    (id survey:C-0031)
+    (value 8.5 m)
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.005 m))
+    (date "2026-03-02")))

@@ -1,0 +1,20 @@
+testdata/topology/two-frames/geometry.dfc:12:81: error: expected a vertex in frame:building, found geom:V-02, which is declared in frame:survey-grid
+12 | (edge geom:E-01 (label "North wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+   |                                                                                 ^^^^^^^^^
+   = hint: a shape is declared in exactly one frame and is transformed on demand; the two frames are related by a transform claim, and a shape assembled out of both is a shape in neither
+testdata/topology/two-frames/geometry.dfc:10:9: note: the vertex it names is declared in frame:survey-grid, here
+10 | (vertex geom:V-02 (label "A control point on the survey grid") (frame frame:survey-grid))
+   |         ^^^^^^^^^
+testdata/topology/two-frames/geometry.dfc:12:7: note: the edge which names it is declared in frame:building, here
+12 | (edge geom:E-01 (label "North wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+   |       ^^^^^^^^^
+testdata/topology/two-frames/geometry.dfc:20:72: error: expected an edge in frame:building, found geom:E-05, which is declared in frame:survey-grid
+20 | (loop geom:L-01 (label "Room B outline") (frame frame:building) (edges geom:E-05))
+   |                                                                        ^^^^^^^^^
+   = hint: a shape is declared in exactly one frame and is transformed on demand; the two frames are related by a transform claim, and a shape assembled out of both is a shape in neither
+testdata/topology/two-frames/geometry.dfc:18:7: note: the edge it names is declared in frame:survey-grid, here
+18 | (edge geom:E-05 (label "The north site boundary") (frame frame:survey-grid) (vertices geom:V-05 geom:V-06))
+   |       ^^^^^^^^^
+testdata/topology/two-frames/geometry.dfc:20:7: note: the loop which names it is declared in frame:building, here
+20 | (loop geom:L-01 (label "Room B outline") (frame frame:building) (edges geom:E-05))
+   |       ^^^^^^^^^

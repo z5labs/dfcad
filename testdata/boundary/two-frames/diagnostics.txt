@@ -1,0 +1,10 @@
+testdata/boundary/two-frames/model.dfc:13:13: error: expected a loop in frame:building, found geom:L-02, which is declared in frame:survey-grid
+13 |   (boundary geom:L-02))
+   |             ^^^^^^^^^
+   = hint: a shape is declared in exactly one frame and is transformed on demand; the two frames are related by a transform claim, and a node bounded by a loop in another frame is a shape in neither
+testdata/boundary/two-frames/model.dfc:31:7: note: the loop it names is declared in frame:survey-grid, here
+31 | (loop geom:L-02
+   |       ^^^^^^^^^
+testdata/boundary/two-frames/model.dfc:7:7: note: the node which names it is declared in frame:building, here
+7 | (node site:S-101
+  |       ^^^^^^^^^^

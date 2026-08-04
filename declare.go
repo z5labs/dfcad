@@ -473,9 +473,21 @@ func (l *registryLoader) declareFrame(node *Node) {
 		declaration.frame.Label, _ = l.text(arg, "a string")
 	}
 
+	// The frame's unit is checked against the set the engine defines, because a
+	// frame's unit is the one which has to have a magnitude: every cross-frame
+	// answer converts through it, and a unit nothing defines would be converted
+	// as though it were metres
+	// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)). One which is
+	// not a linear unit is left unread rather than recorded, for the reason an id
+	// which is not one is: everything downstream would judge it as though
+	// somebody had written a unit.
 	if arg, ok := argumentOf(node, "unit"); ok {
 		if written, ok := l.symbol(arg, "a unit"); ok {
-			declaration.frame.Unit = Unit(written)
+			if _, defined := Unit(written).Metres(); !defined {
+				l.add(unknownUnit(arg.Span, written))
+			} else {
+				declaration.frame.Unit = Unit(written)
+			}
 		}
 	}
 
@@ -594,8 +606,18 @@ func (l *registryLoader) resolve() {
 			l.registered(l.registry, declaration.frame.Transform, declaration.transform)
 		}
 
+		// Both ends are named: the parent which is not declared, and the frame
+		// which is expressed relative to it. A frame with a parent nothing
+		// declares reaches no root, so what is wrong is the pair rather than
+		// either of them, and a diagnostic naming only the missing end leaves the
+		// reader to find which frame sent them there.
 		if parent := declaration.frame.Parent; parent != "" && !l.registry.Declares(SortFrame, string(parent)) {
-			l.add(l.registry.Undeclared(SortFrame, string(parent), declaration.parent))
+			undeclared := l.registry.Undeclared(SortFrame, string(parent), declaration.parent)
+			undeclared.Related = append(undeclared.Related, RelatedLocation{
+				Span:    declaration.id,
+				Message: "the frame which names it as its parent is written here",
+			})
+			l.add(undeclared)
 		}
 	}
 

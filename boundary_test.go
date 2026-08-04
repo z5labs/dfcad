@@ -138,6 +138,10 @@ func TestResolveBoundaries(t *testing.T) {
 			name:    "names a backing which reaches nothing, one which reaches the wrong sort of node, and one written twice",
 			fixture: "dangling-backing",
 		},
+		{
+			name:    "names both frames of a region bounded by a loop declared in another one",
+			fixture: "two-frames",
+		},
 	}
 
 	for _, testCase := range testCases {

@@ -1,0 +1,4 @@
+testdata/registry/unknown-unit/registry.dfc:23:9: error: expected a linear unit, found furlong
+23 |   (unit furlong)
+   |         ^^^^^^^
+   = hint: a linear unit is one of mm, cm, m, km, ft and usft; the set and the definition of each are the engine's, and there is no unit registry

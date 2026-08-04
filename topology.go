@@ -536,6 +536,12 @@ type reference struct {
 	// want is the tag of the sort of node it has to name.
 	want string
 
+	// frame is the id of the frame the node making the reference is declared in,
+	// which is the frame the shape being assembled is expressed in. The zero ID
+	// belongs to a node whose frame could not be read, which is a diagnostic of
+	// its own.
+	frame ID
+
 	// at is where it was written, which is what a diagnostic about it points
 	// at.
 	at Span
@@ -690,6 +696,7 @@ func (l *topologyLoader) ends(edge *Edge, form *Node, at Span) {
 		l.references = append(l.references, reference{
 			id:    id,
 			want:  vertexTag,
+			frame: edge.frame,
 			at:    arg.Span,
 			where: l.where(form, at),
 			by:    edgeTag,
@@ -795,6 +802,7 @@ func (l *topologyLoader) loop(form *Node) {
 		l.references = append(l.references, reference{
 			id:    id,
 			want:  edgeTag,
+			frame: loop.frame,
 			at:    arg.Span,
 			where: l.where(form, at),
 			by:    loopTag,
@@ -896,7 +904,43 @@ func (l *topologyLoader) refers(written reference) {
 		return
 	}
 
-	if declared.tag == written.want {
+	if declared.tag != written.want {
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     written.at,
+			Message: fmt.Sprintf(
+				"expected %s %s id, found %s, which is %s %s",
+				article(written.want), written.want, written.id, article(declared.tag), declared.tag,
+			),
+			Hint:    written.hint,
+			Related: []RelatedLocation{{Span: declared.at, Message: fmt.Sprintf("the %s it names is written here", declared.tag)}},
+		})
+		return
+	}
+
+	l.declaredTwice(written, declared)
+}
+
+// declaredTwice reports a reference which assembles a shape out of parts in two
+// frames.
+//
+// A shape lives in exactly one frame and is transformed on demand
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)). An edge running to
+// a vertex in another frame, or a loop traversing an edge in one, is a shape
+// declared in two of them: the two halves are numbers on different axes in
+// different units, and the ring they appear to form is a ring in neither.
+//
+// The fix is never to convert here. The frames are related by a measurement with
+// a source and an accuracy, and applying it silently would put a fitted number
+// into a file somebody authored — so the diagnostic names both frames and leaves
+// the choice of which the shape is in to whoever wrote it.
+//
+// A node whose frame could not be read is not reported: it has already been
+// reported as the node with no frame it is, and one frame plus nothing is not
+// two frames.
+func (l *topologyLoader) declaredTwice(written reference, declared definition) {
+	frame, ok := l.frameOf(written.id, written.want)
+	if !ok || written.frame == "" || frame == "" || written.frame == frame {
 		return
 	}
 
@@ -904,12 +948,39 @@ func (l *topologyLoader) refers(written reference) {
 		Severity: SeverityError,
 		Span:     written.at,
 		Message: fmt.Sprintf(
-			"expected %s %s id, found %s, which is %s %s",
-			article(written.want), written.want, written.id, article(declared.tag), declared.tag,
+			"expected %s %s in %s, found %s, which is declared in %s",
+			article(written.want), written.want, written.frame, written.id, frame,
 		),
-		Hint:    written.hint,
-		Related: []RelatedLocation{{Span: declared.at, Message: fmt.Sprintf("the %s it names is written here", declared.tag)}},
+		Hint: "a shape is declared in exactly one frame and is transformed on demand; the two frames are related by a " +
+			"transform claim, and a shape assembled out of both is a shape in neither",
+		Related: []RelatedLocation{
+			{Span: declared.at, Message: fmt.Sprintf("the %s it names is declared in %s, here", declared.tag, frame)},
+			{Span: written.where, Message: fmt.Sprintf("the %s which names it is declared in %s, here", written.by, written.frame)},
+		},
 	})
+}
+
+// frameOf is the frame a geometric node of a named sort is declared in.
+//
+// It takes the sort as well as the id because the two indexes are separate, and
+// because it is only ever asked of a reference which has already been checked
+// against the sort it had to name.
+func (l *topologyLoader) frameOf(id ID, tag string) (ID, bool) {
+	switch tag {
+	case vertexTag:
+		if vertex, ok := l.topology.Vertex(id); ok {
+			return vertex.frame, true
+		}
+	case edgeTag:
+		if edge, ok := l.topology.Edge(id); ok {
+			return edge.frame, true
+		}
+	case loopTag:
+		if loop, ok := l.topology.Loop(id); ok {
+			return loop.frame, true
+		}
+	}
+	return "", false
 }
 
 // geometricName names a geometric node for a diagnostic.

@@ -834,6 +834,40 @@ relationship between two frames is a measurement, not a configuration constant.
   fit carries the source, method, date and accuracy of the fit that produced it, and that
   accuracy is a systematic term in every cross-frame budget it touches.
 
+#### 7.5.1 The frame graph
+
+**The unit a frame declares is the unit of every coordinate expressed in it**, and it is
+read from that frame's registry entry rather than assumed. The definition of the unit —
+how long one of it is — is the engine's and is pinned in [4.5](#45-units); which unit a
+frame is in is registry data, and the two are never swapped for one another.
+
+**Transforms compose along the chain, in both directions.** A position in one frame is a
+position in any other frame the model declares: the route runs up the parent chain to the
+lowest frame both chains pass through and back down the other, applying
+[6.6.3](#663-transform) at each step going up and its inverse at each step coming down. A
+transform is written in one direction and walked in both, because a fit measured from a
+building to a survey is the same measurement as one from the survey to the building.
+Writing the reverse down as a second claim would be a second source of truth for one fit.
+
+A route that cannot be walked is answered with what stopped it and never with an
+approximation: a frame nothing declares, a chain that cycles, a frame whose `transform`
+resolves to no transform claim, two frames whose chains never meet, a frame whose unit is
+no linear unit, and a transform that cannot be inverted.
+
+**A shape is declared in exactly one frame and is transformed on demand.** Storing one
+shape in two frames is two sources of truth that drift the moment the georeference is
+re-fitted, so every part of one shape names one frame:
+
+- An `edge` and each `vertex` it runs between are in one frame.
+- A `loop` and each `edge` it traverses are in one frame.
+- A `node` that declares a `frame` and each `loop` it names in `boundary` are in one frame.
+  A node that declares none takes the frame its outline is in, which is ordinary.
+
+Any of the three declared in two frames is a load error naming both frames and both ends.
+Nothing is converted to reconcile them: the frames are related by a measurement with a
+source and an accuracy, and applying it silently would put a fitted number into a file
+somebody authored.
+
 ### 7.6 `tolerance`
 
 ```
