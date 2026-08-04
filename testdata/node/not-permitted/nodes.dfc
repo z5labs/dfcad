@@ -1,0 +1,20 @@
+; Each node below is written with axes the format permits and its type does
+; not, so each diagnostic names all three: the node, the type, and the value.
+
+; A kind Partition does not permit.
+(node site:S-101
+  (kind Space)
+  (type Partition)
+  (geometry line))
+
+; A geometry form MeetingRoom does not permit.
+(node site:S-102
+  (kind Space)
+  (type MeetingRoom)
+  (geometry line))
+
+; No geometry at all, which Partition does not permit either: absence is
+; permitted by a type declaring (geometry absent), and Partition declares none.
+(node site:E-01
+  (kind Element)
+  (type Partition))

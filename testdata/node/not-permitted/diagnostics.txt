@@ -1,0 +1,25 @@
+testdata/node/not-permitted/nodes.dfc:6:9: error: expected a kind the type Partition permits, found Space on site:S-101
+6 |   (kind Space)
+  |         ^^^^^
+  = hint: Partition permits Element and Interface
+testdata/node/not-permitted/registry.dfc:11:7: note: the type is declared here
+11 | (type Partition
+   |       ^^^^^^^^^
+testdata/node/not-permitted/nodes.dfc:14:13: error: expected a geometry form the type MeetingRoom permits, found line on site:S-102
+14 |   (geometry line))
+   |             ^^^^
+   = hint: MeetingRoom permits area and no geometry at all
+testdata/node/not-permitted/registry.dfc:5:7: note: the type is declared here
+5 | (type MeetingRoom
+  |       ^^^^^^^^^^^
+testdata/node/not-permitted/nodes.dfc:18:1: error: expected a (geometry ...) child of site:E-01, found none, which the type Partition does not permit
+18 | (node site:E-01
+   | ^^^^^^^^^^^^^^^
+19 |   (kind Element)
+   | ^^^^^^^^^^^^^^^^
+20 |   (type Partition))
+   | ^^^^^^^^^^^^^^^^^^^
+   = hint: Partition permits line; a type permits an instance to omit its geometry by declaring (geometry absent)
+testdata/node/not-permitted/registry.dfc:11:7: note: the type is declared here
+11 | (type Partition
+   |       ^^^^^^^^^

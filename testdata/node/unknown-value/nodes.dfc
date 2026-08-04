@@ -1,0 +1,21 @@
+; The closed sets are closed. Each node below writes a symbol the format does
+; not have a member for, and each hears which set it was reaching into.
+
+; A kind which is not one of the seven.
+(node site:S-101
+  (kind Room)
+  (type MeetingRoom)
+  (geometry area))
+
+; A geometry form which is not one of the five.
+(node site:S-102
+  (kind Space)
+  (type MeetingRoom)
+  (geometry polygon))
+
+; absent, which is the type registry's word for "an instance may omit this
+; child" and is not a geometry form a node may name.
+(node site:S-103
+  (kind Space)
+  (type MeetingRoom)
+  (geometry absent))

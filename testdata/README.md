@@ -17,6 +17,7 @@ the goldens beside the fixtures are invisible to it.
 | `corpus/invalid`           | One file per error case about a file and its lexis. Each has its rendered diagnostic recorded beside it as `.txt`. |
 | `validate`                 | The validator's own fixtures: the error cases about the shape of a form, each with its rendered diagnostic as `.txt`, plus three files which are accepted. |
 | `registry`                 | The registry loader's own fixtures. One *directory* per case, because a registry is a property of a source tree and not of a file, with its rendered diagnostics inside it as `diagnostics.txt`. |
+| `node`                     | The semantic node loader's own fixtures. One *directory* per case, each a registry and the nodes judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `print`                    | The printer's own fixtures: one per printing behaviour, each with its canonical printing as `.want`. |
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `model`                    | A two-file model the runnable examples load.                                                |
@@ -49,7 +50,8 @@ nobody regenerated, fails there.
 
 The cases about a file and its lexis are in `corpus/invalid`; the cases about
 the shape of a form are in `validate`; the cases about what a registry declares
-are in `registry`. Each is where the tests of that layer read them from.
+are in `registry`; the cases about a node read against a loaded registry are in
+`node`. Each is where the tests of that layer read them from.
 
 | Specification | Error case                                          | Fixture                                     |
 |---------------|-----------------------------------------------------|---------------------------------------------|
@@ -85,6 +87,9 @@ are in `registry`. Each is where the tests of that layer read them from.
 | 7.5           | A frame parent chain which never reaches a root      | `registry/cycle/`                           |
 | 7.5           | A second root frame, and half of a non-root one      | `registry/roots/`                           |
 | 7.1           | A model declaring no project at all                  | `registry/empty/`                           |
+| 1, 6.1        | A node kind or geometry form which is not one, and `absent` named on a node | `node/unknown-value/`         |
+| 6.1, 7.3      | A node naming a type no registry file declares       | `node/undeclared-type/`                     |
+| 6.1, 7.3      | A node whose type permits a different kind or geometry form, and one whose type does not permit absence | `node/not-permitted/` |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could

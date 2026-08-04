@@ -1,0 +1,367 @@
+// Copyright (c) 2026 Z5Labs and Contributors
+//
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
+package dfcad
+
+import (
+	"fmt"
+	"slices"
+)
+
+// nodeTag is the top-level tag of the one semantic form. The geometric family
+// has a tag per member; the semantic family has this one and carries its kind
+// as a value.
+const nodeTag = "node"
+
+// SemanticNode is one node of the semantic family, per specification section
+// 6.1.
+//
+// A semantic node is described by a small fixed set of axes rather than by a
+// class per concept: a kind, a type, and — where it has them — a geometry form
+// and a frame. That is what keeps this API the size of the axes rather than the
+// size of the vocabulary. A consuming repository which needs a hundred and
+// fifty types writes a hundred and fifty registry entries and no Go types
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+//
+// The two axes which may be absent are absent as a state and not as a
+// degenerate value. A circuit group, a warranty and a system have no geometry
+// and no frame, and none of them is malformed; representing them without a
+// special case is the point of the design
+// ([0001](docs/decisions/0001-two-node-families.md)).
+// [SemanticNode.Geometry] and [SemanticNode.Frame] therefore each report
+// whether the axis was written at all, which is what tells a node with no
+// geometry apart from one whose geometry form is the empty string — a thing the
+// closed set has no member for and which no file can produce.
+//
+// The fields are unexported and read through the methods below. The tree a node
+// was read from is not part of its interface: a caller which reached through to
+// it would be reading the file a second time, in a second way, and the two
+// readings would disagree the first time canonical form moved a child.
+//
+// A SemanticNode is read-only once loaded. The zero value is a node with no id,
+// no kind and no type, which is what a form nothing could be read from yields;
+// every method below works on it.
+type SemanticNode struct {
+	// id is the node's id, exactly as written. What makes it a well-formed id
+	// and whether its namespace is declared is the id layer's question.
+	id string
+
+	// label is the node's display text. Empty when it was not written, which is
+	// the same thing as an empty label to everything but a person reading it.
+	label string
+
+	// kind is the node's kind, which is always one of the closed set.
+	kind Kind
+
+	// declaredType is the name of the type the node declares. The field is not
+	// called type because that is a keyword, and the accessor is, because the
+	// accessor is what a caller reads.
+	declaredType string
+
+	// geometry is the node's geometry form, and hasGeometry whether one was
+	// written at all.
+	geometry    Geometry
+	hasGeometry bool
+
+	// frame is the id of the frame the node's geometry is expressed in, and
+	// hasFrame whether one was written at all.
+	frame    string
+	hasFrame bool
+
+	// span is where the node form was written.
+	span Span
+}
+
+// ID returns the node's id, which never changes for the life of the thing it
+// names.
+func (n *SemanticNode) ID() string { return n.id }
+
+// Label returns the node's display text, which is empty when none was written.
+// Changing it changes nothing else about the node.
+func (n *SemanticNode) Label() string { return n.label }
+
+// Kind returns the node's kind, which is one of the seven [Kinds] compiled into
+// the engine.
+func (n *SemanticNode) Kind() Kind { return n.kind }
+
+// Type returns the name of the node's type, which the consuming repository's
+// registry declares. The engine attaches no meaning to it beyond the axes that
+// declaration permits.
+func (n *SemanticNode) Type() string { return n.declaredType }
+
+// Geometry returns the node's geometry form, and whether it has one.
+//
+// A node with no geometry is ordinary rather than incomplete, so the second
+// result is a state and not a failure. It is false exactly when the node wrote
+// no `geometry` child, which the node's type has to permit.
+func (n *SemanticNode) Geometry() (Geometry, bool) { return n.geometry, n.hasGeometry }
+
+// Frame returns the id of the node's frame, and whether it has one.
+//
+// A node is declared in at most one frame; declaring it in two is
+// unrepresentable, which is the point. A node with no geometry usually has no
+// frame either, and a node may legitimately have neither.
+func (n *SemanticNode) Frame() (string, bool) { return n.frame, n.hasFrame }
+
+// Span returns where the node form was written, which is what a diagnostic
+// about the node as a whole points at.
+func (n *SemanticNode) Span() Span { return n.span }
+
+// LoadNodes reads every semantic node beneath root, checked against registry.
+//
+// root is what [Load] takes: a single file, or a directory beneath which every
+// file whose extension is [Extension] is read. Nodes come back in the order the
+// walk reached them, which is deterministic, so anything built from them diffs
+// against the last run's.
+//
+// registry is a loaded one, because the questions this pass asks — is this type
+// declared, and does it permit the kind and the geometry form written here —
+// are ones only registry data answers. That is also why the two loads are two
+// calls: a registry is a property of the whole source tree, so every file has
+// to have been read before any node is judged against it. A nil registry
+// declares nothing, and every node is then reported as naming a type nothing
+// declares, which is both true and the diagnostic somebody whose registry has
+// not been written yet needs.
+//
+// Loading is one pass which reports everything it finds. A file which does not
+// parse, a form which is structurally wrong, an axis which is not a member of
+// its closed set, a type nothing declares and a type which does not permit what
+// the node wrote are each a diagnostic, and none of them stops the rest of the
+// tree from being read.
+//
+// Nodes which could be read come back whatever the diagnostics say. A node
+// whose type is undeclared is still a node with an id, a kind and a label, and
+// a caller reporting on a tree wants to say so rather than to lose it.
+//
+// The geometric family — `vertex`, `edge` and `loop` — is not read here. Those
+// carry neither kind nor type and validate under their own rules
+// ([0001](docs/decisions/0001-two-node-families.md)).
+//
+// Diagnostics come back in the order the pass found them. Collecting them into
+// a [Diagnostics] is what puts them in reporting order.
+func LoadNodes(root string, registry *Registry) ([]*SemanticNode, []Diagnostic) {
+	l := &nodeLoader{registry: registry}
+
+	for path, err := range Walk(root) {
+		if err != nil {
+			l.add(diagnose(path, err))
+			continue
+		}
+
+		file, err := LoadFile(path)
+		if err != nil {
+			l.add(diagnose(path, err))
+			continue
+		}
+
+		l.file(file)
+	}
+
+	return l.nodes, l.diags
+}
+
+// nodeLoader collects one load of the semantic nodes of a source tree.
+type nodeLoader struct {
+	reader
+
+	// registry is what the nodes are judged against. It is not written to.
+	registry *Registry
+
+	// nodes are the nodes read so far, in the order they were reached.
+	nodes []*SemanticNode
+}
+
+// file interprets the node forms of one loaded file.
+//
+// A form is validated structurally before anything reads it, and one which is
+// structurally wrong is not interpreted at all. Reading a node which is missing
+// its `kind` would mean either inventing a kind or reporting its absence a
+// second time, and both are worse than the diagnostic the structural pass
+// already produced.
+func (l *nodeLoader) file(file *File) {
+	for _, node := range file.Nodes {
+		if tag, ok := formTag(node); !ok || tag != nodeTag {
+			continue
+		}
+
+		if diags := Validate(&File{Path: file.Path, Nodes: []*Node{node}}); len(diags) > 0 {
+			l.add(diags...)
+			continue
+		}
+
+		l.declare(node)
+	}
+}
+
+// nodeDeclaration is one node together with where the axes the registry has
+// something to say about were written.
+//
+// A span left zero belongs to an axis which was not written, or which was
+// written as something no value could be read from. Neither is checked against
+// the registry: the first is already an arity diagnostic and the second is
+// already reported as what it was, and a type which then also says the axis is
+// not one it permits reports one mistake twice.
+type nodeDeclaration struct {
+	node *SemanticNode
+
+	kind         Span
+	geometry     Span
+	declaredType Span
+
+	// wroteGeometry reports whether a `geometry` child was written at all,
+	// which is what tells a node with no geometry apart from one whose geometry
+	// form could not be read.
+	wroteGeometry bool
+}
+
+// declare reads one structurally valid node form.
+//
+// Every axis is read whatever happened to the ones before it, because a node
+// with a misspelled kind still has a type worth checking and an id worth
+// reporting the rest against. Bailing out on the first would turn fixing a file
+// into a guessing loop.
+func (l *nodeLoader) declare(form *Node) {
+	d := nodeDeclaration{node: &SemanticNode{span: form.Span}}
+
+	if arg, ok := argument(form, 0); ok {
+		d.node.id, _ = l.symbol(arg, "an id")
+	}
+
+	if arg, ok := argumentOf(form, "label"); ok {
+		d.node.label, _ = l.text(arg, "a string")
+	}
+
+	if arg, ok := argumentOf(form, "kind"); ok {
+		if kind, ok := l.kind(arg); ok {
+			d.node.kind, d.kind = kind, arg.Span
+		}
+	}
+
+	if arg, ok := argumentOf(form, "type"); ok {
+		if name, ok := l.symbol(arg, "a type name"); ok {
+			d.node.declaredType, d.declaredType = name, arg.Span
+		}
+	}
+
+	if arg, ok := argumentOf(form, "geometry"); ok {
+		d.wroteGeometry = true
+		if geometry, ok := l.geometry(arg); ok {
+			d.node.geometry, d.node.hasGeometry, d.geometry = geometry, true, arg.Span
+		}
+	}
+
+	if arg, ok := argumentOf(form, "frame"); ok {
+		d.node.frame, d.node.hasFrame = l.symbol(arg, "a frame id")
+	}
+
+	l.permitted(d)
+
+	l.nodes = append(l.nodes, d.node)
+}
+
+// kind reads the one member of the closed set of kinds a node declares.
+func (l *nodeLoader) kind(arg *Node) (Kind, bool) {
+	written, ok := l.symbol(arg, "a kind")
+	if !ok {
+		return "", false
+	}
+
+	kind := Kind(written)
+	if !slices.Contains(kinds, kind) {
+		l.add(unknownKind(arg.Span, written))
+		return "", false
+	}
+
+	return kind, true
+}
+
+// geometry reads the one member of the closed set of geometry forms a node
+// declares.
+//
+// `absent` is rejected here as firmly as a misspelling is. It is the type
+// registry's word for "an instance may omit this child", and a node which
+// writes it is naming absence rather than expressing it — which would leave the
+// format with two spellings of one state and every reader of it choosing
+// between them.
+func (l *nodeLoader) geometry(arg *Node) (Geometry, bool) {
+	written, ok := l.symbol(arg, "a geometry form")
+	if !ok {
+		return "", false
+	}
+
+	geometry := Geometry(written)
+	if written == absentGeometry || !slices.Contains(geometries, geometry) {
+		l.add(unknownGeometry(arg.Span, written))
+		return "", false
+	}
+
+	return geometry, true
+}
+
+// permitted checks a node's type against the registry, and then the node's kind
+// and geometry against what that type permits.
+//
+// The three checks are ordered rather than independent because they build on
+// each other: a type nothing declares permits nothing, and reporting a kind as
+// not permitted by a type which does not exist says nothing anybody can act on.
+func (l *nodeLoader) permitted(d nodeDeclaration) {
+	if d.declaredType == (Span{}) {
+		return
+	}
+
+	declared, ok := l.registry.Type(d.node.declaredType)
+	if !ok {
+		l.add(l.registry.Undeclared(SortType, d.node.declaredType, d.declaredType))
+		return
+	}
+
+	// Every diagnostic below names all three: the node, the type, and the value
+	// the type does not permit. Two of the three are in the message and the
+	// third is the source line the span quotes; the type's own declaration is a
+	// related location, because the fix is as likely to be there as here.
+	at := RelatedLocation{Span: declared.Span, Message: "the type is declared here"}
+
+	if d.kind != (Span{}) && !declared.PermitsKind(d.node.kind) {
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     d.kind,
+			Message: fmt.Sprintf(
+				"expected a kind the type %s permits, found %s on %s",
+				declared.Name, d.node.kind, d.node.id,
+			),
+			Hint:    fmt.Sprintf("%s permits %s", declared.Name, join(spellings(declared.Kinds), "and")),
+			Related: []RelatedLocation{at},
+		})
+	}
+
+	switch {
+	case d.geometry != (Span{}) && !declared.PermitsGeometry(d.node.geometry):
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     d.geometry,
+			Message: fmt.Sprintf(
+				"expected a geometry form the type %s permits, found %s on %s",
+				declared.Name, d.node.geometry, d.node.id,
+			),
+			Hint:    fmt.Sprintf("%s permits %s", declared.Name, declared.permittedGeometry()),
+			Related: []RelatedLocation{at},
+		})
+
+	// A node with no geometry is ordinary only where its type says so. The
+	// registry spells that permission `absent`, and a type which does not list
+	// it is a type every instance of which has a shape.
+	case !d.wroteGeometry && !declared.Absent:
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     d.node.span,
+			Message: fmt.Sprintf(
+				"expected a (geometry ...) child of %s, found none, which the type %s does not permit",
+				d.node.id, declared.Name,
+			),
+			Hint:    fmt.Sprintf("%s permits %s; a type permits an instance to omit its geometry by declaring (geometry absent)", declared.Name, declared.permittedGeometry()),
+			Related: []RelatedLocation{at},
+		})
+	}
+}

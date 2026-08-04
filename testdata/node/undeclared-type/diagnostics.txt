@@ -1,0 +1,8 @@
+testdata/node/undeclared-type/nodes.dfc:7:9: error: expected a declared type, found MeetingRoon, which no registry file declares
+7 |   (type MeetingRoon)
+  |         ^^^^^^^^^^^
+  = hint: did you mean MeetingRoom?
+testdata/node/undeclared-type/nodes.dfc:13:9: error: expected a declared type, found Warehouse, which no registry file declares
+13 |   (type Warehouse)
+   |         ^^^^^^^^^
+   = hint: the declared types are MeetingRoom
