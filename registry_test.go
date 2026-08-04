@@ -10,12 +10,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-
-	sexpr "github.com/z5labs/sexpr-go"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sexpr "github.com/z5labs/sexpr-go"
 )
 
 // registryFixture is the root of one fixture registry set.
