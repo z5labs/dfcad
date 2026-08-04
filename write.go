@@ -759,16 +759,18 @@ func (p *pending) changed() bool {
 // change is how one file is reported.
 func (p *pending) change() Change {
 	out := Change{Path: p.path, Status: FileUnchanged, Effects: p.effects}
-
-	switch {
-	case !p.changed():
-	case p.existed:
-		out.Status = FileRewritten
-		out.Diff = unified(p.path, p.staged.src, p.src)
-	default:
-		out.Status = FileCreated
-		out.Diff = unified(p.path, nil, p.src)
+	if !p.changed() {
+		return out
 	}
+
+	out.Status = FileRewritten
+	if !p.existed {
+		out.Status = FileCreated
+	}
+
+	// The bytes a file which did not exist is diffed against are none, which is
+	// what a created file's diff is: every line added.
+	out.Diff = unified(p.path, p.staged.src, p.src)
 
 	return out
 }
