@@ -1,0 +1,36 @@
+; The vocabulary the model beside this file is judged against.
+;
+; The tolerance is the point of it. How far a loop may fail to close and still
+; count as closed is a decision this project made and wrote down, so every
+; answer computed against it can say which number produced it — and no number
+; like it appears anywhere in the engine.
+(project
+  (label "Boundary fixture")
+  (globalid-namespace "https://example.org/models/boundary"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))

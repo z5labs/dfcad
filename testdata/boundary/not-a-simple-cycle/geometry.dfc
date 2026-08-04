@@ -1,0 +1,62 @@
+; The three shapes which are not one simple cycle, one loop each.
+;
+; None of them is fixed by reordering the list and none of them is a corner
+; which drifted, which is why calling any of them a gap would send whoever has
+; to fix it looking in the wrong place.
+(vertex geom:V-41 (frame frame:building))
+
+(vertex geom:V-42 (frame frame:building))
+
+(vertex geom:V-43 (frame frame:building))
+
+(vertex geom:V-44 (frame frame:building))
+
+(edge geom:E-41 (frame frame:building) (vertices geom:V-41 geom:V-42))
+
+(edge geom:E-42 (frame frame:building) (vertices geom:V-42 geom:V-43))
+
+(edge geom:E-43 (frame frame:building) (vertices geom:V-43 geom:V-41))
+
+; The spur. Three edges meet at geom:V-43, which is a branch and not a corner.
+(edge geom:E-44 (frame frame:building) (vertices geom:V-43 geom:V-44))
+
+(loop geom:L-31
+  (label "The ring with a spur off it")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+
+; A ring which doubles back along the edge it came in on.
+(loop geom:L-32
+  (label "The ring which traverses one edge twice")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-41))
+
+(vertex geom:V-51 (frame frame:building))
+
+(vertex geom:V-52 (frame frame:building))
+
+(vertex geom:V-53 (frame frame:building))
+
+(vertex geom:V-54 (frame frame:building))
+
+(vertex geom:V-55 (frame frame:building))
+
+(vertex geom:V-56 (frame frame:building))
+
+(edge geom:E-51 (frame frame:building) (vertices geom:V-51 geom:V-52))
+
+(edge geom:E-52 (frame frame:building) (vertices geom:V-52 geom:V-53))
+
+(edge geom:E-53 (frame frame:building) (vertices geom:V-53 geom:V-51))
+
+(edge geom:E-54 (frame frame:building) (vertices geom:V-54 geom:V-55))
+
+(edge geom:E-55 (frame frame:building) (vertices geom:V-55 geom:V-56))
+
+(edge geom:E-56 (frame frame:building) (vertices geom:V-56 geom:V-54))
+
+; Two rings, each of which closes, in one loop which therefore does not.
+(loop geom:L-33
+  (label "The two rings written as one loop")
+  (frame frame:building)
+  (edges geom:E-51 geom:E-52 geom:E-53 geom:E-54 geom:E-55 geom:E-56))

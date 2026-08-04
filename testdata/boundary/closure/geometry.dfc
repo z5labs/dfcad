@@ -1,0 +1,124 @@
+; Two rings which do not meet themselves, and the tolerance which decides
+; whether that matters.
+;
+; The first is out by a quarter of a metre, which is an edge naming the wrong
+; corner. The second is out by four millimetres, which is one corner surveyed
+; twice by two crews — and a model calling that an open loop would report a gap
+; on every honest building in it.
+(vertex geom:V-11
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-12
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-13
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-14
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-15
+  (frame frame:building)
+  (position
+    (value (0.0 3.25 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-11 (frame frame:building) (vertices geom:V-11 geom:V-12))
+
+(edge geom:E-12 (frame frame:building) (vertices geom:V-12 geom:V-13))
+
+(edge geom:E-13 (frame frame:building) (vertices geom:V-13 geom:V-14))
+
+; The west wall begins a quarter of a metre from where the south wall ended.
+(edge geom:E-14 (frame frame:building) (vertices geom:V-15 geom:V-11))
+
+(loop geom:L-11
+  (label "The ring with a gap in it")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+
+(vertex geom:V-21
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-22
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-23
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-24
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+; The same corner as geom:V-21, shot by the second crew.
+(vertex geom:V-25
+  (frame frame:building)
+  (position
+    (value (0.0 0.004 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))
+
+(edge geom:E-21 (frame frame:building) (vertices geom:V-21 geom:V-22))
+
+(edge geom:E-22 (frame frame:building) (vertices geom:V-22 geom:V-23))
+
+(edge geom:E-23 (frame frame:building) (vertices geom:V-23 geom:V-24))
+
+(edge geom:E-24 (frame frame:building) (vertices geom:V-24 geom:V-25))
+
+(loop geom:L-12
+  (label "The ring which closes within the tolerance")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))

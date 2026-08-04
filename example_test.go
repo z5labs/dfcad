@@ -746,3 +746,88 @@ func mustID(claim *dfcad.Claim) dfcad.ID {
 	id, _ := claim.ID()
 	return id
 }
+
+// ExampleResolveBoundaries follows a wall which two rooms share, from each of
+// them and from the wall.
+//
+// Neither room holds a coordinate. Each references a loop, the loops reference
+// edges, and the edge between the rooms is named by both — so it is one node
+// with one identity, moving it moves both rooms, and a sliver gap between them
+// is not a state the model can express.
+func ExampleResolveBoundaries() {
+	root := "testdata/boundary/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+
+	// The two families are loaded separately and joined here, because a
+	// `boundary` is written on a semantic node and names a loop: no pass which
+	// has read one family can resolve it.
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	room, _ := nodes.Node("site:S-101")
+	for edge := range boundaries.Edges(room) {
+		fmt.Printf("%s is bounded by %s\n", room.ID(), edge.ID())
+	}
+
+	// And the same question from the other end, which is written nowhere and is
+	// what makes the sharing visible from the wall.
+	partition, _ := topology.Edge("geom:E-02")
+	for region := range boundaries.Regions(partition) {
+		fmt.Printf("%s bounds %s\n", partition.ID(), region.ID())
+	}
+
+	// Output:
+	// site:S-101 is bounded by geom:E-01
+	// site:S-101 is bounded by geom:E-02
+	// site:S-101 is bounded by geom:E-03
+	// site:S-101 is bounded by geom:E-04
+	// geom:E-02 bounds site:S-101
+	// geom:E-02 bounds site:S-102
+}
+
+// ExampleTopology_Assemble reads a loop as the ring its edges traverse and says
+// whether it closes, against a tolerance the registry declares by name.
+//
+// The answer is computed and never stored: adding an edge changes it with no
+// other edit, and a recorded answer would be stale the moment a corner moved.
+func ExampleTopology_Assemble() {
+	root := "testdata/boundary/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+
+	// Which predicate carries a position is vocabulary this repository owns, so
+	// the positions are resolved here and handed in rather than looked up by a
+	// name the engine would have to know.
+	positions := make(dfcad.Positions)
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		if value, ok := resolution.Value(); ok {
+			positions[vertex.ID()] = value
+		}
+	}
+
+	loop, _ := topology.Loop("geom:L-02")
+
+	assembly, _ := topology.Assemble(loop, positions, "boundary-closure", registry)
+
+	fmt.Printf("%s closes: %t, judged against %s (%v %s)\n",
+		loop.ID(), assembly.Closed(), assembly.Tolerance().Name, assembly.Tolerance().Value, assembly.Tolerance().Unit)
+
+	// The corridor runs through the shared partition against the order that
+	// edge was written in, because the room on the other side runs through it
+	// the other way. One edge, one identity, a direction per traversal.
+	for _, step := range assembly.Steps() {
+		fmt.Printf("  %s: %s to %s, reversed: %t\n", step.Edge().ID(), step.From(), step.To(), step.Reversed())
+	}
+
+	// Output:
+	// geom:L-02 closes: true, judged against boundary-closure (0.005 m)
+	//   geom:E-05: geom:V-02 to geom:V-05, reversed: false
+	//   geom:E-06: geom:V-05 to geom:V-06, reversed: false
+	//   geom:E-07: geom:V-06 to geom:V-03, reversed: false
+	//   geom:E-02: geom:V-03 to geom:V-02, reversed: true
+}

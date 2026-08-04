@@ -1,0 +1,34 @@
+testdata/boundary/dangling-boundary/model.dfc:14:13: error: expected a loop site:S-101 does not already name, found geom:L-01 a second time
+14 |   (boundary geom:L-01)
+   |             ^^^^^^^^^
+   = hint: a boundary is a reference and not a count; naming a loop twice says exactly what naming it once says
+testdata/boundary/dangling-boundary/model.dfc:13:13: note: first named here
+13 |   (boundary geom:L-01)
+   |             ^^^^^^^^^
+testdata/boundary/dangling-boundary/model.dfc:15:13: error: expected a loop id, found geom:V-01, which is a vertex
+15 |   (boundary geom:V-01)
+   |             ^^^^^^^^^
+   = hint: a semantic node references its outline, written (boundary <loop-id>) and naming a loop; a node never carries coordinates of its own
+testdata/boundary/dangling-boundary/model.dfc:26:9: note: the vertex it names is written here
+26 | (vertex geom:V-01 (frame frame:building))
+   |         ^^^^^^^^^
+testdata/boundary/dangling-boundary/model.dfc:7:7: note: the node it is written on is named here
+7 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/boundary/dangling-boundary/model.dfc:16:13: error: expected a loop id something in this model holds, found geom:L-99, which names no loop
+16 |   (boundary geom:L-99))
+   |             ^^^^^^^^^
+   = hint: a semantic node references its outline, written (boundary <loop-id>) and naming a loop; a node never carries coordinates of its own
+testdata/boundary/dangling-boundary/model.dfc:7:7: note: the node it is written on is named here
+7 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/boundary/dangling-boundary/model.dfc:24:13: error: expected a loop id, found site:S-101, which is a semantic node
+24 |   (boundary site:S-101))
+   |             ^^^^^^^^^^
+   = hint: a semantic node references its outline, written (boundary <loop-id>) and naming a loop; a node never carries coordinates of its own
+testdata/boundary/dangling-boundary/model.dfc:7:7: note: the node it names is written here
+7 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/boundary/dangling-boundary/model.dfc:18:7: note: the node it is written on is named here
+18 | (node site:S-102
+   |       ^^^^^^^^^^
