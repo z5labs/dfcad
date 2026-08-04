@@ -336,13 +336,29 @@ func begin(cmd command, globals *globals, stderr io.Writer) (*dfcad.Tx, int, boo
 // commit writes the change and reports it, which is the same last step for
 // every command which changes the model.
 func commit(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io.Writer) int {
+	out, exit, ok := apply(cmd, tx, globals, stderr)
+	if !ok {
+		return exit
+	}
+
+	return emitted(cmd, stdout, stderr, writeResult{envelope: newEnvelope(cmd.name), Commit: out})
+}
+
+// apply writes the change, renders it for a person and says whether the run
+// should go on to write a result at all.
+//
+// It is separate from [commit] because what a command has to say about a change
+// is not the same for all of them: a claim written or retracted is reported
+// beside the commit, and the object carrying both is the command's rather than
+// this layer's.
+func apply(cmd command, tx *dfcad.Tx, globals *globals, stderr io.Writer) (dfcad.Commit, int, bool) {
 	out, diags, err := tx.Commit()
 
 	refused := render(diags, stderr)
 
 	if err != nil {
 		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
-		return exitLoad
+		return dfcad.Commit{}, exitLoad, false
 	}
 
 	// A refused change produced no result, so it writes nothing at all to
@@ -350,13 +366,17 @@ func commit(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io.Write
 	// object describing a change which did not happen would read as one which
 	// did.
 	if refused {
-		return exitLoad
+		return dfcad.Commit{}, exitLoad, false
 	}
-
-	result := writeResult{envelope: newEnvelope(cmd.name), Commit: out}
 
 	reportCommit(out, globals, stderr)
 
+	return out, exitSuccess, true
+}
+
+// emitted writes one result object to stdout, which is the last thing every
+// write command does.
+func emitted(cmd command, stdout, stderr io.Writer, result any) int {
 	if err := emit(stdout, result); err != nil {
 		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad

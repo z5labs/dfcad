@@ -100,10 +100,15 @@ const listRegistry = `(project
 // listModel is written with its nodes out of id order, so that a listing which
 // reported the walk order rather than the id order would say so.
 //
-// Room A carries the one claim of the fixture, so that the walks over every
-// command reach a question `dfcad resolve` can answer. It writes no id of its
-// own, which is the ordinary case: an id is required only of a claim something
-// references.
+// Room A carries a claim which writes no id of its own, which is the ordinary
+// case — an id is required only of a claim something references — so that the
+// walks over every command reach a question `dfcad resolve` can answer and a
+// correction which has to mint an id has something to correct.
+//
+// Room C carries two, both named, which disagree. That is a state a model is
+// routinely in and it is the one a retraction is issued against: naming a claim
+// on a command line means naming it by the id it wrote, so the fixture has to
+// hold claims which wrote one.
 const listModel = `(node site:S-102
   (label "Meeting Room B")
   (kind Space)
@@ -135,7 +140,21 @@ const listModel = `(node site:S-102
   (kind Space)
   (type MeetingRoom)
   (geometry area)
-  (frame frame:site-grid))
+  (frame frame:site-grid)
+  (area
+    (id site:M-0001)
+    (value 31.0 m2)
+    (source "Design drawing DR-2026-004, Acme Architects")
+    (method method:estimate)
+    (accuracy (independent 0.5 m2))
+    (date "2026-01-12"))
+  (area
+    (id site:M-0002)
+    (value 31.4 m2)
+    (source "As-built check AB-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-05-06")))
 
 (node site:C-01
   (label "West campus")

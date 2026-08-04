@@ -121,6 +121,27 @@ var commands = []command{
 		run:     runRetire,
 		writes:  true,
 	},
+	{
+		name:    "add-claim",
+		summary: "attach a measured value to a thing, with its provenance",
+		usage:   addClaimUsage,
+		run:     runAddClaim,
+		writes:  true,
+	},
+	{
+		name:    "supersede",
+		summary: "correct a value: state the new one and retract the old",
+		usage:   supersedeUsage,
+		run:     runSupersede,
+		writes:  true,
+	},
+	{
+		name:    "deprecate-claim",
+		summary: "record that a claim was retracted",
+		usage:   deprecateClaimUsage,
+		run:     runDeprecateClaim,
+		writes:  true,
+	},
 }
 
 // lookup is the subcommand of that name.

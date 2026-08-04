@@ -1016,6 +1016,183 @@ is refused: that is the same problem one reference further along.
 The effects of a retirement with a replacement are the referrers that were redirected and
 then the node itself, in the order the change applied them.
 
+### What the claim commands add to the write payload
+
+`add-claim`, `supersede` and `deprecate-claim` write the payload above with three fields
+beside it. They are documented once here for the reason the payload itself is: they mean the
+same thing in all three.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `claim` | string, optional | The id of the claim that was written. Absent where it wrote none, which is the ordinary case: an id is required only of a claim something references. |
+| `replaced` | string, optional | The id of the claim that was retracted. Absent for a change that retracted none, and absent on a supersession whose retracted claim wrote no id of its own. |
+| `rankable` | boolean | Whether the claim that was written can take part in resolution, which is whether it carries an accuracy. |
+| `notices` | array | What the change has to say about the model it produced. Empty rather than null when it had nothing to say. |
+| `notices[].kind` | string | One of `unrankable`, `conflict`, `unresolvable`. |
+| `notices[].message` | string | The notice as a sentence, which is presentation. A caller branches on the kind. |
+| `notices[].subject` | string | The thing the claim is about. |
+| `notices[].predicate` | string | The predicate it was written under. |
+| `notices[].competing` | array, optional | The claims already written on the same subject and predicate, each in the shape `claims` reports a claim in. Present only on a `conflict`. |
+
+A **notice is not a diagnostic and not a failure.** Nothing is wrong with what anybody wrote:
+the files load, the change is permitted, and what is being reported is a consequence of it
+the author is entitled to have wanted. A claim with no accuracy is a legitimate claim, a
+second claim about one thing is the most valuable thing in a model, and a retraction that
+leaves nothing behind is sometimes exactly the record that should be kept. What none of them
+is, is something to discover later. Every notice is also written to stderr, on every run and
+in every format.
+
+| Kind | When |
+|------|------|
+| `unrankable` | The claim carries no accuracy. It loads, it can never win resolution, and it is not given a default. |
+| `conflict` | The claim was written on a subject and predicate the model already states. The competing claims are named. |
+| `unresolvable` | A retraction left its subject and predicate with no live claim at all, so nothing resolves under it. |
+
+### `add-claim`
+
+A value and the evidence for it, attached to one thing. It takes the subject and the
+predicate, and the axes of the claim.
+
+| Flag | Meaning |
+|------|---------|
+| `--value <value>` | What is claimed, in the shape the predicate declares: a scalar is one real number, a coordinate is its components in order, a text value is written as it stands, and a transform is thirteen reals — three of translation, nine of rotation, then the scale. Required. |
+| `--unit <unit>` | The unit it is expressed in, which must be the one the predicate declares. A non-dimensional predicate takes none, and there is no unitless token. |
+| `--source "<text>"` | The evidence: a report, a drawing, a person, an instrument log. Required. |
+| `--method <id>` | An id naming how the value was obtained. Required. |
+| `--accuracy "<term>"` | A term of how well it is known, written as the file writes one without its parentheses: `independent <magnitude> <unit>`, or `systematic <magnitude> <unit> <term-id>`. Repeat for more than one term. |
+| `--date <YYYY-MM-DD>` | The day the value was obtained. Today by default. |
+| `--id <claim-id>` | Write the claim with this id instead of leaving it unnamed. |
+
+The predicate is checked against the registry before anything is written, and so are the
+value's shape, its number of components and its unit. A predicate nothing declares, a
+predicate declared to take a plain value instead, a value of another shape, a coordinate of
+another dimension and a unit other than the declared one are each a **usage error** — exit
+`3`, with nothing on stdout — naming what was asked for and what would have been permitted.
+
+Leaving the accuracy out is permitted, and is reported as `unrankable`. That is the one
+escape hatch the bare-scalar rule keeps open
+([0008](./decisions/0008-a-bare-scalar-is-a-load-error.md)), and taking it deliberately is
+different from taking it by accident.
+
+Adding a second claim under a subject and predicate that already carries one **succeeds** and
+reports a `conflict` naming what it now competes with. Repeating a predicate is the normal
+case rather than an error: two width claims on one node are two measurements, and the
+disagreement between them is the most valuable thing in the file. `supersede` is the command
+for correcting rather than disagreeing.
+
+```json
+{
+  "version": 1,
+  "command": "add-claim",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/site.dfc",
+      "status": "rewritten",
+      "effects": [{"op": "modified", "tag": "node", "id": "site:S-101"}],
+      "diff": "--- entities/site.dfc.orig\n+++ entities/site.dfc\n@@ -7,3 +7,9 @@\n..."
+    }
+  ],
+  "rankable": true,
+  "notices": []
+}
+```
+
+### `supersede`
+
+A correction: the new claim is written and the claim it replaces is deprecated in its favour,
+in one change that lands completely or not at all. It takes the same flags as `add-claim`,
+and the same subject and predicate.
+
+The claim being corrected is the **one live claim** written on that subject under that
+predicate. It is named that way rather than by an id because most claims write none. A
+subject and predicate nothing states is refused rather than added to — a value nothing yet
+claims is added with `add-claim` — and one stated more than once is refused naming the
+competing claims, because which of them is being corrected is not something to guess at;
+deprecate that one by its id instead.
+
+The new claim is **given an id**, because the claim it replaces names it. That is when a
+claim id is generated, and the format is `<subject>:<predicate>:<n>`, where `n` is the lowest
+ordinal from one that nothing in the model already holds. Nothing is ever inferred back out
+of it: it is a name and not a schema, like every other id in this model
+([0002](./decisions/0002-immutable-id-mutable-label.md)).
+
+Correction is supersession and **never an edit**. No command in this interface writes over a
+claim's value: the old claim keeps its value, its evidence, its method and its date exactly
+as they were written, and the model gains the reason the number changed rather than losing
+the number it used to be
+([0009](./decisions/0009-derived-values-are-never-written-back.md)).
+
+```json
+{
+  "version": 1,
+  "command": "supersede",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/site.dfc",
+      "status": "rewritten",
+      "effects": [
+        {"op": "modified", "tag": "node", "id": "site:S-101"},
+        {"op": "modified", "tag": "node", "id": "site:S-101"}
+      ],
+      "diff": "--- entities/site.dfc.orig\n+++ entities/site.dfc\n@@ -7,6 +7,14 @@\n..."
+    }
+  ],
+  "claim": "site:S-101:area:1",
+  "rankable": true,
+  "notices": []
+}
+```
+
+### `deprecate-claim`
+
+That a claim was retracted. It takes the id of the claim, and the id of the claim that stands
+in its place.
+
+| Flag | Meaning |
+|------|---------|
+| `--superseded-by <claim-id>` | The claim that stands in its place. Required. |
+
+Deprecating is not deleting, and it is not editing. The claim stays in the file with
+everything it said, and what changes is that it now says it was retracted and by what.
+
+A replacement is **required**, and a deprecation naming none is refused. That is the whole of
+what keeps `deprecated` from becoming a delete button: a rank cannot be used to make a
+measurement quietly go away ([0007](./decisions/0007-rank-is-closed.md)). A replacement that
+names no claim, a claim named as its own replacement, and a claim that is already deprecated
+are each a **usage error** for the same reason. A supersession that closes a ring is refused
+at commit, by the pass that walks the chain.
+
+Retracting the only live claim of a subject and predicate is permitted, and is reported as
+`unresolvable`.
+
+```json
+{
+  "version": 1,
+  "command": "deprecate-claim",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/site.dfc",
+      "status": "rewritten",
+      "effects": [{"op": "modified", "tag": "node", "id": "site:S-103"}],
+      "diff": "--- entities/site.dfc.orig\n+++ entities/site.dfc\n@@ -30,4 +30,6 @@\n..."
+    }
+  ],
+  "replaced": "site:M-0001",
+  "rankable": false,
+  "notices": [
+    {
+      "kind": "unresolvable",
+      "message": "nothing is left asserted about the area of site:S-103, so it has no resolvable value",
+      "subject": "site:S-103",
+      "predicate": "area"
+    }
+  ]
+}
+```
+
 ### Diagnostics and the exit code of a read
 
 The listings, `get`, `traverse`, `claims` and `conflicts` exit `0` whenever they answered,
