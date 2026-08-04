@@ -1,3 +1,5 @@
+; The occupied spaces of level 2, and the elements that divide them. Every
+; space references the loop that bounds it; none of them carries a coordinate.
 (node
   site:D-201
   (label "Doorway to Meeting Room A")
@@ -14,9 +16,6 @@
   (geometry line)
   (frame frame:building)
   (within site:L-02))
-; The occupied spaces of level 2, and the elements that divide
-; them. Every space references the loop that bounds it; none of them carries a
-; coordinate.
 (node
   site:S-201
   (label "Service riser")

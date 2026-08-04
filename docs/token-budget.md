@@ -65,12 +65,12 @@ Counted with `github.com/tiktoken-go/tokenizer`, at the version go.mod pins:
 | File | Bytes | Lines |
 |------|-------|-------|
 | `entities/building.dfc` | 1376 | 54 |
-| `entities/level-01.dfc` | 10870 | 466 |
-| `entities/level-02.dfc` | 10870 | 466 |
+| `entities/level-01.dfc` | 10868 | 465 |
+| `entities/level-02.dfc` | 10868 | 465 |
 | `geometry/level-01.dfc` | 15202 | 496 |
 | `geometry/level-02.dfc` | 15234 | 496 |
 | `registry.dfc` | 3483 | 124 |
-| **the model** | **57035** | **2102** |
+| **the model** | **57031** | **2100** |
 
 ## The cost of discovery
 
@@ -113,8 +113,8 @@ What each answer costs with one field removed, both sides re-encoded the same wa
 
 | What is read | `o200k_base` | `cl100k_base` |
 |--------------|-------|-------|
-| the whole model | 20604 | 20706 |
-| `entities/level-01.dfc` alone, the file the answer is written in | 3671 | 3685 |
+| the whole model | 20600 | 20702 |
+| `entities/level-01.dfc` alone, the file the answer is written in | 3669 | 3683 |
 
 ## The ratio
 
@@ -131,12 +131,12 @@ One figure per encoding, in the order of the table above.
 
 **The bet holds. The gate does not.**
 
-The bet is the ratio, and it is not close: discovery costs 559 tokens against 20,604 to
+The bet is the ratio, and it is not close: discovery costs 559 tokens against 20,600 to
 read the model, which is 37 times cheaper, and the whole cold-start question costs 1,143,
-which is 18 times cheaper. Against the single file the answer is written in — which is the
-harder comparison, because knowing which file to open is knowledge discovery is what
-supplies — discovery is still 6.6 times cheaper and the full question 3.2 times. Nothing
-here suggests reading the files is the better arrangement.
+which is 18 times cheaper. Against the single file the answer is written in — the harder
+comparison, because knowing which file to open is itself something discovery had to supply
+— discovery is still 6.6 times cheaper and the full question 3.2 times. Nothing here
+suggests reading the files is the better arrangement.
 
 The gate is the absolute figure, and it missed. [#38](https://github.com/z5labs/dfcad/issues/38)
 asked for discovery plus a targeted fetch to land in the low hundreds of tokens. It lands
