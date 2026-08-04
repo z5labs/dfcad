@@ -481,11 +481,20 @@ func claimsOf(graph *dfcad.Graph, subject dfcad.ID, selection string, deprecated
 		}
 	}
 
-	// Predicate order, and then where each claim was written. Grouping by
-	// predicate is what makes two claims of one width readable as the
-	// disagreement they are, and it does not change when a claim moves between
-	// files while the model says the same thing.
-	slices.SortStableFunc(out, func(a, b claimEntry) int {
+	inPredicateOrder(out)
+
+	return out
+}
+
+// inPredicateOrder sorts claims by predicate, and then by where each was
+// written.
+//
+// Grouping by predicate is what makes two claims of one width readable as the
+// disagreement they are, and it does not change when a claim moves between files
+// while the model says the same thing. The claim's own id breaks the remaining
+// tie, so the order is total and two runs over one model diff to nothing.
+func inPredicateOrder(claims []claimEntry) {
+	slices.SortStableFunc(claims, func(a, b claimEntry) int {
 		return cmp.Or(
 			strings.Compare(a.Predicate, b.Predicate),
 			strings.Compare(a.Span.Start.Path, b.Span.Start.Path),
@@ -493,8 +502,6 @@ func claimsOf(graph *dfcad.Graph, subject dfcad.ID, selection string, deprecated
 			strings.Compare(a.ID, b.ID),
 		)
 	})
-
-	return out
 }
 
 // resolved is what the resolution rule makes of the claims of one subject: the
