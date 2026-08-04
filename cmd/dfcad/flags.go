@@ -178,13 +178,26 @@ func (g *globals) validate() error {
 	return UnknownFormatError{Format: g.Format, Known: formats}
 }
 
-// open checks that the model root is a directory that is there.
+// open checks that the model root is a directory that is there and can be
+// read.
 //
 // A root that is not is a load failure rather than a usage error: the
 // invocation was well formed and the input it named could not be read, which
 // is exactly the distinction the exit codes exist to draw.
+//
+// The directory is opened rather than stat'd because stat answers a different
+// question. A directory can be searchable and not readable, and stat succeeds
+// on it — the run would then get past this check and report an unreadable root
+// as a result object on stdout, which is the one thing the check exists to
+// stop.
 func (g *globals) open() error {
-	info, err := os.Stat(g.Root)
+	root, err := os.Open(g.Root)
+	if err != nil {
+		return RootError{Path: g.Root, Cause: err}
+	}
+	defer root.Close()
+
+	info, err := root.Stat()
 	if err != nil {
 		return RootError{Path: g.Root, Cause: err}
 	}

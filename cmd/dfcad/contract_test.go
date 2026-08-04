@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -189,7 +190,40 @@ func TestStdoutIsEmptyWhenTheInputCannotBeLoaded(t *testing.T) {
 			assert.Empty(t, stdout.String())
 			assert.Contains(t, stderr.String(), root)
 		})
+
+		t.Run(cmd.name+" writes nothing when the model root cannot be read", func(t *testing.T) {
+			root := unreadable(t)
+
+			var stdout, stderr bytes.Buffer
+
+			require.Equal(t, exitLoad, run([]string{cmd.name, "--root", root}, &stdout, &stderr))
+
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), root)
+		})
 	}
+}
+
+// unreadable is a directory that is there and cannot be read.
+//
+// A directory can be searchable without being readable, which stat cannot tell
+// apart from an ordinary one — so this is the case that says whether the root
+// check asks the question it claims to.
+func unreadable(t *testing.T) string {
+	t.Helper()
+
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a directory whatever its mode, so there is nothing to observe")
+	}
+
+	dir := tree(t, map[string]string{"a.dfc": asPrinted})
+
+	// Searchable but not readable: a path beneath it can still be opened by
+	// name, and the directory itself cannot be listed.
+	require.NoError(t, os.Chmod(dir, 0o100))
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+
+	return dir
 }
 
 // TestEveryCommandDescribesTheContractAndExitsZero walks every command's help,
@@ -337,6 +371,11 @@ func TestRootErrorCarriesItsCause(t *testing.T) {
 				return filepath.Join(tree(t, map[string]string{"a.dfc": asPrinted}), "a.dfc")
 			},
 			expectedCause: ErrNotADirectory,
+		},
+		{
+			name:          "reports a root which cannot be read",
+			root:          unreadable,
+			expectedCause: fs.ErrPermission,
 		},
 	}
 
