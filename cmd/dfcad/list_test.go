@@ -74,6 +74,11 @@ const listRegistry = `(project
   (geometry solid)
   (description "A building let as offices."))
 
+(predicate area
+  (unit m2)
+  (shape scalar)
+  (description "How much floor a space has."))
+
 (predicate frame-transform
   (shape transform)
   (description "The rigid transform from a frame to its parent."))
@@ -81,6 +86,11 @@ const listRegistry = `(project
 
 // listModel is written with its nodes out of id order, so that a listing which
 // reported the walk order rather than the id order would say so.
+//
+// Room A carries the one claim of the fixture, so that the walks over every
+// command reach a question `dfcad resolve` can answer. It writes no id of its
+// own, which is the ordinary case: an id is required only of a claim something
+// references.
 const listModel = `(node site:S-102
   (label "Meeting Room B")
   (kind Space)
@@ -100,7 +110,13 @@ const listModel = `(node site:S-102
   (kind Space)
   (type MeetingRoom)
   (geometry area)
-  (frame frame:building))
+  (frame frame:building)
+  (area
+    (value 24.2 m2)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-05-06")))
 
 (node site:S-103
   (kind Space)

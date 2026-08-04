@@ -62,6 +62,12 @@ var commands = []command{
 		run:     runGet,
 	},
 	{
+		name:    "resolve",
+		summary: "answer one predicate about one thing, with its evidence",
+		usage:   resolveUsage,
+		run:     runResolve,
+	},
+	{
 		name:    "claims",
 		summary: "list every claim written on one thing",
 		usage:   claimsUsage,
@@ -126,6 +132,10 @@ Exit codes:
 	2   load failure: input could not be read, did not parse, or was not
 	    written
 	3   usage error: the invocation itself was wrong
+	4   ambiguous: resolution could not choose between the claims, and every
+	    one it could not choose between is in the result
+	5   strict ambiguity: the same, under a predicate the registry declares
+	    strict, for which no answer is safer than an arbitrary one
 
 The shape of each command's object is documented in docs/machine-output.md.
 `
