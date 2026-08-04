@@ -464,10 +464,10 @@ func (l *registryLoader) declarePredicate(node *Node) {
 		predicate.Description, _ = l.text(arg, "a string")
 	}
 
-	// The two cross-field rules of section 7.4 and section 6.6.4. Both are
-	// checked against the shape as written rather than against the shape that
-	// survived validation, so a predicate whose shape was misspelled reports
-	// that once and not twice.
+	// The two cross-field rules of section 7.4 and section 6.6.4. Both read the
+	// shape which survived validation, so a predicate whose shape was
+	// misspelled hears about the misspelling once rather than about the
+	// misspelling and then about a dimension that nothing can judge.
 	switch {
 	case predicate.Shape == ShapeCoordinate && !hasDimension:
 		l.add(Diagnostic{
