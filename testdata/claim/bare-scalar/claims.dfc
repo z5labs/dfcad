@@ -1,0 +1,26 @@
+; One claim-bearing predicate written three ways: the bare scalar the rule
+; refuses, the minimal claim which is the whole of the escape hatch, and the
+; full claim. The two claims differ only in whether they say how good the
+; number is, which is the difference between unrankable and rankable.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  ; Refused. It is one keystroke from correct and reads as a simplification,
+  ; which is exactly why it is a load error and not a lint.
+  (width 8.5)
+  ; The escape hatch: somebody who does not know how good the figure is says
+  ; so by leaving the accuracy out, and states the method they do have. It
+  ; loads, and it is unrankable.
+  (width
+    (value 8.4 m)
+    (source "Massing study MS-2026-002, sheet 1")
+    (method method:estimated)
+    (date "2026-01-05"))
+  ; The same predicate, measured, with the accuracy written.
+  (width
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")))

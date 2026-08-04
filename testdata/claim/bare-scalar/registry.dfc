@@ -1,0 +1,18 @@
+; The vocabulary the claims beside this file are judged against. width is
+; declared claim-bearing, which is the default and is why nothing here says so.
+(project
+  (label "Bare scalar fixture")
+  (globalid-namespace "https://example.org/models/bare-scalar"))
+
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How wide the thing is, across its shorter axis."))

@@ -30,10 +30,7 @@ func claimFixture(name string) string { return filepath.Join("testdata", "claim"
 func loadClaimFixture(t *testing.T, name string) (*Claims, string) {
 	t.Helper()
 
-	registry, registryDiags := LoadRegistry(claimFixture(name))
-	require.Empty(t, registryDiags, "the fixture registry loads clean")
-
-	claims, diags := LoadClaims(claimFixture(name), registry)
+	claims, diags := LoadClaims(claimFixture(name), mustLoadRegistry(t, claimFixture(name)))
 
 	var collected Diagnostics
 	collected.Add(diags...)
@@ -92,6 +89,14 @@ func TestLoadClaims(t *testing.T) {
 		{
 			name:    "names a reference to a claim which carries no id of its own",
 			fixture: "dangling-reference",
+		},
+		{
+			name:    "shows the minimal claim where a bare scalar was written instead",
+			fixture: "bare-scalar",
+		},
+		{
+			name:    "names a claim written under a predicate declared to take a plain value",
+			fixture: "claim-for-a-plain-value",
 		},
 	}
 
@@ -528,6 +533,256 @@ func TestLoadClaimsIgnoresAPlainValue(t *testing.T) {
 
 	assert.Zero(t, claims.Len())
 	assert.Empty(t, diags)
+}
+
+// TestLoadClaimsRefusesABareScalar is the rule the model depends on: where a
+// claim belongs, a number on its own does not load.
+//
+// It is checked on the fixture which writes one predicate three ways, so that
+// what is refused and what is accepted are a few lines apart and the difference
+// between them is the whole of the escape hatch.
+func TestLoadClaimsRefusesABareScalar(t *testing.T) {
+	claims, rendered := loadClaimFixture(t, "bare-scalar")
+	require.NotEmpty(t, rendered, "the bare scalar is reported")
+
+	read := slices.Collect(claims.Under("site:S-101", "width"))
+	require.Len(t, read, 2, "the two claims load and the bare scalar is not one of them")
+
+	t.Run("the minimal claim loads and is unrankable", func(t *testing.T) {
+		accuracy, hasAccuracy := read[0].Accuracy()
+
+		assert.False(t, hasAccuracy)
+		assert.False(t, read[0].Rankable())
+		assert.Empty(t, accuracy.Terms, "no default accuracy was invented")
+
+		number, isScalar := read[0].Value().Scalar()
+		require.True(t, isScalar)
+		assert.Equal(t, 8.4, number)
+		assert.Equal(t, ID("method:estimated"), read[0].Method(), "the method it does have was still stated")
+	})
+
+	t.Run("the full claim loads and is rankable", func(t *testing.T) {
+		assert.True(t, read[1].Rankable())
+
+		number, isScalar := read[1].Value().Scalar()
+		require.True(t, isScalar)
+		assert.Equal(t, 8.5, number)
+	})
+
+	t.Run("the bare scalar became no claim at all", func(t *testing.T) {
+		for _, claim := range read {
+			assert.NotEmpty(t, claim.Source(), "a claim in the model carries its evidence")
+		}
+	})
+}
+
+// TestLoadClaimsBareScalarNamesWhatWouldBeAccepted checks the three things the
+// diagnostic has to carry: which predicate, where, and the form to write
+// instead.
+//
+// The last is what separates this from "invalid claim". Somebody who wrote a
+// number where a claim belongs is missing four children and the spelling of
+// each of them, and a diagnostic which only refused the number would leave them
+// to find the specification.
+func TestLoadClaimsBareScalarNamesWhatWouldBeAccepted(t *testing.T) {
+	_, diags := LoadClaims(claimFixture("bare-scalar"), mustLoadRegistry(t, claimFixture("bare-scalar")))
+	require.Len(t, diags, 1)
+
+	diagnostic := diags[0]
+
+	assert.Equal(t, SeverityError, diagnostic.Severity)
+	assert.Contains(t, diagnostic.Message, "width", "the diagnostic names the predicate")
+	assert.Equal(t, filepath.Join(claimFixture("bare-scalar"), "claims.dfc"), diagnostic.Span.Start.Path)
+	assert.Positive(t, diagnostic.Span.Start.Line)
+	assert.Positive(t, diagnostic.Span.Start.Column)
+	assert.Contains(
+		t, diagnostic.Hint,
+		`(width (value <number> m) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		"the diagnostic shows the minimal claim which would be accepted",
+	)
+	assert.NotEmpty(t, diagnostic.Related, "and where the predicate was declared")
+}
+
+// LoadClaims takes a root and a registry, and there is no third parameter an
+// option set, a severity or a strictness could arrive through. The rule below
+// is a property of the loader rather than of a call, and this is where that is
+// asserted at compile time.
+var _ func(string, *Registry) (*Claims, []Diagnostic) = LoadClaims
+
+// TestLoadClaimsBareScalarIsUnconditional checks that nothing in the
+// environment turns the rule into a warning.
+//
+// A rule which can be waived is waived the same afternoon somebody has ten
+// thousand of them to fix, and the model which comes back six months later has
+// provenance on a minority of its values with no commit saying so. That is the
+// failure decision 0008 is about, so the absence of a downgrade is a behaviour
+// with a test rather than a thing nobody got round to implementing.
+func TestLoadClaimsBareScalarIsUnconditional(t *testing.T) {
+	const registry = `(project (globalid-namespace "https://example.org/models/unconditional"))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate width (unit m) (shape scalar) (description "How wide the thing is."))
+`
+
+	const written = `(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width 8.5))
+`
+
+	testCases := []struct {
+		name     string
+		variable string
+		value    string
+	}{
+		{
+			name: "with nothing set in the environment",
+		},
+		{
+			name:     "with the rule named directly",
+			variable: "DFCAD_ALLOW_BARE_SCALARS",
+			value:    "1",
+		},
+		{
+			name:     "with a severity asked for",
+			variable: "DFCAD_BARE_SCALAR_SEVERITY",
+			value:    "warning",
+		},
+		{
+			name:     "with strictness turned off",
+			variable: "DFCAD_STRICT",
+			value:    "0",
+		},
+		{
+			name:     "with linting turned off",
+			variable: "DFCAD_LINT",
+			value:    "off",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if testCase.variable != "" {
+				t.Setenv(testCase.variable, testCase.value)
+			}
+
+			claims, diags := loadClaimModel(t, registry, written)
+
+			assert.Zero(t, claims.Len(), "the bare scalar is not read as a claim")
+			require.Len(t, diags, 1)
+			assert.Equal(t, SeverityError, diags[0].Severity)
+
+			var collected Diagnostics
+			collected.Add(diags...)
+			assert.True(t, collected.HasErrors(), "the load fails")
+		})
+	}
+}
+
+// TestLoadClaimsLeavesAnEmptyFormToTheStructuralPass checks that a predicate
+// written with nothing after it is not reported here as a bare scalar.
+//
+// It is not one. Nothing was written where the value goes, and a diagnostic
+// saying a plain value was found would name something nobody wrote. That a form
+// holds nothing is [Validate]'s sentence, and it says it once.
+func TestLoadClaimsLeavesAnEmptyFormToTheStructuralPass(t *testing.T) {
+	const registry = `(project (globalid-namespace "https://example.org/models/empty"))
+(namespace site (description "Semantic nodes minted by this model."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate width (unit m) (shape scalar) (description "How wide the thing is."))
+`
+
+	const written = `(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width))
+`
+
+	claims, diags := loadClaimModel(t, registry, written)
+
+	assert.Zero(t, claims.Len())
+	assert.Empty(t, diags, "the claim pass says nothing about a form which holds nothing")
+
+	file, err := Parse("entities"+Extension, strings.NewReader(written))
+	require.NoError(t, err)
+
+	structural := Validate(file)
+	require.Len(t, structural, 1, "and the structural pass does")
+	assert.Equal(t, "expected a value or the children of a claim after the width tag, found none", structural[0].Message)
+}
+
+// TestLoadClaimsRefusesAClaimForAPlainValue checks the other direction of the
+// same rule: a predicate declared to carry no provenance does not quietly grow
+// some.
+func TestLoadClaimsRefusesAClaimForAPlainValue(t *testing.T) {
+	claims, rendered := loadClaimFixture(t, "claim-for-a-plain-value")
+
+	assert.NotEmpty(t, rendered, "the claim is reported")
+	assert.Zero(t, claims.Len(), "and neither spelling is read as a claim")
+}
+
+// TestSpellMinimalClaim checks that the form the bare-scalar diagnostic shows
+// is the one the predicate declares rather than a fixed sentence.
+//
+// A skeleton with the wrong unit or the wrong number of components is worse
+// than none: it is a form somebody copies, writes, and is refused a second time
+// for a reason the first diagnostic invented.
+func TestSpellMinimalClaim(t *testing.T) {
+	testCases := []struct {
+		name      string
+		predicate Predicate
+		expected  string
+	}{
+		{
+			name:      "spells a scalar with the unit the predicate declares",
+			predicate: Predicate{Shape: ShapeScalar, Unit: "m"},
+			expected:  `(width (value <number> m) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		},
+		{
+			name:      "spells a non-dimensional scalar with no unit at all",
+			predicate: Predicate{Shape: ShapeScalar},
+			expected:  `(width (value <number>) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		},
+		{
+			name:      "spells a coordinate with as many components as the predicate declares",
+			predicate: Predicate{Shape: ShapeCoordinate, Dimension: 3, Unit: "m"},
+			expected:  `(width (value (<number> <number> <number>) m) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		},
+		{
+			name:      "spells a string, which carries no unit",
+			predicate: Predicate{Shape: ShapeText},
+			expected:  `(width (value "<text>") (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		},
+		{
+			name:      "spells a transform as the child form it is written as",
+			predicate: Predicate{Shape: ShapeTransform},
+			expected:  `(width (value (transform (translation ...) (rotation ...) (scale ...))) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		},
+		{
+			name:      "says only that a value goes there when the predicate declares no shape",
+			predicate: Predicate{},
+			expected:  `(width (value <value>) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, spellMinimalClaim("width", testCase.predicate))
+		})
+	}
+}
+
+// mustLoadRegistry loads a fixture registry which is required to load clean.
+func mustLoadRegistry(t *testing.T, root string) *Registry {
+	t.Helper()
+
+	registry, diags := LoadRegistry(root)
+	require.Empty(t, diags, "the fixture registry loads clean")
+
+	return registry
 }
 
 // loadClaimModel writes a one-file registry and a one-file set of entities into

@@ -99,6 +99,8 @@ where the tests of that layer read them from.
 | 6.5           | A rank outside the closed set                         | `claim/unknown-rank/`                       |
 | 4.1, 6.5      | One claim id written on two claims, across two files  | `claim/duplicate-id/`                       |
 | 6.5           | A reference to a claim which carries no id of its own | `claim/dangling-reference/`                 |
+| 6.5, 7.4      | A bare scalar where a claim-bearing predicate belongs, beside the minimal and the full claim of the same predicate | `claim/bare-scalar/` |
+| 6.5, 7.4      | A claim written under a predicate declared non-claim-bearing, beside the plain value it takes | `claim/claim-for-a-plain-value/` |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could

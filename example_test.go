@@ -194,6 +194,42 @@ func ExampleLoadClaims() {
 	// 8.53 m +/- 0.003 m, As-built check AB-2026-009, Acme Surveys, 2026-05-06
 }
 
+// ExampleLoadClaims_bareScalar is the rule which keeps every other example on
+// this page meaning something: where a claim belongs, a number on its own does
+// not load.
+func ExampleLoadClaims_bareScalar() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/bare-scalar")
+
+	// `(width 8.5)` is one keystroke from correct and reads as a simplification
+	// in review, which is why it is a load error rather than a warning: a
+	// warning that appears ten thousand times is suppressed the same afternoon,
+	// and the provenance model is gone with nothing in the history saying so.
+	//
+	// Nothing downgrades it. There is no flag, no environment variable and no
+	// configuration, because the distinction between a diagnostic which fails
+	// the load and one which does not is a property of the rule.
+	claims, diagnostics := dfcad.LoadClaims("testdata/claim/bare-scalar", registry)
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+		fmt.Println(diagnostic.Hint)
+	}
+
+	// The escape hatch is narrow and deliberate. A claim which cannot say how
+	// good its value is leaves the accuracy out, and it loads — as unrankable,
+	// which is visible as such rather than as a number quietly indistinguishable
+	// from a surveyed one.
+	for claim := range claims.Under("site:S-101", "width") {
+		width, _ := claim.Value().Scalar()
+		fmt.Printf("%g %s, %s, rankable %t\n", width, claim.Value().Unit(), claim.Method(), claim.Rankable())
+	}
+
+	// Output:
+	// testdata/claim/bare-scalar/claims.dfc:11:3: error: expected the claim the predicate width bears, found a plain value
+	// the least a claim may say is (width (value <number> m) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>")); accuracy may be left out, and the claim then loads as unrankable
+	// 8.4 m, method:estimated, rankable false
+	// 8.5 m, method:scaled-from-plan, rankable true
+}
+
 func ExampleClaim_Accuracy() {
 	registry, _ := dfcad.LoadRegistry("testdata/claim/valid")
 	claims, _ := dfcad.LoadClaims("testdata/claim/valid", registry)

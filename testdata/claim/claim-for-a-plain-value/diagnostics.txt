@@ -1,0 +1,7 @@
+testdata/claim/claim-for-a-plain-value/claims.dfc:13:4: error: expected the plain value the predicate colour declares, found a claim
+13 |   (colour
+   |    ^^^^^^
+   = hint: colour is declared (claim-bearing #f) and takes its value directly: (colour "<text>"), with nothing after it
+testdata/claim/claim-for-a-plain-value/registry.dfc:16:12: note: the predicate is declared here
+16 | (predicate colour
+   |            ^^^^^^
