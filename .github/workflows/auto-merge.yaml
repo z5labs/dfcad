@@ -1,23 +1,23 @@
-name: Auto-merge
+name: Auto merge
 
-# The `/next-issue` loop runs unattended, so the merge that ends a cycle has to
-# happen without a human at the keyboard. Rather than let the agent driving the
-# loop run `gh pr merge` itself, the loop labels the pull request and this
-# workflow hands it to GitHub's native auto-merge.
+# The backlog loop runs unattended, so the merge that ends a cycle has to happen
+# without a human at the keyboard. Rather than let the agent driving the loop run
+# `gh pr merge` itself, the loop labels the pull request and this workflow hands
+# it to GitHub's native auto merge.
 #
 # The point is where the policy lives. A merge the agent performs is a judgement
 # made mid-cycle and visible only in a transcript; a merge this workflow performs
 # is governed by two things you can read and change: the label gate below, and
-# the branch protection rule on `main` that requires `build`.
+# the branch protection rule on the default branch, whichever checks it requires.
 #
-# Neither path around that rule exists. If checks are still running, auto-merge
-# is armed and GitHub holds the pull request until `build` passes, never merging
-# it if it does not — a failing check leaves the pull request open with
-# auto-merge still armed, so pushing a fix is enough to let it through, and
-# nothing is closed on your behalf. If checks have already passed, the merge
-# happens immediately, and branch protection still refuses any merge that would
-# violate it. The label decides *when* the merge is attempted, not *whether* the
-# rule applies.
+# Neither path around that rule exists. If checks are still running, auto merge
+# is armed and GitHub holds the pull request until they pass, never merging it if
+# one does not — a failing check leaves the pull request open with auto merge
+# still armed, so pushing a fix is enough to let it through, and nothing is
+# closed on your behalf. If checks have already passed, the merge happens
+# immediately, and branch protection still refuses any merge that would violate
+# it. The label decides *when* the merge is attempted, not *whether* the rule
+# applies.
 #
 # Adding the label is itself a permission boundary: it takes write access to the
 # repository, so a pull request from a fork cannot trigger this by labelling
@@ -32,9 +32,9 @@ name: Auto-merge
 # the pull request's head, so a pull request could rewrite the steps below and
 # have them run with the `contents: write` token granted underneath.
 #
-# That is not theoretical in this repository. The label is applied by an
-# unattended loop, on branches that same loop creates, with no human reading the
-# diff first.
+# That is not theoretical in a repository running this plugin. The label is
+# applied by an unattended loop, on branches that same loop creates, with no
+# human reading the diff first.
 #
 # If a checkout is ever added to this job, it must pin an explicit ref from the
 # base branch. Never check out `github.event.pull_request.head.sha` here.
@@ -45,16 +45,15 @@ on:
       - closed
 
 # `contents: write` is not optional here, despite this job checking out nothing.
-# `gh pr merge --auto` only *arms* auto-merge while something still blocks the
+# `gh pr merge --auto` only *arms* auto merge while something still blocks the
 # pull request; once the required checks are already green it merges immediately
 # instead, and that path writes to repository contents. Because the loop labels
 # only after checks pass, the immediate path is the common one — `contents: read`
 # fails it with `Resource not accessible by integration (mergePullRequest)`.
 #
 # `issues: write` is for the explicit `gh issue close` in `close-linked-issues`
-# below. It is NOT there to make GitHub's own auto-close work: that was tried
-# first and tested on a real merge, and the issue still had to be closed by hand.
-# See the comment on that job.
+# below. It is NOT there to make GitHub's own auto-close work: that was tested on
+# a real merge and does not. See the comment on that job.
 permissions:
   contents: write
   pull-requests: write
@@ -62,10 +61,15 @@ permissions:
 
 jobs:
   enable-auto-merge:
-    name: enable auto-merge
-    # Every other label on a pull request — `story`, `blocked`, whatever arrives
-    # later — leaves this workflow inert. The `closed` trigger belongs to
-    # `delete-merged-branch` below and must not reach this job.
+    name: enable auto merge
+    # Every other label on a pull request — the backlog label, `bug`, whatever
+    # arrives later — leaves this workflow inert. The `closed` trigger belongs to
+    # the two jobs below and must not reach this one.
+    #
+    # If you rename the merge label, change it in `.claude/backlog.json` and here
+    # in the same commit. The cycle applies whatever the config names; this job
+    # reacts to whatever is written below; a mismatch is silent on both sides —
+    # the label lands, no run starts, and the pull request waits forever.
     if: github.event.action == 'labeled' && github.event.label.name == 'auto-merge'
     runs-on: ubuntu-latest
     env:
@@ -73,19 +77,22 @@ jobs:
     steps:
       # Who performs the merge decides whether anything downstream of it happens
       # at all. GitHub does not create workflow runs from events triggered by
-      # GITHUB_TOKEN -- an anti-recursion rule -- so a merge performed with
-      # GITHUB_TOKEN emits a `closed` event that starts no run, and
-      # `delete-merged-branch` below never executes. That is measured, not
-      # inferred: every auto-merge run in this repository shows that job `skipped`,
-      # and every branch it should have removed is still here.
+      # GITHUB_TOKEN — an anti-recursion rule — so a merge performed with
+      # GITHUB_TOKEN emits a `closed` event that starts no run, and the two jobs
+      # below never execute. That is not a hypothesis: across ten merges in two
+      # repositories every auto-merge run showed `delete merged branch` as
+      # `skipped`, twenty-four merged branches survived, and the single run where
+      # it did fire was a pull request a person merged by hand.
       #
-      # An App installation token is a different actor, so its events cascade.
+      # An App installation token is a different actor, so its events cascade
+      # normally.
       #
       # One-time setup: create a GitHub App, install it on this repository with
       # Contents / Pull requests / Issues set to write, and add two repository
       # secrets:
       #   BACKLOG_APP_ID   -- the App's numeric App ID
       #   BACKLOG_APP_KEY  -- the App's PEM private key
+      # `backlog:setup-backlog` checks for both and reports when they are absent.
       - name: Mint a GitHub App installation token
         id: app-token
         if: env.APP_ID != ''
@@ -95,8 +102,9 @@ jobs:
           private-key: ${{ secrets.BACKLOG_APP_KEY }}
 
       # Degrade loudly, not silently. Without the App the merge still happens and
-      # `/next-issue` still closes the issue itself, but merged branches pile up
-      # with nothing to collect them.
+      # the loop still works — its own `finish-issue` step closes the issue — but
+      # remote branches accumulate with nothing to collect them, and an operator
+      # who never reads this log would have no way to know why.
       - name: Warn when falling back to GITHUB_TOKEN
         if: env.APP_ID == ''
         run: |
@@ -105,38 +113,37 @@ jobs:
           events, so close-linked-issues and delete-merged-branch will NOT run and the \
           head branch will survive the merge."
 
-      - name: Enable auto-merge
+      - name: Enable auto merge
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         # `--auto` queues the merge instead of performing it: GitHub squashes the
         # pull request when the required checks pass, and does nothing if they
-        # never do. The repository allows squash merges only.
-        #
-        # The branch is *not* removed on the way out. `deleteBranchOnMerge` is
-        # set on the repository, but it does not fire for a merge performed by
-        # this workflow's `GITHUB_TOKEN` — only for one a person performs. That
-        # is what `delete-merged-branch` below exists to cover.
+        # never do. `--squash` assumes the repository allows squash merges;
+        # `backlog:setup-backlog` checks that and reports if another merge method
+        # is still permitted.
         run: gh pr merge "$PR" --repo "$REPO" --squash --auto
 
   close-linked-issues:
     name: close linked issues
-    # A `Closes #N` line does not close the issue when a token rather than a
-    # person performs the merge. The closing reference itself registers correctly
-    # -- confirmed on #105, #107, #109 and #110, where `closingIssuesReferences` held the right issue
-    # every time -- and nothing acts on it. Granting `issues: write` was the
-    # obvious explanation and was tested on a real merge: the issue stayed open
-    # and `/next-issue` closed it by hand seconds later, exactly as before. So the
-    # permission is not the lever, and this job does the close explicitly rather
-    # than relying on behaviour already observed not to happen.
+    # A `Closes #N` line does not close the issue when the merge is performed by
+    # a token rather than a person. The closing reference itself registers
+    # correctly — measured across five cycles, `closingIssuesReferences` held the
+    # right issue every time — and nothing acts on it. Granting `issues: write`
+    # was the obvious explanation and was tested on a real merge: the issue
+    # stayed open, and the loop closed it by hand eighteen seconds later, exactly
+    # as before. So the permission is not the lever, and this job does the close
+    # explicitly rather than relying on behaviour that has already been observed
+    # not to happen.
     #
-    # No fork guard here, unlike the branch deletion below: a pull request from a
+    # No fork guard here, unlike the branch deletion below. A pull request from a
     # fork can legitimately close an issue in this repository.
     #
-    # `/next-issue` also closes the issue and verifies the result. That redundancy
-    # is deliberate -- this job cannot run at all without the App token -- and the
-    # two closes are idempotent.
+    # The loop's own `finish-issue` step also closes the issue and verifies the
+    # result. That redundancy is deliberate: this job cannot run at all unless the
+    # App token is configured, and the two closes are idempotent — whichever
+    # arrives first wins and the other reads `CLOSED` and does nothing.
     if: >-
       github.event.action == 'closed' &&
       github.event.pull_request.merged == true
@@ -147,12 +154,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-        # Read the references GitHub itself parsed rather than re-parsing the
+        # Read the references GitHub itself parsed, rather than re-parsing the
         # body: whatever keyword form the author used, this is what GitHub
-        # understood by it. An empty list is normal for a pull request that closes
-        # nothing, and the loop simply does not execute.
+        # understood by it. An empty list is the normal case for a pull request
+        # that closes nothing, and the loop over it simply does not execute.
         #
-        # Failures must not fail the run. The merge has already happened.
+        # Failures must not fail the run. The merge has already happened, and the
+        # loop verifies the close from its side regardless.
         run: |
           gh pr view "$PR" --repo "$REPO" --json closingIssuesReferences \
             --jq '.closingIssuesReferences[].number' \
@@ -184,9 +192,9 @@ jobs:
     # The head-repository guard skips forks. A fork's branch is not ours to
     # delete, and the API call would fail rather than no-op.
     #
-    # This job only fires when the merge used the App token above. With
-    # GITHUB_TOKEN it never runs and branches accumulate -- which is what had been
-    # happening here until now.
+    # Like the job above, this runs only when the merge used the App token. With
+    # GITHUB_TOKEN it never fires and branches accumulate — the warning in
+    # `enable-auto-merge` is the only notice you get.
     if: >-
       github.event.action == 'closed' &&
       github.event.pull_request.merged == true &&
@@ -202,6 +210,10 @@ jobs:
         # something else already removed it, the API answers 422 and there is
         # nothing left to do. A failure here must not fail the run — the merge
         # has already happened, and an orphaned branch is untidy, not broken.
+        #
+        # `deleteBranchOnMerge` on the repository does not cover this. It fires
+        # for a merge a person performs, not for one a token performs, which is
+        # why this job exists.
         run: |
           gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" \
             && echo "deleted $BRANCH" \
