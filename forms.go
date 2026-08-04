@@ -71,6 +71,10 @@ type form struct {
 	// claim on a node rather than an unknown child of it.
 	claims *form
 
+	// rejects are the child tags this form answers with a diagnostic of its own
+	// rather than with the one about a form written where it does not belong.
+	rejects []rejection
+
 	// free permits any child tag, unvalidated. It is for the parameters of an
 	// assertion, whose names and values belong to the check registry rather
 	// than to the shape of the form.
@@ -118,6 +122,47 @@ type child struct {
 	omitted string
 }
 
+// rejection is a child tag one form answers for itself, in place of the
+// diagnostic about a form written where it does not belong.
+//
+// It is for the children whose absence from a form is a rule about the model
+// rather than an accident of which table a tag happens to appear in. "(kind
+// ...) belongs in a node form" is true and answers the wrong question: it reads
+// as an invitation to move the child somewhere it is permitted, where what is
+// actually wrong is that the thing being written has no kind to move. A
+// rejection says that instead, and names the node it is about, because a
+// diagnostic which names only the form leaves the reader to work out which of
+// the vertices in the file it meant.
+type rejection struct {
+	// tag is the tag which was written.
+	tag string
+
+	// because reads after "which" in the diagnostic, and says what the tag is
+	// rather than where else it belongs.
+	because string
+
+	// hint is what the diagnostic carries under it.
+	hint string
+}
+
+// The one thing the three forms of the geometric family say about the two axes
+// of the semantic one, per specification section 6.1: a geometric node does not
+// omit its kind and its type, it has neither
+// ([0001](docs/decisions/0001-two-node-families.md)).
+const (
+	geometricAxis = "is an axis of the semantic family"
+
+	geometricAxisHint = "a vertex, an edge and a loop carry no kind and no type; the two families are " +
+		"different shapes rather than one shape with fields left out, and what a geometric node carries is " +
+		"a frame, claims and references to other geometric nodes"
+)
+
+// geometricRejects is that answer, shared by the three forms which give it.
+var geometricRejects = []rejection{
+	{tag: "kind", because: geometricAxis, hint: geometricAxisHint},
+	{tag: "type", because: geometricAxis, hint: geometricAxisHint},
+}
+
 // child returns the description of the child written with tag, and whether the
 // form permits one at all.
 func (f *form) child(tag string) (child, bool) {
@@ -134,6 +179,16 @@ func (f *form) childAt(tag string) (int, child, bool) {
 		return 0, child{}, false
 	}
 	return i, f.children[i], true
+}
+
+// rejection returns what this form has to say about tag written inside it, and
+// whether it has anything to say beyond that the tag does not belong.
+func (f *form) rejection(tag string) (rejection, bool) {
+	i := slices.IndexFunc(f.rejects, func(r rejection) bool { return r.tag == tag })
+	if i < 0 {
+		return rejection{}, false
+	}
+	return f.rejects[i], true
 }
 
 // tags is the tags of the children the form permits, in canonical order.
@@ -234,7 +289,8 @@ var (
 			{tag: "frame", arity: exactly(1), form: args(exactly(1), "a frame id")},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
-		claims: claimForm,
+		claims:  claimForm,
+		rejects: geometricRejects,
 	}
 
 	// edgeForm is section 6.3.
@@ -248,7 +304,8 @@ var (
 			{tag: "backed-by", arity: repeated, form: args(exactly(1), "a node id")},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
-		claims: claimForm,
+		claims:  claimForm,
+		rejects: geometricRejects,
 	}
 
 	// loopForm is section 6.4.
@@ -261,7 +318,8 @@ var (
 			{tag: "edges", arity: exactly(1), form: args(atLeast(1), "one or more edge ids")},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
-		claims: claimForm,
+		claims:  claimForm,
+		rejects: geometricRejects,
 	}
 
 	// claimForm is section 6.5. A claim's tag is its predicate, so the table

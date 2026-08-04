@@ -1,0 +1,19 @@
+; Every way a reference within the geometric family can fail to name what it
+; says it names. The edge which resolves is written first, so that what follows
+; is the reference and not the file.
+(vertex geom:V-01 (frame frame:building))
+
+(vertex geom:V-02 (frame frame:building))
+
+(edge geom:E-01 (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+; An endpoint naming nothing this model holds, and one naming a loop, which is
+; a geometric node and is not a vertex.
+(edge geom:E-02 (frame frame:building) (vertices geom:V-01 geom:V-09))
+
+(edge geom:E-03 (frame frame:building) (vertices geom:L-01 geom:V-02))
+
+; A traversal naming an edge nothing holds, and one naming a vertex.
+(loop geom:L-01
+  (frame frame:building)
+  (edges geom:E-01 geom:E-77 geom:V-01))

@@ -1,0 +1,8 @@
+; An id issued twice to two vertices, an id a node of another sort already
+; holds, and an id the registry issued to a frame. All three go on naming what
+; they named first.
+(vertex geom:V-01 (frame frame:building))
+
+(loop geom:E-01 (frame frame:building) (edges geom:E-01))
+
+(vertex frame:building (frame frame:building))

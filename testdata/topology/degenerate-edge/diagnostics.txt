@@ -1,0 +1,7 @@
+testdata/topology/degenerate-edge/geometry.dfc:9:96: error: expected the vertex geom:E-01 ends at, found geom:V-01, which is the vertex it starts at
+9 | (edge geom:E-01 (label "The wall which is a point") (frame frame:building) (vertices geom:V-01 geom:V-01))
+  |                                                                                                ^^^^^^^^^
+  = hint: an edge runs between two different vertices; one which starts and ends at the same vertex has no length and no direction, and nothing bounded by it could be traversed through it
+testdata/topology/degenerate-edge/geometry.dfc:9:86: note: the vertex it starts at is named here
+9 | (edge geom:E-01 (label "The wall which is a point") (frame frame:building) (vertices geom:V-01 geom:V-01))
+  |                                                                                      ^^^^^^^^^

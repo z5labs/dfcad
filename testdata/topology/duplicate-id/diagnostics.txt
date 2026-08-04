@@ -1,0 +1,21 @@
+testdata/topology/duplicate-id/level-2.dfc:4:9: error: expected an id nothing else holds, found geom:V-01, which already names something in this model
+4 | (vertex geom:V-01 (frame frame:building))
+  |         ^^^^^^^^^
+  = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/topology/duplicate-id/level-1.dfc:4:9: note: first defined here, as a vertex
+4 | (vertex geom:V-01 (frame frame:building))
+  |         ^^^^^^^^^
+testdata/topology/duplicate-id/level-2.dfc:6:7: error: expected an id nothing else holds, found geom:E-01, which already names something in this model
+6 | (loop geom:E-01 (frame frame:building) (edges geom:E-01))
+  |       ^^^^^^^^^
+  = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/topology/duplicate-id/level-1.dfc:8:7: note: first defined here, as an edge
+8 | (edge geom:E-01 (frame frame:building) (vertices geom:V-01 geom:V-02))
+  |       ^^^^^^^^^
+testdata/topology/duplicate-id/level-2.dfc:8:9: error: expected an id nothing else holds, found frame:building, which already names something in this model
+8 | (vertex frame:building (frame frame:building))
+  |         ^^^^^^^^^^^^^^
+  = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/topology/duplicate-id/registry.dfc:6:8: note: first defined here, as a frame
+6 | (frame frame:building (label "Building local grid") (unit m))
+  |        ^^^^^^^^^^^^^^

@@ -1,0 +1,56 @@
+; Four corners, the four edges between them, and the loop which traverses them.
+;
+; Nothing here holds a coordinate. The north-west corner is one vertex carrying
+; two surveys of itself, each with the evidence for it, which is the case a
+; position field could not hold at all: it would have room for one of the two
+; and none for where either came from.
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-18"))
+  (position
+    (value (0.004 0.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))
+
+(vertex geom:V-02 (label "Room B, north-east corner") (frame frame:building))
+
+(vertex geom:V-03 (label "Room B, south-east corner") (frame frame:building))
+
+(vertex geom:V-04 (label "Room B, south-west corner") (frame frame:building))
+
+; The order of the pair is start then end, and is never sorted.
+(edge geom:E-01 (label "North wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+; The bowed east wall. What makes it an arc is a claim under a predicate the
+; registry beside this file declares, with a source and an accuracy like any
+; other measurement — and no form here changed to admit it.
+(edge geom:E-02
+  (label "East wall, bowed")
+  (frame frame:building)
+  (vertices geom:V-02 geom:V-03)
+  (arc-centre
+    (value (2.0 2.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-05-06")))
+
+(edge geom:E-03 (label "South wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+(edge geom:E-04 (label "West wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+
+; The edges are written in the order the loop is traversed, which is a ring and
+; not a sorted list: it begins at the south wall because that is where this ring
+; was authored to begin.
+(loop geom:L-01
+  (label "Meeting Room B boundary")
+  (frame frame:building)
+  (edges geom:E-03 geom:E-04 geom:E-01 geom:E-02))

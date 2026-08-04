@@ -80,6 +80,10 @@ func TestValidate(t *testing.T) {
 			fixture: "misplaced-form",
 		},
 		{
+			name:    "names the geometric node a kind or a type was written on, rather than where either belongs",
+			fixture: "geometric-axes",
+		},
+		{
 			name:    "names the form and what it expected when the arguments do not add up",
 			fixture: "argument-count",
 		},
