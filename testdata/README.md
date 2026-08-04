@@ -21,6 +21,7 @@ the goldens beside the fixtures are invisible to it.
 | `claim`                    | The claim loader's own fixtures. One *directory* per case, each a registry and the claims judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `topology`                 | The geometric node loader's own fixtures. One *directory* per case, each a registry and the vertices, edges and loops judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `boundary`                 | The fixtures of the pass which joins the two families. One *directory* per case, each a registry and whichever families the case needs, with its rendered diagnostics inside it as `diagnostics.txt`. |
+| `frame`                    | The fixtures of the pass which resolves each frame's transform to the claim measuring it. One *directory* per case, each a registry declaring frames and the claims judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `print`                    | The printer's own fixtures: one per printing behaviour, each with its canonical printing as `.want`. |
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `model`                    | A two-file model the runnable examples load.                                                |
@@ -54,9 +55,10 @@ nobody regenerated, fails there.
 The cases about a file and its lexis are in `corpus/invalid`; the cases about
 the shape of a form are in `validate`; the cases about what a registry declares
 are in `registry`; the cases about a node read against a loaded registry are in
-`node`, the cases about a claim read against one are in `claim`, and the cases
-about the geometric family read against one are in `topology`. Each is where the
-tests of that layer read them from.
+`node`, the cases about a claim read against one are in `claim`, the cases about
+the geometric family read against one are in `topology`, and the cases about a
+frame's transform read against the claims which measure it are in `frame`. Each
+is where the tests of that layer read them from.
 
 | Specification | Error case                                          | Fixture                                     |
 |---------------|-----------------------------------------------------|---------------------------------------------|
@@ -117,6 +119,10 @@ tests of that layer read them from.
 | 6.4, 7.6      | A loop which does not close, beside one which closes within the declared tolerance | `boundary/closure/`         |
 | 6.4           | A loop whose edges form one ring written in the order it is not traversed | `boundary/out-of-order/`     |
 | 6.4           | A loop with a branch, one which traverses an edge twice, and one whose edges form two rings | `boundary/not-a-simple-cycle/` |
+| 4.5, 7.5      | A frame declaring a unit which is no linear unit      | `registry/unknown-unit/`                    |
+| 6.3, 6.4, 7.5 | An edge running to a vertex in another frame, and a loop traversing an edge in one | `topology/two-frames/`   |
+| 6.1, 6.9, 7.5 | A node bounded by a loop declared in another frame     | `boundary/two-frames/`                      |
+| 6.6.3, 7.5    | A frame whose `transform` names a claim whose value is not a transform | `frame/not-a-transform/`    |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could

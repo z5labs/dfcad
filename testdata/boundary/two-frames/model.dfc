@@ -1,0 +1,34 @@
+; A region declared in one frame, bounded by a loop declared in another.
+;
+; The outline itself is consistent: its edges and their corners are all on the
+; survey grid, so the geometric family loads clean and what is left is the pair.
+; A node which declares a frame is declaring which frame its shape is expressed
+; in, and a loop in a different one makes that two frames for one shape.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+
+(vertex geom:V-01 (label "Site boundary, north-west") (frame frame:survey-grid))
+
+(vertex geom:V-02 (label "Site boundary, north-east") (frame frame:survey-grid))
+
+(vertex geom:V-03 (label "Site boundary, south-east") (frame frame:survey-grid))
+
+(vertex geom:V-04 (label "Site boundary, south-west") (frame frame:survey-grid))
+
+(edge geom:E-01 (frame frame:survey-grid) (vertices geom:V-01 geom:V-02))
+
+(edge geom:E-02 (frame frame:survey-grid) (vertices geom:V-02 geom:V-03))
+
+(edge geom:E-03 (frame frame:survey-grid) (vertices geom:V-03 geom:V-04))
+
+(edge geom:E-04 (frame frame:survey-grid) (vertices geom:V-04 geom:V-01))
+
+(loop geom:L-02
+  (label "The site outline")
+  (frame frame:survey-grid)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))

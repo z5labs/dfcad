@@ -2,6 +2,9 @@ testdata/registry/dangling/registry.dfc:12:11: error: expected a declared frame,
 12 |   (parent frame:site-grid)
    |           ^^^^^^^^^^^^^^^
    = hint: the declared frames are frame:building, frame:orphan, frame:survey-grid and grid:secondary
+testdata/registry/dangling/registry.dfc:10:8: note: the frame which names it as its parent is written here
+10 | (frame frame:building
+   |        ^^^^^^^^^^^^^^
 testdata/registry/dangling/registry.dfc:13:14: error: expected a declared namespace, found survey, which no registry file declares
 13 |   (transform survey:C-0031))
    |              ^^^^^^^^^^^^^

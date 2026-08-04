@@ -1,0 +1,36 @@
+; A frame declaring a linear unit the engine does not define.
+;
+; A unit is arithmetic rather than vocabulary, so the set of them and the
+; definition of each are the engine's and there is no unit registry. A frame
+; whose unit is not one of them has coordinates with no magnitude, and the only
+; thing which could be done with them is to treat them as metres — which is the
+; unlabelled conversion the whole arrangement exists to prevent.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit furlong)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (frame-transform
+    (id survey:C-0031)
+    (value
+      (transform
+        (translation 100.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-11")))

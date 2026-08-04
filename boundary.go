@@ -279,8 +279,46 @@ func (l *boundaryLoader) resolve() {
 			continue
 		}
 
+		l.declaredTwice(written, loop)
+
 		l.boundaries.loops[written.node] = append(l.boundaries.loops[written.node], loop)
 	}
+}
+
+// declaredTwice reports a region whose outline is a loop in another frame.
+//
+// A shape lives in exactly one frame and is transformed on demand
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)), and a node which
+// declares one is declaring which frame its shape is expressed in. A loop in a
+// different one makes that two frames for one shape, which is two sources of
+// truth for where the region is the moment either is re-fitted.
+//
+// The reference is still indexed. It reaches a loop, so what the node is bounded
+// by is not in doubt; which frame the pair is in is, and that is what the
+// diagnostic says.
+//
+// A node which declares no frame is not reported. Its frame is the one its
+// outline is in, which is an ordinary node rather than a node in two frames.
+func (l *boundaryLoader) declaredTwice(written boundaryReference, loop *Loop) {
+	frame, ok := written.node.Frame()
+	if !ok || loop.frame == "" || frame == loop.frame {
+		return
+	}
+
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     written.at,
+		Message: fmt.Sprintf(
+			"expected a loop in %s, found %s, which is declared in %s",
+			frame, written.loop, loop.frame,
+		),
+		Hint: "a shape is declared in exactly one frame and is transformed on demand; the two frames are related by a " +
+			"transform claim, and a node bounded by a loop in another frame is a shape in neither",
+		Related: []RelatedLocation{
+			{Span: l.topology.namedAt(loop.id, loop.span), Message: fmt.Sprintf("the loop it names is declared in %s, here", loop.frame)},
+			{Span: written.where, Message: fmt.Sprintf("the node which names it is declared in %s, here", frame)},
+		},
+	})
 }
 
 // unresolved reports a `boundary` which did not reach a loop, saying what it

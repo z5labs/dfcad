@@ -140,6 +140,71 @@ func Shapes() []Shape { return slices.Clone(shapes) }
 // was written with; the arithmetic layer is what gives it a magnitude.
 type Unit string
 
+// The linear units the engine defines, in the order the table below pins them:
+// the metre and the two prefixed spellings of it a model is authored in, then
+// the two feet.
+const (
+	UnitMillimetre Unit = "mm"
+	UnitCentimetre Unit = "cm"
+	UnitMetre      Unit = "m"
+	UnitKilometre  Unit = "km"
+	UnitFoot       Unit = "ft"
+	UnitSurveyFoot Unit = "usft"
+)
+
+// linearUnits is the closed set, in the order above.
+var linearUnits = []Unit{UnitMillimetre, UnitCentimetre, UnitMetre, UnitKilometre, UnitFoot, UnitSurveyFoot}
+
+// metres is how long one of each linear unit is, in metres.
+//
+// Two of them are pinned by
+// [0005](docs/decisions/0005-one-linear-unit-per-frame.md) and are load
+// bearing: `ft` is the international foot, exactly 0.3048 m, and `usft` is the
+// US survey foot, exactly 1200/3937 m. They differ by two parts per million,
+// which is invisible on a room and is four feet on a state plane coordinate, so
+// `usft` is never a synonym for `ft` in any position under any registry.
+var metres = map[Unit]float64{
+	UnitMillimetre: 0.001,
+	UnitCentimetre: 0.01,
+	UnitMetre:      1,
+	UnitKilometre:  1000,
+	UnitFoot:       0.3048,
+	UnitSurveyFoot: 1200.0 / 3937.0,
+}
+
+// LinearUnits returns the closed set of linear units, in the order above.
+func LinearUnits() []Unit { return slices.Clone(linearUnits) }
+
+// Metres returns how long one of the unit is in metres, and whether it is a
+// linear unit the engine defines.
+//
+// It answers for the linear units and for nothing else. A predicate may declare
+// a unit of any quantity its consuming repository measures — an angle, a mass, a
+// temperature — and the set of those is not the engine's to close; the set of
+// linear units is, because a frame declares one and every cross-frame answer is
+// computed through it.
+func (u Unit) Metres() (float64, bool) {
+	length, ok := metres[u]
+	return length, ok
+}
+
+// unknownUnit is the diagnostic for a symbol written where a frame's linear
+// unit belongs.
+//
+// It lives beside the set for the reason [unknownKind] does, and it says where
+// the set comes from because that is the thing somebody reaching for a unit the
+// engine does not define needs to hear: there is no unit registry, and a unit is
+// arithmetic rather than vocabulary a model declares.
+func unknownUnit(span Span, written string) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     span,
+		Message:  fmt.Sprintf("expected a linear unit, found %s", written),
+		Hint: "a linear unit is one of " + join(spellings(linearUnits), "and") +
+			"; the set and the definition of each are the engine's, and there is no unit registry",
+	}
+}
+
 // Sort is which of the five registries an entry belongs to.
 //
 // It exists so that the questions every layer above asks — is this name

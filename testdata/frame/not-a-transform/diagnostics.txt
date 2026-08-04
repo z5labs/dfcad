@@ -1,0 +1,7 @@
+testdata/frame/not-a-transform/registry.dfc:28:8: error: expected a claim whose value is a transform, found survey:C-0031, whose value is a number
+28 | (frame frame:building
+   |        ^^^^^^^^^^^^^^
+   = hint: a frame's transform to its parent is a claim under a predicate declared (shape transform), which is what carries the source, the method, the date and the accuracy of the fit which produced it
+testdata/frame/not-a-transform/registry.dfc:35:5: note: the value the claim it names carries is written here
+35 |     (value 8.5 m)
+   |     ^^^^^^^^^^^^^

@@ -1,0 +1,20 @@
+; A shape assembled out of two frames, twice over: an edge which runs to a
+; vertex in the other frame, and a loop which traverses an edge in it.
+;
+; Neither is converted. The two frames are related by a transform claim with a
+; source and an accuracy, and applying it here would put a fitted number into a
+; file somebody authored — so both are reported, naming both frames, and which
+; frame the shape is in is left to whoever wrote it.
+(vertex geom:V-01 (label "Room B, north-west corner") (frame frame:building))
+
+(vertex geom:V-02 (label "A control point on the survey grid") (frame frame:survey-grid))
+
+(edge geom:E-01 (label "North wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+(vertex geom:V-05 (label "Site boundary, north-west") (frame frame:survey-grid))
+
+(vertex geom:V-06 (label "Site boundary, north-east") (frame frame:survey-grid))
+
+(edge geom:E-05 (label "The north site boundary") (frame frame:survey-grid) (vertices geom:V-05 geom:V-06))
+
+(loop geom:L-01 (label "Room B outline") (frame frame:building) (edges geom:E-05))

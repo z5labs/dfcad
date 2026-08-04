@@ -1,0 +1,99 @@
+; A chain of frames, and the measurements which relate them.
+;
+; The root is the projected coordinate reference system every other frame
+; reaches through its parents. Each of the others names its parent and the claim
+; which measures the relationship to it — a fit, by a method, on a date, with an
+; accuracy — because the relationship between two frames is a measurement and
+; not a configuration constant.
+;
+; The building is modelled in millimetres and the site in metres, which is the
+; ordinary case rather than a mistake: the transform between them still has a
+; scale of one, because a scale is a scale and never a unit conversion.
+(project
+  (label "Frame fixture")
+  (globalid-namespace "https://example.org/models/frames"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(frame frame:site
+  (label "Site setting-out grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 100.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-11")))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit mm)
+  (parent frame:site)
+  (transform survey:C-0002)
+  (frame-transform
+    (id survey:C-0002)
+    (value
+      (transform
+        (translation 10.0 20.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-03-02")))
+
+; A third level, so that a route through this frame composes three transforms
+; rather than one. It is the ordinary case for an interior fit-out: the room was
+; set out from the building grid, which was set out from the site grid, which was
+; georeferenced.
+(frame frame:room
+  (label "Meeting Room B local grid")
+  (unit mm)
+  (parent frame:building)
+  (transform survey:C-0004)
+  (frame-transform
+    (id survey:C-0004)
+    (value
+      (transform
+        (translation 1000.0 500.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Fit-out setting-out record SO-2026-031, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.002 m))
+    (date "2026-04-19")))
+
+; A quarter turn about the vertical axis, which is what makes the annex a
+; sibling worth transforming through rather than one more offset.
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0003)
+  (frame-transform
+    (id survey:C-0003)
+    (value
+      (transform
+        (translation 0.0 50.0 0.0)
+        (rotation 0.0 -1.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-015, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-03-04")))
