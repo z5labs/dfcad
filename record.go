@@ -952,6 +952,12 @@ func (tx *Tx) record(spec *ClaimSpec) error {
 		if err := tx.free(spec.ID); err != nil {
 			return err
 		}
+
+		// And the claims this same change has already written, which the graph
+		// does not hold.
+		if tx.claimWritten(spec.ID) {
+			return TakenIDError{ID: spec.ID, What: "a claim this change wrote"}
+		}
 	}
 
 	if spec.Date.IsZero() {
@@ -964,6 +970,47 @@ func (tx *Tx) record(spec *ClaimSpec) error {
 	}
 
 	return tx.Replace(form, relisted(form, append(slices.Clone(form.Children), spec.form())))
+}
+
+// claimWritten reports whether any claim in the files the transaction holds was
+// written with this id, including a claim this same change has just written.
+//
+// [Tx.Graph] cannot answer it. The graph is the model as the transaction found
+// it, so a claim added by an earlier mutation of the same transaction is not in
+// it — and neither [Tx.Form] nor [Tx.free] closes the gap: the first answers only
+// for forms written with an id as their first argument, which every entity is and
+// no claim is, and the second is asked of the graph. A claim carries its id as an
+// `(id ...)` child instead, which is what this walks.
+//
+// Both questions the transaction asks about a claim id need it. Whether an id is
+// free has to count the one an earlier mutation took, or two claims of one change
+// are written under one name; and whether a claim exists has to count the one an
+// earlier mutation wrote, or a change which adds a claim and then retracts
+// another in its favour is refused for naming a claim it is itself writing.
+func (tx *Tx) claimWritten(id ID) bool {
+	if tx == nil || id == "" {
+		return false
+	}
+
+	for _, key := range tx.order {
+		for _, node := range tx.files[key].file.Nodes {
+			// A claim is a child of the form it is written inside, and the
+			// `id` child belongs to no other form of the format, so the walk
+			// stops one level down rather than searching the whole tree.
+			for _, child := range node.Children {
+				arg, ok := argumentOf(child, idChild)
+				if !ok {
+					continue
+				}
+
+				if symbol, ok := arg.Datum.(sexpr.Symbol); ok && ID(symbol.Value) == id {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // subject reports whether the model holds something a claim can be written on.
@@ -1022,7 +1069,13 @@ func (tx *Tx) DeprecateClaim(id, supersededBy ID) ([]Notice, error) {
 		return nil, SelfSupersessionError{ID: id}
 	}
 
-	if _, ok := tx.graph.Claims().Claim(supersededBy); !ok {
+	// The claims this same change has written count as claims. A change which
+	// adds the corrected value and then retracts the old one in its favour is
+	// exactly what a supersession is, and refusing it for naming a claim the
+	// change is itself writing would make that impossible to spell out in two
+	// steps.
+	_, held := tx.graph.Claims().Claim(supersededBy)
+	if !held && !tx.claimWritten(supersededBy) {
 		return nil, UnknownClaimError{ID: supersededBy}
 	}
 
@@ -1207,10 +1260,14 @@ func (tx *Tx) MintClaimID(subject ID, predicate string) (ID, error) {
 			return "", err
 		}
 
-		// The transaction is asked as well as the model, because a claim this
-		// same change has already written is not in the model it loaded — and
-		// two corrections of one pair in one transaction would otherwise mint
-		// the same id twice.
+		// The transaction is asked as well as the model, because what this same
+		// change has already written is not in the model it loaded — and two
+		// corrections of one pair in one transaction would otherwise mint the
+		// same id twice. Both are asked: a claim carries its id as a child, and
+		// an entity carries it as the first argument of its form.
+		if tx.claimWritten(minted) {
+			continue
+		}
 		if _, written := tx.Form(minted); written {
 			continue
 		}

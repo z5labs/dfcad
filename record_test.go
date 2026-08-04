@@ -782,6 +782,78 @@ func TestTxSupersedeRefusesWhatItCannotCorrect(t *testing.T) {
 	}
 }
 
+// TestClaimsWrittenByTheSameTransactionCount walks the three questions a
+// transaction asks about a claim id, each of which has to count the claims the
+// same change has already written rather than only the ones it loaded.
+//
+// It is its own function because the property is about the transaction rather
+// than about any one mutation: the graph a Tx holds is the model as it found it,
+// so every question answered from the graph alone is wrong by exactly the claims
+// the change is in the middle of writing.
+func TestClaimsWrittenByTheSameTransactionCount(t *testing.T) {
+	t.Run("retracts a claim in favour of one the same change wrote", func(t *testing.T) {
+		root := recordFixture(t)
+
+		graph := authored(t, root, func(tx *Tx) error {
+			spec := aClaim()
+			spec.ID, spec.Subject, spec.Value = "site:M-0100", "site:S-103", ScalarValue(31.2, "m2")
+
+			if _, _, err := tx.AddClaim(spec); err != nil {
+				return err
+			}
+
+			// The replacement is not in the model the transaction loaded, and
+			// naming it is the whole of what the second step is for.
+			_, err := tx.DeprecateClaim("site:M-0001", "site:M-0100")
+			return err
+		})
+
+		replacement, ok := graph.Claims().Claim("site:M-0100")
+		require.True(t, ok)
+
+		replaced := slices.Collect(graph.Claims().Replaced(replacement))
+		require.Len(t, replaced, 1)
+
+		id, ok := replaced[0].ID()
+		require.True(t, ok)
+		assert.Equal(t, ID("site:M-0001"), id)
+	})
+
+	t.Run("refuses a second claim written under an id the same change took", func(t *testing.T) {
+		err := rejected(t, recordFixture(t), func(tx *Tx) error {
+			spec := aClaim()
+			spec.ID = "site:M-0100"
+
+			if _, _, err := tx.AddClaim(spec); err != nil {
+				return err
+			}
+
+			spec.Subject = "site:S-102"
+			_, _, err := tx.AddClaim(spec)
+			return err
+		})
+
+		var taken TakenIDError
+		require.ErrorAs(t, err, &taken)
+		assert.Equal(t, ID("site:M-0100"), taken.ID)
+	})
+
+	t.Run("mints past an id the same change already wrote a claim under", func(t *testing.T) {
+		tx := begin(t, recordFixture(t))
+		defer tx.Close()
+
+		spec := aClaim()
+		spec.ID, spec.Subject = "site:S-102:area:1", "site:S-101"
+
+		_, _, err := tx.AddClaim(spec)
+		require.NoError(t, err)
+
+		minted, err := tx.MintClaimID("site:S-102", "area")
+		require.NoError(t, err)
+		assert.Equal(t, ID("site:S-102:area:2"), minted)
+	})
+}
+
 // TestMintClaimIDIsStableAndFree checks the half of the generated format which
 // is a promise: the id is well formed, it says what it is derived from, and it
 // never lands on something the model already holds.
