@@ -24,14 +24,15 @@ func nodeFixture(name string) string { return filepath.Join("testdata", "node", 
 //
 // The registry's own diagnostics are asserted empty rather than rendered. Every
 // fixture here declares a registry which loads clean, so that what the golden
-// beside it holds is what this layer had to say and nothing else.
+// beside it holds is what this layer had to say and nothing else. A fixture
+// whose registry did not load clean fails here rather than further down: the
+// nodes would then be judged against a registry missing whatever failed to
+// load, and the mismatched golden that produces says nothing about the reason.
 func loadNodeFixture(t *testing.T, name string) ([]*SemanticNode, string) {
 	t.Helper()
 
 	registry, registryDiags := LoadRegistry(nodeFixture(name))
-	for _, diagnostic := range registryDiags {
-		t.Errorf("unexpected registry diagnostic: %s", diagnostic)
-	}
+	require.Empty(t, registryDiags, "the fixture registry loads clean")
 
 	nodes, diags := LoadNodes(nodeFixture(name), registry)
 

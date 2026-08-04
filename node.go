@@ -31,9 +31,9 @@ const nodeTag = "node"
 // special case is the point of the design
 // ([0001](docs/decisions/0001-two-node-families.md)).
 // [SemanticNode.Geometry] and [SemanticNode.Frame] therefore each report
-// whether the axis was written at all, which is what tells a node with no
-// geometry apart from one whose geometry form is the empty string — a thing the
-// closed set has no member for and which no file can produce.
+// whether the node has that axis, which is what tells a node with no geometry
+// apart from one whose geometry form is the empty string — a thing the closed
+// set has no member for and which no file can produce.
 //
 // The fields are unexported and read through the methods below. The tree a node
 // was read from is not part of its interface: a caller which reached through to
@@ -60,13 +60,19 @@ type SemanticNode struct {
 	// accessor is what a caller reads.
 	declaredType string
 
-	// geometry is the node's geometry form, and hasGeometry whether one was
-	// written at all.
+	// geometry is the node's geometry form, and hasGeometry whether it has one.
+	// A `geometry` child which no form could be read from leaves both as they
+	// are, because the alternative is an empty Geometry reported as present —
+	// the one value the closed set has no member for. That the child was there
+	// is not lost: reading it failed, which is a diagnostic, and the pass
+	// tracks the child's presence separately for the checks that need it.
 	geometry    Geometry
 	hasGeometry bool
 
 	// frame is the id of the frame the node's geometry is expressed in, and
-	// hasFrame whether one was written at all.
+	// hasFrame whether it has one. A `frame` child which no id could be read
+	// from leaves both as they are, for the reason above: an empty frame id
+	// reported as present names no frame.
 	frame    string
 	hasFrame bool
 
@@ -94,15 +100,19 @@ func (n *SemanticNode) Type() string { return n.declaredType }
 // Geometry returns the node's geometry form, and whether it has one.
 //
 // A node with no geometry is ordinary rather than incomplete, so the second
-// result is a state and not a failure. It is false exactly when the node wrote
-// no `geometry` child, which the node's type has to permit.
+// result is a state and not a failure. It is false when the node wrote no
+// `geometry` child, which the node's type has to permit, and also when what it
+// wrote was not a geometry form — that is a diagnostic of its own, and there is
+// no form to report.
 func (n *SemanticNode) Geometry() (Geometry, bool) { return n.geometry, n.hasGeometry }
 
 // Frame returns the id of the node's frame, and whether it has one.
 //
 // A node is declared in at most one frame; declaring it in two is
 // unrepresentable, which is the point. A node with no geometry usually has no
-// frame either, and a node may legitimately have neither.
+// frame either, and a node may legitimately have neither. The second result is
+// false on the same two occasions [SemanticNode.Geometry]'s is: no `frame`
+// child, or one no id could be read from.
 func (n *SemanticNode) Frame() (string, bool) { return n.frame, n.hasFrame }
 
 // Span returns where the node form was written, which is what a diagnostic
