@@ -1,6 +1,6 @@
 # The dfcad entity format
 
-**Specification version 1.0.**
+**Specification version 1.1.**
 
 This document defines the text format a dfcad model is written in: which tagged forms are
 legal, where each may appear, with what arity and ordering, and what the one canonical
@@ -887,6 +887,58 @@ load error with a position; there is no default and no fallback
 ([0012](./docs/decisions/0012-tolerances-are-registry-data.md)). Every result computed
 against a tolerance reports which named tolerance produced it.
 
+### 7.7 `route`
+
+```
+(route <rule-name>
+  (namespace <namespace>)
+  (kind <kind>)
+  (type <type-name>)
+  (file "<path>")
+  (description "<text>"))
+```
+
+| Element       | Arity  | Contents                                                                     |
+|---------------|--------|------------------------------------------------------------------------------|
+| *rule-name*   | `1`    | Positional. A registry name, per [4.2](#42-registry-names).                  |
+| `namespace`   | `0..1` | A declared id namespace. Matches the namespace of the id the node is written with. |
+| `kind`        | `0..1` | A kind. Matches the kind the node declares.                                  |
+| `type`        | `0..1` | A declared type name. Matches the type the node declares.                    |
+| `file`        | `1`    | A string: a path relative to the model root, ending in `.dfc`, written with forward slashes. |
+| `description` | `0..1` | A string.                                                                    |
+
+**A routing rule says which file a newly authored node is written to.** It is the answer to
+the one question the write path has to ask and a read path never does. Left implicit, the
+answer becomes "wherever the last person put things", which is how one category of thing ends
+up spread over six files; and a filing convention that lives only in an author's head is one a
+second author cannot follow ([0015](./docs/decisions/0015-the-cli-is-the-primary-write-path.md)).
+
+**The rules are data, not code.** The engine does not know that meeting rooms belong beside
+corridors, and no behaviour anywhere depends on which file a node is in — layout is authored,
+and this is what authors it ([0010](./docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+Nothing *reads* through these rules either: a node is found by its id, wherever it was
+written, and moving a file changes no answer the model gives.
+
+**A criterion that is left out matches anything.** A rule written with none of the three
+matches every node, which is the catch-all a small model files everything through. A rule
+written with all three matches one type of one kind from one authority.
+
+**A geometric node carries neither a kind nor a type** ([6.2](#62-vertex)–[6.4](#64-loop)),
+so a rule naming either of those never matches one. Vertices, edges and loops are routed by a
+rule that matches on `namespace` alone, or by a catch-all.
+
+**Exactly one rule must match.** A node matched by none, and a node matched by more than one,
+are both refused, naming the node and every rule consulted. Neither is resolved by picking a
+rule — not the first written, and not the most specific. A filing decision the tool makes on
+its own is one that is visible in nothing the author wrote, and the fix for both refusals is a
+change to this registry: overlapping rules are made disjoint, and a node nothing covers gets a
+rule. This is the one place where "no answer" is better than a plausible one.
+
+`file` is relative because it is resolved against the model root, and so means the same thing
+in every clone of the repository. A path that leaves the root, and one whose extension is not
+`.dfc`, are each a load error on the rule: a walk of the model reads neither, so a node routed
+into one would be a change that appears to have been made and was not.
+
 ## 8. Canonical form
 
 **Every model has exactly one canonical printing.** `fmt` produces it, the CLI's write path
@@ -952,7 +1004,7 @@ coarse organisation that actually helps, and comments move with what they annota
 1. **Top-level forms** are ordered first by tag, in this fixed order:
 
    ```
-   project  namespace  type  predicate  tolerance  frame  node  vertex  edge  loop
+   project  namespace  type  predicate  tolerance  frame  route  node  vertex  edge  loop
    ```
 
    and then, within a tag, by the form's positional name or id, ascending, compared byte-wise
@@ -1106,7 +1158,35 @@ two frames related by a transform claim. Everything below is in canonical form.
     (date "2026-02-11")))
 
 (frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(route corridors
+  (kind Space)
+  (type Corridor)
+  (file "entities/circulation.dfc")
+  (description "Circulation, kept apart from the rooms it connects."))
+
+(route geometry
+  (namespace geom)
+  (file "geometry/level-1.dfc")
+  (description "Every vertex, edge and loop of level 1."))
+
+(route partitions
+  (kind Element)
+  (type Partition)
+  (file "entities/partitions.dfc"))
+
+(route rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/level-1.dfc"))
 ```
+
+The four routing rules are disjoint, which is what makes each of them the whole answer for
+what it covers. `rooms` and `corridors` share a kind and are told apart by their type;
+`geometry` matches on namespace alone, because a vertex has no kind and no type to match on.
+A `site:` node of a fourth type is matched by nothing and is refused rather than filed
+somewhere plausible — the fix is a fifth rule, written here, where the next author can read
+it.
 
 The two frames are related by a measurement, not by a constant. Every cross-frame answer this
 model produces carries `survey:CP-3` as a systematic term, counted once however many indoor
@@ -1250,7 +1330,7 @@ Reading it back:
 ## 10. Versioning of this specification
 
 This document carries a version of the form `MAJOR.MINOR`, stated at the top. The current
-version is **1.0**.
+version is **1.1**, which added the `route` form of [7.7](#77-route).
 
 | Change                                                             | Version effect |
 |--------------------------------------------------------------------|----------------|
@@ -1282,8 +1362,6 @@ from the engine, where the CLI's machine output contract already carries one
 
 Named so that their absence reads as a decision rather than an oversight.
 
-- **File routing rules.** Which file a newly authored node lands in is registry data, and it
-  arrives with the write path rather than with the syntax.
 - **The observation file format.** Observations link to entities but are their own format
   with their own specification.
 - **Non-straight edges.** Representable already, as a claim under a registered predicate — see

@@ -1,0 +1,33 @@
+testdata/registry/routes/registry.dfc:19:27: error: expected a relative path to an entity file, found "../elsewhere/level-1.dfc"
+19 | (route climbing-out (file "../elsewhere/level-1.dfc"))
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a path stays beneath the model root, because a walk of the model never reaches a file outside it
+testdata/registry/routes/registry.dfc:21:23: error: expected a relative path to an entity file, found "/srv/models/level-1.dfc"
+21 | (route absolute (file "/srv/models/level-1.dfc"))
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a path is relative to the model root, so that it means the same thing in every clone of the repository
+testdata/registry/routes/registry.dfc:23:21: error: expected a relative path to an entity file, found "entities/level-1.txt"
+23 | (route unread (file "entities/level-1.txt"))
+   |                     ^^^^^^^^^^^^^^^^^^^^^^
+   = hint: an entity file ends in .dfc, because a walk of the model reads no other extension
+testdata/registry/routes/registry.dfc:25:25: error: expected a kind, found Room
+25 | (route not-a-kind (kind Room) (file "entities/rooms.dfc"))
+   |                         ^^^^
+   = hint: a kind is one of Zone, Site, Building, Storey, Space, Element and Interface
+testdata/registry/routes/registry.dfc:27:40: error: expected a declared namespace, found survey, which no registry file declares
+27 | (route undeclared-namespace (namespace survey) (file "entities/survey.dfc"))
+   |                                        ^^^^^^
+   = hint: the declared namespaces are site
+testdata/registry/routes/registry.dfc:29:30: error: expected a declared type, found Corridor, which no registry file declares
+29 | (route undeclared-type (type Corridor) (file "entities/circulation.dfc"))
+   |                              ^^^^^^^^
+   = hint: the declared types are MeetingRoom
+testdata/registry/routes/registry.dfc:31:1: error: expected a (file ...) child of the route form, found none
+31 | (route no-file (kind Space))
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/registry/routes/registry.dfc:33:8: error: expected an undeclared route, found rooms, which is already declared
+33 | (route rooms (file "entities/somewhere-else.dfc"))
+   |        ^^^^^
+testdata/registry/routes/registry.dfc:14:8: note: first declared here
+14 | (route rooms
+   |        ^^^^^

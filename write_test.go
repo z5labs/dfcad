@@ -469,6 +469,62 @@ func TestTxCreatesAFile(t *testing.T) {
 	assert.True(t, ok, "the created file is part of the model")
 }
 
+// TestTxCreatesTheDirectoriesAboveAFile is its own function because it is about
+// the tree rather than about the file: a routing rule names where a node goes,
+// and the first node routed somewhere new is the one whose write has to make the
+// directory it named. A change refused for a directory nobody has created yet
+// would make a rule unusable until somebody hand-made a folder for it.
+func TestTxCreatesTheDirectoriesAboveAFile(t *testing.T) {
+	root := writeFixture(t)
+
+	tx := begin(t, root)
+	require.NoError(t, tx.Insert(
+		"entities/levels/one/campus.dfc",
+		written(t, `(node site:Z-03 (kind Zone) (type Campus))`),
+	))
+
+	out := commit(t, tx)
+
+	assert.Equal(t, []string{"entities/levels/one/campus.dfc created"}, changed(t, root, out))
+
+	graph, diags := LoadGraph(root)
+	require.Empty(t, diags)
+
+	_, ok := graph.Node("site:Z-03")
+	assert.True(t, ok, "a walk of the model reaches the file the change made a directory for")
+}
+
+// TestTxInsertsWhereCanonicalFormPutsIt is its own function because it is about
+// where in a file a form lands rather than about which file: [Tx.Insert] appends
+// to the tree, and canonical form then sorts it, so a node whose id sorts first
+// is written first however late it was inserted. That is what makes the file a
+// write leaves behind one nothing has to reformat.
+func TestTxInsertsWhereCanonicalFormPutsIt(t *testing.T) {
+	root := writeFixture(t)
+	site := filepath.Join(root, "entities", "site.dfc")
+
+	tx := begin(t, root)
+	require.NoError(t, tx.Insert(
+		"entities/site.dfc",
+		written(t, `(node site:Z-00 (kind Zone) (type Campus))`),
+	))
+	commit(t, tx)
+
+	src, err := os.ReadFile(site)
+	require.NoError(t, err)
+
+	assert.Equal(t,
+		"(node site:Z-00 (kind Zone) (type Campus))\n"+
+			`(node site:Z-01 (label "Riverside campus") (kind Zone) (type Campus))`+"\n",
+		string(src),
+		"the inserted node is written where the ordering rule puts it, not where it was appended",
+	)
+
+	formatted := Formatter{}.Format(site)
+	require.Len(t, formatted, 1)
+	assert.False(t, formatted[0].Changed, "the file needs no reformatting")
+}
+
 func TestTxReportsWhatItChanged(t *testing.T) {
 	root := writeFixture(t)
 
@@ -598,17 +654,18 @@ func TestTxWritesNothingWhenPreparationFails(t *testing.T) {
 
 	tx := begin(t, root)
 
-	// The first file of the change is preparable and the second is not — its
-	// directory is not there — so the failure lands after one file's complete
-	// contents have been written to a temporary file and before any rename.
-	// That is the interrupted write: the renames are the only steps which
-	// change what a reader sees, and none of them happened.
+	// The first file of the change is preparable and the second is not — the
+	// directory it would need is an existing file, which is the one shape of
+	// missing directory a write cannot make — so the failure lands after one
+	// file's complete contents have been written to a temporary file and before
+	// any rename. That is the interrupted write: the renames are the only steps
+	// which change what a reader sees, and none of them happened.
 	require.NoError(t, tx.Insert(
 		"entities/site.dfc",
 		written(t, `(node site:Z-03 (kind Zone) (type Campus))`),
 	))
 	require.NoError(t, tx.Insert(
-		"entities/zzz/deep.dfc",
+		"entities/other.dfc/deep.dfc",
 		written(t, `(node site:Z-04 (kind Zone) (type Campus))`),
 	))
 
@@ -619,7 +676,7 @@ func TestTxWritesNothingWhenPreparationFails(t *testing.T) {
 
 	var failure WriteError
 	require.ErrorAs(t, err, &failure)
-	assert.Equal(t, filepath.Join(root, "entities", "zzz", "deep.dfc"), failure.Path)
+	assert.Equal(t, filepath.Join(root, "entities", "other.dfc", "deep.dfc"), failure.Path)
 
 	assert.Equal(t, before, contents(t, root),
 		"no file was replaced and no partial file was left behind")

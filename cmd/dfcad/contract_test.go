@@ -56,6 +56,7 @@ var samples = map[string][]string{
 	"traverse":       {"contains", "site:S-101"},
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
+	"route":          {"--kind", "Space", "--type", "MeetingRoom", "site:S-104"},
 }
 
 // sample is the invocation of cmd against the fixture model, command name and

@@ -56,6 +56,7 @@ files that the engine loads and validates before it interprets anything else:
 | Frames          | Each frame with its linear unit and its parent                    |
 | Id namespaces   | The permitted namespaces for `namespace:local` identifiers        |
 | Tolerances      | Named tolerances with values and units                            |
+| File routing    | Which file a newly authored node is written to, by namespace, kind and type |
 
 The engine attaches no meaning to any of these beyond the structure it checks.
 A wall, a circuit, a setback rule and a survey monument are all registry entries
@@ -81,7 +82,7 @@ The engine deliberately does not contain:
 
 | The change...                                                | Belongs in       |
 |--------------------------------------------------------------|------------------|
-| Adds a type, predicate, frame, namespace or tolerance         | the data repo    |
+| Adds a type, predicate, frame, namespace, tolerance or routing rule | the data repo |
 | Names a specific building component, discipline or code rule  | the data repo    |
 | Adjusts a numeric tolerance                                   | the data repo    |
 | Adds a query, an output field or a CLI subcommand             | here             |

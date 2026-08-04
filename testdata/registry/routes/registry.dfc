@@ -1,0 +1,33 @@
+; The rules which say which file a newly authored node is written to, and the
+; five ways one can be written that this loader will not accept: a target no
+; walk of the model reaches, a criterion which is not a kind, and a criterion
+; naming a namespace or a type nothing declares.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(route rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/level-1.dfc"))
+
+(route climbing-out (file "../elsewhere/level-1.dfc"))
+
+(route absolute (file "/srv/models/level-1.dfc"))
+
+(route unread (file "entities/level-1.txt"))
+
+(route not-a-kind (kind Room) (file "entities/rooms.dfc"))
+
+(route undeclared-namespace (namespace survey) (file "entities/survey.dfc"))
+
+(route undeclared-type (type Corridor) (file "entities/circulation.dfc"))
+
+(route no-file (kind Space))
+
+(route rooms (file "entities/somewhere-else.dfc"))

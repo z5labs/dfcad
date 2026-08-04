@@ -60,3 +60,24 @@
     (date "2026-02-11")))
 
 (frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(route corridors
+  (kind Space)
+  (type Corridor)
+  (file "entities/circulation.dfc")
+  (description "Circulation, kept apart from the rooms it connects."))
+
+(route geometry
+  (namespace geom)
+  (file "geometry/level-1.dfc")
+  (description "Every vertex, edge and loop of level 1."))
+
+(route partitions
+  (kind Element)
+  (type Partition)
+  (file "entities/partitions.dfc"))
+
+(route rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/level-1.dfc"))

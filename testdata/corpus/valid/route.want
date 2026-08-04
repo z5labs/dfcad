@@ -1,0 +1,13 @@
+; All three criteria left out is the catch-all a small model files through.
+(route everything-else (file "entities/misc.dfc"))
+; A criterion left out matches anything, so this one reaches every geometric
+; node minted by the model — a vertex has no kind and no type to match on.
+(route geometry (namespace geom) (file "geometry/level-1.dfc"))
+; Specification section 7.7. A routing rule says which file a newly authored
+; node is written to, which is the one question the write path has to ask.
+(route
+  rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/level-1.dfc")
+  (description "Meeting rooms of level 1."))

@@ -759,6 +759,58 @@ itself. A conflict is a finding, not a failure; whether a particular disagreemen
 is what `dfcad check` answers, and answering it in two commands is how the two come to
 disagree.
 
+### `route`
+
+Which file a newly authored node would be written to, decided from the registry's routing
+rules and reported without writing anything. It takes the id the node would be written with,
+and three flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--kind <kind>` | The kind the new node will declare. |
+| `--type <name>` | The type the new node will declare. |
+| `--file <path>` | Write it here instead, overriding the rules. A path relative to the model root, ending in `.dfc`. |
+
+A vertex, an edge and a loop carry neither a kind nor a type, so routing one means leaving
+both of the first two flags out. Such a node is matched by a rule that matches on its
+namespace alone, or by one that matches on nothing.
+
+```json
+{
+  "version": 1,
+  "command": "route",
+  "subject": {"id": "site:S-104", "kind": "Space", "type": "MeetingRoom"},
+  "destination": {
+    "path": "entities/level-1.dfc",
+    "rule": "rooms",
+    "overridden": false,
+    "exists": true
+  }
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | object | What was asked, echoed back, so a collected result says what the answer was about. |
+| `subject.id` | string | The id the node would be written with. Its namespace is what a rule matching on one compares against. |
+| `subject.kind` | string, optional | The kind it would declare. Absent for a geometric node. |
+| `subject.type` | string, optional | The type it would declare. Absent for a geometric node. |
+| `destination.path` | string | The target file, relative to the model root. |
+| `destination.rule` | string, optional | The routing rule that chose it. Absent when the destination was overridden — an override names no rule, and a caller must not go looking in the registry for one. |
+| `destination.overridden` | boolean | Whether `--file` named the destination outright. |
+| `destination.exists` | boolean | Whether the model already holds that file. A destination that does not is created, with any directories above it, by the write that lands there. |
+
+**Exactly one rule must match.** A node matched by none, and a node matched by more than one,
+are both a **usage error** naming the node and every rule consulted — never a silent default.
+Neither is resolved by picking a rule, not the first written and not the most specific: a
+filing decision the tool makes on its own is visible in nothing the author wrote. The fix for
+both is a change to the registry, which is where the rules are ([7.7 of the
+specification](../SPEC.md#77-route)).
+
+`route` writes nothing, whatever it answers. It is the same decision every write command
+makes, asked on its own — which is how an author checks where something would land before
+authoring it.
+
 ### The shape every write command reports
 
 Adding a node, retiring one, adding a claim, correcting one, authoring geometry and
@@ -771,11 +823,17 @@ same too, and it is documented once here rather than repeated per command. A wri
 adds fields describing what it was asked to do; the ones below mean the same thing in all of
 them.
 
-Every write command takes one flag beyond the global ones:
+Every write command takes these flags beyond the global ones:
 
 | Flag | Default | Meaning |
 |------|---------|---------|
 | `--dry-run` | off | Perform every step of the change, including validation, and write nothing. The result object says what would have changed, and carries the unified diff of each file. |
+| `--file <path>` | routed | Write into this file rather than the one the routing rules choose. A path relative to the model root, ending in `.dfc`. |
+
+A command that adds something to the model decides where it goes before it changes anything,
+by the routing rules of [7.7 of the specification](../SPEC.md#77-route), and reports that
+decision. `dfcad route` is the same decision asked on its own; see its payload above for what
+the decision looks like and for what happens when the rules do not place a node.
 
 ```json
 {

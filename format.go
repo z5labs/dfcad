@@ -207,7 +207,23 @@ func replace(path string, src []byte) error {
 // the system temporary directory, because a rename across filesystems is not a
 // rename at all — it is a copy, and a copy is exactly the partial write this
 // avoids.
+//
+// That directory is created where it is not there, which is what lets a routing
+// rule name a file in a directory the model does not hold yet: `entities/`
+// exists because somebody wrote a file into it, and the first node routed to
+// `entities/levels/level-1.dfc` is the one which has to make the directory. A
+// change which is then rolled back leaves the directory behind, empty, which a
+// walk of the model steps over and a load treats as nothing at all.
 func stage(path string, src []byte) (string, error) {
+	// Not 0o777: the umask is the only thing which would narrow that, and a
+	// permissive one would leave a world-writable directory inside a model
+	// somebody is version controlling. A directory holding entity files needs to
+	// be readable and searchable by whoever reads them, and writable by nobody
+	// else.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", WriteError{Path: path, Err: err}
+	}
+
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
 	if err != nil {
 		return "", WriteError{Path: path, Err: err}

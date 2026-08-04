@@ -95,6 +95,10 @@ func TestLoadRegistry(t *testing.T) {
 			name:    "reports the missing project of a tree which declares no registry at all",
 			fixture: "empty",
 		},
+		{
+			name:    "names the target a routing rule may not file into, and the criteria nothing declares",
+			fixture: "routes",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -218,6 +222,24 @@ func TestRegistryDeclarations(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, 0.005, tolerance.Value)
 		assert.Equal(t, Unit("m"), tolerance.Unit)
+	})
+
+	t.Run("declares a routing rule with the criteria it matches on and the file it names", func(t *testing.T) {
+		rooms, ok := registry.Route("rooms")
+
+		require.True(t, ok)
+		assert.Equal(t, KindSpace, rooms.Kind)
+		assert.Equal(t, "MeetingRoom", rooms.Type)
+		assert.Empty(t, rooms.Namespace, "a criterion which was not written matches anything")
+		assert.Equal(t, "entities/level-1.dfc", rooms.File)
+
+		geometry, ok := registry.Route("geometry")
+
+		require.True(t, ok)
+		assert.Equal(t, "geom", geometry.Namespace)
+		assert.Empty(t, geometry.Kind)
+		assert.Empty(t, geometry.Type)
+		assert.Equal(t, "geometry/level-1.dfc", geometry.File)
 	})
 
 	t.Run("iterates every registry in name order", func(t *testing.T) {

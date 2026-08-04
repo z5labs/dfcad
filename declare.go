@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"iter"
 	"net/url"
+	"path"
 	"slices"
 	"strings"
 )
@@ -30,6 +31,7 @@ var registrySorts = map[string]Sort{
 	"predicate": SortPredicate,
 	"frame":     SortFrame,
 	"tolerance": SortTolerance,
+	"route":     SortRoute,
 }
 
 // LoadRegistry reads every registry form beneath root into one registry.
@@ -70,6 +72,7 @@ func loadRegistry(root string, sources iter.Seq[source]) (*Registry, []Diagnosti
 			predicates: make(map[string]Predicate),
 			frames:     make(map[ID]Frame),
 			tolerances: make(map[string]Tolerance),
+			routes:     make(map[string]Route),
 		},
 	}
 
@@ -96,6 +99,10 @@ type registryLoader struct {
 	// registry whose entries refer to each other, so they are the one whose
 	// declarations outlive the file they were read from.
 	frames []*frameDeclaration
+
+	// routes are the accepted routing rules in the order they were read, with
+	// the spans of the names they borrow from the other registries.
+	routes []*routeDeclaration
 }
 
 // frameDeclaration is one accepted frame together with where the parts a later
@@ -108,6 +115,18 @@ type frameDeclaration struct {
 	id        Span
 	parent    Span
 	transform Span
+}
+
+// routeDeclaration is one accepted routing rule together with where the names
+// it borrows from the other registries were written.
+type routeDeclaration struct {
+	route Route
+
+	// namespace and declaredType are the spans of those two criteria as
+	// written. A span left zero belongs to a criterion which was not written,
+	// which matches anything and refers to nothing.
+	namespace    Span
+	declaredType Span
 }
 
 // file interprets the registry forms of one loaded file.
@@ -150,6 +169,8 @@ func (l *registryLoader) file(file *File) {
 			l.declareFrame(node)
 		case SortTolerance:
 			l.declareTolerance(node)
+		case SortRoute:
+			l.declareRoute(node)
 		}
 	}
 }
@@ -583,6 +604,123 @@ func (l *registryLoader) declareTolerance(node *Node) {
 	l.registry.tolerances[name] = tolerance
 }
 
+// declareRoute reads specification section 7.7.
+func (l *registryLoader) declareRoute(node *Node) {
+	name, span, ok := l.name(node, "a rule name")
+	if !ok {
+		return
+	}
+
+	declaration := &routeDeclaration{route: Route{Name: name, Span: span}}
+
+	// Each criterion is optional and a missing one matches anything, so nothing
+	// here reports an absence. What is written is read, and what is not written
+	// is the rule saying it does not care.
+	//
+	// Which is exactly why anything written and not read marks the rule
+	// unusable. Leaving a criterion which failed to read at its zero value would
+	// spell it the same way the format spells "I do not care about this axis",
+	// and the rule would go on to match every node that axis was written to
+	// exclude. The diagnostic each of these adds is what the author acts on; the
+	// mark is what stops the rule acting in the meantime.
+	if arg, ok := argumentOf(node, "namespace"); ok {
+		if written, ok := l.symbol(arg, "a namespace"); ok {
+			declaration.route.Namespace = written
+			declaration.namespace = arg.Span
+		} else {
+			declaration.route.unusable = true
+		}
+	}
+
+	if arg, ok := argumentOf(node, "kind"); ok {
+		written, ok := l.symbol(arg, "a kind")
+		switch kind := Kind(written); {
+		case !ok:
+			declaration.route.unusable = true
+		case !slices.Contains(kinds, kind):
+			l.add(unknownKind(arg.Span, written))
+			declaration.route.unusable = true
+		default:
+			declaration.route.Kind = kind
+		}
+	}
+
+	if arg, ok := argumentOf(node, "type"); ok {
+		if written, ok := l.symbol(arg, "a type name"); ok {
+			declaration.route.Type = written
+			declaration.declaredType = arg.Span
+		} else {
+			declaration.route.unusable = true
+		}
+	}
+
+	// The file is the one element which is not a criterion, so a rule whose file
+	// did not read is unusable for a second reason as well: it names no
+	// destination, and a destination which is the empty path is one every write
+	// through it would fail on.
+	if arg, ok := argumentOf(node, "file"); ok {
+		file, read := "", false
+		if written, ok := l.text(arg, "a string holding a path"); ok {
+			file, read = l.target(arg, written)
+		}
+
+		declaration.route.File = file
+		declaration.route.unusable = declaration.route.unusable || !read
+	}
+
+	if arg, ok := argumentOf(node, "description"); ok {
+		declaration.route.Description, _ = l.text(arg, "a string")
+	}
+
+	if existing, ok := l.registry.routes[name]; ok {
+		l.duplicate(SortRoute, name, span, existing.Span)
+		return
+	}
+
+	l.registry.routes[name] = declaration.route
+	l.routes = append(l.routes, declaration)
+}
+
+// target reads the file a routing rule files a node into, reporting the paths
+// it will not accept.
+//
+// A rule's path is relative because it is resolved against the model root, and
+// one written absolute files every clone of the repository into whatever
+// directory the author happened to have. It stays beneath the root and it ends
+// in [Extension] for the same reason [Tx.Insert] refuses both: a walk of the
+// model does not read a file outside the root or one with another extension, so
+// routing a node into one writes a change which appears to have been made and
+// was not. Catching it on the declaration is one diagnostic pointing at the
+// rule, rather than one per node routed through it pointing at the node.
+//
+// The path which comes back is cleaned, so that `entities/./rooms.dfc` and
+// `entities/rooms.dfc` are one destination rather than two.
+func (l *registryLoader) target(node *Node, written string) (string, bool) {
+	clean := path.Clean(written)
+
+	var hint string
+	switch {
+	case written == "":
+		hint = "a routing rule names the file its nodes are written to, relative to the model root"
+	case path.IsAbs(written):
+		hint = "a path is relative to the model root, so that it means the same thing in every clone of the repository"
+	case clean == ".." || strings.HasPrefix(clean, "../"):
+		hint = "a path stays beneath the model root, because a walk of the model never reaches a file outside it"
+	case path.Ext(clean) != Extension:
+		hint = "an entity file ends in " + Extension + ", because a walk of the model reads no other extension"
+	default:
+		return clean, true
+	}
+
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     node.Span,
+		Message:  fmt.Sprintf("expected a relative path to an entity file, found %q", written),
+		Hint:     hint,
+	})
+	return "", false
+}
+
 // resolve checks everything which could only be checked once every file had
 // been read: a reference from one registry into another, and the three rules
 // about the model as a whole.
@@ -612,6 +750,20 @@ func (l *registryLoader) resolve() {
 				Message: "the frame which names it as its parent is written here",
 			})
 			l.add(undeclared)
+		}
+	}
+
+	// A routing rule borrows two of its three criteria from the other
+	// registries, and a criterion naming something nothing declares matches
+	// nothing — which is a rule that silently never fires rather than one that
+	// is wrong, and is the harder of the two to notice.
+	for _, declaration := range l.routes {
+		if namespace := declaration.route.Namespace; namespace != "" && !l.registry.Declares(SortNamespace, namespace) {
+			l.add(l.registry.Undeclared(SortNamespace, namespace, declaration.namespace))
+		}
+
+		if declared := declaration.route.Type; declared != "" && !l.registry.Declares(SortType, declared) {
+			l.add(l.registry.Undeclared(SortType, declared, declaration.declaredType))
 		}
 	}
 

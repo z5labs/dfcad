@@ -39,3 +39,16 @@
   (description "How far a loop may fail to close and still count as closed."))
 
 (frame frame:survey-grid (label "Site survey grid") (unit m))
+
+; Where a newly authored node is filed. The two rules are disjoint, so each of
+; them is the whole answer for what it covers, and geometry matches on a
+; namespace alone because a vertex has neither of the other two axes.
+(route geometry
+  (namespace geom)
+  (file "geometry/level-1.dfc")
+  (description "Every vertex, edge and loop of level 1."))
+
+(route rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/level-1.dfc"))
