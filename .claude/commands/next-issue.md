@@ -282,18 +282,15 @@ echo "PR <pr> still OPEN after 10m"; exit 1
 Both failure paths exit non-zero so an unmerged close or a timeout cannot be mistaken for
 success by anything that reads the exit code rather than the emitted line.
 
-If it merged, two things the repository normally does on your behalf will not have happened,
-both for the same reason: a merge performed by the workflow's `GITHUB_TOKEN` does not trigger
-them the way a merge performed by a person does. Neither is a formality — do both.
+**Never delete the remote branch.** `deleteBranchOnMerge` is enabled on the repository and
+owns remote cleanup; leave it to do its job. `git push --delete` is denied by user settings,
+and a subagent must not work around that rule — a remote branch that outlives a merge is
+GitHub's to reap, not yours. Clean up only what you created locally: your own worktree and
+your own local branch (below).
 
-**Delete the remote branch.** `deleteBranchOnMerge` is enabled on the repository and does not
-fire here, so every cycle leaves its branch behind. That is harmless until a cycle has to be
-retried: `git worktree add -b issue-<n>` fails against an existing branch, and the retry then
-reports `BLOCKED` on a name collision rather than on anything real.
-
-```
-git push origin --delete issue-<n>
-```
+If it merged, one thing the repository normally does on your behalf will not have happened:
+a merge performed by the workflow's `GITHUB_TOKEN` does not close the issue the way a merge
+performed by a person does. It is not a formality — do it.
 
 **Close the issue.** A `Closes #<n>` line in the pull request body has been observed not
 closing it. An issue left open is one the next invocation of this command selects again, so
@@ -322,7 +319,15 @@ a working-directory override. In that case use the git equivalents —
 `git worktree remove <path>` here.
 
 Then `git -C <repo root> checkout main && git pull` so the next iteration branches from the
-merged state.
+merged state, and delete your own local branch:
+
+```
+git -C <repo root> branch -D issue-<n>
+```
+
+A stale *local* branch is what breaks a retry — `git worktree add -b issue-<n>` fails against
+an existing branch, and the retry then reports `BLOCKED` on a name collision rather than on
+anything real. The remote side needs nothing from you.
 
 If the pull request did not merge, leave the worktree in place and report `BLOCKED` with the
 PR number and the last state you saw.
