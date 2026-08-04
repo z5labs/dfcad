@@ -28,8 +28,12 @@ import (
 // looking like the other is worse than no result at all.
 type Relation string
 
-// The relations a traversal reports. The first two are written in the format;
-// the last two are read from what is written and are stored nowhere
+// The relations a traversal reports.
+//
+// Three of them follow a reference the format writes — a `within`, a `member-of`
+// and a `boundary` — and the fourth is written nowhere at all: adjacency is read
+// from where two of those boundaries meet, and is stored no more than any other
+// derived value
 // ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
 const (
 	// RelationContainment is the relation `(within <node-id>)` writes: the node
