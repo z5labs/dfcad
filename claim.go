@@ -804,15 +804,18 @@ func (l *claimLoader) declare(subject ID, form *Node, predicate string, declared
 }
 
 // identify checks a claim's id: that its namespace is one the registry
-// declares, and that no other claim already holds it.
+// declares, and that neither another claim nor a declared frame already holds
+// it.
 //
 // A claim which wrote no id, or whose id could not be read, is not checked. It
 // has no namespace to look up and nothing to collide with, and it is reachable
 // by nothing — which is exactly what an unreferenced claim needs to be.
 //
-// Whether a claim id collides with a node or a frame id is a question about the
-// whole graph rather than about the claims, and is asked once every family has
-// been read.
+// Whether a claim id collides with a node of either family is a question about
+// the whole graph rather than about the claims, and is asked by [LoadGraph]
+// once every family has been read. A frame is not deferred with them, because
+// the registry resolves before any claim is read and so is already here to be
+// asked.
 func (l *claimLoader) identify(claim *Claim, at Span) {
 	if at == (Span{}) {
 		return
