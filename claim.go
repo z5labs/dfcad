@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -493,13 +494,16 @@ var claimBearing = sync.OnceValue(func() map[string]*form {
 // reason a node whose type is undeclared is still a node: a caller reporting on
 // a tree wants to say what the claim says as well as what is wrong with it.
 //
-// Two things this pass deliberately leaves alone. A predicate the registry
-// declares non-claim-bearing takes a plain value and not a claim form, and
-// choosing between the two spellings is the bare-scalar rule's job rather than
-// this one's; a form written with no children is not read here. And whether a
-// deprecated claim names the claim which replaced it, and whether that chain
-// terminates, is the supersession pass's question — what is read here is the
-// reference itself.
+// Which of the two spellings a predicate takes is decided here, because the
+// registry is the only thing which knows. A claim-bearing predicate takes a
+// claim form, and a bare scalar written in that position is a load error
+// nothing downgrades; a predicate declared non-claim-bearing takes a plain
+// value, which is left where it was written because there is no provenance on
+// it for this pass to read.
+//
+// One thing this pass deliberately leaves alone: whether a deprecated claim
+// names the claim which replaced it, and whether that chain terminates, is the
+// supersession pass's question — what is read here is the reference itself.
 //
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
@@ -614,10 +618,38 @@ func (l *claimLoader) subject(node *Node, enclosing *form, tag string) {
 			continue
 		}
 
-		// A form written with no child forms is the plain value of a predicate
-		// the registry declares non-claim-bearing, or somebody writing one where
-		// a claim belongs. Both are the bare-scalar rule's to decide between.
-		if _, inside := split(elements(child)); len(inside) == 0 {
+		// The predicate is looked up once, before either spelling is read,
+		// because everything past the shape of the form is its to say: which
+		// spelling belongs here, which shape the value takes and which unit it
+		// is written in. A predicate nothing declares is reported here rather
+		// than inside the reading of one spelling, so that a misspelling is
+		// heard about once however it was written.
+		declared, isDeclared := l.registry.Predicate(written)
+		if !isDeclared {
+			l.add(l.registry.Undeclared(SortPredicate, written, tagSpan(child)))
+		}
+
+		// A form holding nothing at all is neither spelling, and that it holds
+		// nothing is the structural pass's diagnostic. Reporting it here as a
+		// plain value would name a value nobody wrote.
+		items := elements(child)
+		if len(items) == 0 {
+			continue
+		}
+
+		// Which of the two spellings was written is legible without the
+		// registry; which of them belongs is not.
+		value, inside := split(items)
+		asClaim := !writtenAsValue(value, inside)
+
+		if isDeclared && !l.spelling(child, written, declared, asClaim) {
+			continue
+		}
+
+		// The plain value of a non-claim-bearing predicate is left where it was
+		// written. It carries no source, no method and no accuracy, which is
+		// the whole of what this pass reads.
+		if !asClaim {
 			continue
 		}
 
@@ -626,17 +658,78 @@ func (l *claimLoader) subject(node *Node, enclosing *form, tag string) {
 			continue
 		}
 
-		l.declare(subject, child, written)
+		l.declare(subject, child, written, declared, isDeclared)
 	}
 }
 
-// declare reads one structurally valid claim form.
+// spelling checks how a predicate's value was written against how the registry
+// says it is written, and reports the one rule which decides between them.
+//
+// A claim-bearing predicate takes a claim and nothing else. `(width 8.5)` does
+// not load, is not a warning, and no flag, environment variable or
+// configuration downgrades it: a rule which can be waived is waived the same
+// afternoon the warnings start, and the model that comes back six months later
+// has provenance on a minority of its values with no commit saying so
+// ([0008](docs/decisions/0008-a-bare-scalar-is-a-load-error.md)). The remedy
+// for not knowing where a number came from is to say that — an estimate is a
+// method, and a claim with no accuracy loads and is unrankable — which is why
+// the diagnostic shows the minimal claim rather than only refusing the number.
+//
+// The rule holds in the other direction for the same reason it holds in this
+// one. A predicate the registry declares non-claim-bearing is one somebody
+// wrote down as carrying no provenance, and a claim form written under it would
+// put provenance in the model which the registry says is not there.
+//
+// A predicate nothing declares is not judged here at all. Which spelling it
+// takes is exactly what is missing, and "and it may be the wrong spelling" is
+// nothing anybody can act on before the declaration exists.
+func (l *claimLoader) spelling(form *Node, predicate string, declared Predicate, asClaim bool) bool {
+	if declared.ClaimBearing == asClaim {
+		return true
+	}
+
+	related := []RelatedLocation{{Span: declared.Span, Message: "the predicate is declared here"}}
+
+	// A claim spans as many lines as it has children, so the diagnostic about
+	// one written in the wrong place points at the tag which named the
+	// predicate. A plain value is one form on one line, and pointing at the
+	// whole of it is what shows the number which was written instead.
+	if asClaim {
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     tagSpan(form),
+			Message:  fmt.Sprintf("expected the plain value the predicate %s declares, found a claim", predicate),
+			Hint: fmt.Sprintf(
+				"%s is declared (claim-bearing #f) and takes its value directly: %s, with nothing after it",
+				predicate, spellPlainValue(predicate, declared),
+			),
+			Related: related,
+		})
+		return false
+	}
+
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     form.Span,
+		Message:  fmt.Sprintf("expected the claim the predicate %s bears, found a plain value", predicate),
+		Hint: fmt.Sprintf(
+			"the least a claim may say is %s; accuracy may be left out, and the claim then loads as unrankable",
+			spellMinimalClaim(predicate, declared),
+		),
+		Related: related,
+	})
+
+	return false
+}
+
+// declare reads one structurally valid claim form, against the declaration of
+// the predicate it was written under.
 //
 // Every child is read whatever happened to the ones before it, because a claim
 // with an unparseable date still has a value worth checking against its
 // predicate. Bailing out on the first would turn fixing a file into a guessing
 // loop.
-func (l *claimLoader) declare(subject ID, form *Node, predicate string) {
+func (l *claimLoader) declare(subject ID, form *Node, predicate string, declared Predicate, isDeclared bool) {
 	claim := &Claim{
 		subject:   subject,
 		predicate: predicate,
@@ -683,17 +776,11 @@ func (l *claimLoader) declare(subject ID, form *Node, predicate string) {
 		claim.accuracy, claim.hasAccuracy = l.accuracy(child)
 	}
 
-	// The predicate is looked up before the value is read because the value is
-	// judged against what it declares. A predicate nothing declares declares no
-	// shape and no unit, so the value is read as it was written and reported
-	// against nothing: a claim under a misspelled predicate hears about the
-	// misspelling once rather than about the misspelling and then about a shape
-	// nothing can judge.
-	declared, isDeclared := l.registry.Predicate(predicate)
-	if !isDeclared {
-		l.add(l.registry.Undeclared(SortPredicate, predicate, tagSpan(form)))
-	}
-
+	// The value is judged against what the predicate declares. A predicate
+	// nothing declares declares no shape and no unit, so the value is read as it
+	// was written and reported against nothing: a claim under a misspelled
+	// predicate hears about the misspelling once rather than about the
+	// misspelling and then about a shape nothing can judge.
 	if child, ok := childForm(form, "value"); ok {
 		claim.value = l.value(child, predicate, declared, isDeclared)
 	}
@@ -1190,6 +1277,95 @@ func writtenShape(written, children []*Node) (Shape, bool) {
 	}
 
 	return "", false
+}
+
+// spellMinimalClaim is the least a claim of this predicate may say, written
+// out.
+//
+// The bare-scalar diagnostic shows the whole form rather than a sentence about
+// it, because somebody who wrote a number where a claim belongs is missing four
+// children and the spelling of each of them. The accuracy is not among them:
+// leaving it out is the narrow escape hatch the rule keeps open, and a claim
+// which takes it loads and is unrankable.
+func spellMinimalClaim(predicate string, declared Predicate) string {
+	return fmt.Sprintf(
+		`(%s (value %s) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>"))`,
+		predicate, spellValue(declared),
+	)
+}
+
+// spellPlainValue is how the value of a non-claim-bearing predicate is written:
+// exactly what the value child of a claim under it would hold, and nothing
+// after it.
+func spellPlainValue(predicate string, declared Predicate) string {
+	return fmt.Sprintf("(%s %s)", predicate, spellValue(declared))
+}
+
+// spellValue is a skeleton of the value the predicate declares — its shape, how
+// many components it has and the unit it is expressed in — with a placeholder
+// wherever a number or a string would go.
+//
+// It is built from the declaration rather than from what was written, because
+// what was written is the thing being refused. A predicate whose own shape
+// could not be read declares none, and the skeleton then says only that a value
+// goes here.
+func spellValue(declared Predicate) string {
+	switch declared.Shape {
+	case ShapeScalar:
+		return withUnit("<number>", declared.Unit)
+
+	case ShapeCoordinate:
+		components := "<number> ..."
+		if declared.Dimension > 0 {
+			components = strings.Join(slices.Repeat([]string{"<number>"}, declared.Dimension), " ")
+		}
+		return withUnit("("+components+")", declared.Unit)
+
+	case ShapeText:
+		return `"<text>"`
+
+	case ShapeTransform:
+		return "(transform (translation ...) (rotation ...) (scale ...))"
+	}
+
+	return "<value>"
+}
+
+// withUnit appends the unit a predicate declares to a written value, and
+// appends nothing where it declares none: there is no unitless token, so a
+// non-dimensional value is written with no unit at all.
+func withUnit(value string, unit Unit) string {
+	if unit == "" {
+		return value
+	}
+	return value + " " + string(unit)
+}
+
+// writtenAsValue reports whether a form was written as a value rather than as a
+// claim, which is the difference the bare-scalar rule is about.
+//
+// It is not the question of whether there are child forms. A transform is the
+// one value shape written as a child form, so `(frame-transform (transform
+// ...))` is a value with no provenance on it rather than a claim which left out
+// every child it needed — and a rule which counted child forms would report the
+// four missing children and never say the one thing which is wrong with it.
+//
+// Anything written in the position a value goes counts, whether or not it is
+// one of the four shapes. `(width abc)` is a value position holding something
+// which is no value, and the claim the predicate bears is still what it is
+// missing; reporting it instead as a claim with no children would answer a
+// question nobody asked.
+func writtenAsValue(written, children []*Node) bool {
+	if len(written) > 0 {
+		return true
+	}
+
+	if len(children) == 0 {
+		return false
+	}
+
+	tag, ok := formTag(children[0])
+	return ok && tag == transformChild
 }
 
 // spellShape is how a diagnostic names a value of this shape as it was found,

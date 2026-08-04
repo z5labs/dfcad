@@ -1,0 +1,7 @@
+testdata/claim/bare-scalar/claims.dfc:11:3: error: expected the claim the predicate width bears, found a plain value
+11 |   (width 8.5)
+   |   ^^^^^^^^^^^
+   = hint: the least a claim may say is (width (value <number> m) (source "<evidence>") (method <method-id>) (date "<YYYY-MM-DD>")); accuracy may be left out, and the claim then loads as unrankable
+testdata/claim/bare-scalar/registry.dfc:15:12: note: the predicate is declared here
+15 | (predicate width
+   |            ^^^^^

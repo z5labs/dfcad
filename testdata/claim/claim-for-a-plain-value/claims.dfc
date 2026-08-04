@@ -1,0 +1,17 @@
+; The rule runs in both directions. A predicate the registry declares
+; non-claim-bearing takes its value directly, and a claim written under one is
+; provenance the registry says this value does not have.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  ; Accepted: exactly what the value child of a claim would hold, with nothing
+  ; after it.
+  (colour "slate")
+  ; Refused, for the same reason the bare scalar is: the spelling and what the
+  ; registry declares disagree, and only one of them can be right.
+  (colour
+    (value "slate")
+    (source "Finishes schedule FN-04")
+    (method method:observed)
+    (date "2026-04-02")))

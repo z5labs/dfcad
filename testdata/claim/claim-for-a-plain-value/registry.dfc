@@ -1,0 +1,19 @@
+; The vocabulary the claims beside this file are judged against. colour is
+; declared to carry no provenance, which is a thing somebody wrote down and a
+; reviewer read rather than a default anything falls into.
+(project
+  (label "Plain value fixture")
+  (globalid-namespace "https://example.org/models/plain-value"))
+
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate colour
+  (shape text)
+  (claim-bearing #f)
+  (description "What colour the thing was finished in."))
