@@ -1,0 +1,36 @@
+testdata/node/dangling-relation/nodes.dfc:23:11: error: expected a node id something in this model holds, found site:L-99, which names no node
+23 |   (within site:L-99))
+   |           ^^^^^^^^^
+   = hint: containment is written on the contained node as (within <node-id>), naming the node which strictly contains it
+testdata/node/dangling-relation/nodes.dfc:17:7: note: the contained node is written here
+17 | (node site:S-101
+   |       ^^^^^^^^^^
+testdata/node/dangling-relation/nodes.dfc:33:14: error: expected a node id something in this model holds, found site:Z-99, which names no node
+33 |   (member-of site:Z-99)
+   |              ^^^^^^^^^
+   = hint: membership is written on the member as (member-of <zone-id>), naming a node of kind Zone
+testdata/node/dangling-relation/nodes.dfc:26:7: note: the member is written here
+26 | (node site:E-01
+   |       ^^^^^^^^^
+testdata/node/dangling-relation/nodes.dfc:35:14: error: expected a zone site:E-01 does not already name, found site:Z-fire a second time
+35 |   (member-of site:Z-fire))
+   |              ^^^^^^^^^^^
+   = hint: membership is a relation and not a count; naming a zone twice says exactly what naming it once says
+testdata/node/dangling-relation/nodes.dfc:34:14: note: first named here
+34 |   (member-of site:Z-fire)
+   |              ^^^^^^^^^^^
+testdata/node/dangling-relation/nodes.dfc:45:14: error: expected a node of kind Zone, found site:L-01, which is a Storey
+45 |   (member-of site:L-01))
+   |              ^^^^^^^^^
+   = hint: membership groups nodes into zones and never says where a node is; a node inside another is written (within <node-id>)
+testdata/node/dangling-relation/nodes.dfc:2:7: note: the Storey named as the zone is written here
+2 | (node site:L-01
+  |       ^^^^^^^^^
+testdata/node/dangling-relation/nodes.dfc:54:11: error: expected the node which contains site:S-102, found site:S-102, which is the node itself
+54 |   (within site:S-102))
+   |           ^^^^^^^^^^
+   = hint: a node is contained by another node; a node inside itself encloses itself, which nothing can
+testdata/node/dangling-relation/nodes.dfc:62:14: error: expected a zone site:Z-therm is a member of, found site:Z-therm, which is the node itself
+62 |   (member-of site:Z-therm))
+   |              ^^^^^^^^^^^^
+   = hint: membership groups a node into a zone written beside it; a zone is not a member of itself

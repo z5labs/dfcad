@@ -1,0 +1,105 @@
+; One hierarchy which nests strictly, three zones which overlap freely across
+; it, and two nodes in neither relation. Every case the two relations have to
+; keep apart is written here once.
+
+; The root. Nothing contains a site, and this one is in no zone either, which is
+; the ordinary state of a node rather than an incomplete one.
+(node site:S-01
+  (label "Riverside parcel")
+  (kind Site)
+  (type SiteBoundary)
+  (geometry area)
+  (frame frame:building))
+
+(node site:B-01
+  (label "Riverside House")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building)
+  (within site:S-01))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry surface)
+  (frame frame:building)
+  (within site:B-01))
+
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01))
+
+(node site:S-102
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01))
+
+; A space inside a space. An alcove is one parent deep from the room it is in,
+; and the nesting is as strict there as it is anywhere above it.
+(node site:S-101a
+  (label "Alcove off Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-101))
+
+(node site:I-01
+  (label "Door into Meeting Room B")
+  (kind Interface)
+  (type Doorway)
+  (geometry point)
+  (frame frame:building)
+  (within site:S-101))
+
+; The wall between two rooms. It is inside exactly one thing — the storey — and
+; belongs to three zones which have nothing to do with where it is.
+(node site:E-01
+  (label "Partition between B and C")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-fire)
+  (member-of site:Z-therm)
+  (member-of site:Z-maint))
+
+; The three zones. They overlap — every one of them holds the partition — and no
+; one of them is inside any other or inside the hierarchy above.
+(node site:Z-fire
+  (label "Fire compartment 1")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building))
+
+(node site:Z-therm
+  (label "Thermal zone north")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building))
+
+; A zone with no shape and no frame, whose members are scattered through the
+; hierarchy. Nothing about it says where anything is.
+(node site:Z-maint
+  (label "Maintenance round A")
+  (kind Zone)
+  (type CircuitGroup)
+  (member-of site:Z-therm))
+
+; In neither relation: no parent, and no zone.
+(node site:C-01
+  (label "Lighting circuit group 3")
+  (kind Zone)
+  (type CircuitGroup))

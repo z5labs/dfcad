@@ -1,0 +1,33 @@
+; Strict nesting means one parent. A node claiming two is a load error which
+; points at both claims, so that fixing it does not mean hunting for the other.
+(node site:S-01
+  (label "Riverside parcel")
+  (kind Site)
+  (type SiteBoundary)
+  (geometry area)
+  (frame frame:building))
+
+(node site:B-01
+  (label "Riverside House")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building)
+  (within site:S-01))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry surface)
+  (frame frame:building)
+  (within site:B-01))
+
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (within site:B-01))

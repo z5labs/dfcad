@@ -97,6 +97,15 @@ type child struct {
 	// form describes the child itself.
 	form *form
 
+	// duplicated, when set, is the hint a diagnostic carries about a second one
+	// of this child. Empty means the diagnostic carries none.
+	//
+	// It is for the children whose count is a rule about the model rather than
+	// about the shape of the form. "At most one (within ...) child" is true and
+	// says nothing; "a node is strictly contained by one other node" is the rule
+	// the author wrote against, and it is the one worth reading twice.
+	duplicated string
+
 	// omitted is this child's canonical printing when it holds its default,
 	// which canonical form leaves out — `(rank normal)` is written back as
 	// nothing at all. Empty means the child has no default and is written back
@@ -201,7 +210,13 @@ var (
 			{tag: "type", arity: exactly(1), form: args(exactly(1), "a type name")},
 			{tag: "geometry", arity: atMost(1), form: args(exactly(1), "a geometry form")},
 			{tag: "frame", arity: atMost(1), form: args(exactly(1), "a frame id")},
-			{tag: "within", arity: atMost(1), form: args(exactly(1), "a node id")},
+			{
+				tag:   "within",
+				arity: atMost(1),
+				form:  args(exactly(1), "a node id"),
+				duplicated: "a node is strictly contained by one other node, so the two (within ...) children here " +
+					"claim two parents for it; a node grouped with more than one thing is written (member-of <zone-id>)",
+			},
 			{tag: "member-of", arity: repeated, form: args(exactly(1), "a zone node id")},
 			{tag: "boundary", arity: repeated, form: args(exactly(1), "a loop id")},
 			{tag: "retired", arity: atMost(1), form: retiredForm},

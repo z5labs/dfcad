@@ -1,0 +1,59 @@
+; Four nestings the hierarchy does not permit. Each names the kind which was
+; written, the node it was written inside and that node's kind, and says where a
+; node of the kind does belong.
+(node site:S-01
+  (label "Riverside parcel")
+  (kind Site)
+  (type SiteBoundary)
+  (geometry area)
+  (frame frame:building))
+
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+(node site:Z-fire
+  (label "Fire compartment 1")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building))
+
+; A storey inside a room, which is the hierarchy upside down.
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry surface)
+  (frame frame:building)
+  (within site:S-101))
+
+; A building inside a zone. A zone groups things; it never encloses them.
+(node site:B-01
+  (label "Riverside House")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building)
+  (within site:Z-fire))
+
+; A zone inside a site, which is the same confusion read the other way round.
+(node site:Z-therm
+  (label "Thermal zone north")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-01))
+
+; A site inside anything at all.
+(node site:S-02
+  (label "Adjoining parcel")
+  (kind Site)
+  (type SiteBoundary)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-01))

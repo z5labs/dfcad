@@ -501,6 +501,34 @@ func ExampleNodes_Node() {
 	// site:S-101: Meeting Room B, a Space
 }
 
+func ExampleNodes_Zones() {
+	registry, _ := dfcad.LoadRegistry("testdata/node/containment")
+	nodes, _ := dfcad.LoadNodes("testdata/node/containment", registry)
+
+	partition, ok := nodes.Node("site:E-01")
+	if !ok {
+		fmt.Println("no such node")
+		return
+	}
+
+	// The wall is inside exactly one thing and belongs to three zones which
+	// overlap it. Every result says which relation produced it, so "is inside"
+	// and "is a member of" can never be read as each other.
+	if parent, ok := nodes.Within(partition); ok {
+		fmt.Printf("%s %s\n", parent.Relation(), parent.Node().ID())
+	}
+
+	for zone := range nodes.Zones(partition) {
+		fmt.Printf("%s %s\n", zone.Relation(), zone.Node().ID())
+	}
+
+	// Output:
+	// containment site:L-01
+	// membership site:Z-fire
+	// membership site:Z-therm
+	// membership site:Z-maint
+}
+
 func ExampleClaims_Resolve() {
 	registry, _ := dfcad.LoadRegistry("testdata/claim/valid")
 	claims, _ := dfcad.LoadClaims("testdata/claim/valid", registry)

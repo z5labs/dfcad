@@ -1,0 +1,62 @@
+; Every way a reference of either relation fails to name what it says it names.
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry surface)
+  (frame frame:building))
+
+(node site:Z-fire
+  (label "Fire compartment 1")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building))
+
+; A parent nothing in this model defines.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-99))
+
+; A zone nothing in this model defines, and one named twice.
+(node site:E-01
+  (label "Partition between B and C")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-99)
+  (member-of site:Z-fire)
+  (member-of site:Z-fire))
+
+; A membership naming a node which is not a zone, which is containment written
+; in the wrong relation.
+(node site:I-01
+  (label "Door into Meeting Room B")
+  (kind Interface)
+  (type Doorway)
+  (geometry point)
+  (frame frame:building)
+  (member-of site:L-01))
+
+; A node inside itself, and a zone which is a member of itself.
+(node site:S-102
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-102))
+
+(node site:Z-therm
+  (label "Thermal zone north")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building)
+  (member-of site:Z-therm))

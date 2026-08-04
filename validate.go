@@ -337,7 +337,7 @@ func (v *validator) count(s scope, seen map[string][]*Node) {
 			v.add(
 				extra.Span,
 				fmt.Sprintf("expected at most one (%s ...) child of %s, found another", c.tag, s.where),
-				"",
+				c.duplicated,
 				RelatedLocation{Span: written[0].Span, Message: "first written here"},
 			)
 		}
