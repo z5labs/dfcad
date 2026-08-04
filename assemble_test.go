@@ -185,6 +185,11 @@ func TestAssembleWithoutADeclaredTolerance(t *testing.T) {
 		assert.Equal(t, Tolerance{}, assembly.Tolerance())
 		assert.False(t, assembly.Closed())
 		assert.Contains(t, diags[1].Message, "found a gap of 0.004 m")
+
+		// And the hint names no tolerance, because none was applied. Offering
+		// one here would send whoever reads it to check a number which had no
+		// part in the answer.
+		assert.NotContains(t, diags[1].Hint, "tolerance")
 	})
 
 	t.Run("closes a ring which meets itself at one vertex without measuring anything", func(t *testing.T) {

@@ -90,13 +90,20 @@ type SemanticNode struct {
 	// is many to many, so the field is a slice and its emptiness is ordinary.
 	zones []ID
 
-	// boundaries are the ids of the loops this node references as its outline,
-	// in the order they were written and with a repeated one held once.
+	// boundaries are the ids this node wrote where a loop id belongs, in the
+	// order they were written and with a repeated one held once.
+	//
+	// They are the ids as written and not the loops they reached. This pass has
+	// read one family, so it cannot know that an id names a loop, that it names
+	// a vertex, or that it names nothing at all
+	// ([0001](docs/decisions/0001-two-node-families.md)); each of those is a
+	// diagnostic from [ResolveBoundaries], and every one of them is still an id
+	// somebody wrote here and has to be shown where.
 	//
 	// What is held is the reference and never the shape. A node bounded by a
 	// loop carries no coordinate of its own, which is what makes the wall
 	// between two rooms one edge with one identity rather than two copies which
-	// drift ([0001](docs/decisions/0001-two-node-families.md)).
+	// drift.
 	boundaries []ID
 
 	// span is where the node form was written.
@@ -166,8 +173,8 @@ func (n *SemanticNode) Within() (ID, bool) { return n.within, n.hasWithin }
 // with the relation which produced them.
 func (n *SemanticNode) MemberOf() []ID { return slices.Clone(n.zones) }
 
-// Boundaries returns the ids of the loops this node references as its outline,
-// in the order they were written.
+// Boundaries returns the ids this node wrote where a loop id belongs, in the
+// order they were written.
 //
 // A semantic node references a loop and never carries coordinates. That is what
 // makes a shared wall shared: two spaces either side of a partition reference
@@ -179,10 +186,16 @@ func (n *SemanticNode) MemberOf() []ID { return slices.Clone(n.zones) }
 // two is as well: an outline and the void it encloses are two loops on one
 // node. Nothing here says which is which, because the format does not.
 //
-// These are the ids as the node wrote them, with a repeated one — which is a
-// load error — held once. The loops they name live in the geometric family, so
-// resolving them is a question about both families at once, which is what
-// [ResolveBoundaries] answers.
+// **These are the ids as they were written, and not the loops they reached.** An
+// id naming a vertex, and one naming nothing this model holds, are each a
+// diagnostic from [ResolveBoundaries] and are each still here, because a caller
+// reporting on a node wants to say what it says as well as what is wrong with
+// it. A caller which wants only the loops walks [Boundaries.Loops], which yields
+// what resolved and nothing else. A repeated id — which is a load error — is
+// held once.
+//
+// Resolving them is a question about both families at once, and this pass has
+// read one, which is why the answer is not here.
 func (n *SemanticNode) Boundaries() []ID { return slices.Clone(n.boundaries) }
 
 // Span returns where the node form was written, which is what a diagnostic

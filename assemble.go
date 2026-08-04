@@ -356,7 +356,7 @@ func (a *assembler) merge() {
 
 	a.points = newMerged(ids)
 
-	if !a.declared || a.assembly.tolerance.Unit != a.unit {
+	if !a.applicable() {
 		return
 	}
 
@@ -634,9 +634,16 @@ func (a *assembler) gap(seam breakage) Diagnostic {
 
 // closureHint says what closing means, and what the loop was judged against
 // where it was judged against anything.
+//
+// The tolerance is named only where it was applied. A hint which offered it
+// whenever the registry declared one would tell somebody whose frame is
+// undeclared, or whose tolerance is in another unit, that two corners within
+// five millimetres count as one — when nothing was measured and no two corners
+// were merged. That is worse than a shorter hint: it sends them to check a
+// number which had no part in the answer.
 func (a *assembler) closureHint() string {
 	hint := "a loop is a ring: each edge begins at the corner the last one ended at, and the last ends where the first began"
-	if !a.declared {
+	if !a.applicable() {
 		return hint
 	}
 
@@ -644,6 +651,19 @@ func (a *assembler) closureHint() string {
 		"%s; two corners no further apart than the tolerance %s, which is %s %s, count as one",
 		hint, a.assembly.tolerance.Name, decimal(a.assembly.tolerance.Value), a.assembly.tolerance.Unit,
 	)
+}
+
+// applicable reports whether the tolerance could be applied to this loop at all:
+// that the registry declares it, that the loop's frame is one the registry
+// declares, and that the two are in the same unit.
+//
+// It is one predicate rather than a condition repeated at each place which needs
+// it, because those places have to agree. A hint which says a tolerance decided
+// the answer where no corner was merged against it is as wrong as merging
+// against a tolerance in another unit would be, and the two going out of step is
+// exactly what a second copy of the condition would eventually do.
+func (a *assembler) applicable() bool {
+	return a.declared && a.unit != "" && a.assembly.tolerance.Unit == a.unit
 }
 
 // cornerName names a corner for a diagnostic, listing every vertex the tolerance
