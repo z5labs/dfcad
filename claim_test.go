@@ -681,6 +681,56 @@ func TestLoadClaimsBareScalarIsUnconditional(t *testing.T) {
 	}
 }
 
+// TestLoadClaimsRefusesAValueWrittenAsAChildForm checks that the rule reaches
+// the one value shape which is itself written as a child form.
+//
+// A transform value is `(transform ...)`, so a form holding child forms is not
+// proof that a claim was written. A loader which read `(frame-transform
+// (transform ...))` as a claim would report the four children it is missing and
+// never say the one thing which is wrong with it — that a transform between two
+// frames is a measurement, and this one arrived with nothing behind it.
+func TestLoadClaimsRefusesAValueWrittenAsAChildForm(t *testing.T) {
+	const written = `(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame-transform
+    (transform
+      (translation 0.0 0.0 0.0)
+      (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+      (scale 1.0))))
+`
+
+	t.Run("a transform written where a claim-bearing predicate belongs is refused", func(t *testing.T) {
+		const registry = `(project (globalid-namespace "https://example.org/models/transform"))
+(namespace site (description "Semantic nodes minted by this model."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate frame-transform (shape transform) (description "The rigid transform to a parent."))
+`
+
+		claims, diags := loadClaimModel(t, registry, written)
+
+		assert.Zero(t, claims.Len())
+		require.Len(t, diags, 1, "one diagnostic, and it is the rule rather than four missing children")
+		assert.Equal(t, SeverityError, diags[0].Severity)
+		assert.Contains(t, diags[0].Message, "frame-transform")
+		assert.Contains(t, diags[0].Hint, "(transform (translation ...) (rotation ...) (scale ...))")
+	})
+
+	t.Run("and the same transform is the plain value a non-claim-bearing predicate takes", func(t *testing.T) {
+		const registry = `(project (globalid-namespace "https://example.org/models/transform"))
+(namespace site (description "Semantic nodes minted by this model."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate frame-transform (shape transform) (claim-bearing #f) (description "The rigid transform to a parent."))
+`
+
+		claims, diags := loadClaimModel(t, registry, written)
+
+		assert.Zero(t, claims.Len())
+		assert.Empty(t, diags, "the classification is by what was written, not by whether there are child forms")
+	})
+}
+
 // TestLoadClaimsLeavesAnEmptyFormToTheStructuralPass checks that a predicate
 // written with nothing after it is not reported here as a bare scalar.
 //

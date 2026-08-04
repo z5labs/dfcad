@@ -637,11 +637,10 @@ func (l *claimLoader) subject(node *Node, enclosing *form, tag string) {
 			continue
 		}
 
-		// A form written with child forms is a claim; one written with none is
-		// a plain value. That much is legible without the registry, and which
-		// of the two the predicate takes is not.
-		_, inside := split(items)
-		asClaim := len(inside) > 0
+		// Which of the two spellings was written is legible without the
+		// registry; which of them belongs is not.
+		value, inside := split(items)
+		asClaim := !writtenAsValue(value, inside)
 
 		if isDeclared && !l.spelling(child, written, declared, asClaim) {
 			continue
@@ -1340,6 +1339,33 @@ func withUnit(value string, unit Unit) string {
 		return value
 	}
 	return value + " " + string(unit)
+}
+
+// writtenAsValue reports whether a form was written as a value rather than as a
+// claim, which is the difference the bare-scalar rule is about.
+//
+// It is not the question of whether there are child forms. A transform is the
+// one value shape written as a child form, so `(frame-transform (transform
+// ...))` is a value with no provenance on it rather than a claim which left out
+// every child it needed — and a rule which counted child forms would report the
+// four missing children and never say the one thing which is wrong with it.
+//
+// Anything written in the position a value goes counts, whether or not it is
+// one of the four shapes. `(width abc)` is a value position holding something
+// which is no value, and the claim the predicate bears is still what it is
+// missing; reporting it instead as a claim with no children would answer a
+// question nobody asked.
+func writtenAsValue(written, children []*Node) bool {
+	if len(written) > 0 {
+		return true
+	}
+
+	if len(children) == 0 {
+		return false
+	}
+
+	tag, ok := formTag(children[0])
+	return ok && tag == transformChild
 }
 
 // spellShape is how a diagnostic names a value of this shape as it was found,
