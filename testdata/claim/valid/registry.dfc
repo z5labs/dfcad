@@ -1,0 +1,64 @@
+; The vocabulary the claims beside this file are judged against. Between them
+; the predicates below declare all four value shapes, dimensional and not, so
+; that a claim of each is representable without a special case.
+;
+; The frame is the worked example's: two frames related by a measurement rather
+; than by a constant, which is why the transform is a claim with an id and the
+; frame names it.
+(project
+  (label "Claim axes fixture")
+  (globalid-namespace "https://example.org/models/claims"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How wide the thing is, across its shorter axis."))
+
+(predicate occupancy
+  (shape scalar)
+  (description "How many people the thing is rated for, which is a count rather than a length."))
+
+(predicate finish
+  (shape text)
+  (description "What the thing was finished in."))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (frame-transform
+    (id survey:C-0031)
+    (value
+      (transform
+        (translation 401235.117 3172884.902 44.318)
+        (rotation 0.9999985 -0.0017453 0.0 0.0017453 0.9999985 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-11")))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))

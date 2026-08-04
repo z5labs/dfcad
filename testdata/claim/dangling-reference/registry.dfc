@@ -1,0 +1,34 @@
+; A frame naming the claim which measures its relationship to its parent, and a
+; transform claim written on that frame which left its (id ...) out.
+;
+; A claim id is optional right up until something references the claim, and the
+; frame here is that something: the reference resolves to nothing, because the
+; claim it means has no name to be found by.
+(project (globalid-namespace "https://example.org/models/claims"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (frame-transform
+    (value
+      (transform
+        (translation 401235.117 3172884.902 44.318)
+        (rotation 0.9999985 -0.0017453 0.0 0.0017453 0.9999985 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-11")))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))

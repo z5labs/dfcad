@@ -1,0 +1,7 @@
+testdata/claim/dangling-reference/registry.dfc:22:14: error: expected a claim id something in this model carries, found survey:C-0031, which names no claim
+22 |   (transform survey:C-0031)
+   |              ^^^^^^^^^^^^^
+   = hint: a claim which anything references carries an (id ...) of its own; a claim nothing references may leave it out
+testdata/claim/dangling-reference/registry.dfc:18:8: note: the transform of the frame frame:building is written here
+18 | (frame frame:building
+   |        ^^^^^^^^^^^^^^

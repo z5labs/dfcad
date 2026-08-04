@@ -1,0 +1,12 @@
+; One claim id written on two claims, in two files. An id is unique across the
+; whole model, so the second is reported and the id goes on naming the first.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "2026-01-09")))

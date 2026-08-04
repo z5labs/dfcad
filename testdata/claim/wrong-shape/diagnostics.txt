@@ -1,0 +1,35 @@
+testdata/claim/wrong-shape/claims.dfc:9:5: error: expected the scalar value the predicate width declares, found a coordinate
+9 |     (value (8.5 3.0 0.0) m)
+  |     ^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: width declares a scalar value
+testdata/claim/wrong-shape/registry.dfc:25:12: note: the predicate is declared here
+25 | (predicate width
+   |            ^^^^^
+testdata/claim/wrong-shape/claims.dfc:14:5: error: expected the text value the predicate finish declares, found a number
+14 |     (value 8.5 m)
+   |     ^^^^^^^^^^^^^
+   = hint: finish declares a text value
+testdata/claim/wrong-shape/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate finish
+   |            ^^^^^^
+testdata/claim/wrong-shape/claims.dfc:19:5: error: expected the transform value the predicate frame-transform declares, found a number
+19 |     (value 1.0)
+   |     ^^^^^^^^^^^
+   = hint: frame-transform declares a transform value
+testdata/claim/wrong-shape/registry.dfc:15:12: note: the predicate is declared here
+15 | (predicate frame-transform
+   |            ^^^^^^^^^^^^^^^
+testdata/claim/wrong-shape/claims.dfc:27:5: error: expected the coordinate value the predicate position declares, found a string
+27 |     (value "the south west corner")
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: position declares a coordinate value
+testdata/claim/wrong-shape/registry.dfc:19:12: note: the predicate is declared here
+19 | (predicate position
+   |            ^^^^^^^^
+testdata/claim/wrong-shape/claims.dfc:35:12: error: expected the 3 components the predicate position declares, found 2
+35 |     (value (4.0 0.0) m)
+   |            ^^^^^^^^^
+   = hint: position declares a coordinate of 3 components
+testdata/claim/wrong-shape/registry.dfc:19:12: note: the predicate is declared here
+19 | (predicate position
+   |            ^^^^^^^^

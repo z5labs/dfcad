@@ -1,0 +1,11 @@
+; The second claim to write the id, on a different node in a different file.
+(node site:S-102
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (id survey:C-0210)
+    (value 4.2 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06")))

@@ -159,6 +159,58 @@ func ExampleLoadNodes() {
 	// site:C-01: Zone CircuitGroup, no geometry
 }
 
+func ExampleLoadClaims() {
+	// The registry resolves first. Which predicates exist, which of the four
+	// shapes each one's value takes and which unit it is expressed in are the
+	// only things which can judge a claim.
+	registry, diagnostics := dfcad.LoadRegistry("testdata/claim/valid")
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	claims, diagnostics := dfcad.LoadClaims("testdata/claim/valid", registry)
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	// How wide is that room, and how do you know? One lookup answers both,
+	// because a dimension here is a value plus the evidence for it rather than
+	// a column with the provenance in another table.
+	//
+	// Two claims under one predicate is the normal case, and the disagreement
+	// between them is the most valuable thing in the file.
+	for claim := range claims.Under("site:S-101", "width") {
+		width, _ := claim.Value().Scalar()
+		accuracy, _ := claim.Accuracy()
+
+		fmt.Printf("%g %s +/- %g %s, %s, %s\n",
+			width, claim.Value().Unit(),
+			accuracy.Terms[0].Magnitude, accuracy.Terms[0].Unit,
+			claim.Source(), claim.Date().Format("2006-01-02"))
+	}
+
+	// Output:
+	// 8.5 m +/- 0.05 m, Plan set A-101, sheet 3, 2026-01-09
+	// 8.53 m +/- 0.003 m, As-built check AB-2026-009, Acme Surveys, 2026-05-06
+}
+
+func ExampleClaim_Accuracy() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/valid")
+	claims, _ := dfcad.LoadClaims("testdata/claim/valid", registry)
+
+	// A claim which does not say how well its value is known loads, and is
+	// unrankable: it can never win resolution and it is not given a default,
+	// because a default would be the engine inventing the one figure the claim
+	// exists to record. It is still a candidate when nothing rankable exists.
+	for claim := range claims.Under("site:S-101", "occupancy") {
+		_, stated := claim.Accuracy()
+		fmt.Println(claim.Predicate(), claim.Rank(), stated, claim.Rankable())
+	}
+
+	// Output:
+	// occupancy normal false false
+}
+
 func ExampleRegistry_Undeclared() {
 	const path = "entities/level-1.dfc"
 

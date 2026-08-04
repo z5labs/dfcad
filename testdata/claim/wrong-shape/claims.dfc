@@ -1,0 +1,38 @@
+; A value of each of the four shapes written under a predicate which declares
+; another. Each diagnostic names the predicate, the shape it declares and what
+; was found there instead.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (value (8.5 3.0 0.0) m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "2026-01-09"))
+  (finish
+    (value 8.5 m)
+    (source "Finishes schedule FN-04")
+    (method method:observed)
+    (date "2026-04-02"))
+  (frame-transform
+    (value 1.0)
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (date "2026-02-11")))
+
+(vertex geom:V-02
+  (frame frame:building)
+  (position
+    (value "the south west corner")
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-18"))
+  ; A coordinate of the right shape and the wrong length. The count is fixed by
+  ; the predicate's declared dimension, so this is as much a mismatch as writing
+  ; a string would be.
+  (position
+    (value (4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-18")))

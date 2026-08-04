@@ -1,0 +1,54 @@
+; One node carrying four claims and one vertex carrying two. The two width
+; claims are two measurements which disagree, which is the case the model exists
+; to hold rather than a mistake; the two position claims are the same shot taken
+; twice, the first of them deprecated with a pointer at what replaced it.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09"))
+  (width
+    (value 8.53 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06"))
+  ; Rated for, not measured: a count with no unit and no accuracy, which loads
+  ; and is unrankable.
+  (occupancy
+    (value 12.0)
+    (source "Fire strategy FS-2026-001")
+    (method method:assumed)
+    (date "2026-03-14"))
+  (finish
+    (value "slate")
+    (source "Finishes schedule FN-04")
+    (method method:observed)
+    (date "2026-04-02")))
+
+(vertex geom:V-02
+  (frame frame:building)
+  (position
+    (id survey:C-0104)
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:C-0181))
+  (position
+    (id survey:C-0181)
+    (value (4.05 0.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06")))

@@ -1,0 +1,28 @@
+testdata/claim/wrong-unit/claims.dfc:9:17: error: expected the unit the predicate width declares, found ft
+9 |     (value 27.9 ft)
+  |                 ^^
+  = hint: width declares m, and a value written in another unit is converted by whoever writes it rather than by the loader
+testdata/claim/wrong-unit/registry.dfc:25:12: note: the predicate is declared here
+25 | (predicate width
+   |            ^^^^^
+testdata/claim/wrong-unit/claims.dfc:14:5: error: expected a unit after the value, found none
+14 |     (value 8.5)
+   |     ^^^^^^^^^^^
+   = hint: width declares m, and a dimensional value is written with its unit
+testdata/claim/wrong-unit/registry.dfc:25:12: note: the predicate is declared here
+25 | (predicate width
+   |            ^^^^^
+testdata/claim/wrong-unit/claims.dfc:19:17: error: expected no unit after the value, found m
+19 |     (value 12.0 m)
+   |                 ^
+   = hint: occupancy declares no unit, and there is no unitless token: a non-dimensional value is written with no unit at all
+testdata/claim/wrong-unit/registry.dfc:30:12: note: the predicate is declared here
+30 | (predicate occupancy
+   |            ^^^^^^^^^
+testdata/claim/wrong-unit/claims.dfc:27:26: error: expected the unit the predicate position declares, found usft
+27 |     (value (4.0 0.0 0.0) usft)
+   |                          ^^^^
+   = hint: position declares m, and a value written in another unit is converted by whoever writes it rather than by the loader
+testdata/claim/wrong-unit/registry.dfc:19:12: note: the predicate is declared here
+19 | (predicate position
+   |            ^^^^^^^^

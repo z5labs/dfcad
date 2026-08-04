@@ -1,0 +1,8 @@
+testdata/claim/undeclared-predicate/claims.dfc:8:4: error: expected a declared predicate, found widht, which no registry file declares
+8 |   (widht
+  |    ^^^^^
+  = hint: did you mean width?
+testdata/claim/undeclared-predicate/claims.dfc:13:4: error: expected a declared predicate, found thermal-transmittance, which no registry file declares
+13 |   (thermal-transmittance
+   |    ^^^^^^^^^^^^^^^^^^^^^
+   = hint: the declared predicates are finish, frame-transform, occupancy, position and width
