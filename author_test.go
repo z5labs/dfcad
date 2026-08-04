@@ -499,16 +499,24 @@ func TestTxRetire(t *testing.T) {
 func TestTxRetireDatesTheChangeWhenItWasMade(t *testing.T) {
 	root := authorFixture(t)
 
+	// The day either side of the change, because a run which crosses midnight
+	// UTC between them wrote the earlier of the two and is not a failure. Taking
+	// "today" after the fact and requiring it to match is the assertion which
+	// fails once a year for no reason anybody can reproduce.
+	began := time.Now().UTC().Format(dateLayout)
+
 	graph := authored(t, root, func(tx *Tx) error {
 		return tx.Retire("site:B-02", RetirementSpec{Reason: "Never built."})
 	})
+
+	ended := time.Now().UTC().Format(dateLayout)
 
 	node, ok := graph.Node("site:B-02")
 	require.True(t, ok)
 
 	retirement, ok := node.Retirement()
 	require.True(t, ok)
-	assert.Equal(t, time.Now().UTC().Format(dateLayout), retirement.Date().Format(dateLayout))
+	assert.Contains(t, []string{began, ended}, retirement.Date().Format(dateLayout))
 }
 
 func TestTxRetireRefusesWhatItCannotRetire(t *testing.T) {
