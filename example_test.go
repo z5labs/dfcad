@@ -123,6 +123,42 @@ func ExampleLoadRegistry() {
 	// m frame:survey-grid
 }
 
+func ExampleLoadNodes() {
+	// The registry resolves first. Whether a type is declared, and which kind
+	// and which geometry form it permits, is the only thing which can judge a
+	// node's axes.
+	registry, diagnostics := dfcad.LoadRegistry("testdata/node/valid")
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	nodes, diagnostics := dfcad.LoadNodes("testdata/node/valid", registry)
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	for _, node := range nodes {
+		// A node with no geometry is an ordinary node and not a broken one, so
+		// the axis reports absence rather than an empty value.
+		geometry, ok := node.Geometry()
+		if !ok {
+			fmt.Printf("%s: %s %s, no geometry\n", node.ID(), node.Kind(), node.Type())
+			continue
+		}
+		fmt.Printf("%s: %s %s, %s\n", node.ID(), node.Kind(), node.Type(), geometry)
+	}
+
+	// Output:
+	// site:Z-01: Zone Campus, area
+	// site:S-01: Site SiteBoundary, area
+	// site:B-01: Building OfficeBuilding, solid
+	// site:L-01: Storey Level, surface
+	// site:S-101: Space MeetingRoom, area
+	// site:E-01: Element Partition, line
+	// site:I-01: Interface Doorway, point
+	// site:C-01: Zone CircuitGroup, no geometry
+}
+
 func ExampleRegistry_Undeclared() {
 	const path = "entities/level-1.dfc"
 

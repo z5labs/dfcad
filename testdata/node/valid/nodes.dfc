@@ -1,0 +1,56 @@
+; One node of each of the seven kinds, and then one with neither a geometry nor
+; a frame. The last is the case the axes exist for: a thing the model has to be
+; able to talk about which has no shape and sits in no coordinate system.
+(node site:Z-01
+  (label "Riverside campus")
+  (kind Zone)
+  (type Campus)
+  (geometry area)
+  (frame frame:building))
+
+(node site:S-01
+  (label "Riverside parcel")
+  (kind Site)
+  (type SiteBoundary)
+  (geometry area)
+  (frame frame:building))
+
+(node site:B-01
+  (label "Riverside House")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry surface)
+  (frame frame:building))
+
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+(node site:E-01
+  (label "Partition between B and C")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building))
+
+(node site:I-01
+  (label "Door into Meeting Room B")
+  (kind Interface)
+  (type Doorway)
+  (geometry point)
+  (frame frame:building))
+
+(node site:C-01
+  (label "Lighting circuit group 3")
+  (kind Zone)
+  (type CircuitGroup))

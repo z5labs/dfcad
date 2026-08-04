@@ -66,6 +66,53 @@ func Geometries() []Geometry { return slices.Clone(geometries) }
 // not a [Geometry].
 const absentGeometry = "absent"
 
+// unknownKind is the diagnostic for a symbol written where a kind belongs.
+//
+// It lives beside the set rather than at each call site because the answer to
+// "that is not a kind" is the same on a type declaration and on the node which
+// declares that type, and because the permitted set is listed in specification
+// order — the order somebody reading the specification met them in — which only
+// this file knows.
+func unknownKind(span Span, written string) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     span,
+		Message:  fmt.Sprintf("expected a kind, found %s", written),
+		Hint:     "a kind is one of " + join(spellings(kinds), "and"),
+	}
+}
+
+// unknownGeometry is the diagnostic for a symbol written where one of the five
+// geometry forms belongs, which is every position but a type declaration.
+//
+// `absent` gets its own hint because writing it on a node is not a misspelling
+// of anything: it is the one legal spelling of absence in the other position,
+// and the fix is to delete the child rather than to correct the word.
+func unknownGeometry(span Span, written string) Diagnostic {
+	hint := "a geometry form is one of " + join(spellings(geometries), "and")
+	if written == absentGeometry {
+		hint = "absent is written only in a type declaration; a node with no geometry omits the (geometry ...) child"
+	}
+
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     span,
+		Message:  fmt.Sprintf("expected a geometry form, found %s", written),
+		Hint:     hint,
+	}
+}
+
+// unknownGeometryOrAbsent is the diagnostic for a symbol written where a type
+// declaration permits a geometry form or `absent`.
+func unknownGeometryOrAbsent(span Span, written string) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     span,
+		Message:  fmt.Sprintf("expected a geometry form or absent, found %s", written),
+		Hint:     "a geometry form is one of " + join(spellings(geometries), "and") + ", and absent permits an instance to omit the child",
+	}
+}
+
 // Shape is the shape a predicate's claim values take, per specification
 // section 6.6.
 type Shape string
@@ -185,6 +232,23 @@ func (t Type) PermitsKind(kind Kind) bool { return slices.Contains(t.Kinds, kind
 // PermitsGeometry reports whether an instance of the type may declare geometry.
 func (t Type) PermitsGeometry(geometry Geometry) bool {
 	return slices.Contains(t.Geometries, geometry)
+}
+
+// permittedGeometry spells what the type allows in the geometry position, for a
+// diagnostic which lists it.
+//
+// Absence is listed as a phrase rather than as the word `absent`, because
+// `absent` is not something a node may be corrected to write: a node with no
+// geometry omits the child.
+func (t Type) permittedGeometry() string {
+	permitted := spellings(t.Geometries)
+	if t.Absent {
+		permitted = append(permitted, "no geometry at all")
+	}
+	if len(permitted) == 0 {
+		return "no geometry form"
+	}
+	return join(permitted, "and")
 }
 
 // Invariant is a check the type registry applies to every instance of a type,

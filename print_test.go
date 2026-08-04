@@ -143,6 +143,7 @@ func corpus(t *testing.T) []string {
 		"testdata/validate/*.dfc",
 		"testdata/model/*/*.dfc",
 		"testdata/registry/*/*.dfc",
+		"testdata/node/*/*.dfc",
 	} {
 		matched, err := filepath.Glob(pattern)
 		require.NoError(t, err)

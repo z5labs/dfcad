@@ -1,0 +1,14 @@
+; A type is open vocabulary, so the only thing which can say whether one exists
+; is the registry the consuming repository supplies.
+
+; Near enough to a declared type to be a misspelling of it.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoon)
+  (geometry area))
+
+; Near nothing, so the diagnostic lists what is declared instead.
+(node site:S-102
+  (kind Space)
+  (type Warehouse)
+  (geometry area))

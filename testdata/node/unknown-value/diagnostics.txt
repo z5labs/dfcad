@@ -1,0 +1,12 @@
+testdata/node/unknown-value/nodes.dfc:6:9: error: expected a kind, found Room
+6 |   (kind Room)
+  |         ^^^^
+  = hint: a kind is one of Zone, Site, Building, Storey, Space, Element and Interface
+testdata/node/unknown-value/nodes.dfc:14:13: error: expected a geometry form, found polygon
+14 |   (geometry polygon))
+   |             ^^^^^^^
+   = hint: a geometry form is one of point, line, area, surface and solid
+testdata/node/unknown-value/nodes.dfc:21:13: error: expected a geometry form, found absent
+21 |   (geometry absent))
+   |             ^^^^^^
+   = hint: absent is written only in a type declaration; a node with no geometry omits the (geometry ...) child

@@ -10,8 +10,6 @@ import (
 	"net/url"
 	"slices"
 	"strings"
-
-	sexpr "github.com/z5labs/sexpr-go"
 )
 
 // projectTag is the one registry form which declares no name.
@@ -90,15 +88,14 @@ func LoadRegistry(root string) (*Registry, []Diagnostic) {
 
 // registryLoader collects one load of a registry set.
 type registryLoader struct {
+	reader
+
 	// root is what the load was asked for, which is where a diagnostic about
 	// the model as a whole rather than about any one file points.
 	root string
 
 	// registry is what has been declared so far.
 	registry *Registry
-
-	// diags are the problems found so far.
-	diags []Diagnostic
 
 	// frames are the accepted frame declarations in the order they were read,
 	// with the spans a cross-reference diagnostic points at. Frames are the one
@@ -117,11 +114,6 @@ type frameDeclaration struct {
 	id        Span
 	parent    Span
 	transform Span
-}
-
-// add records diagnostics.
-func (l *registryLoader) add(diags ...Diagnostic) {
-	l.diags = append(l.diags, diags...)
 }
 
 // file interprets the registry forms of one loaded file.
@@ -301,12 +293,7 @@ func (l *registryLoader) declareType(node *Node) {
 
 		kind := Kind(written)
 		if !slices.Contains(kinds, kind) {
-			l.add(Diagnostic{
-				Severity: SeverityError,
-				Span:     arg.Span,
-				Message:  fmt.Sprintf("expected a kind, found %s", written),
-				Hint:     "a kind is one of " + join(spellings(kinds), "and"),
-			})
+			l.add(unknownKind(arg.Span, written))
 			continue
 		}
 
@@ -333,12 +320,7 @@ func (l *registryLoader) declareType(node *Node) {
 
 		geometry := Geometry(written)
 		if written != absentGeometry && !slices.Contains(geometries, geometry) {
-			l.add(Diagnostic{
-				Severity: SeverityError,
-				Span:     arg.Span,
-				Message:  fmt.Sprintf("expected a geometry form or absent, found %s", written),
-				Hint:     "a geometry form is one of " + join(spellings(geometries), "and") + ", and absent permits an instance to omit the child",
-			})
+			l.add(unknownGeometryOrAbsent(arg.Span, written))
 			continue
 		}
 
@@ -822,158 +804,4 @@ func (l *registryLoader) repeated(span Span, what, written string, first Span) {
 		Message:  fmt.Sprintf("expected %s which is not already permitted, found %s", what, written),
 		Related:  []RelatedLocation{{Span: first, Message: "first written here"}},
 	})
-}
-
-// name reads the positional name of a declaration, with the span a diagnostic
-// about that name points at.
-func (l *registryLoader) name(node *Node, what string) (string, Span, bool) {
-	arg, ok := argument(node, 0)
-	if !ok {
-		return "", Span{}, false
-	}
-
-	name, ok := l.symbol(arg, what)
-	return name, arg.Span, ok
-}
-
-// symbol reads a symbol, reporting what was written there instead.
-func (l *registryLoader) symbol(node *Node, what string) (string, bool) {
-	datum, ok := node.Datum.(sexpr.Symbol)
-	if !ok {
-		l.wrong(node, what)
-		return "", false
-	}
-	return datum.Value, true
-}
-
-// text reads a string.
-func (l *registryLoader) text(node *Node, what string) (string, bool) {
-	datum, ok := node.Datum.(sexpr.String)
-	if !ok {
-		l.wrong(node, what)
-		return "", false
-	}
-	return datum.Value, true
-}
-
-// boolean reads a boolean.
-func (l *registryLoader) boolean(node *Node, what string) (bool, bool) {
-	datum, ok := node.Datum.(sexpr.Bool)
-	if !ok {
-		l.wrong(node, what)
-		return false, false
-	}
-	return datum.Value, true
-}
-
-// integer reads a count, which specification section 4.3 writes with neither a
-// fraction nor an exponent so that it reads back as an integer.
-func (l *registryLoader) integer(node *Node, what string) (int64, bool) {
-	datum, ok := node.Datum.(sexpr.Int)
-	if !ok {
-		l.wrong(node, what)
-		return 0, false
-	}
-	return datum.Value, true
-}
-
-// real reads a real number, which specification section 4.3 writes with a
-// fraction or an exponent so that it reads back as a real.
-//
-// A whole number written as one — `5` where `5.0` was meant — is reported
-// rather than widened, because the distinction is the only thing telling a
-// magnitude apart from a count in a format where both are written as digits.
-func (l *registryLoader) real(node *Node, what string) (float64, bool) {
-	datum, ok := node.Datum.(sexpr.Float)
-	if !ok {
-		if _, isInt := node.Datum.(sexpr.Int); isInt {
-			l.add(Diagnostic{
-				Severity: SeverityError,
-				Span:     node.Span,
-				Message:  fmt.Sprintf("expected %s, found %s", what, describe(node)),
-				Hint:     "a real number is written with a fraction or an exponent, so that it reads back as a real",
-			})
-			return 0, false
-		}
-
-		l.wrong(node, what)
-		return 0, false
-	}
-	return datum.Value, true
-}
-
-// wrong reports a datum of the wrong sort written where a declaration wanted
-// one of another.
-func (l *registryLoader) wrong(node *Node, what string) {
-	l.add(Diagnostic{
-		Severity: SeverityError,
-		Span:     node.Span,
-		Message:  fmt.Sprintf("expected %s, found %s", what, describe(node)),
-	})
-}
-
-// elements is everything written after a form's tag.
-func elements(node *Node) []*Node {
-	if len(node.Children) == 0 {
-		return nil
-	}
-	return node.Children[1:]
-}
-
-// argument returns the i-th positional argument of a form, and whether it was
-// written.
-func argument(node *Node, i int) (*Node, bool) {
-	written, _ := split(elements(node))
-	if i < 0 || i >= len(written) {
-		return nil, false
-	}
-	return written[i], true
-}
-
-// childForm returns the first child of node written with tag, and whether one
-// was written.
-func childForm(node *Node, tag string) (*Node, bool) {
-	_, children := split(elements(node))
-
-	for _, child := range children {
-		if written, ok := formTag(child); ok && written == tag {
-			return child, true
-		}
-	}
-
-	return nil, false
-}
-
-// childForms returns every child of node written with tag, in the order they
-// were written.
-func childForms(node *Node, tag string) []*Node {
-	_, children := split(elements(node))
-
-	var out []*Node
-	for _, child := range children {
-		if written, ok := formTag(child); ok && written == tag {
-			out = append(out, child)
-		}
-	}
-
-	return out
-}
-
-// argumentOf returns the single positional argument of the child written with
-// tag, which is how every one-value child of a registry form is read.
-func argumentOf(node *Node, tag string) (*Node, bool) {
-	child, ok := childForm(node, tag)
-	if !ok {
-		return nil, false
-	}
-	return argument(child, 0)
-}
-
-// spellings spells a closed set for a diagnostic which lists it.
-func spellings[T ~string](set []T) []string {
-	out := make([]string, 0, len(set))
-	for _, member := range set {
-		out = append(out, string(member))
-	}
-	return out
 }

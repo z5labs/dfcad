@@ -1,0 +1,9 @@
+(project (globalid-namespace "https://example.org/models/axes"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (geometry absent)
+  (description "An enclosed room used for meetings."))
