@@ -378,6 +378,12 @@ type Claims struct {
 	// reference a deprecated claim carries, which is written in one direction
 	// and walked in both.
 	superseded map[ID][]*Claim
+
+	// definedAt is where the id of each claim was written, which is what a
+	// diagnostic about an id two things hold points at. It is the id rather
+	// than the claim, because a span over the whole claim quotes half a dozen
+	// lines to point at one.
+	definedAt map[ID]Span
 }
 
 // Len reports how many claims were read.
@@ -522,29 +528,22 @@ var claimBearing = sync.OnceValue(func() map[string]*form {
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadClaims(root string, registry *Registry) (*Claims, []Diagnostic) {
+	return loadClaims(readTree(root), registry)
+}
+
+// loadClaims is [LoadClaims] over a tree somebody else read, which is what lets
+// [LoadGraph] read the files once and interpret them four times.
+func loadClaims(sources iter.Seq[source], registry *Registry) (*Claims, []Diagnostic) {
 	l := &claimLoader{
 		registry: registry,
 		claims: &Claims{
 			byID:      make(map[ID]*Claim),
 			bySubject: make(map[ID][]*Claim),
+			definedAt: make(map[ID]Span),
 		},
-		defined: make(map[ID]Span),
 	}
 
-	for path, err := range Walk(root) {
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		file, err := LoadFile(path)
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		l.file(file)
-	}
+	interpret(&l.reader, sources, l.file)
 
 	l.resolve()
 	l.supersede()
@@ -561,10 +560,6 @@ type claimLoader struct {
 
 	// claims are the claims read so far, in the order they were reached.
 	claims *Claims
-
-	// defined is where the claim holding each id was written, which is what a
-	// duplicate points its reader back at.
-	defined map[ID]Span
 
 	// references are the places something named a claim by its id. They are
 	// resolved once every file has been read, because a claim in the last file
@@ -809,15 +804,18 @@ func (l *claimLoader) declare(subject ID, form *Node, predicate string, declared
 }
 
 // identify checks a claim's id: that its namespace is one the registry
-// declares, and that no other claim already holds it.
+// declares, and that neither another claim nor a declared frame already holds
+// it.
 //
 // A claim which wrote no id, or whose id could not be read, is not checked. It
 // has no namespace to look up and nothing to collide with, and it is reachable
 // by nothing — which is exactly what an unreferenced claim needs to be.
 //
-// Whether a claim id collides with a node or a frame id is a question about the
-// whole graph rather than about the claims, and is asked once every family has
-// been read.
+// Whether a claim id collides with a node of either family is a question about
+// the whole graph rather than about the claims, and is asked by [LoadGraph]
+// once every family has been read. A frame is not deferred with them, because
+// the registry resolves before any claim is read and so is already here to be
+// asked.
 func (l *claimLoader) identify(claim *Claim, at Span) {
 	if at == (Span{}) {
 		return
@@ -825,22 +823,36 @@ func (l *claimLoader) identify(claim *Claim, at Span) {
 
 	l.registered(l.registry, claim.id, at)
 
-	if first, ok := l.defined[claim.id]; ok {
-		l.add(Diagnostic{
-			Severity: SeverityError,
-			Span:     at,
-			Message: fmt.Sprintf(
-				"expected an id nothing else holds, found %s, which already names a claim in this model",
-				claim.id,
-			),
-			Hint:    "an id is unique across the whole model, and is never issued again to a different thing",
-			Related: []RelatedLocation{{Span: first, Message: "first defined here"}},
-		})
+	// A frame is named by an id out of the one id space the whole model shares,
+	// and the registry resolves before any claim is read, so a frame holding an
+	// id always held it first. The two node loaders check the same thing for the
+	// same reason.
+	if frame, ok := l.registry.Frame(claim.id); ok {
+		l.taken(claim.id, at, frame.Span, "first defined here, as a frame")
 		return
 	}
 
-	l.defined[claim.id] = at
+	if first, ok := l.claims.definedAt[claim.id]; ok {
+		l.taken(claim.id, at, first, "first defined here")
+		return
+	}
+
+	l.claims.definedAt[claim.id] = at
 	l.claims.byID[claim.id] = claim
+}
+
+// taken reports an id which already names something, pointing at both.
+func (l *claimLoader) taken(id ID, at, first Span, what string) {
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     at,
+		Message: fmt.Sprintf(
+			"expected an id nothing else holds, found %s, which already names something in this model",
+			id,
+		),
+		Hint:    "an id is unique across the whole model, and is never issued again to a different thing",
+		Related: []RelatedLocation{{Span: first, Message: what}},
+	})
 }
 
 // rank reads the one member of the closed set of ranks a claim declares.

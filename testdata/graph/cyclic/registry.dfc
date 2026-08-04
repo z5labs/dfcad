@@ -1,0 +1,61 @@
+; The vocabulary the model beside this file is judged against.
+;
+; The frames are a ring of two, so the model has no root frame and every frame
+; in it reaches itself by following parents.
+(project
+  (label "Cyclic reference fixture")
+  (globalid-namespace "https://example.org/models/cyclic"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:annex)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 10.0 20.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:building)
+  (transform survey:C-0002)
+  (frame-transform
+    (id survey:C-0002)
+    (value
+      (transform
+        (translation 0.0 50.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-015, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-03-04")))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How wide the thing is, across its shorter axis."))

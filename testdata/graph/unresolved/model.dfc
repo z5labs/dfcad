@@ -1,0 +1,45 @@
+; One reference of each class naming something this model does not hold, so
+; that a load reports each of them and the summary counts how much of the model
+; does not join up.
+;
+; Every one of them is a plausible mistake rather than nonsense: a storey which
+; was renamed, a loop which was never written, a corner which was deleted, an
+; edge dropped out of a loop, and a correction which was drafted and not
+; committed.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-99)
+  (boundary geom:L-99)
+  (width
+    (id survey:W-0001)
+    (value 0.1 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:W-0099)))
+
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-01
+  (label "Room B, north wall")
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-99))
+
+(loop geom:L-01
+  (label "Meeting Room B boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-99))

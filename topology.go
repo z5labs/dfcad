@@ -461,6 +461,12 @@ func (t *Topology) definitionOf(id ID) (definition, bool) {
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadTopology(root string, registry *Registry) (*Topology, []Diagnostic) {
+	return loadTopology(readTree(root), registry)
+}
+
+// loadTopology is [LoadTopology] over a tree somebody else read, which is what
+// lets [LoadGraph] read the files once and interpret them four times.
+func loadTopology(sources iter.Seq[source], registry *Registry) (*Topology, []Diagnostic) {
 	l := &topologyLoader{
 		registry: registry,
 		topology: &Topology{
@@ -471,20 +477,7 @@ func LoadTopology(root string, registry *Registry) (*Topology, []Diagnostic) {
 		},
 	}
 
-	for path, err := range Walk(root) {
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		file, err := LoadFile(path)
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		l.file(file)
-	}
+	interpret(&l.reader, sources, l.file)
 
 	l.resolve()
 

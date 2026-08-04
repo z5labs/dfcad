@@ -22,6 +22,20 @@
 // paired with a command line interface under cmd/dfcad, which is the intended
 // entry point for scripts, CI and agents.
 //
+// # Loading
+//
+// [LoadGraph] is the entry point. It reads a directory of files into one
+// validated [Graph] — the vocabulary the model declares, both families of
+// nodes, the claims written on them, the frames those claims measure and the
+// boundaries which join the two families — in a single pass which reports every
+// problem it finds rather than stopping at the first.
+//
+// The passes it composes are exported as well, because a caller which wants one
+// of them should not have to load six: [LoadRegistry], [LoadNodes],
+// [LoadTopology], [LoadClaims], [ResolveFrames] and [ResolveBoundaries]. What
+// the graph adds over calling them in order is the checks no single pass can
+// make, and not having to know what that order is.
+//
 // # Accuracy
 //
 // This is the convention every accuracy in the engine is stated under, and it

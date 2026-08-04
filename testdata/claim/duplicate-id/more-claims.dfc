@@ -1,4 +1,7 @@
-; The second claim to write the id, on a different node in a different file.
+; The second claim to write the id, on a different node in a different file,
+; and one which names itself after the frame the room is measured in. A frame
+; is named out of the same id space, and the registry resolves before any claim
+; is read, so the frame held it first.
 (node site:S-102
   (kind Space)
   (type MeetingRoom)
@@ -8,4 +11,10 @@
     (value 4.2 m)
     (source "As-built check AB-2026-009, Acme Surveys")
     (method method:total-station)
-    (date "2026-05-06")))
+    (date "2026-05-06"))
+  (width
+    (id frame:building)
+    (value 4.3 m)
+    (source "Fit-out check FC-2026-002, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-11")))

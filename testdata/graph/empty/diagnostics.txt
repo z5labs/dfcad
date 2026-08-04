@@ -1,0 +1,2 @@
+testdata/graph/empty:1:1: error: expected one project declaration for the model, found none
+ = hint: a registry file declares (project (globalid-namespace "<url>")), which is what every GlobalId derives from

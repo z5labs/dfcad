@@ -1,0 +1,22 @@
+; The vocabulary the model beside this file is judged against.
+(project
+  (label "Duplicate id fixture")
+  (globalid-namespace "https://example.org/models/duplicate"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))

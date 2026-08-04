@@ -1,0 +1,91 @@
+; The vocabulary the whole model beneath this directory is judged against.
+;
+; It sits beside the entities rather than inside them because a registry is a
+; property of the tree and not of a file: the walk reaches entities/ before it
+; reaches this file, and every entity in it is still judged against everything
+; declared here.
+(project
+  (label "Graph fixture")
+  (globalid-namespace "https://example.org/models/graph"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+; The root frame and one child measured against it, so that the load has a
+; frame chain to resolve and a transform claim to find.
+(frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 100.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+
+(type Campus
+  (kind Zone)
+  (geometry absent)
+  (description "A group of things administered together, which has no shape."))
+
+(type SiteBoundary
+  (kind Site)
+  (geometry area)
+  (description "The extent of the land a project sits on."))
+
+(type OfficeBuilding
+  (kind Building)
+  (geometry solid)
+  (description "A building let as offices."))
+
+(type Level
+  (kind Storey)
+  (geometry surface)
+  (description "One storey, taken as its finished floor."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How thick an element is, measured across it."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))

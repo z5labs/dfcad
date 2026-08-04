@@ -1,0 +1,38 @@
+; A ring in each of the three relations which can hold one: containment, frame
+; parents in the file beside this, and claim supersession.
+;
+; None of them is a dangling reference — every id here names something the model
+; holds — which is why a cycle is reported as a cycle rather than as something
+; missing. Following any of them never terminates, and a load which resolved
+; without asking would run until it ran out of stack.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-102)
+  (width
+    (id survey:W-0001)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:W-0002))
+  (width
+    (id survey:W-0002)
+    (value 8.6 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06")
+    (rank deprecated)
+    (superseded-by survey:W-0001)))
+
+(node site:S-102
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-101))

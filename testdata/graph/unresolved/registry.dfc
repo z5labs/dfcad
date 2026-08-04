@@ -1,0 +1,34 @@
+; The vocabulary the model beside this file is judged against.
+(project
+  (label "Unresolved reference fixture")
+  (globalid-namespace "https://example.org/models/unresolved"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Level
+  (kind Storey)
+  (geometry surface)
+  (description "One storey, taken as its finished floor."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How thick an element is, measured across it."))

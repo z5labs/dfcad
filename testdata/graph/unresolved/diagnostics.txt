@@ -1,0 +1,35 @@
+testdata/graph/unresolved/model.dfc:15:11: error: expected a node id something in this model holds, found site:L-99, which names no node
+15 |   (within site:L-99)
+   |           ^^^^^^^^^
+   = hint: containment is written on the contained node as (within <node-id>), naming the node which strictly contains it
+testdata/graph/unresolved/model.dfc:9:7: note: the contained node is written here
+9 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/graph/unresolved/model.dfc:16:13: error: expected a loop id something in this model holds, found geom:L-99, which names no loop
+16 |   (boundary geom:L-99)
+   |             ^^^^^^^^^
+   = hint: a semantic node references its outline, written (boundary <loop-id>) and naming a loop; a node never carries coordinates of its own
+testdata/graph/unresolved/model.dfc:9:7: note: the node it is written on is named here
+9 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/graph/unresolved/model.dfc:25:20: error: expected a claim id something in this model carries, found survey:W-0099, which names no claim
+25 |     (superseded-by survey:W-0099)))
+   |                    ^^^^^^^^^^^^^
+   = hint: a claim which anything references carries an (id ...) of its own; a claim nothing references may leave it out
+testdata/graph/unresolved/model.dfc:18:9: note: the deprecation of survey:W-0001 is written here
+18 |     (id survey:W-0001)
+   |         ^^^^^^^^^^^^^
+testdata/graph/unresolved/model.dfc:40:23: error: expected a vertex id something in this model holds, found geom:V-99, which names no vertex
+40 |   (vertices geom:V-01 geom:V-99))
+   |                       ^^^^^^^^^
+   = hint: an edge runs between two vertices, written (vertices <vertex-id> <vertex-id>) in the order start then end
+testdata/graph/unresolved/model.dfc:37:7: note: the edge which names it is written here
+37 | (edge geom:E-01
+   |       ^^^^^^^^^
+testdata/graph/unresolved/model.dfc:45:20: error: expected an edge id something in this model holds, found geom:E-99, which names no edge
+45 |   (edges geom:E-01 geom:E-99))
+   |                    ^^^^^^^^^
+   = hint: a loop is a ring of edges, written (edges <edge-id> ...) in the order the loop is traversed
+testdata/graph/unresolved/model.dfc:42:7: note: the loop which names it is written here
+42 | (loop geom:L-01
+   |       ^^^^^^^^^

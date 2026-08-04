@@ -1,0 +1,21 @@
+testdata/graph/cyclic/model.dfc:14:11: error: expected a containment which ends in a node nothing contains, found a cycle: site:S-101, then site:S-102, then site:S-101
+14 |   (within site:S-102)
+   |           ^^^^^^^^^^
+   = hint: every node is written inside one nearer the root, so following the containment has to reach a node with no parent
+testdata/graph/cyclic/model.dfc:38:11: note: site:S-102 names the next node of the cycle here
+38 |   (within site:S-101))
+   |           ^^^^^^^^^^
+testdata/graph/cyclic/model.dfc:22:20: error: expected a supersession which ends in a claim nothing replaced, found a cycle: survey:W-0001, then survey:W-0002, then survey:W-0001
+22 |     (superseded-by survey:W-0002))
+   |                    ^^^^^^^^^^^^^
+   = hint: every deprecated claim is replaced by a later one, so following the replacements has to reach a claim which is still asserted
+testdata/graph/cyclic/model.dfc:30:20: note: survey:W-0002 names the next claim of the cycle here
+30 |     (superseded-by survey:W-0001)))
+   |                    ^^^^^^^^^^^^^
+testdata/graph/cyclic/registry.dfc:15:8: error: expected a parent chain which reaches a root frame, found the cycle frame:building -> frame:annex -> frame:building
+15 | (frame frame:building
+   |        ^^^^^^^^^^^^^^
+   = hint: exactly one frame is the root, and every other frame reaches it through its parents
+testdata/graph/cyclic/registry.dfc:32:8: note: and through here
+32 | (frame frame:annex
+   |        ^^^^^^^^^^^
