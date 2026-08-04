@@ -82,11 +82,16 @@ const (
 	// resolutionCurrent is the claim which won outright.
 	resolutionCurrent = "current"
 
-	// resolutionTied is one of several claims the rule could not separate.
+	// resolutionTied is one of several claims the rule could not separate,
+	// whether because they are equally accurate and equally recent or because
+	// nothing rankable was said about any of them. Several unrankable claims are
+	// equally current in the same way equally good ones are, so they read the
+	// same way here.
 	resolutionTied = "tied"
 
-	// resolutionUnranked is a live claim under a predicate nothing rankable was
-	// said about, so nothing won.
+	// resolutionUnranked is the one live claim under a predicate nothing
+	// rankable was said about, so nothing won and there is nothing for it to be
+	// tied with.
 	resolutionUnranked = "unranked"
 )
 
@@ -481,11 +486,20 @@ func claimsOf(graph *dfcad.Graph, subject dfcad.ID, selection string, deprecated
 		}
 	}
 
-	// Predicate order, and then where each claim was written. Grouping by
-	// predicate is what makes two claims of one width readable as the
-	// disagreement they are, and it does not change when a claim moves between
-	// files while the model says the same thing.
-	slices.SortStableFunc(out, func(a, b claimEntry) int {
+	inPredicateOrder(out)
+
+	return out
+}
+
+// inPredicateOrder sorts claims by predicate, and then by where each was
+// written.
+//
+// Grouping by predicate is what makes two claims of one width readable as the
+// disagreement they are, and it does not change when a claim moves between files
+// while the model says the same thing. The claim's own id breaks the remaining
+// tie, so the order is total and two runs over one model diff to nothing.
+func inPredicateOrder(claims []claimEntry) {
+	slices.SortStableFunc(claims, func(a, b claimEntry) int {
 		return cmp.Or(
 			strings.Compare(a.Predicate, b.Predicate),
 			strings.Compare(a.Span.Start.Path, b.Span.Start.Path),
@@ -493,8 +507,6 @@ func claimsOf(graph *dfcad.Graph, subject dfcad.ID, selection string, deprecated
 			strings.Compare(a.ID, b.ID),
 		)
 	})
-
-	return out
 }
 
 // resolved is what the resolution rule makes of the claims of one subject: the

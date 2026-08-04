@@ -61,6 +61,18 @@ var commands = []command{
 		usage:   getUsage,
 		run:     runGet,
 	},
+	{
+		name:    "claims",
+		summary: "list every claim written on one thing",
+		usage:   claimsUsage,
+		run:     runClaims,
+	},
+	{
+		name:    "conflicts",
+		summary: "list every disagreement in the model",
+		usage:   conflictsUsage,
+		run:     runConflicts,
+	},
 }
 
 // lookup is the subcommand of that name.

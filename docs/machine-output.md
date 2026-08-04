@@ -354,10 +354,11 @@ number the format exists to stop:
 | `claims[].span` | object | Where the claim was written. |
 
 Under `--claims resolved` a predicate appears once, as the claim that won. Where nothing
-won it appears as every claim that could still be the answer — `tied` where the rule could
-not separate them, `unranked` where nothing rankable was said — because narrowing four
-claims to two is most of the work of deciding between them, and a caller shown one of the
-two cannot tell that the other exists.
+won it appears as every claim that could still be the answer — `tied` where more than one
+could, whether the rule could not separate them or nothing rankable was said about any of
+them, and `unranked` where exactly one is left and so there is nothing to choose between —
+because narrowing four claims to two is most of the work of deciding between them, and a
+caller shown one of the two cannot tell that the other exists.
 
 Deprecated claims are left out unless `--deprecated` asks for them. `--deprecated` beside
 `--claims resolved` is a **usage error** rather than a flag that is quietly ignored: a
@@ -373,10 +374,178 @@ said about it are different answers. An argument that is not a well-formed id is
 exit code, reporting the rule it broke rather than a lookup that was never going to find
 anything.
 
+### `claims`
+
+Every claim written on one thing, live and retracted alike. It takes an id and an optional
+predicate, and no flags of its own.
+
+`get` answers what the model says about a thing now; `claims` answers everything anybody has
+said about it and what became of each statement. Deprecated claims are therefore in the
+answer rather than behind a flag, marked as retracted and carrying the id of the claim that
+replaced them, so a retraction is followable forward without a second call.
+
+```json
+{
+  "version": 1,
+  "command": "claims",
+  "subject": "site:S-101",
+  "claims": [
+    {
+      "id": "survey:A-0001",
+      "predicate": "area",
+      "value": {"shape": "scalar", "unit": "m2", "scalar": 23.0},
+      "source": "Plan set A-101, sheet 3",
+      "method": "method:scaled-from-plan",
+      "accuracy": [{"kind": "independent", "magnitude": 0.5, "unit": "m2"}],
+      "date": "2026-01-09",
+      "rank": "deprecated",
+      "superseded-by": "survey:A-0002",
+      "resolution": "retracted",
+      "span": {
+        "start": {"path": "entities/site.dfc", "line": 20, "column": 3, "offset": 412},
+        "end": {"path": "entities/site.dfc", "line": 28, "column": 34, "offset": 703}
+      }
+    },
+    {
+      "id": "survey:A-0002",
+      "predicate": "area",
+      "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+      "source": "As-built check AB-2026-009, Acme Surveys",
+      "method": "method:total-station",
+      "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+      "date": "2026-05-06",
+      "rank": "normal",
+      "resolution": "current",
+      "span": {
+        "start": {"path": "entities/site.dfc", "line": 29, "column": 3, "offset": 706},
+        "end": {"path": "entities/site.dfc", "line": 35, "column": 25, "offset": 928}
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the claims below are written on, which is the id that was asked for. |
+| `claims` | array | Every claim written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. Each entry is the claim object `get` writes, documented above. |
+
+`resolution` is written on **every** claim here, rather than only under a flag as it is in
+`get`, and it takes two values `get` never writes, because this view reports every claim
+rather than only the ones that could still be the answer:
+
+| Value | Meaning |
+|-------|---------|
+| `current` | The claim resolution picks under its predicate. |
+| `tied` | One of several claims resolution cannot separate, so it picks none of them. |
+| `unranked` | The one live claim under a predicate nothing rankable was said about, which leaves nothing to choose between. |
+| `outranked` | A live claim that another claim under the same predicate beat. |
+| `retracted` | A deprecated claim, which resolution never considers. |
+
+`tied` and `unranked` are told apart by how many claims are still in the running, not by why
+they are. Several claims nothing rankable was said about are `tied` — they are equally
+current, and resolution picks none of them — exactly as several equally accurate and equally
+recent claims are. `unranked` is what a claim reads as when it is the only one left, so there
+is nothing for it to be tied with; a caller filtering for the pairs that need somebody to
+decide wants `tied`, and a single unrankable claim is not one of them.
+
+A claim that lost and a claim that was withdrawn are both left out of a resolution, and
+reporting them as the same thing would say a measurement somebody bettered and one somebody
+retracted are the same kind of not-current.
+
+An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
+naming it, and naming the nearest id there is, exactly as `get` does. A predicate the
+registry does not declare is a usage error for the same reason a filter naming an undeclared
+type is: a predicate nobody declared and a predicate nothing is claimed under are different
+answers. A predicate that *is* declared and that nothing on this subject is claimed under is
+an empty list and exit `0`.
+
+### `conflicts`
+
+The conflict register: every subject and predicate pair the model states more than once,
+with the competing claims and what resolution makes of them. It takes no arguments and four
+filters.
+
+| Flag | Meaning |
+|------|---------|
+| `--type <name>` | Only pairs whose subject declares this type. |
+| `--predicate <name>` | Only pairs written under this predicate. |
+| `--ambiguous` | Only pairs resolution cannot decide. |
+| `--resolved` | Only pairs resolution can. |
+
+Filters combine: a pair is listed when it satisfies every filter given. `--ambiguous` and
+`--resolved` together are a **usage error** rather than an empty register — a pair carrying
+more than one live claim either has a best claim or does not, so no pair is both, and an
+empty answer would read as a model nobody disagrees about.
+
+```json
+{
+  "version": 1,
+  "command": "conflicts",
+  "conflicts": [
+    {
+      "subject": "site:S-101",
+      "predicate": "area",
+      "type": "MeetingRoom",
+      "ambiguous": false,
+      "current": "survey:A-0002",
+      "claims": [
+        {
+          "id": "survey:A-0002",
+          "predicate": "area",
+          "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+          "rank": "normal",
+          "resolution": "current",
+          "span": {
+            "start": {"path": "entities/site.dfc", "line": 29, "column": 3, "offset": 706},
+            "end": {"path": "entities/site.dfc", "line": 35, "column": 25, "offset": 928}
+          }
+        },
+        {
+          "id": "survey:A-0003",
+          "predicate": "area",
+          "value": {"shape": "scalar", "unit": "m2", "scalar": 24.0},
+          "rank": "normal",
+          "resolution": "outranked",
+          "span": {
+            "start": {"path": "entities/site.dfc", "line": 36, "column": 3, "offset": 931},
+            "end": {"path": "entities/site.dfc", "line": 42, "column": 25, "offset": 1147}
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `conflicts` | array | One entry per pair the model states more than once, ordered by subject and then by predicate. Empty rather than null when nothing disagrees. |
+| `conflicts[].subject` | string | The id of the thing the competing claims are about. |
+| `conflicts[].predicate` | string | The predicate they were written under. |
+| `conflicts[].type` | string, optional | The type the subject declares, reported whether or not a type was filtered on. Absent for a vertex, an edge or a loop, which declare none. |
+| `conflicts[].ambiguous` | boolean | Whether resolution picks nothing, so the disagreement has no answer. Exactly one of this and a claim marked `current` holds of every entry. |
+| `conflicts[].current` | string, optional | The id of the claim resolution picks. Absent when nothing was picked, and also when the claim that was picked wrote no id of its own — the claim marked `current` below carries the span that names it instead. |
+| `conflicts[].claims` | array | The competing claims, in the order they were written, each the claim object documented under `get` with the `resolution` field documented under `claims`. |
+
+A pair conflicts when more than one live claim is written on it, whatever those claims say.
+Whether two values *agree* is a question about a tolerance, and tolerances are registry data
+the consuming repository owns, so the register reports that the model states a thing twice
+and what each statement is, and leaves agreement to whoever declared what agreement means.
+
+A deprecated claim is never competing. It is retracted rather than out-ranked, so a pair
+whose second claim is deprecated has one live claim and no entry here. That is the one way of
+silencing a conflict there is, and it requires asserting in the file that the claim is wrong.
+
+Neither `claims` nor `conflicts` exits non-zero merely because the model disagrees with
+itself. A conflict is a finding, not a failure; whether a particular disagreement is allowed
+is what `dfcad check` answers, and answering it in two commands is how the two come to
+disagree.
+
 ### Diagnostics and the exit code of a read
 
-The listings and `get` exit `0` whenever they answered, whatever the model's diagnostics
-say. Those diagnostics are still rendered in full on stderr.
+The listings, `get`, `claims` and `conflicts` exit `0` whenever they answered, whatever the
+model's diagnostics say. Those diagnostics are still rendered in full on stderr.
 
 A listing says what a model holds, and a node whose containment does not resolve is still a
 node the model holds. Whether the model is *sound* is what `dfcad check` answers; answering
