@@ -64,6 +64,23 @@ var samples = map[string][]string{
 	},
 	"set-label": {"site:S-101", "Meeting Room One"},
 	"retire":    {"--reason", "The floor plate it was on was never built.", "site:S-103"},
+	"add-claim": {
+		"--value", "18.0", "--unit", "m2",
+		"--source", "As-built check AB-2026-012, Acme Surveys",
+		"--method", "method:total-station",
+		"--accuracy", "independent 0.05 m2",
+		"--date", "2026-05-06",
+		"site:S-102", "area",
+	},
+	"supersede": {
+		"--value", "24.5", "--unit", "m2",
+		"--source", "Re-measure RM-2026-002, Acme Surveys",
+		"--method", "method:total-station",
+		"--accuracy", "independent 0.02 m2",
+		"--date", "2026-06-01",
+		"site:S-101", "area",
+	},
+	"deprecate-claim": {"site:M-0001", "--superseded-by", "site:M-0002"},
 }
 
 // sample is the invocation of cmd against the fixture model, command name and

@@ -61,6 +61,21 @@
 // resolves either to the thing it always named or to a node which says what
 // happened to it.
 //
+// [Tx.AddClaim] attaches a value and the evidence for it to a thing, checked
+// against what the registry declares the predicate takes. A value is never
+// edited: [Tx.Supersede] corrects one by writing the new claim and retracting
+// the old in the same change, and [Tx.DeprecateClaim] retracts a claim in
+// favour of one already written. A retraction requires a replacement, which is
+// what keeps deprecating from being deleting, and the retracted claim keeps
+// everything it said — the record of why the number changed is the thing being
+// kept. None of the three ever writes over what a claim states.
+//
+// What none of them refuses but all of them report is a [Notice]: a claim which
+// carries no accuracy and so can never win resolution, a claim which disagrees
+// with one already written, and a retraction which leaves nothing asserted about
+// a subject and predicate at all. Each is a legitimate state for a model to be
+// in, and none is a thing to find out about later.
+//
 // It is the mechanism every authoring command is built on rather than a command
 // itself. See docs/decisions/0015-the-cli-is-the-primary-write-path.md for why
 // the command line interface writes at all,

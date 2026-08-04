@@ -1565,3 +1565,227 @@ func ExampleGraph_References() {
 	// Output:
 	// site:E-01 within
 }
+
+// ExampleTx_AddClaim attaches a measured value to a thing, with the evidence
+// that makes it a claim rather than a number.
+func ExampleTx_AddClaim() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	// The partition is already measured twice, so a third measurement is a
+	// third opinion. That is the normal case rather than an error, and the
+	// notice says so rather than the change being refused.
+	id, notices, err := tx.AddClaim(dfcad.ClaimSpec{
+		Subject:   "site:E-01",
+		Predicate: "width",
+		Value:     dfcad.ScalarValue(0.103, "m"),
+		Source:    "Fit-out check FC-2026-004, Acme Surveys",
+		Method:    "method:total-station",
+		Accuracy:  []dfcad.AccuracyTerm{{Kind: dfcad.TermIndependent, Magnitude: 0.003, Unit: "m"}},
+		Date:      time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// A claim nothing references writes no id of its own.
+	fmt.Printf("claim id %q\n", id)
+
+	for _, notice := range notices {
+		fmt.Println(notice.Kind, "with", len(notice.Competing), "claims already written")
+	}
+
+	// Output:
+	// claim id ""
+	// conflict with 2 claims already written
+}
+
+// ExampleTx_AddClaim_unrankable writes the least a claim may say. Leaving the
+// accuracy out is permitted and is the one escape hatch the bare-scalar rule
+// keeps open; what it produces is a claim which can never win resolution.
+func ExampleTx_AddClaim_unrankable() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	_, notices, err := tx.AddClaim(dfcad.ClaimSpec{
+		Subject:   "site:S-102",
+		Predicate: "width",
+		Value:     dfcad.ScalarValue(1.8, "m"),
+		Source:    "Plan set A-101, sheet 3",
+		Method:    "method:scaled-from-plan",
+		Date:      time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, notice := range notices {
+		fmt.Println(notice.Kind)
+	}
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	for claim := range graph.Claims().Under("site:S-102", "width") {
+		fmt.Println("rankable:", claim.Rankable())
+	}
+
+	// Output:
+	// unrankable
+	// rankable: false
+}
+
+// ExampleTx_Supersede corrects a value. The new claim is written and the claim
+// it replaces is retracted in its favour, in one change which lands completely
+// or not at all — and the old claim keeps everything it said, because a
+// correction is a record of why the number changed rather than a new number in
+// place of the old one.
+func ExampleTx_Supersede() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	// The claim being corrected is named by its subject and predicate, because
+	// the one it replaces wrote no id — an id is required only of a claim
+	// something references, and this one is about to be referenced for the
+	// first time.
+	id, _, err := tx.Supersede(dfcad.ClaimSpec{
+		Subject:   "geom:V-01",
+		Predicate: "position",
+		Value:     dfcad.CoordinateValue([]float64{0.001, 0.002, 0}, "m"),
+		Source:    "Interior control set IC-02, Acme Surveys",
+		Method:    "method:total-station",
+		Accuracy:  []dfcad.AccuracyTerm{{Kind: dfcad.TermIndependent, Magnitude: 0.002, Unit: "m"}},
+		Date:      time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("minted", id)
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	replacement, _ := graph.Claims().Claim(id)
+	for retracted := range graph.Claims().Replaced(replacement) {
+		was, _ := retracted.Value().Coordinate()
+		fmt.Println(retracted.Rank(), "claim of", was, "from", retracted.Source())
+	}
+
+	// Output:
+	// minted geom:V-01:position:1
+	// deprecated claim of [0 0 0] from Interior control set IC-01, Acme Surveys
+}
+
+// ExampleTx_DeprecateClaim retracts a claim in favour of one already written.
+// A replacement is required, which is the whole of what keeps deprecated from
+// becoming a delete button.
+func ExampleTx_DeprecateClaim() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	if _, err := tx.DeprecateClaim("survey:W-0002", ""); err != nil {
+		fmt.Println(err)
+	}
+
+	notices, err := tx.DeprecateClaim("survey:W-0002", "survey:W-0003")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("notices:", len(notices))
+
+	graph, _ := dfcad.LoadGraph(root)
+	fmt.Println("live claims of the width:", len(graph.Claims().Live("site:E-01", "width")))
+
+	// Output:
+	// expected the claim which replaces survey:W-0002, found none: a deprecated claim carries (superseded-by <claim-id>), which is what keeps deprecated from being a delete
+	// notices: 0
+	// live claims of the width: 1
+}
