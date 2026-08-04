@@ -241,8 +241,8 @@ func retrievable() map[string]string {
 	}
 }
 
-// got runs get over the fixture and decodes what reached stdout.
-func got(t *testing.T, args ...string) getEntity {
+// retrieved runs get over the fixture and decodes what reached stdout.
+func retrieved(t *testing.T, args ...string) getEntity {
 	t.Helper()
 
 	t.Chdir(tree(t, retrievable()))
@@ -353,7 +353,7 @@ func TestRunGet(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			assert.Equal(t, testCase.expected, axes(got(t, testCase.id)))
+			assert.Equal(t, testCase.expected, axes(retrieved(t, testCase.id)))
 		})
 	}
 }
@@ -407,7 +407,7 @@ func TestRunGetReportsTheClaimsWrittenOnIt(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			assert.Equal(t, testCase.expected, predicates(got(t, testCase.args...).Claims))
+			assert.Equal(t, testCase.expected, predicates(retrieved(t, testCase.args...).Claims))
 		})
 	}
 }
@@ -417,7 +417,7 @@ func TestRunGetReportsTheClaimsWrittenOnIt(t *testing.T) {
 // value which arrived without where it came from, how it was obtained and how
 // good it is would be the bare number the format exists to stop.
 func TestRunGetReportsTheEvidenceForAClaim(t *testing.T) {
-	entity := got(t, "geom:V-01")
+	entity := retrieved(t, "geom:V-01")
 
 	require.Len(t, entity.Claims, 1)
 	claim := entity.Claims[0]
@@ -449,7 +449,7 @@ func TestRunGetReportsTheEvidenceForAClaim(t *testing.T) {
 // retracted claim is not the same shape of answer as a live one: it says which
 // claim replaced it, and that reference is what makes the history walkable.
 func TestRunGetReportsADeprecatedClaimAsDeprecated(t *testing.T) {
-	claims := got(t, "--deprecated", "site:S-101").Claims
+	claims := retrieved(t, "--deprecated", "site:S-101").Claims
 
 	require.NotEmpty(t, claims)
 	deprecated := claims[0]
@@ -468,7 +468,7 @@ func TestRunGetReportsADeprecatedClaimAsDeprecated(t *testing.T) {
 // being picked; and a predicate nothing rankable was said about resolves to
 // nothing, with its live claims still reported as the candidates they are.
 func TestRunGetResolvesClaimsToOneValueEach(t *testing.T) {
-	claims := got(t, "--claims", claimsResolved, "site:S-101").Claims
+	claims := retrieved(t, "--claims", claimsResolved, "site:S-101").Claims
 
 	spelled := make([]string, 0, len(claims))
 	for _, claim := range claims {
@@ -489,7 +489,7 @@ func TestRunGetResolvesClaimsToOneValueEach(t *testing.T) {
 // applied the rule. Reporting every claim as unresolved would be reporting an
 // answer to a question nobody asked.
 func TestRunGetLeavesResolutionOutWhenNothingWasResolved(t *testing.T) {
-	for _, claim := range got(t, "site:S-101").Claims {
+	for _, claim := range retrieved(t, "site:S-101").Claims {
 		assert.Empty(t, claim.Resolution, claim.Predicate)
 	}
 }
@@ -498,7 +498,7 @@ func TestRunGetLeavesResolutionOutWhenNothingWasResolved(t *testing.T) {
 // because a value is read through the accessor for the shape it has and a
 // payload which named the shape wrongly would send a caller to the wrong field.
 func TestRunGetReportsEveryShapeOfValue(t *testing.T) {
-	claims := got(t, "site:S-101").Claims
+	claims := retrieved(t, "site:S-101").Claims
 
 	byPredicate := make(map[string]claimEntry, len(claims))
 	for _, claim := range claims {
@@ -537,7 +537,7 @@ func TestRunGetReportsAValueOfZero(t *testing.T) {
 // TestRunGetSaysWhereItWasDefined is its own function because it is about the
 // one field which sends a reader back to the file rather than to a search.
 func TestRunGetSaysWhereItWasDefined(t *testing.T) {
-	entity := got(t, "site:E-01")
+	entity := retrieved(t, "site:E-01")
 
 	assert.Contains(t, entity.Span.Start.Path, "site.dfc")
 	assert.Positive(t, entity.Span.Start.Line)
