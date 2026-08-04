@@ -282,11 +282,15 @@ echo "PR <pr> still OPEN after 10m"; exit 1
 Both failure paths exit non-zero so an unmerged close or a timeout cannot be mistaken for
 success by anything that reads the exit code rather than the emitted line.
 
-**Never delete the remote branch.** `deleteBranchOnMerge` is enabled on the repository and
-owns remote cleanup; leave it to do its job. `git push --delete` is denied by user settings,
-and a subagent must not work around that rule — a remote branch that outlives a merge is
-GitHub's to reap, not yours. Clean up only what you created locally: your own worktree and
-your own local branch (below).
+**Never delete the remote branch.** The `delete-merged-branch` job in
+`.github/workflows/auto-merge.yaml` owns remote cleanup; leave it to do its job. `git push
+--delete` is denied by user settings, and a subagent must not work around that rule. Clean
+up only what you created locally: your own worktree and your own local branch (below).
+
+Note that `deleteBranchOnMerge` on the repository does **not** cover this. It fires for a
+merge a person performs, not for one the auto-merge workflow performs with its
+`GITHUB_TOKEN`, which is why that job exists at all. If a branch outlives its merge, the
+fix belongs in the workflow, not in a `git push` here.
 
 If it merged, one thing the repository normally does on your behalf will not have happened:
 a merge performed by the workflow's `GITHUB_TOKEN` does not close the issue the way a merge
