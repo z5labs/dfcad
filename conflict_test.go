@@ -248,19 +248,41 @@ func TestClaimsConflictsCarryTheEvidence(t *testing.T) {
 	competing := register[0].Claims()
 	require.Len(t, competing, 2)
 
+	expected := []struct {
+		value    float64
+		accuracy float64
+		date     string
+		source   string
+		method   ID
+	}{
+		{value: 8.5, accuracy: 0.05, date: "2026-01-09", source: "Plan set A-101, sheet 3", method: "method:scaled-from-plan"},
+		{
+			value:    8.53,
+			accuracy: 0.003,
+			date:     "2026-05-06",
+			source:   "As-built check AB-2026-009, Acme Surveys",
+			method:   "method:total-station",
+		},
+	}
+
 	for i, claim := range competing {
 		value, isScalar := claim.Value().Scalar()
-		assert.True(t, isScalar)
-		assert.Equal(t, claims[i].Value().Span(), claim.Value().Span())
-		assert.Equal(t, []float64{8.5, 8.53}[i], value)
+		require.True(t, isScalar)
+		assert.Equal(t, expected[i].value, value)
+		assert.Equal(t, Unit("m"), claim.Value().Unit())
 
 		accuracy, ranked := claim.Accuracy()
 		require.True(t, ranked)
-		assert.Equal(t, []float64{0.05, 0.003}[i], accuracy.Terms[0].Magnitude)
+		require.Len(t, accuracy.Terms, 1)
+		assert.Equal(t, expected[i].accuracy, accuracy.Terms[0].Magnitude)
 
-		assert.Equal(t, day([]string{"2026-01-09", "2026-05-06"}[i]), claim.Date())
-		assert.Equal(t, claims[i].Source(), claim.Source())
-		assert.Equal(t, claims[i].Method(), claim.Method())
+		assert.Equal(t, day(expected[i].date), claim.Date())
+		assert.Equal(t, expected[i].source, claim.Source())
+		assert.Equal(t, expected[i].method, claim.Method())
+
+		// Every claim also says where it was written, which is what a report
+		// points a reader at when the claim wrote no id.
+		assert.NotZero(t, claim.Span().Start.Line)
 	}
 
 	// Re-ordering the claims of an entry re-orders nothing in the model, which
