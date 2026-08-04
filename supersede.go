@@ -18,15 +18,31 @@ import (
 // replaced this one may itself be deprecated, which is what makes a supersession
 // a chain rather than a pair. [Claims.Current] walks it to the end.
 //
-// A claim which was not deprecated has no replacement, and neither has a
-// deprecated claim whose `superseded-by` names a claim this model does not hold
-// — which is a load diagnostic rather than a state a caller has to interpret,
-// and is reported as one.
+// A claim which was not deprecated has no replacement, whatever it wrote. A
+// `superseded-by` on a claim which is still asserted is a load error — nothing
+// stands in the place of a claim which has not been retracted — and reading it
+// here would let a file put a live claim behind another one by writing a child
+// the format forbids it.
+//
+// Neither has a deprecated claim whose `superseded-by` names a claim this model
+// does not hold. That too is a load diagnostic rather than a state a caller has
+// to interpret, and is reported as one.
 func (c *Claims) Replacement(claim *Claim) (*Claim, bool) {
-	if c == nil || claim == nil || claim.supersededBy == "" {
+	if c == nil || claim == nil || !claim.replaced() {
 		return nil, false
 	}
 	return c.Claim(claim.supersededBy)
+}
+
+// replaced reports whether the claim was deprecated in favour of another, which
+// is the one thing that puts it in a supersession chain.
+//
+// Both halves are required. A deprecation naming nothing and a replacement
+// named by a claim which is still asserted are each a load error, and each
+// leaves a claim which is not part of a chain: neither traversal follows one,
+// and the diagnostic is what says why.
+func (c *Claim) replaced() bool {
+	return c.rank == RankDeprecated && c.supersededBy != ""
 }
 
 // Replaced iterates the claims claim replaced, in source order.
@@ -35,9 +51,11 @@ func (c *Claims) Replacement(claim *Claim) (*Claim, bool) {
 // two estimates corrected by one survey are two claims naming that survey as
 // what replaced them, and both of them are what the survey stands in place of.
 //
-// Only the claims which named this one directly come back. [Claims.History]
-// walks the whole of what a claim replaced, through everything those claims
-// replaced in their turn.
+// Only the claims which named this one directly come back, and only where
+// naming it retracted them: a `superseded-by` written on a claim which is still
+// asserted is a load error, and a live claim is nothing's predecessor.
+// [Claims.History] walks the whole of what a claim replaced, through everything
+// those claims replaced in their turn.
 func (c *Claims) Replaced(claim *Claim) iter.Seq[*Claim] {
 	return func(yield func(*Claim) bool) {
 		if c == nil || claim == nil || claim.id == "" {
@@ -146,6 +164,12 @@ func (c *Claims) History(claim *Claim) iter.Seq[*Claim] {
 // backward direction is not written anywhere, and computing it by scanning every
 // claim per question would make walking a chain quadratic in the size of the
 // model.
+//
+// Only a retraction is indexed, for the reason [Claims.Replacement] follows
+// only one: a `superseded-by` on a claim which is still asserted is a load
+// error, and indexing it would put a live claim into the history of another one
+// — which is the same edge read backwards, and would disagree with the walk
+// forwards over the same pair.
 func (c *Claims) link() {
 	if c == nil {
 		return
@@ -153,7 +177,7 @@ func (c *Claims) link() {
 
 	c.superseded = make(map[ID][]*Claim)
 	for _, claim := range c.inOrder {
-		if claim.supersededBy == "" {
+		if !claim.replaced() {
 			continue
 		}
 		c.superseded[claim.supersededBy] = append(c.superseded[claim.supersededBy], claim)
@@ -248,14 +272,15 @@ func (l *claimLoader) supersede() {
 	l.claims.link()
 
 	for _, written := range l.supersessions {
-		l.retracted(written)
+		l.checkRetraction(written)
 	}
 
 	l.cycles()
 }
 
-// retracted checks one written retraction against the claim it was written on.
-func (l *claimLoader) retracted(written supersession) {
+// checkRetraction checks one written retraction against the claim it was
+// written on.
+func (l *claimLoader) checkRetraction(written supersession) {
 	claim := written.claim
 	deprecated := claim.Rank() == RankDeprecated
 

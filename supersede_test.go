@@ -240,6 +240,51 @@ func TestClaimsCurrentWithoutAChainWhichEnds(t *testing.T) {
 	}
 }
 
+// TestSupersessionFollowsOnlyARetraction is its own function because it is
+// about a model which is wrong rather than about walking one which is not: a
+// claim which is still asserted named a replacement anyway, which specification
+// section 6.5 forbids.
+//
+// The traversals do not read it. A live claim has not been replaced, so
+// following the reference would let a file put one asserted claim behind
+// another by writing a child the format does not permit it — and the walk
+// forwards and the walk backwards would then have to agree about an edge
+// neither of them should see.
+func TestSupersessionFollowsOnlyARetraction(t *testing.T) {
+	written := writtenClaims(
+		claimSpec{id: "survey:C-0210", value: 8.5, supersededBy: "survey:C-0212"},
+		claimSpec{id: "survey:C-0212", value: 8.53},
+	)
+
+	claims := resolving(written)
+
+	replacement, ok := claims.Replacement(written[0])
+	assert.False(t, ok, "a claim which is still asserted has no replacement")
+	assert.Nil(t, replacement)
+
+	current, ok := claims.Current(written[0])
+	require.True(t, ok, "a claim which is still asserted is its own current claim")
+	assert.Same(t, written[0], current)
+
+	assert.Empty(t, slices.Collect(claims.Replaced(written[1])), "a live claim is nothing's predecessor")
+	assert.Empty(t, slices.Collect(claims.History(written[1])))
+}
+
+// TestSupersessionFollowsOnlyACompleteRetraction is the other half of the same
+// rule, from the other direction: a deprecation which named nothing is not a
+// link either, so the claim it was written on is in no chain.
+func TestSupersessionFollowsOnlyACompleteRetraction(t *testing.T) {
+	written := writtenClaims(
+		claimSpec{id: "survey:C-0210", value: 8.5, rank: RankDeprecated},
+	)
+
+	claims := resolving(written)
+
+	replacement, ok := claims.Replacement(written[0])
+	assert.False(t, ok)
+	assert.Nil(t, replacement)
+}
+
 // TestClaimsHistoryTerminatesOnACycle is its own function for the reason above:
 // what it asserts is that the walk ends, and what it comes back with is
 // secondary.
@@ -306,6 +351,48 @@ func TestDeprecatedClaimsAreExcludedFromResolutionAndStillRetrievable(t *testing
 		assert.True(t, isSuperseded)
 		assert.NotEmpty(t, superseded)
 	}
+}
+
+// TestLoadClaimsReportsAnUnreadableReplacementOnce checks that a deprecation
+// whose replacement is not an id is reported as that and not also as a
+// deprecation which named nothing.
+//
+// The two would be one mistake written twice. The author wrote the child, and
+// what is wrong with it is what was put inside it — so the diagnostic is the
+// one which says a claim id was expected there, and telling them in the next
+// line that they left the child out is a sentence about a file nobody wrote.
+func TestLoadClaimsReportsAnUnreadableReplacementOnce(t *testing.T) {
+	const registry = `(project (globalid-namespace "https://example.org/models/supersession"))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+(predicate width (unit m) (shape scalar) (description "How wide the thing is."))
+`
+
+	const written = `(node site:S-101
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:total-station)
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by "survey:C-0212")))
+`
+
+	claims, diags := loadClaimModel(t, registry, written)
+
+	require.Len(t, diags, 1)
+	assert.Equal(t, `expected a claim id, found the string "survey:C-0212"`, diags[0].Message)
+
+	// The claim is still read, and it is in no chain: nothing readable stands
+	// in its place, so the walk forward reaches no current claim.
+	claim, ok := claims.Claim("survey:C-0210")
+	require.True(t, ok)
+
+	current, ok := claims.Current(claim)
+	assert.False(t, ok)
+	assert.Nil(t, current)
 }
 
 // TestSupersessionTraversalsOnTheZeroValue checks that the traversals answer on
