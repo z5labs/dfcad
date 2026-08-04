@@ -418,9 +418,27 @@ func (g *Graph) Descendants(node *SemanticNode) iter.Seq[Related] {
 	return g.Nodes().Descendants(node)
 }
 
+// AncestorsTo iterates the containment chain above node, nearest first, to at
+// most depth steps.
+func (g *Graph) AncestorsTo(node *SemanticNode, depth int) iter.Seq[Related] {
+	return g.Nodes().AncestorsTo(node, depth)
+}
+
+// DescendantsTo iterates what is contained beneath node, level by level, to at
+// most depth steps.
+func (g *Graph) DescendantsTo(node *SemanticNode, depth int) iter.Seq[Related] {
+	return g.Nodes().DescendantsTo(node, depth)
+}
+
 // Zones iterates the zones node declared membership of.
 func (g *Graph) Zones(node *SemanticNode) iter.Seq[Related] {
 	return g.Nodes().Zones(node)
+}
+
+// ZonesTo iterates the zones node is a member of and the zones those are
+// members of, to at most depth steps.
+func (g *Graph) ZonesTo(node *SemanticNode, depth int) iter.Seq[Related] {
+	return g.Nodes().ZonesTo(node, depth)
 }
 
 // Members iterates the nodes which declared membership of zone.
@@ -452,6 +470,18 @@ func (g *Graph) Bounded(loop *Loop) iter.Seq[*SemanticNode] {
 // shared wall looks like from the wall.
 func (g *Graph) Regions(edge *Edge) iter.Seq[*SemanticNode] {
 	return g.Boundaries().Regions(edge)
+}
+
+// Adjacent iterates the regions which share at least one boundary edge with
+// region, each with the edges they share.
+func (g *Graph) Adjacent(region *SemanticNode) iter.Seq[Adjacent] {
+	return g.Boundaries().Adjacent(region)
+}
+
+// AdjacentTo iterates the regions region borders and the regions those border,
+// to at most depth steps.
+func (g *Graph) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjacent] {
+	return g.Boundaries().AdjacentTo(region, depth)
 }
 
 // Classify iterates the edges of region's boundary, each classified physical or

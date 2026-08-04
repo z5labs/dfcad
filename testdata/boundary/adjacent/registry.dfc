@@ -1,0 +1,29 @@
+; The vocabulary the model beside this file is judged against.
+;
+; Nothing here declares adjacency, and nothing can: two regions are adjacent
+; when an edge is part of the boundary of both, which is read from the
+; references the model writes rather than from anything a registry could say.
+(project
+  (label "Adjacency fixture")
+  (globalid-namespace "https://example.org/models/adjacent"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between two spaces."))

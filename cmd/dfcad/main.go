@@ -68,6 +68,12 @@ var commands = []command{
 		run:     runResolve,
 	},
 	{
+		name:    "traverse",
+		summary: "walk the model: what contains, belongs to or borders what",
+		usage:   traverseUsage,
+		run:     runTraverse,
+	},
+	{
 		name:    "claims",
 		summary: "list every claim written on one thing",
 		usage:   claimsUsage,

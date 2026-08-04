@@ -255,6 +255,257 @@ func TestNodesDescendants(t *testing.T) {
 	}
 }
 
+// step is one result of a bounded walk: what it reached, and how far away it
+// was.
+type step struct {
+	node  ID
+	depth int
+}
+
+// walked collects a bounded traversal, having first required that every result
+// was labelled with the relation which produced it, for the reason [reached]
+// does.
+func walked(t *testing.T, results iter.Seq[Related], relation Relation) []step {
+	t.Helper()
+
+	var out []step
+	for result := range results {
+		assert.Equal(t, relation, result.Relation())
+		require.NotNil(t, result.Node())
+		out = append(out, step{node: result.Node().ID(), depth: result.Depth()})
+	}
+
+	return out
+}
+
+// TestNodesDescendantsTo follows containment down, level by level and bounded.
+func TestNodesDescendantsTo(t *testing.T) {
+	testCases := []struct {
+		name     string
+		node     ID
+		depth    int
+		expected []step
+	}{
+		{
+			name:  "gives nothing at a depth of no steps at all",
+			node:  "site:S-01",
+			depth: 0,
+		},
+		{
+			name:     "gives what a node holds at one step",
+			node:     "site:S-01",
+			depth:    1,
+			expected: []step{{node: "site:B-01", depth: 1}},
+		},
+		{
+			// Level by level rather than depth first: the storey comes back
+			// before anything inside it, so a bound of two is the two levels a
+			// caller asked for and not the first two nodes of a dive.
+			name:  "adds what that holds at two",
+			node:  "site:S-01",
+			depth: 2,
+			expected: []step{
+				{node: "site:B-01", depth: 1},
+				{node: "site:L-01", depth: 2},
+			},
+		},
+		{
+			name:  "reaches the whole hierarchy when it is given no bound",
+			node:  "site:S-01",
+			depth: Unbounded,
+			expected: []step{
+				{node: "site:B-01", depth: 1},
+				{node: "site:L-01", depth: 2},
+				{node: "site:S-101", depth: 3},
+				{node: "site:S-102", depth: 3},
+				{node: "site:E-01", depth: 3},
+				{node: "site:S-101a", depth: 4},
+				{node: "site:I-01", depth: 4},
+			},
+		},
+		{
+			name:  "gives nothing for a leaf, however deep it is asked",
+			node:  "site:I-01",
+			depth: Unbounded,
+		},
+		{
+			name:  "gives nothing for a zone, whose members are not its contents",
+			node:  "site:Z-fire",
+			depth: Unbounded,
+		},
+	}
+
+	nodes := relatedNodes(t)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			descendants := nodes.DescendantsTo(nodeOf(t, nodes, testCase.node), testCase.depth)
+
+			assert.Equal(t, testCase.expected, walked(t, descendants, RelationContainment))
+		})
+	}
+}
+
+// TestNodesAncestorsTo follows containment out towards the root, bounded.
+func TestNodesAncestorsTo(t *testing.T) {
+	testCases := []struct {
+		name     string
+		node     ID
+		depth    int
+		expected []step
+	}{
+		{
+			name:  "gives nothing at a depth of no steps at all",
+			node:  "site:S-101a",
+			depth: 0,
+		},
+		{
+			name:     "gives the node a thing sits in at one step",
+			node:     "site:S-101a",
+			depth:    1,
+			expected: []step{{node: "site:S-101", depth: 1}},
+		},
+		{
+			name:  "adds the node that sits in at two",
+			node:  "site:S-101a",
+			depth: 2,
+			expected: []step{
+				{node: "site:S-101", depth: 1},
+				{node: "site:L-01", depth: 2},
+			},
+		},
+		{
+			name:  "reaches the root when it is given no bound",
+			node:  "site:S-101a",
+			depth: Unbounded,
+			expected: []step{
+				{node: "site:S-101", depth: 1},
+				{node: "site:L-01", depth: 2},
+				{node: "site:B-01", depth: 3},
+				{node: "site:S-01", depth: 4},
+			},
+		},
+		{
+			name:     "stops at the node nothing contains before the bound is reached",
+			node:     "site:B-01",
+			depth:    3,
+			expected: []step{{node: "site:S-01", depth: 1}},
+		},
+	}
+
+	nodes := relatedNodes(t)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ancestors := nodes.AncestorsTo(nodeOf(t, nodes, testCase.node), testCase.depth)
+
+			assert.Equal(t, testCase.expected, walked(t, ancestors, RelationContainment))
+		})
+	}
+}
+
+// TestNodesZonesTo follows membership as far as it nests.
+//
+// The partition is a member of three zones, one of which is a member of another
+// of them. That is the diamond: the thermal zone is reached directly and again
+// through the maintenance round, and it is one zone either way.
+func TestNodesZonesTo(t *testing.T) {
+	testCases := []struct {
+		name     string
+		node     ID
+		depth    int
+		expected []step
+	}{
+		{
+			name:  "gives the zones a node named at one step",
+			node:  "site:E-01",
+			depth: 1,
+			expected: []step{
+				{node: "site:Z-fire", depth: 1},
+				{node: "site:Z-therm", depth: 1},
+				{node: "site:Z-maint", depth: 1},
+			},
+		},
+		{
+			name:  "gives a zone reached two ways once, at the fewer steps",
+			node:  "site:E-01",
+			depth: Unbounded,
+			expected: []step{
+				{node: "site:Z-fire", depth: 1},
+				{node: "site:Z-therm", depth: 1},
+				{node: "site:Z-maint", depth: 1},
+			},
+		},
+		{
+			name:     "gives the zone a zone is itself a member of",
+			node:     "site:Z-maint",
+			depth:    Unbounded,
+			expected: []step{{node: "site:Z-therm", depth: 1}},
+		},
+		{
+			// Membership never reaches through containment, at any depth. The
+			// alcove is inside the room the partition is beside and is in no
+			// zone at all.
+			name:  "gives nothing for a node in no zone, however deep it is asked",
+			node:  "site:S-101a",
+			depth: Unbounded,
+		},
+	}
+
+	nodes := relatedNodes(t)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			zones := nodes.ZonesTo(nodeOf(t, nodes, testCase.node), testCase.depth)
+
+			assert.Equal(t, testCase.expected, walked(t, zones, RelationMembership))
+		})
+	}
+}
+
+// TestBoundedTraversalOfACycleTerminates is its own function because the model
+// it is asked of is one which does not load clean: a containment which returns
+// to where it started is a load error, and a traversal which spun on it would
+// take down the run reporting that error.
+func TestBoundedTraversalOfACycleTerminates(t *testing.T) {
+	nodes, rendered := loadNodeFixture(t, "containment-cycle")
+	require.NotEmpty(t, rendered, "the fixture is a model whose containment does not reach a root")
+
+	node := nodeOf(t, nodes, "site:S-101")
+
+	testCases := []struct {
+		name     string
+		walk     iter.Seq[Related]
+		expected []step
+	}{
+		{
+			name: "stops walking out when it meets a node it has already reached",
+			walk: nodes.AncestorsTo(node, Unbounded),
+			expected: []step{
+				{node: "site:S-102", depth: 1},
+				{node: "site:S-103", depth: 2},
+			},
+		},
+		{
+			name: "stops walking in when it meets a node it has already reached",
+			walk: nodes.DescendantsTo(node, Unbounded),
+			expected: []step{
+				{node: "site:S-103", depth: 1},
+				{node: "site:S-102", depth: 2},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := walked(t, testCase.walk, RelationContainment)
+
+			assert.Equal(t, testCase.expected, got)
+			assert.NotContains(t, got, step{node: "site:S-101", depth: 3}, "the node asked about is not its own ancestor")
+		})
+	}
+}
+
 // TestNodesZones reads membership from the member's side, which is the side it
 // is written on.
 func TestNodesZones(t *testing.T) {

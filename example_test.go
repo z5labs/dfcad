@@ -895,6 +895,73 @@ func ExampleBoundaries_Classify() {
 	// geom:E-04 is virtual
 }
 
+// ExampleBoundaries_Adjacent answers what borders what, which is read from the
+// edges two regions share rather than from how close their outlines are.
+func ExampleBoundaries_Adjacent() {
+	root := "testdata/boundary/adjacent"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	room, _ := nodes.Node("site:S-A")
+
+	// Every edge the two of them share is named. One is a partition and the
+	// other is the doorway through it, which is the difference between what
+	// separates two rooms and how anybody gets between them.
+	for neighbour := range boundaries.Adjacent(room) {
+		for _, edge := range neighbour.Via() {
+			fmt.Printf("%s borders %s across %s, which is %s\n",
+				room.ID(), neighbour.Node().ID(), edge.ID(), boundaries.Classified(edge).Classification())
+		}
+	}
+
+	// Room C shares no edge with room A, so it is two steps away rather than
+	// one, however close the two of them look on a plan.
+	for neighbour := range boundaries.AdjacentTo(room, dfcad.Unbounded) {
+		fmt.Printf("%s is %d away\n", neighbour.Node().ID(), neighbour.Depth())
+	}
+
+	// Output:
+	// site:S-A borders site:S-B across geom:E-02, which is physical
+	// site:S-A borders site:S-B across geom:E-03, which is virtual
+	// site:S-B is 1 away
+	// site:S-C is 2 away
+}
+
+// ExampleNodes_DescendantsTo walks containment with a bound, which is what makes
+// a traversal of a model nobody has read an answer of a known size.
+func ExampleNodes_DescendantsTo() {
+	root := "testdata/node/containment"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+
+	site, _ := nodes.Node("site:S-01")
+
+	// Level by level, so a bound of two is the two levels which were asked for.
+	for contained := range nodes.DescendantsTo(site, 2) {
+		fmt.Printf("%s %s at %d\n", contained.Relation(), contained.Node().ID(), contained.Depth())
+	}
+
+	// And the other relation, which the walk above never follows: the zones a
+	// node is grouped into say nothing about where it is, so nothing inside the
+	// site is reached through one.
+	partition, _ := nodes.Node("site:E-01")
+	for zone := range nodes.ZonesTo(partition, dfcad.Unbounded) {
+		fmt.Printf("%s %s at %d\n", zone.Relation(), zone.Node().ID(), zone.Depth())
+	}
+
+	// Output:
+	// containment site:B-01 at 1
+	// containment site:L-01 at 2
+	// membership site:Z-fire at 1
+	// membership site:Z-therm at 1
+	// membership site:Z-maint at 1
+}
+
 // ExampleTopology_Assemble reads a loop as the ring its edges traverse and says
 // whether it closes, against a tolerance the registry declares by name.
 //
