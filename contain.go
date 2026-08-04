@@ -239,8 +239,13 @@ func (n *Nodes) Descendants(node *SemanticNode) iter.Seq[Related] {
 // reads the containment references, so a node's zones are its own and not its
 // parent's.
 //
-// A `member-of` naming a node this model does not hold, or naming one which is
-// not a Zone, is a load diagnostic and is not followed here.
+// A `member-of` naming a node this model does not hold has nothing to yield and
+// is skipped. One naming a node which is not a Zone is a load error and is
+// yielded: the edge is what the file says, and a traversal which quietly dropped
+// it would disagree with the source somebody is being asked to fix. It is the
+// rule [Nodes.link] keeps for both relations — a containment the hierarchy
+// forbids is reported and still walked — so that neither goes quiet about an
+// edge the other would show.
 func (n *Nodes) Zones(node *SemanticNode) iter.Seq[Related] {
 	return func(yield func(Related) bool) {
 		if n == nil || node == nil {
@@ -270,6 +275,11 @@ func (n *Nodes) Zones(node *SemanticNode) iter.Seq[Related] {
 // are the nodes which wrote `(member-of ...)` naming it, and not the nodes which
 // happen to sit inside one of them — which is the whole of keeping "is a member
 // of" from quietly meaning "is inside".
+//
+// Asked of a node which is not a Zone, it gives the nodes which named it anyway,
+// for the reason [Nodes.Zones] follows such an edge from the other end: naming a
+// non-zone in a `member-of` is a load error, and the two ends of one edge report
+// the same thing or neither is trustworthy.
 func (n *Nodes) Members(zone *SemanticNode) iter.Seq[Related] {
 	return func(yield func(Related) bool) {
 		if n == nil || zone == nil || zone.id == "" {

@@ -431,6 +431,52 @@ func TestSemanticNodeReferencesAsWritten(t *testing.T) {
 	assert.Equal(t, []ID{"site:Z-fire", "site:Z-therm", "site:Z-maint"}, partition.MemberOf())
 }
 
+// TestTraversalsShowWhatTheFileSays is its own function because it is about a
+// model which did not load clean rather than a variation on one which did.
+//
+// A reference which resolves is walked whatever else is wrong with it. A
+// membership naming a storey and a containment the hierarchy forbids are both
+// load errors, and both are still what somebody wrote: a traversal which
+// quietly dropped either would disagree with the source the diagnostic is
+// asking them to fix, and would do it silently.
+//
+// Both ends of one edge report it, which is the other half of the rule. An edge
+// visible from one side and not the other is worse than an edge visible from
+// neither, because the two answers then disagree about one model.
+func TestTraversalsShowWhatTheFileSays(t *testing.T) {
+	nodes, rendered := loadNodeFixture(t, "dangling-relation")
+	require.NotEmpty(t, rendered, "the fixture is a model which does not load clean")
+
+	storey := nodeOf(t, nodes, "site:L-01")
+	door := nodeOf(t, nodes, "site:I-01")
+
+	t.Run("walks a membership naming something which is not a zone", func(t *testing.T) {
+		assert.Equal(t, []ID{"site:L-01"}, reached(t, nodes.Zones(door), RelationMembership))
+		assert.Equal(t, []ID{"site:I-01"}, reached(t, nodes.Members(storey), RelationMembership))
+	})
+
+	t.Run("keeps the relation of an edge which is wrong", func(t *testing.T) {
+		// The storey holds the partition by containment and the door by
+		// membership. The two are the same node pair away from each other and
+		// are never merged, however wrong the second one is.
+		assert.Equal(t, []ID{"site:E-01"}, reached(t, nodes.Contains(storey), RelationContainment))
+		assert.Equal(t, []ID{"site:I-01"}, reached(t, nodes.Members(storey), RelationMembership))
+	})
+
+	t.Run("does not walk a reference which names no node", func(t *testing.T) {
+		room := nodeOf(t, nodes, "site:S-101")
+
+		within, hasWithin := room.Within()
+		assert.True(t, hasWithin, "the node wrote a parent")
+		assert.Equal(t, ID("site:L-99"), within, "and it is read back as written")
+
+		// There is nothing for the traversal to yield, so it yields nothing.
+		_, ok := nodes.Within(room)
+		assert.False(t, ok)
+		assert.Empty(t, reached(t, nodes.Ancestors(room), RelationContainment))
+	})
+}
+
 // TestNests reads the hierarchy the engine compiles in.
 func TestNests(t *testing.T) {
 	testCases := []struct {
