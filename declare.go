@@ -616,21 +616,32 @@ func (l *registryLoader) declareRoute(node *Node) {
 	// Each criterion is optional and a missing one matches anything, so nothing
 	// here reports an absence. What is written is read, and what is not written
 	// is the rule saying it does not care.
+	//
+	// Which is exactly why anything written and not read marks the rule
+	// unusable. Leaving a criterion which failed to read at its zero value would
+	// spell it the same way the format spells "I do not care about this axis",
+	// and the rule would go on to match every node that axis was written to
+	// exclude. The diagnostic each of these adds is what the author acts on; the
+	// mark is what stops the rule acting in the meantime.
 	if arg, ok := argumentOf(node, "namespace"); ok {
 		if written, ok := l.symbol(arg, "a namespace"); ok {
 			declaration.route.Namespace = written
 			declaration.namespace = arg.Span
+		} else {
+			declaration.route.unusable = true
 		}
 	}
 
 	if arg, ok := argumentOf(node, "kind"); ok {
-		if written, ok := l.symbol(arg, "a kind"); ok {
-			kind := Kind(written)
-			if !slices.Contains(kinds, kind) {
-				l.add(unknownKind(arg.Span, written))
-			} else {
-				declaration.route.Kind = kind
-			}
+		written, ok := l.symbol(arg, "a kind")
+		switch kind := Kind(written); {
+		case !ok:
+			declaration.route.unusable = true
+		case !slices.Contains(kinds, kind):
+			l.add(unknownKind(arg.Span, written))
+			declaration.route.unusable = true
+		default:
+			declaration.route.Kind = kind
 		}
 	}
 
@@ -638,15 +649,23 @@ func (l *registryLoader) declareRoute(node *Node) {
 		if written, ok := l.symbol(arg, "a type name"); ok {
 			declaration.route.Type = written
 			declaration.declaredType = arg.Span
+		} else {
+			declaration.route.unusable = true
 		}
 	}
 
+	// The file is the one element which is not a criterion, so a rule whose file
+	// did not read is unusable for a second reason as well: it names no
+	// destination, and a destination which is the empty path is one every write
+	// through it would fail on.
 	if arg, ok := argumentOf(node, "file"); ok {
+		file, read := "", false
 		if written, ok := l.text(arg, "a string holding a path"); ok {
-			if file, ok := l.target(arg, written); ok {
-				declaration.route.File = file
-			}
+			file, read = l.target(arg, written)
 		}
+
+		declaration.route.File = file
+		declaration.route.unusable = declaration.route.unusable || !read
 	}
 
 	if arg, ok := argumentOf(node, "description"); ok {

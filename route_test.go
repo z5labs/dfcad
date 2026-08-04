@@ -358,6 +358,66 @@ func cleared(routes []Route) []Route {
 	return out
 }
 
+// TestRegistryDestinationIgnoresARuleItCouldNotRead is its own function because
+// it is about a registry which did not load cleanly, which every other test here
+// requires not to happen.
+//
+// A criterion which was written and could not be read is spelled, in the struct,
+// exactly the way a criterion nobody wrote is spelled — and that spelling means
+// "matches anything". A rule dropped into that state would file every node the
+// broken axis was there to exclude, so it matches nothing instead and the
+// diagnostic stands as the whole of the answer.
+func TestRegistryDestinationIgnoresARuleItCouldNotRead(t *testing.T) {
+	testCases := []struct {
+		name string
+		rule string
+	}{
+		{
+			name: "does not widen a rule whose kind is not one of the seven",
+			rule: `(route broken (kind Room) (file "entities/broken.dfc"))`,
+		},
+		{
+			name: "does not route through a rule whose file is not a path a node may be written to",
+			rule: `(route broken (kind Space) (file "entities/broken.txt"))`,
+		},
+		{
+			name: "does not route through a rule whose file is not a string",
+			rule: `(route broken (kind Space) (file broken))`,
+		},
+		{
+			name: "does not widen a rule whose namespace is not a symbol",
+			rule: `(route broken (namespace "site") (file "entities/broken.dfc"))`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, map[string]string{
+				"registry.dfc": routeRegistryHead + testCase.rule + "\n",
+			})
+
+			registry, diags := LoadRegistry(root)
+			require.NotEmpty(t, diags, "the rule was reported")
+
+			// The rule is declared — it has a name, and a second rule taking that
+			// name is still a duplicate — and it places nothing.
+			_, ok := registry.Route("broken")
+			require.True(t, ok)
+
+			for _, subject := range []Subject{
+				{ID: "site:S-101", Kind: KindSpace, Type: "MeetingRoom"},
+				{ID: "geom:V-01"},
+			} {
+				_, err := registry.Destination(subject)
+
+				var refused RoutingError
+				require.ErrorAsf(t, err, &refused, "routing %s", subject)
+				assert.Empty(t, refused.Matched, "a rule which did not read matches nothing")
+			}
+		})
+	}
+}
+
 // TestRoutingErrorsAreDistinguishable checks the one thing a caller branching on
 // these errors needs: they are distinguishable by type, and an override failure
 // still carries the reason a target was refused.

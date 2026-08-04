@@ -465,6 +465,20 @@ type Route struct {
 
 	// Span is where the declaration was written.
 	Span Span
+
+	// unusable marks a rule something was written into which the loader could
+	// not read — a kind which is not one, a file which is not a path a node may
+	// be written to — and which was reported as such.
+	//
+	// It is a field rather than an absence because the two are not the same
+	// thing here, and reading them as the same is how a mistake becomes a wrong
+	// answer instead of a diagnostic. An unwritten criterion matches anything,
+	// so a criterion which was written and could not be read would, dropped,
+	// widen the rule to match everything that axis was there to exclude. A rule
+	// like that is not a narrower rule than the author meant: it is a rule which
+	// files nodes somewhere nobody asked for, and the registry has already been
+	// told so.
+	unusable bool
 }
 
 // Matches reports whether a new node with these axes satisfies every criterion
@@ -473,7 +487,15 @@ type Route struct {
 // A criterion the rule leaves out is not a criterion: it matches anything. That
 // is what lets a registry say "every Space goes here" without also having to
 // enumerate the types which are spaces.
+//
+// A rule the loader could not read matches nothing at all, whatever it says.
+// The diagnostic about it is the answer; routing through it as though the parts
+// which failed to read had been left out would turn one reported mistake into a
+// node filed somewhere nothing points at.
 func (r Route) Matches(subject Subject) bool {
+	if r.unusable {
+		return false
+	}
 	if r.Namespace != "" && r.Namespace != subject.ID.Namespace() {
 		return false
 	}

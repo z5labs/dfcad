@@ -215,7 +215,12 @@ func replace(path string, src []byte) error {
 // change which is then rolled back leaves the directory behind, empty, which a
 // walk of the model steps over and a load treats as nothing at all.
 func stage(path string, src []byte) (string, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
+	// Not 0o777: the umask is the only thing which would narrow that, and a
+	// permissive one would leave a world-writable directory inside a model
+	// somebody is version controlling. A directory holding entity files needs to
+	// be readable and searchable by whoever reads them, and writable by nobody
+	// else.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return "", WriteError{Path: path, Err: err}
 	}
 

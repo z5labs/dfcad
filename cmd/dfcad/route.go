@@ -6,10 +6,8 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"slices"
 
@@ -204,18 +202,20 @@ func checkAxes(registry *dfcad.Registry, kind, declaredType string) error {
 	return nil
 }
 
-// holds reports whether the model already holds the file at path.
+// holds reports whether the model already holds an entity file at path.
 //
-// Anything which is not an ordinary absence — a path which cannot be reached at
-// all — is reported as not held, because this field says what the write will do
-// and a write into an unreachable path creates nothing. The write itself is
-// what reports why, with the error the file system gave it.
+// Only an ordinary file counts. A path which is absent, a path which is a
+// directory and a path which cannot be reached at all are each reported the
+// same way, because this field says whether the write would be rewriting
+// something and none of the three is something to rewrite. What the write will
+// actually do about the last two is the write's answer to give, with the error
+// the file system handed it, rather than something to guess at here.
 func holds(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
-		return !errors.Is(err, fs.ErrNotExist)
+		return false
 	}
-	return !info.IsDir()
+	return info.Mode().IsRegular()
 }
 
 // reportDestination renders a route result for a person, on stderr.
