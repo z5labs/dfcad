@@ -602,8 +602,7 @@ func (tx *Tx) file(path string) (*staged, error) {
 		return nil, TargetError{Path: path, Root: tx.root, Err: ErrNotAnEntityFile}
 	}
 
-	rel, err := filepath.Rel(tx.root, clean)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+	if !beneath(tx.root, clean) {
 		return nil, TargetError{Path: path, Root: tx.root, Err: ErrOutsideModel}
 	}
 
@@ -612,6 +611,32 @@ func (tx *Tx) file(path string) (*staged, error) {
 	tx.files[clean] = file
 
 	return file, nil
+}
+
+// beneath reports whether path is inside root.
+//
+// Both are made absolute before they are compared, because a model root given
+// as a relative path and a file given as an absolute one are comparable only
+// once they are spelled the same way. Comparing them as written would refuse a
+// file which is in fact inside the root, and send whoever wrote the command
+// looking for a mistake they did not make.
+func beneath(root, path string) bool {
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+
+	rel, err := filepath.Rel(absoluteRoot, absolutePath)
+	if err != nil {
+		return false
+	}
+
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // locate finds the staged file holding form and where in it the form sits.

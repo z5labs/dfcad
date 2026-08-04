@@ -659,6 +659,30 @@ func TestTxRefusesATargetTheModelWouldNotReadBack(t *testing.T) {
 	}
 }
 
+func TestTxAcceptsAnAbsoluteTargetInsideARelativeRoot(t *testing.T) {
+	root := writeFixture(t)
+	t.Chdir(root)
+
+	// The command line resolves a relative argument against the root and leaves
+	// an absolute one alone, so the two spellings meet here. Comparing them as
+	// written would refuse a file which is inside the root.
+	tx := begin(t, ".")
+	require.NoError(t, tx.Insert(
+		filepath.Join(root, "entities", "campus.dfc"),
+		written(t, `(node site:Z-03 (kind Zone) (type Campus))`),
+	))
+
+	out := commit(t, tx)
+	require.Len(t, out.Files, 1)
+	assert.Equal(t, FileCreated, out.Files[0].Status)
+
+	graph, diags := LoadGraph(".")
+	require.Empty(t, diags)
+
+	_, ok := graph.Node("site:Z-03")
+	assert.True(t, ok)
+}
+
 func TestTxRefusesAFormItDoesNotHold(t *testing.T) {
 	root := writeFixture(t)
 
