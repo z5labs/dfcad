@@ -154,8 +154,8 @@ func (e OverrideError) Unwrap() error {
 	return e.Err
 }
 
-// Route returns the destination of a `--file` override, checking that it names
-// somewhere a node may actually be written.
+// Override returns the destination of a `--file` override, checking that it
+// names somewhere a node may actually be written.
 //
 // A relative path is kept as written, cleaned, because it is resolved against
 // the model root by whoever writes it. An absolute one is refused rather than
