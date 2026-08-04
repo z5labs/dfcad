@@ -42,6 +42,7 @@ on:
   pull_request_target:
     types:
       - labeled
+      - closed
 
 # `contents: write` is not optional here, despite this job checking out nothing.
 # `gh pr merge --auto` only *arms* auto-merge while something still blocks the
@@ -57,8 +58,9 @@ jobs:
   enable-auto-merge:
     name: enable auto-merge
     # Every other label on a pull request — `story`, `blocked`, whatever arrives
-    # later — leaves this workflow inert.
-    if: github.event.label.name == 'auto-merge'
+    # later — leaves this workflow inert. The `closed` trigger belongs to
+    # `delete-merged-branch` below and must not reach this job.
+    if: github.event.action == 'labeled' && github.event.label.name == 'auto-merge'
     runs-on: ubuntu-latest
     steps:
       - name: Enable auto-merge
@@ -68,6 +70,45 @@ jobs:
           REPO: ${{ github.repository }}
         # `--auto` queues the merge instead of performing it: GitHub squashes the
         # pull request when the required checks pass, and does nothing if they
-        # never do. The repository allows squash merges only and has
-        # `deleteBranchOnMerge` set, so the branch is removed on the way out.
+        # never do. The repository allows squash merges only.
+        #
+        # The branch is *not* removed on the way out. `deleteBranchOnMerge` is
+        # set on the repository, but it does not fire for a merge performed by
+        # this workflow's `GITHUB_TOKEN` — only for one a person performs. That
+        # is what `delete-merged-branch` below exists to cover.
         run: gh pr merge "$PR" --repo "$REPO" --squash --auto
+
+  delete-merged-branch:
+    name: delete merged branch
+    # Remote cleanup lives here rather than in the agent that drives the loop.
+    # `git push --delete` is denied by that agent's settings, and an unattended
+    # loop working around a rule its operator set is the wrong shape regardless
+    # of whether any single deletion was harmless. Putting the deletion in the
+    # workflow that already performs the merge keeps it automatic and keeps the
+    # policy readable, while leaving the agent responsible only for what it
+    # created locally: its worktree and its local branch.
+    #
+    # `merged` rather than `closed`: a pull request closed without merging keeps
+    # its branch, because the work on it has not landed anywhere.
+    #
+    # The head-repository guard skips forks. A fork's branch is not ours to
+    # delete, and the API call would fail rather than no-op.
+    if: >-
+      github.event.action == 'closed' &&
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete the head branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.event.pull_request.head.ref }}
+        # Deleting the ref is idempotent in the only way that matters: if
+        # something else already removed it, the API answers 422 and there is
+        # nothing left to do. A failure here must not fail the run — the merge
+        # has already happened, and an orphaned branch is untidy, not broken.
+        run: |
+          gh api -X DELETE "repos/$REPO/git/refs/heads/$BRANCH" \
+            && echo "deleted $BRANCH" \
+            || echo "could not delete $BRANCH; it may already be gone"
