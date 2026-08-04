@@ -627,8 +627,7 @@ func measurements(t testing.TB) string {
 	return out.String()
 }
 
-// ratio is how many times cheaper than is one number against another, to one
-// decimal place.
+// ratio is how many times cheaper now is than was, to one decimal place.
 func ratio(was, now int) string {
 	if now == 0 {
 		return "—"
