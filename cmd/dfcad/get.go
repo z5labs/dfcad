@@ -82,11 +82,16 @@ const (
 	// resolutionCurrent is the claim which won outright.
 	resolutionCurrent = "current"
 
-	// resolutionTied is one of several claims the rule could not separate.
+	// resolutionTied is one of several claims the rule could not separate,
+	// whether because they are equally accurate and equally recent or because
+	// nothing rankable was said about any of them. Several unrankable claims are
+	// equally current in the same way equally good ones are, so they read the
+	// same way here.
 	resolutionTied = "tied"
 
-	// resolutionUnranked is a live claim under a predicate nothing rankable was
-	// said about, so nothing won.
+	// resolutionUnranked is the one live claim under a predicate nothing
+	// rankable was said about, so nothing won and there is nothing for it to be
+	// tied with.
 	resolutionUnranked = "unranked"
 )
 

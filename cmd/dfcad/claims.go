@@ -34,8 +34,11 @@ replaced them, so a retraction is followable forward without a second call.
 Every claim says what resolution made of it:
 
 	current     the claim resolution picks under its predicate
-	tied        one of several claims resolution cannot separate
-	unranked    a claim under a predicate nothing rankable was said about
+	tied        one of several claims resolution cannot separate, whether
+	            because they are equally accurate and equally recent or
+	            because nothing rankable was said about any of them
+	unranked    the one live claim under a predicate nothing rankable was
+	            said about, which leaves nothing to choose between
 	outranked   a live claim which another claim under the same predicate beat
 	retracted   a deprecated claim, which resolution never considers
 

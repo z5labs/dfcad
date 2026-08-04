@@ -354,10 +354,11 @@ number the format exists to stop:
 | `claims[].span` | object | Where the claim was written. |
 
 Under `--claims resolved` a predicate appears once, as the claim that won. Where nothing
-won it appears as every claim that could still be the answer — `tied` where the rule could
-not separate them, `unranked` where nothing rankable was said — because narrowing four
-claims to two is most of the work of deciding between them, and a caller shown one of the
-two cannot tell that the other exists.
+won it appears as every claim that could still be the answer — `tied` where more than one
+could, whether the rule could not separate them or nothing rankable was said about any of
+them, and `unranked` where exactly one is left and so there is nothing to choose between —
+because narrowing four claims to two is most of the work of deciding between them, and a
+caller shown one of the two cannot tell that the other exists.
 
 Deprecated claims are left out unless `--deprecated` asks for them. `--deprecated` beside
 `--claims resolved` is a **usage error** rather than a flag that is quietly ignored: a
@@ -437,9 +438,16 @@ rather than only the ones that could still be the answer:
 |-------|---------|
 | `current` | The claim resolution picks under its predicate. |
 | `tied` | One of several claims resolution cannot separate, so it picks none of them. |
-| `unranked` | A claim under a predicate nothing rankable was said about. |
+| `unranked` | The one live claim under a predicate nothing rankable was said about, which leaves nothing to choose between. |
 | `outranked` | A live claim that another claim under the same predicate beat. |
 | `retracted` | A deprecated claim, which resolution never considers. |
+
+`tied` and `unranked` are told apart by how many claims are still in the running, not by why
+they are. Several claims nothing rankable was said about are `tied` — they are equally
+current, and resolution picks none of them — exactly as several equally accurate and equally
+recent claims are. `unranked` is what a claim reads as when it is the only one left, so there
+is nothing for it to be tied with; a caller filtering for the pairs that need somebody to
+decide wants `tied`, and a single unrankable claim is not one of them.
 
 A claim that lost and a claim that was withdrawn are both left out of a resolution, and
 reporting them as the same thing would say a measurement somebody bettered and one somebody
