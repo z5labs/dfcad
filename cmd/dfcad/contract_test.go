@@ -38,6 +38,33 @@ func object(t *testing.T, stdout string) map[string]any {
 	return result
 }
 
+// samples is a well-formed invocation of each command — the arguments written
+// after its name — against the model [model] holds.
+//
+// It is a table rather than an argument the walks below invent because the
+// commands do not take the same arguments: a listing of a whole model takes
+// none, and a retrieval of one thing takes the id of the thing. Every command
+// has an entry, and [sample] fails the test when one does not, so a command
+// added later cannot quietly fall out of the walks which check the contract
+// holds for every one of them.
+var samples = map[string][]string{
+	"fmt":            {},
+	"list-types":     {},
+	"list-instances": {},
+	"get":            {"site:S-101"},
+}
+
+// sample is the invocation of cmd against the fixture model, command name and
+// arguments together.
+func sample(t *testing.T, cmd command, flags ...string) []string {
+	t.Helper()
+
+	arguments, ok := samples[cmd.name]
+	require.Truef(t, ok, "add %s to samples so the contract walks reach it", cmd.name)
+
+	return append(append([]string{cmd.name}, flags...), arguments...)
+}
+
 // TestStdoutIsTheMachineContract walks every command and asserts, on the
 // paths that produce a result and on the paths that do not, that stdout is
 // either one JSON object carrying the version and the command, or empty.
@@ -48,10 +75,10 @@ func object(t *testing.T, stdout string) map[string]any {
 func TestStdoutIsTheMachineContract(t *testing.T) {
 	for _, cmd := range commands {
 		t.Run(cmd.name+" writes one versioned object naming itself", func(t *testing.T) {
-			t.Chdir(t.TempDir())
+			t.Chdir(tree(t, model()))
 
 			var stdout, stderr bytes.Buffer
-			require.Equal(t, exitSuccess, run([]string{cmd.name}, &stdout, &stderr))
+			require.Equal(t, exitSuccess, run(sample(t, cmd), &stdout, &stderr), stderr.String())
 
 			result := object(t, stdout.String())
 			assert.EqualValues(t, outputVersion, result["version"])
@@ -259,12 +286,12 @@ func TestEveryCommandDescribesTheContractAndExitsZero(t *testing.T) {
 func TestEveryCommandTakesTheGlobalFlags(t *testing.T) {
 	for _, cmd := range commands {
 		t.Run(cmd.name+" accepts every global flag", func(t *testing.T) {
-			dir := t.TempDir()
+			dir := tree(t, model())
 
 			var stdout, stderr bytes.Buffer
 
-			args := []string{cmd.name, "--root", dir, "--format", formatHuman, "-v", "-v"}
-			require.Equal(t, exitSuccess, run(args, &stdout, &stderr))
+			args := sample(t, cmd, "--root", dir, "--format", formatHuman, "-v", "-v")
+			require.Equal(t, exitSuccess, run(args, &stdout, &stderr), stderr.String())
 
 			assert.NotEmpty(t, object(t, stdout.String()))
 		})

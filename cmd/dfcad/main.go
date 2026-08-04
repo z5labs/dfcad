@@ -55,6 +55,12 @@ var commands = []command{
 		usage:   listInstancesUsage,
 		run:     runListInstances,
 	},
+	{
+		name:    "get",
+		summary: "retrieve one thing by its id, with its claims",
+		usage:   getUsage,
+		run:     runGet,
+	},
 }
 
 // lookup is the subcommand of that name.
