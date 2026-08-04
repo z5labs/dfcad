@@ -161,14 +161,29 @@ type globals struct {
 
 	// Verbosity is how much the run says about what it is doing.
 	Verbosity verbosity
+
+	// DryRun says to do everything a change does except the writing. Only a
+	// command which writes takes it, so it is false on every other run and
+	// nothing reads it there.
+	DryRun bool
 }
 
 // register defines the global flags on a subcommand's flag set.
-func (g *globals) register(flags *flag.FlagSet) {
+//
+// A command which changes the model also gets --dry-run here, rather than
+// registering it for itself, for the reason the four above are here: a flag
+// defined per subcommand is one a subcommand can forget, and a dry run which is
+// silently ignored by the one command somebody reached for is worse than one
+// which does not exist.
+func (g *globals) register(cmd command, flags *flag.FlagSet) {
 	flags.StringVar(&g.Root, "root", ".", "")
 	flags.StringVar(&g.Format, "format", formatJSON, "")
 	flags.Var(&g.Verbosity, "verbose", "")
 	flags.Var(&g.Verbosity, "v", "")
+
+	if cmd.writes {
+		flags.BoolVar(&g.DryRun, "dry-run", false, "")
+	}
 }
 
 // validate checks the global flags against each other and against nothing
@@ -231,8 +246,8 @@ func (g *globals) human() bool {
 // newFlagSet builds a subcommand's flag set with the global flags already on
 // it. A subcommand adds its own flags to what comes back and parses it with
 // [parse].
-func newFlagSet(name string, globals *globals) *flag.FlagSet {
-	flags := flag.NewFlagSet(name, flag.ContinueOnError)
+func newFlagSet(cmd command, globals *globals) *flag.FlagSet {
+	flags := flag.NewFlagSet(cmd.name, flag.ContinueOnError)
 
 	// The flag package writes its own usage, which is neither the command's
 	// message nor on the stream the command was handed. Silencing it leaves
@@ -240,7 +255,7 @@ func newFlagSet(name string, globals *globals) *flag.FlagSet {
 	flags.SetOutput(io.Discard)
 	flags.Usage = func() {}
 
-	globals.register(flags)
+	globals.register(cmd, flags)
 
 	return flags
 }

@@ -57,6 +57,13 @@ var samples = map[string][]string{
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
 	"route":          {"--kind", "Space", "--type", "MeetingRoom", "site:S-104"},
+	"add-node": {
+		"--kind", "Space", "--type", "MeetingRoom",
+		"--geometry", "area", "--frame", "frame:building",
+		"site:S-104",
+	},
+	"set-label": {"site:S-101", "Meeting Room One"},
+	"retire":    {"--reason", "The floor plate it was on was never built.", "site:S-103"},
 }
 
 // sample is the invocation of cmd against the fixture model, command name and

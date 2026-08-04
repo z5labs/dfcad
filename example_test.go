@@ -1374,3 +1374,194 @@ func ExampleOverride() {
 	// notes.md: not an entity file
 	// true
 }
+
+// ExampleTx_AddNode writes a new semantic node into the file the registry's
+// routing rules choose for it.
+func ExampleTx_AddNode() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	spec := dfcad.NodeSpec{
+		ID:       "site:S-103",
+		Kind:     dfcad.KindSpace,
+		Type:     "MeetingRoom",
+		Geometry: dfcad.GeometryArea,
+		Frame:    "frame:building",
+		Label:    "Meeting Room C",
+	}
+
+	// Where it goes is the registry's decision, asked the same way `dfcad
+	// route` asks it.
+	destination, err := tx.Graph().Registry().Destination(dfcad.Subject{
+		ID:   spec.ID,
+		Kind: spec.Kind,
+		Type: spec.Type,
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if err := tx.AddNode(spec, destination.Path); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+
+	fmt.Println(destination.Path, "by rule", destination.Rule)
+	for _, effect := range commit.Effects() {
+		fmt.Printf("%s %s %s\n", effect.Op, effect.Tag, effect.ID)
+	}
+
+	// Output:
+	// entities/site.dfc by rule rooms
+	// created node site:S-103
+}
+
+// ExampleTx_AddNode_taken refuses an id something already holds, which a
+// retired id is as much as a live one: retiring says the thing stopped
+// existing, not that its name came free.
+func ExampleTx_AddNode_taken() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	err = tx.AddNode(dfcad.NodeSpec{
+		ID:       "site:S-101",
+		Kind:     dfcad.KindSpace,
+		Type:     "MeetingRoom",
+		Geometry: dfcad.GeometryArea,
+		Frame:    "frame:building",
+	}, "entities/site.dfc")
+
+	var taken dfcad.TakenIDError
+	if errors.As(err, &taken) {
+		fmt.Println(taken.ID, "already names", taken.What)
+		fmt.Println("retired:", taken.Retired)
+	}
+
+	// Output:
+	// site:S-101 already names a node
+	// retired: false
+}
+
+// ExampleTx_Retire records that a thing stopped existing, and moves what
+// referenced it onto the thing which replaced it.
+func ExampleTx_Retire() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	// Without a replacement this is refused, naming the partition written
+	// inside the room: a reference to something which says it stopped existing
+	// is a question the model cannot answer.
+	err = tx.Retire("site:S-101", dfcad.RetirementSpec{
+		Date:         time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+		Reason:       "Knocked through into the room beside it.",
+		SupersededBy: "site:S-102",
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+
+	for _, effect := range commit.Effects() {
+		fmt.Printf("%s %s %s\n", effect.Op, effect.Tag, effect.ID)
+	}
+
+	// The retired node is still a node the model holds, and says what happened
+	// to it.
+	graph, _ := dfcad.LoadGraph(root)
+
+	node, _ := graph.Node("site:S-101")
+	retirement, _ := node.Retirement()
+	replacement, _ := retirement.SupersededBy()
+	fmt.Println(node.Label(), "retired on", retirement.Date().Format(time.DateOnly), "for", replacement)
+
+	// And the partition is inside the room which replaced it.
+	partition, _ := graph.Node("site:E-01")
+	within, _ := partition.Within()
+	fmt.Println("site:E-01 is within", within)
+
+	// Output:
+	// modified node site:E-01
+	// modified node site:S-101
+	// Meeting Room B retired on 2026-06-01 for site:S-102
+	// site:E-01 is within site:S-102
+}
+
+// ExampleGraph_References says what points at one thing, which is what a
+// refusal to retire it reports.
+func ExampleGraph_References() {
+	graph, _ := dfcad.LoadGraph("testdata/graph/valid")
+
+	for reference := range graph.References("site:S-101") {
+		fmt.Println(reference.From, reference.Relation)
+	}
+
+	// Output:
+	// site:E-01 within
+}

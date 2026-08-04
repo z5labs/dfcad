@@ -105,7 +105,7 @@ func (MissingIDError) Error() string {
 // runRoute is the route command.
 func runRoute(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	kind := flags.String("kind", "", "")
 	declaredType := flags.String("type", "", "")

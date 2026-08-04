@@ -1,0 +1,438 @@
+// Copyright (c) 2026 Z5Labs and Contributors
+//
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+
+	"github.com/z5labs/dfcad"
+)
+
+// writeOutputHelp describes what a write reports, which is the same object
+// whichever command produced it.
+const writeOutputHelp = `The object a write command produces carries "dryRun", whether anything was
+written, and "files": one entry per file the change touched, in the lexical
+order of their paths, each with what happened to it, what the change did to the
+model in it, and the unified diff from what was on disk to what was written.
+
+A change which would produce a model that does not load is refused. Its
+diagnostics are the ones a load of the result would have raised, nothing at all
+is written, and nothing reaches stdout: the correct response is to fix the
+command and reissue it, because there is no partial state to reconcile.
+`
+
+const addNodeUsage = `dfcad add-node — write a new semantic node.
+
+Usage:
+
+	dfcad add-node [flags] <id>
+
+The node is written with the axes below, each of them checked against the
+registry before anything reaches the disk: an unregistered id namespace, a kind
+or a geometry form which is not one, a type nothing declares, a type which does
+not permit the kind or the geometry form written here, and a frame the registry
+does not declare are each a usage error naming what would have been permitted.
+
+Flags:
+
+	--kind <kind>        the kind it declares
+	--type <type>        the type it declares
+	--geometry <form>    the geometry form it declares; omitted for a node with
+	                     no geometry, which its type has to permit
+	--frame <id>         the coordinate frame it is expressed in
+	--label "<text>"     its display text, which nothing resolves through
+	--file <path>        write it here instead, overriding the routing rules; a
+	                     path relative to the model root, ending in ` + dfcad.Extension + `
+
+Where the node goes is the registry's decision, taken exactly as ` + "`dfcad route`" + `
+takes it and reported the same way.
+
+An id something already holds is refused, naming where that thing is defined. A
+retired id is refused the same way: retiring says the thing stopped existing,
+not that its name came free, and an id is never issued twice.
+
+` + globalFlagsHelp + `
+` + writeFlagsHelp + `
+` + outputContractHelp + `
+` + writeOutputHelp
+
+const setLabelUsage = `dfcad set-label — change what a thing is called.
+
+Usage:
+
+	dfcad set-label [flags] <id> "<label>"
+
+A label is display text. Nothing in the engine resolves through it, nothing is
+derived from it, and no two things are required to have different ones — so
+renaming is a one-line diff rather than a re-identification: the id, the global
+id derived from it and every reference written to it are what they were.
+
+An empty label removes it, which is how a thing goes back to having none.
+
+` + globalFlagsHelp + `
+` + writeFlagsHelp + `
+` + outputContractHelp + `
+` + writeOutputHelp
+
+const retireUsage = `dfcad retire — record that a thing stopped existing.
+
+Usage:
+
+	dfcad retire [flags] <id>
+
+Retiring is not deleting. The node stays in the file, its id stays in the graph
+and every claim ever written on it is still there to be read, so a reference
+written years ago resolves either to the thing it always named or to a retired
+node which says what happened to it. The id is never issued again.
+
+Flags:
+
+	--reason "<text>"    why it stopped existing; required
+	--replacement <id>   the node which stands in its place, where one does
+	--date <YYYY-MM-DD>  when it stopped existing; today by default
+
+A reason is required because a retirement with no reason is a deletion wearing
+a hat: what the record loses is not the node, which is still there, but the one
+sentence explaining why it stopped being true.
+
+A node other things still reference is refused, naming every referrer. Supply a
+replacement and those references are redirected to it in the same change, which
+is the whole of what a replacement is for.
+
+` + globalFlagsHelp + `
+` + writeFlagsHelp + `
+` + outputContractHelp + `
+` + writeOutputHelp
+
+// ErrMissingLabel is a set-label with no label to set.
+//
+// The empty label is not this: `dfcad set-label site:S-101 ""` says to remove
+// the label, and leaving the argument out says nothing at all.
+var ErrMissingLabel = errors.New("expected the label to set, found no argument")
+
+// writeResult is the object every command which changes the model writes to
+// stdout.
+//
+// The commit is embedded rather than nested because it is the whole of what
+// happened: a caller reads .files and .dryRun beside .command without knowing
+// which command wrote them, which is what makes one reader work for all of them.
+type writeResult struct {
+	envelope
+	dfcad.Commit
+}
+
+// runAddNode is the add-node command.
+func runAddNode(cmd command, args []string, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	kind := flags.String("kind", "", "")
+	declaredType := flags.String("type", "", "")
+	geometry := flags.String("geometry", "", "")
+	frame := flags.String("frame", "", "")
+	label := flags.String("label", "", "")
+	file := flags.String("file", "", "")
+
+	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	id, exit, ok := subject(cmd, arguments, 1, stderr)
+	if !ok {
+		return exit
+	}
+
+	tx, exit, ok := begin(cmd, globals, stderr)
+	if !ok {
+		return exit
+	}
+	defer tx.Close()
+
+	spec := dfcad.NodeSpec{
+		ID:       id,
+		Kind:     dfcad.Kind(*kind),
+		Type:     *declaredType,
+		Geometry: dfcad.Geometry(*geometry),
+		Frame:    dfcad.ID(*frame),
+		Label:    *label,
+	}
+
+	// Where it goes is decided before it is written, by the same rules `dfcad
+	// route` reports: an author who checked where something would land and a
+	// command which writes it there have to be answering one question.
+	destination, err := spec.Destination(tx.Graph().Registry(), *file)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	if err := tx.AddNode(spec, destination.Path); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	if globals.Verbosity >= verbosityProgress {
+		fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, destination.Path)
+	}
+
+	return commit(cmd, tx, globals, stdout, stderr)
+}
+
+// runSetLabel is the set-label command.
+func runSetLabel(cmd command, args []string, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	id, exit, ok := subject(cmd, arguments, 2, stderr)
+	if !ok {
+		return exit
+	}
+
+	if len(arguments) < 2 {
+		return usageError(cmd, ErrMissingLabel, stderr, true)
+	}
+
+	tx, exit, ok := begin(cmd, globals, stderr)
+	if !ok {
+		return exit
+	}
+	defer tx.Close()
+
+	if err := tx.SetLabel(id, arguments[1]); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	return commit(cmd, tx, globals, stdout, stderr)
+}
+
+// runRetire is the retire command.
+func runRetire(cmd command, args []string, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	reason := flags.String("reason", "", "")
+	replacement := flags.String("replacement", "", "")
+	date := flags.String("date", "", "")
+
+	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	id, exit, ok := subject(cmd, arguments, 1, stderr)
+	if !ok {
+		return exit
+	}
+
+	// The reason is checked before the model is read because it is a property of
+	// the invocation: a retirement with nothing to say about why is wrong
+	// whatever the model holds, and reporting a load of the whole tree before
+	// saying so buries the one thing which is missing. The refusal is the
+	// engine's, so a caller reading the message reads one sentence whether the
+	// change came from here or from a library call.
+	if *reason == "" {
+		return usageError(cmd, dfcad.MissingReasonError{ID: id}, stderr, true)
+	}
+
+	when, err := on(*date)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	tx, exit, ok := begin(cmd, globals, stderr)
+	if !ok {
+		return exit
+	}
+	defer tx.Close()
+
+	spec := dfcad.RetirementSpec{Date: when, Reason: *reason, SupersededBy: dfcad.ID(*replacement)}
+
+	if err := tx.Retire(id, spec); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	return commit(cmd, tx, globals, stdout, stderr)
+}
+
+// subject is the id a write command was given, which is its first argument.
+//
+// most is how many arguments the command takes in all, so that an argument too
+// many is reported as the wrong shape of invocation rather than silently
+// ignored.
+func subject(cmd command, arguments []string, most int, stderr io.Writer) (dfcad.ID, int, bool) {
+	switch {
+	case len(arguments) == 0:
+		return "", usageError(cmd, ErrMissingID, stderr, true), false
+	case len(arguments) > most:
+		return "", usageError(cmd, UnexpectedArgumentsError{Extra: arguments[most:]}, stderr, true), false
+	}
+
+	// An argument which is not an id is answered before the model is read, for
+	// the reason `dfcad route` answers one there: nothing about the tree changes
+	// the answer, and no id in a model is malformed.
+	id, err := dfcad.ParseID(arguments[0])
+	if err != nil {
+		return "", usageError(cmd, err, stderr, false), false
+	}
+
+	return id, exitSuccess, true
+}
+
+// on is the date a change is dated, which is the day it is made where the
+// invocation did not say.
+//
+// The one spelling of a date is the engine's, so the parse is too: a date
+// written on the command line and a date written in a file are held to the same
+// rule and refused in the same words.
+func on(date string) (time.Time, error) {
+	if date == "" {
+		return time.Time{}, nil
+	}
+	return dfcad.ParseDate(date)
+}
+
+// begin loads the whole model, locks it for one change and renders whatever is
+// wrong with it to stderr.
+//
+// A tree which does not already load is refused here rather than written into.
+// Writing into a model which is already broken would report the author's
+// mistake and the pre-existing one together, leaving whoever reads the output to
+// work out which of the two the command was responsible for.
+//
+// The transaction which comes back must be finished, which every caller does by
+// deferring [dfcad.Tx.Close]: it does nothing to one which already committed,
+// and without it the lock outlives the process which took it.
+func begin(cmd command, globals *globals, stderr io.Writer) (*dfcad.Tx, int, bool) {
+	reportLoading(cmd, globals, stderr)
+
+	tx, diags, err := dfcad.Begin(globals.Root)
+	if err != nil {
+		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return nil, exitLoad, false
+	}
+
+	render(diags, stderr)
+
+	if tx == nil {
+		return nil, exitLoad, false
+	}
+
+	tx.DryRun = globals.DryRun
+
+	return tx, exitSuccess, true
+}
+
+// commit writes the change and reports it, which is the same last step for
+// every command which changes the model.
+func commit(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io.Writer) int {
+	out, diags, err := tx.Commit()
+
+	refused := render(diags, stderr)
+
+	if err != nil {
+		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	// A refused change produced no result, so it writes nothing at all to
+	// stdout: the diagnostics on stderr are the whole of the answer, and an
+	// object describing a change which did not happen would read as one which
+	// did.
+	if refused {
+		return exitLoad
+	}
+
+	result := writeResult{envelope: newEnvelope(cmd.name), Commit: out}
+
+	reportCommit(out, globals, stderr)
+
+	if err := emit(stdout, result); err != nil {
+		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	return exitSuccess
+}
+
+// render writes diagnostics to stderr and reports whether any of them refuses
+// the change.
+//
+// It is the one place which decides how a diagnostic reaches a person, so that a
+// read and a write report the model's problems the same way.
+func render(diags []dfcad.Diagnostic, stderr io.Writer) bool {
+	var collected dfcad.Diagnostics
+	collected.Add(diags...)
+
+	// The files are read from disk to quote them, which is right in every case:
+	// a read wrote to none of them, a refused change wrote nothing, and a change
+	// which was written is what is there.
+	_ = collected.Render(stderr, dfcad.FileSources{})
+
+	return collected.HasErrors()
+}
+
+// reportLoading says that the model is about to be read, which every command
+// which reads one says the same way.
+func reportLoading(cmd command, globals *globals, stderr io.Writer) {
+	if globals.Verbosity >= verbosityProgress {
+		fmt.Fprintf(stderr, "dfcad %s: loading the model beneath %s\n", cmd.name, globals.Root)
+	}
+}
+
+// reportCommit renders a write for a person, on stderr.
+func reportCommit(out dfcad.Commit, globals *globals, stderr io.Writer) {
+	if !globals.human() {
+		return
+	}
+
+	// The detail behind the summary is progress rather than result — the result
+	// is on stdout — so it is behind the verbosity flag.
+	if globals.Verbosity >= verbosityProgress {
+		for _, file := range out.Files {
+			fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, join(spelledEffects(file.Effects, true)))
+		}
+	}
+
+	written := "wrote"
+	if out.DryRun {
+		written = "would write"
+	}
+
+	// The files which would change rather than the ones which did, because a dry
+	// run wrote none whatever it would have written, and reporting that as "0
+	// files" says the change did nothing rather than that it was not made.
+	fmt.Fprintf(stderr, "%s %s: %s\n",
+		written,
+		plural(len(out.Changed()), "file"),
+		join(spelledEffects(out.Effects(), false)),
+	)
+}
+
+// spelledEffects says what a change did to the model, for a person.
+//
+// The tag is written where the effects of one file are listed and left out of
+// the summary, because the summary is read as a sentence about the change and
+// the listing is read as a line per thing.
+func spelledEffects(effects []dfcad.Effect, tagged bool) []string {
+	spelled := make([]string, 0, len(effects))
+	for _, effect := range effects {
+		parts := []string{string(effect.Op)}
+		if tagged {
+			parts = append(parts, effect.Tag)
+		}
+		spelled = append(spelled, strings.TrimSpace(strings.Join(append(parts, string(effect.ID)), " ")))
+	}
+
+	return spelled
+}

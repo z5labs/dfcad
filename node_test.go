@@ -90,6 +90,10 @@ func TestLoadNodes(t *testing.T) {
 			name:    "names both definitions of an id the model already holds, in whichever files they are",
 			fixture: "duplicate-id",
 		},
+		{
+			name:    "names a retirement replaced by nothing this model holds, and one replaced by itself",
+			fixture: "retirement",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -532,4 +536,84 @@ func TestLoadNodesWithoutAnID(t *testing.T) {
 
 	_, ok := nodes.Node("")
 	assert.False(t, ok)
+}
+
+// TestLoadNodesRetirement reads the retirements of a fixture whose nodes stop
+// existing in every way the format permits, which is what says the axes come
+// back as written rather than as whatever the last one was.
+func TestLoadNodesRetirement(t *testing.T) {
+	nodes, _ := loadNodeFixture(t, "retirement")
+
+	testCases := []struct {
+		name                string
+		id                  ID
+		expectedRetired     bool
+		expectedReason      string
+		expectedDate        string
+		expectedReplacement ID
+	}{
+		{
+			name:                "reads a retirement which names what replaced it",
+			id:                  "site:S-101",
+			expectedRetired:     true,
+			expectedReason:      "Knocked through into the room beside it.",
+			expectedDate:        "2026-06-01",
+			expectedReplacement: "site:S-102",
+		},
+		{
+			name:            "reads a node which was not retired",
+			id:              "site:S-102",
+			expectedRetired: false,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node, ok := nodes.Node(testCase.id)
+			require.True(t, ok)
+
+			assert.Equal(t, testCase.expectedRetired, node.Retired())
+
+			retirement, ok := node.Retirement()
+			require.Equal(t, testCase.expectedRetired, ok)
+			if !ok {
+				return
+			}
+
+			assert.Equal(t, testCase.expectedReason, retirement.Reason())
+			assert.Equal(t, testCase.expectedDate, retirement.Date().Format(dateLayout))
+
+			replacement, ok := retirement.SupersededBy()
+			assert.Equal(t, testCase.expectedReplacement != "", ok)
+			assert.Equal(t, testCase.expectedReplacement, replacement)
+		})
+	}
+}
+
+// TestLoadNodesRetirementWithoutAReplacement is its own function because a
+// retirement which replaced the thing with nothing is the ordinary case rather
+// than a variation on the one above: a thing which stopped existing did not
+// necessarily get replaced.
+func TestLoadNodesRetirementWithoutAReplacement(t *testing.T) {
+	nodes := loadModel(t,
+		`(project (globalid-namespace "https://example.org/models/retire"))
+(namespace site (description "Semantic nodes minted by this model."))
+(type CircuitGroup (kind Zone) (geometry absent) (description "A set of circuits."))
+`,
+		`(node site:Z-01
+  (kind Zone)
+  (type CircuitGroup)
+  (retired (date "2026-06-01") (reason "The board it fed was removed.")))
+`)
+
+	node, ok := nodes.Node("site:Z-01")
+	require.True(t, ok)
+
+	retirement, ok := node.Retirement()
+	require.True(t, ok)
+	assert.Equal(t, "The board it fed was removed.", retirement.Reason())
+
+	replacement, ok := retirement.SupersededBy()
+	assert.False(t, ok)
+	assert.Empty(t, replacement)
 }

@@ -214,7 +214,7 @@ type conflictEntry struct {
 // runClaims is the claims command.
 func runClaims(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -270,7 +270,7 @@ func runClaims(cmd command, args []string, stdout, stderr io.Writer) int {
 // runConflicts is the conflicts command.
 func runConflicts(cmd command, args []string, stdout, stderr io.Writer) int {
 	globals := &globals{}
-	flags := newFlagSet(cmd.name, globals)
+	flags := newFlagSet(cmd, globals)
 
 	declaredType := flags.String("type", "", "")
 	predicate := flags.String("predicate", "", "")

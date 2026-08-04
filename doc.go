@@ -53,11 +53,21 @@
 // reported before anything is written, and so that a node the rules do not
 // place is refused rather than filed somewhere plausible.
 //
+// The changes themselves are on the transaction: [Tx.AddNode] writes a new
+// semantic node with every axis checked against the registry first,
+// [Tx.SetLabel] changes what a thing is called and nothing else, and [Tx.Retire]
+// records that a thing stopped existing. Retiring is not deleting — the id stays
+// in the graph and is never issued again, so a reference written years ago
+// resolves either to the thing it always named or to a node which says what
+// happened to it.
+//
 // It is the mechanism every authoring command is built on rather than a command
 // itself. See docs/decisions/0015-the-cli-is-the-primary-write-path.md for why
-// the command line interface writes at all, and
+// the command line interface writes at all,
 // docs/decisions/0016-writes-are-all-or-nothing.md for why a write is refused
-// rather than reported.
+// rather than reported, and
+// docs/decisions/0002-immutable-id-mutable-label.md for why a label is free to
+// change and an id is not.
 //
 // # Accuracy
 //

@@ -543,7 +543,7 @@ func TestParseEndsTheFlagsAtADoubleDash(t *testing.T) {
 			require.True(t, ok)
 
 			globals := &globals{}
-			flags := newFlagSet(cmd.name, globals)
+			flags := newFlagSet(cmd, globals)
 
 			var stderr bytes.Buffer
 

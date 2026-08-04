@@ -103,6 +103,7 @@ is where the tests of that layer read them from.
 | 6.9.1         | A containment which never reaches a node with no parent | `node/containment-cycle/`                |
 | 6.9.1         | A nesting the containment hierarchy does not permit, including a zone at either end of one | `node/nesting-not-permitted/` |
 | 6.9, 6.9.1    | A `within` or a `member-of` naming no node, a `member-of` naming a node which is not a `Zone`, a zone named twice, and each relation naming the node it was written on | `node/dangling-relation/` |
+| 6.7, 6.9      | A retirement replaced by a node this model does not hold, and one replaced by the node it was written on | `node/retirement/` |
 | 6.5, 7.4      | A claim written under a predicate no registry file declares | `claim/undeclared-predicate/`         |
 | 6.6           | A claim value of a shape the predicate does not declare, and a coordinate of the wrong length | `claim/wrong-shape/` |
 | 4.5, 6.6      | A claim value in a unit the predicate does not declare, one written with no unit, and one written with a unit where the predicate declares none | `claim/wrong-unit/` |
