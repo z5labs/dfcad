@@ -1,0 +1,54 @@
+; The building, its storeys and the zones occupancy is counted over. They are
+; in one file because they are the frame the two level files hang from, and a
+; reader who has not read anything yet reads this one first.
+(node
+  site:B-01
+  (label "Riverside House")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building)
+  (area
+    (value 1284.0 m2)
+    (source "Lettable area report LA-2026-004")
+    (method method:drawing-take-off)
+    (accuracy (independent 4.0 m2))
+    (date "2026-01-22")))
+(node
+  site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type OfficeStorey)
+  (geometry solid)
+  (frame frame:building)
+  (within site:B-01)
+  (storey-height
+    (value 4.05 m)
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-03-02")))
+(node
+  site:L-02
+  (label "Level 2")
+  (kind Storey)
+  (type OfficeStorey)
+  (geometry solid)
+  (frame frame:building)
+  (within site:B-01)
+  (storey-height
+    (value 3.95 m)
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-03-02")))
+(node
+  site:Z-01
+  (label "Level 1 occupancy zone")
+  (kind Zone)
+  (type OccupancyZone))
+(node
+  site:Z-02
+  (label "Level 2 occupancy zone")
+  (kind Zone)
+  (type OccupancyZone))

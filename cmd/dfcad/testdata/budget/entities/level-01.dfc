@@ -1,0 +1,466 @@
+(node
+  site:D-101
+  (label "Doorway to Meeting Room A")
+  (kind Element)
+  (type Doorway)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01))
+(node
+  site:D-102
+  (label "Doorway to Meeting Room B")
+  (kind Element)
+  (type Doorway)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01))
+; The occupied spaces of level 1, and the elements that divide
+; them. Every space references the loop that bounds it; none of them carries a
+; coordinate.
+(node
+  site:S-101
+  (label "Service riser")
+  (kind Space)
+  (type ServiceRiser)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-101)
+  (area
+    (value 31.9 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06")))
+(node
+  site:S-102
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-102)
+  (area
+    (value 32.1 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 8.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-103
+  (label "Office 03")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-103)
+  (area
+    (value 32.0 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 4.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-104
+  (label "Office 04")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-104)
+  (area
+    (value 31.8 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 4.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-105
+  (label "Office 05")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-105)
+  (area
+    (value 32.2 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 6.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-106
+  (label "Office 06")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-106)
+  (area
+    (value 32.0 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 4.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-107
+  (label "Office 07")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-107)
+  (area
+    (value 31.7 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 4.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-108
+  (label "Office 08")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-108)
+  (area
+    (value 32.0 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 6.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-109
+  (label "Office 09")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-109)
+  (area
+    (value 32.3 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 4.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-110
+  (label "Office 10")
+  (kind Space)
+  (type Office)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-110)
+  (area
+    (value 31.9 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 4.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-111
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-111)
+  (area
+    (value 32.1 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 10.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-112
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-112)
+  (area
+    (value 32.0 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06"))
+  (occupancy
+    (value 12.0)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+(node
+  site:S-113
+  (label "Central corridor")
+  (kind Space)
+  (type Corridor)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-113)
+  (area
+    (value 65.8 m2)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.08 m2))
+    (date "2026-05-06")))
+(node
+  site:T-101
+  (label "Threshold, corridor to Meeting Room A")
+  (kind Interface)
+  (type Threshold)
+  (geometry line)
+  (frame frame:building)
+  (within site:S-113))
+(node
+  site:T-102
+  (label "Threshold, corridor to Meeting Room B")
+  (kind Interface)
+  (type Threshold)
+  (geometry line)
+  (frame frame:building)
+  (within site:S-113))
+(node
+  site:W-101
+  (label "Partition, south band grid B")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-102
+  (label "Partition, south band grid C")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-103
+  (label "Partition, south band grid D")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-104
+  (label "Partition, south band grid E")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-105
+  (label "Partition, south band grid F")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-106
+  (label "Partition, north band grid B")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-107
+  (label "Partition, north band grid C")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-108
+  (label "Partition, north band grid D")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-109
+  (label "Partition, north band grid E")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-110
+  (label "Partition, north band grid F")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "chalk")
+  (fire-rating
+    (value 30.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-111
+  (label "Corridor wall, south side")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "slate")
+  (fire-rating
+    (value 60.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))
+(node
+  site:W-112
+  (label "Corridor wall, north side")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (colour "slate")
+  (fire-rating
+    (value 60.0 min)
+    (source "Fire strategy FS-2026-002")
+    (method method:specification)
+    (date "2026-02-27")))

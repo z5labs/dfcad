@@ -102,6 +102,11 @@ modelling a different subject, it is not an engine change.
   interface's output contract: what is on stdout, what is on stderr, the shape
   of each command's JSON object and the rule by which that shape may change,
   and what each exit code means.
+- [`docs/token-budget.md`](./docs/token-budget.md) — what the discovery path
+  costs an agent, measured with a real tokenizer against a representative model,
+  and how that compares with reading the files instead. It is regenerated from
+  the measurement rather than written down, so the claim in the repository is
+  always the current one.
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
   arity and ordering, and the canonical printing of each. It is the definition
   of the format; the loader is implemented against it, not the other way round.
