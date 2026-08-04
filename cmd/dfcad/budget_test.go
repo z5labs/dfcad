@@ -225,12 +225,30 @@ func tokens(t testing.TB, codec tokenizer.Codec, text string) int {
 	return n
 }
 
-// cost is what each call of a path costs, and their total.
-func cost(t testing.TB, codec tokenizer.Codec, p path) (perCall []int, total int) {
+// answers is what every call of a path wrote, in order.
+//
+// A path is answered once and counted many times, because what a command writes
+// does not depend on which tokenizer reads it. Running the whole path again per
+// encoding would load the model twice to count the same bytes, which is a load
+// per encoding added to every figure in the record.
+func answers(t testing.TB, p path) []string {
 	t.Helper()
 
+	out := make([]string, 0, len(p.calls))
 	for _, c := range p.calls {
-		n := tokens(t, codec, answer(t, c))
+		out = append(out, answer(t, c))
+	}
+
+	return out
+}
+
+// cost is what each of a path's answers costs under one encoder, and their
+// total.
+func cost(t testing.TB, codec tokenizer.Codec, answered []string) (perCall []int, total int) {
+	t.Helper()
+
+	for _, text := range answered {
+		n := tokens(t, codec, text)
 		perCall = append(perCall, n)
 		total += n
 	}
@@ -309,8 +327,10 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
+			answered := answers(t, testCase.path)
+
 			for _, e := range encodings {
-				_, total := cost(t, codecFor(t, e), testCase.path)
+				_, total := cost(t, codecFor(t, e), answered)
 
 				assert.LessOrEqual(t, total, testCase.path.ceiling,
 					"%s costs %d tokens under %s, against a ceiling of %d and a target of %d",
@@ -408,12 +428,19 @@ func strip(tree any, keys []string) any {
 // model instead has to come out ahead, and by enough that the round trips are
 // worth making.
 func TestTheQueryPathCostsLessThanReadingTheFiles(t *testing.T) {
+	files, sources := modelFiles(t)
+
+	answered := make([][]string, len(paths))
+	for i, p := range paths {
+		answered[i] = answers(t, p)
+	}
+
 	for _, e := range encodings {
 		codec := codecFor(t, e)
 
-		_, whole := readingCost(t, codec)
-		for _, p := range paths {
-			_, total := cost(t, codec, p)
+		_, whole := readingCost(t, codec, files, sources)
+		for i, p := range paths {
+			_, total := cost(t, codec, answered[i])
 
 			assert.Less(t, total*4, whole,
 				"%s costs %d tokens under %s against %d to read the model, which is less than four times cheaper",
@@ -430,10 +457,12 @@ func TestTheQueryPathCostsLessThanReadingTheFiles(t *testing.T) {
 // is made against. Reading one file is the best case for a reader who already
 // knows where to look — which is knowledge discovery is what supplies — so it
 // is the harder of the two to beat and the one worth reporting beside it.
-func readingCost(t testing.TB, codec tokenizer.Codec) (perFile map[string]int, whole int) {
+//
+// The files are read by the caller and passed in for the reason a path's
+// answers are: the bytes do not change with the encoding counting them.
+func readingCost(t testing.TB, codec tokenizer.Codec, files []string, sources map[string][]byte) (perFile map[string]int, whole int) {
 	t.Helper()
 
-	files, sources := modelFiles(t)
 	perFile = make(map[string]int, len(files))
 	for _, file := range files {
 		n := tokens(t, codec, string(sources[file]))
@@ -507,17 +536,22 @@ func measurements(t testing.TB) string {
 	var totalBytes, totalLines int
 	for _, file := range files {
 		src := sources[file]
-		lines := bytes.Count(src, []byte("\n"))
 		totalBytes += len(src)
-		totalLines += lines
+		totalLines += lineCount(src)
 
-		fmt.Fprintf(&out, "| `%s` | %d | %d |\n", strings.TrimPrefix(file, budgetRoot+"/"), len(src), lines)
+		fmt.Fprintf(&out, "| `%s` | %d | %d |\n",
+			strings.TrimPrefix(file, budgetRoot+"/"), len(src), lineCount(src))
 	}
 	fmt.Fprintf(&out, "| **the model** | **%d** | **%d** |\n", totalBytes, totalLines)
 
 	subject := subjectFile(t)
 
-	for _, p := range paths {
+	answered := make([][]string, len(paths))
+	for i, p := range paths {
+		answered[i] = answers(t, p)
+	}
+
+	for i, p := range paths {
 		fmt.Fprintf(&out, "\n## The cost of %s\n\n", p.name)
 		fmt.Fprintf(&out, "Answering: %s.\n\n", p.what)
 		fmt.Fprintf(&out, "| Call |")
@@ -532,19 +566,19 @@ func measurements(t testing.TB) string {
 
 		costs := make([][]int, len(encodings))
 		totals := make([]int, len(encodings))
-		for i, e := range encodings {
-			costs[i], totals[i] = cost(t, codecFor(t, e), p)
+		for j, e := range encodings {
+			costs[j], totals[j] = cost(t, codecFor(t, e), answered[i])
 		}
-		for j, c := range p.calls {
+		for k, c := range p.calls {
 			fmt.Fprintf(&out, "| `%s` |", c.name)
-			for i := range encodings {
-				fmt.Fprintf(&out, " %d |", costs[i][j])
+			for j := range encodings {
+				fmt.Fprintf(&out, " %d |", costs[j][k])
 			}
 			fmt.Fprintf(&out, "\n")
 		}
 		fmt.Fprintf(&out, "| **the whole path** |")
-		for i := range encodings {
-			fmt.Fprintf(&out, " **%d** |", totals[i])
+		for j := range encodings {
+			fmt.Fprintf(&out, " **%d** |", totals[j])
 		}
 
 		verdict := "**missed**"
@@ -556,7 +590,10 @@ func measurements(t testing.TB) string {
 	}
 
 	fmt.Fprintf(&out, "\n## Where the tokens go\n\n")
-	fmt.Fprintf(&out, "What each answer costs with one field removed, both sides re-encoded the same way.\n\n")
+	fmt.Fprintf(&out, "What each answer costs with one field removed. Both figures in a cell are of the\n")
+	fmt.Fprintf(&out, "answer re-encoded from its parsed form, so that the difference between them is the\n")
+	fmt.Fprintf(&out, "field rather than the marshaller. That re-encoding sorts object keys, so a \"down\n")
+	fmt.Fprintf(&out, "from\" figure differs by a token or two from the same call in the tables above.\n\n")
 	fmt.Fprintf(&out, "| Field | Answer |")
 	for _, e := range encodings {
 		fmt.Fprintf(&out, " `%s` without it |", e.name)
@@ -568,13 +605,14 @@ func measurements(t testing.TB) string {
 	fmt.Fprintf(&out, "\n")
 	for _, f := range fields {
 		fmt.Fprintf(&out, "| %s | `%s` |", f.name, f.call.name)
+
+		text := answer(t, f.call)
+		with, withoutIt := without(t, text), without(t, text, f.keys...)
 		for _, e := range encodings {
 			codec := codecFor(t, e)
-			answered := answer(t, f.call)
-			kept := tokens(t, codec, without(t, answered))
-			removed := tokens(t, codec, without(t, answered, f.keys...))
 
-			fmt.Fprintf(&out, " %d, down from %d |", removed, kept)
+			fmt.Fprintf(&out, " %d, down from %d |",
+				tokens(t, codec, withoutIt), tokens(t, codec, with))
 		}
 		fmt.Fprintf(&out, "\n")
 	}
@@ -593,7 +631,7 @@ func measurements(t testing.TB) string {
 	whole := make([]int, len(encodings))
 	one := make([]int, len(encodings))
 	for i, e := range encodings {
-		perFile, total := readingCost(t, codecFor(t, e))
+		perFile, total := readingCost(t, codecFor(t, e), files, sources)
 		whole[i] = total
 		one[i] = perFile[subject]
 	}
@@ -610,14 +648,14 @@ func measurements(t testing.TB) string {
 	fmt.Fprintf(&out, "\n## The ratio\n\n")
 	fmt.Fprintf(&out, "| Path | Against the whole model | Against the one file |\n")
 	fmt.Fprintf(&out, "|------|-------------------------|----------------------|\n")
-	for _, p := range paths {
+	for i, p := range paths {
 		fmt.Fprintf(&out, "| %s |", p.name)
 
 		var wholeRatios, oneRatios []string
-		for i, e := range encodings {
-			_, total := cost(t, codecFor(t, e), p)
-			wholeRatios = append(wholeRatios, ratio(whole[i], total))
-			oneRatios = append(oneRatios, ratio(one[i], total))
+		for j, e := range encodings {
+			_, total := cost(t, codecFor(t, e), answered[i])
+			wholeRatios = append(wholeRatios, ratio(whole[j], total))
+			oneRatios = append(oneRatios, ratio(one[j], total))
 		}
 		fmt.Fprintf(&out, " %s |", strings.Join(wholeRatios, ", "))
 		fmt.Fprintf(&out, " %s |\n", strings.Join(oneRatios, ", "))
@@ -625,6 +663,21 @@ func measurements(t testing.TB) string {
 	fmt.Fprintf(&out, "\nOne figure per encoding, in the order of the table above.\n")
 
 	return out.String()
+}
+
+// lineCount is how many lines a file holds.
+//
+// Canonical form ends with exactly one newline, so counting newlines is right
+// for every file of this fixture. It is not right in general — a file whose
+// last line has no terminator holds that line all the same — and a size table
+// that quietly loses one is worse than no table, so the last line is counted
+// whether or not anything terminates it.
+func lineCount(src []byte) int {
+	lines := bytes.Count(src, []byte("\n"))
+	if len(src) > 0 && !bytes.HasSuffix(src, []byte("\n")) {
+		lines++
+	}
+	return lines
 }
 
 // ratio is how many times cheaper now is than was, to one decimal place.
@@ -692,18 +745,25 @@ func BenchmarkReadingTheModel(b *testing.B) {
 
 	var total int
 	for b.Loop() {
-		_, total = readingCost(b, codec)
+		files, sources := modelFiles(b)
+		_, total = readingCost(b, codec, files, sources)
 	}
 
 	b.ReportMetric(float64(total), "tokens/op")
 }
 
+// benchmarkPath times one path and reports what it costs.
+//
+// The calls are inside the loop, unlike everywhere else here, because a
+// benchmark measures the work: an iteration that counted an answer somebody
+// else had already fetched would report the tokenizer's speed rather than the
+// path's.
 func benchmarkPath(b *testing.B, p path) {
 	codec := codecFor(b, encodings[0])
 
 	var total int
 	for b.Loop() {
-		_, total = cost(b, codec, p)
+		_, total = cost(b, codec, answers(b, p))
 	}
 
 	b.ReportMetric(float64(total), "tokens/op")

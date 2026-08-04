@@ -100,7 +100,10 @@ Target 500 tokens: **missed**. Regression ceiling 1200 tokens.
 
 ## Where the tokens go
 
-What each answer costs with one field removed, both sides re-encoded the same way.
+What each answer costs with one field removed. Both figures in a cell are of the
+answer re-encoded from its parsed form, so that the difference between them is the
+field rather than the marshaller. That re-encoding sorts object keys, so a "down
+from" figure differs by a token or two from the same call in the tables above.
 
 | Field | Answer | `o200k_base` without it | `cl100k_base` without it |
 |-------|--------|--------|--------|
@@ -152,8 +155,9 @@ above:
 - **Spans are about half of `get` and a third of `resolve`.** Two positions of four fields
   each, with the model root repeated in every path, on every claim. An agent asking how
   big a room is never opens the file.
-- **`resolve` returns the whole winning claim beside the value it already reported.** 148
-  of its 199 tokens are the audit trail rather than the answer.
+- **`resolve` returns the whole winning claim beside the value it already reported.** Take
+  the claim away and 199 tokens become 51: three quarters of that answer is the audit trail
+  rather than the answer.
 - **`list-types` pays for the registry's prose on every cold start.** That cost grows with
   the vocabulary rather than with the model, and it is paid again every time.
 
