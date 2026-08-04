@@ -1,0 +1,16 @@
+testdata/node/malformed-id/nodes.dfc:6:7: error: expected an id, found S-101
+6 | (node S-101
+  |       ^^^^^
+  = hint: an id is namespace:local, split on the first colon
+testdata/node/malformed-id/nodes.dfc:12:7: error: expected an id, found :S-102
+12 | (node :S-102
+   |       ^^^^^^
+   = hint: the namespace is everything before the first colon, and it is not empty
+testdata/node/malformed-id/nodes.dfc:18:7: error: expected an id, found site:
+18 | (node site:
+   |       ^^^^^
+   = hint: the local part is everything after the first colon, and it is not empty
+testdata/node/malformed-id/nodes.dfc:31:7: error: expected an id, found site.local:S-105
+31 | (node site.local:S-105
+   |       ^^^^^^^^^^^^^^^^
+   = hint: a namespace is ASCII, begins with a letter, and continues with letters, digits, hyphens and underscores

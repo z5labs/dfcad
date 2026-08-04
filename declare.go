@@ -61,7 +61,7 @@ func LoadRegistry(root string) (*Registry, []Diagnostic) {
 			namespaces: make(map[string]Namespace),
 			types:      make(map[string]Type),
 			predicates: make(map[string]Predicate),
-			frames:     make(map[string]Frame),
+			frames:     make(map[ID]Frame),
 			tolerances: make(map[string]Tolerance),
 		},
 	}
@@ -243,31 +243,6 @@ func (l *registryLoader) declareNamespace(node *Node) {
 	}
 
 	l.registry.namespaces[name] = namespace
-}
-
-// wellFormedNamespace reports whether s matches the namespace production of
-// specification section 4.1.
-//
-// ASCII, and beginning with a letter, is not stylistic. A namespace is part of
-// an id, an id is written as a bare symbol, and a symbol beginning with a digit
-// is a malformed number to the tokenizer — a lexical error reported before any
-// of this specification is consulted. Confining the namespace is what makes
-// every well-formed id a well-formed symbol.
-func wellFormedNamespace(s string) bool {
-	if s == "" {
-		return false
-	}
-
-	for i := 0; i < len(s); i++ {
-		switch c := s[i]; {
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z':
-		case i > 0 && (c >= '0' && c <= '9' || c == '-' || c == '_'):
-		default:
-			return false
-		}
-	}
-
-	return true
 }
 
 // declareType reads specification section 7.3.
@@ -487,7 +462,7 @@ func (l *registryLoader) declarePredicate(node *Node) {
 
 // declareFrame reads specification section 7.5.
 func (l *registryLoader) declareFrame(node *Node) {
-	id, span, ok := l.name(node, "an id")
+	id, span, ok := l.identifier(node, "an id")
 	if !ok {
 		return
 	}
@@ -507,7 +482,7 @@ func (l *registryLoader) declareFrame(node *Node) {
 	parent, hasParent := childForm(node, "parent")
 	if hasParent {
 		if arg, ok := argument(parent, 0); ok {
-			if written, ok := l.symbol(arg, "a frame id"); ok {
+			if written, ok := l.id(arg, "a frame id"); ok {
 				declaration.frame.Parent = written
 				declaration.parent = arg.Span
 			}
@@ -517,7 +492,7 @@ func (l *registryLoader) declareFrame(node *Node) {
 	transform, hasTransform := childForm(node, "transform")
 	if hasTransform {
 		if arg, ok := argument(transform, 0); ok {
-			if written, ok := l.symbol(arg, "a claim id"); ok {
+			if written, ok := l.id(arg, "a claim id"); ok {
 				declaration.frame.Transform = written
 				declaration.transform = arg.Span
 			}
@@ -562,7 +537,7 @@ func (l *registryLoader) declareFrame(node *Node) {
 	}
 
 	if existing, ok := l.registry.frames[id]; ok {
-		l.duplicate(SortFrame, id, span, existing.Span)
+		l.duplicate(SortFrame, string(id), span, existing.Span)
 		return
 	}
 
@@ -613,14 +588,14 @@ func (l *registryLoader) declareTolerance(node *Node) {
 // listed in.
 func (l *registryLoader) resolve() {
 	for _, declaration := range l.frames {
-		l.registered(declaration.frame.ID, declaration.id)
+		l.registered(l.registry, declaration.frame.ID, declaration.id)
 
 		if declaration.frame.Transform != "" {
-			l.registered(declaration.frame.Transform, declaration.transform)
+			l.registered(l.registry, declaration.frame.Transform, declaration.transform)
 		}
 
-		if parent := declaration.frame.Parent; parent != "" && !l.registry.Declares(SortFrame, parent) {
-			l.add(l.registry.Undeclared(SortFrame, parent, declaration.parent))
+		if parent := declaration.frame.Parent; parent != "" && !l.registry.Declares(SortFrame, string(parent)) {
+			l.add(l.registry.Undeclared(SortFrame, string(parent), declaration.parent))
 		}
 	}
 
@@ -638,43 +613,6 @@ func (l *registryLoader) resolve() {
 	}
 }
 
-// registered checks that the namespace of an id is one the registry declares.
-//
-// The namespace of a frame's parent is not checked here, because a parent which
-// resolves was checked where it was declared and a parent which does not is
-// already being reported as undeclared. Two diagnostics about one misspelling
-// is one more than anybody needs.
-func (l *registryLoader) registered(id string, span Span) {
-	namespace, _, ok := splitID(id)
-	if !ok {
-		l.add(Diagnostic{
-			Severity: SeverityError,
-			Span:     span,
-			Message:  fmt.Sprintf("expected an id, found %s", id),
-			Hint:     "an id is namespace:local, split on the first colon, and the namespace is declared in a registry file",
-		})
-		return
-	}
-
-	if !l.registry.Declares(SortNamespace, namespace) {
-		l.add(l.registry.Undeclared(SortNamespace, namespace, span))
-	}
-}
-
-// splitID divides an id into the namespace and the local part, and reports
-// whether it is one at all.
-//
-// The split is on the first colon only: a local part may hold further colons,
-// and the namespace never does
-// ([0003](docs/decisions/0003-id-namespaces-are-a-closed-registry.md)).
-func splitID(id string) (namespace, local string, ok bool) {
-	i := strings.Index(id, ":")
-	if i <= 0 || i == len(id)-1 {
-		return "", "", false
-	}
-	return id[:i], id[i+1:], true
-}
-
 // cycles reports a parent chain which returns to a frame it already passed
 // through.
 //
@@ -689,10 +627,10 @@ func (l *registryLoader) cycles() {
 		settled
 	)
 
-	state := make(map[string]int, len(l.frames))
+	state := make(map[ID]int, len(l.frames))
 
 	for _, declaration := range l.frames {
-		var path []string
+		var path []ID
 
 		for id := declaration.frame.ID; ; {
 			if state[id] == settled {
@@ -726,7 +664,7 @@ func (l *registryLoader) cycles() {
 
 // cycle reports one cycle, which is the tail of path from the frame the walk
 // re-entered.
-func (l *registryLoader) cycle(path []string, reentered string) {
+func (l *registryLoader) cycle(path []ID, reentered ID) {
 	i := slices.Index(path, reentered)
 	if i < 0 {
 		return
@@ -746,7 +684,7 @@ func (l *registryLoader) cycle(path []string, reentered string) {
 		Span:     l.registry.frames[reentered].Span,
 		Message: fmt.Sprintf(
 			"expected a parent chain which reaches a root frame, found the cycle %s",
-			strings.Join(append(slices.Clone(members), reentered), " -> "),
+			strings.Join(spellings(append(slices.Clone(members), reentered)), " -> "),
 		),
 		Hint:    "exactly one frame is the root, and every other frame reaches it through its parents",
 		Related: related,

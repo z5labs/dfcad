@@ -1,0 +1,11 @@
+; An id is unique across the whole model, so a second definition of one is a
+; load error naming both. A reused id is the failure which costs the most,
+; because it is the one which is invisible: a deleted id leaves a hole, and a
+; reused one leaves an answer which is wrong and confident.
+
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))

@@ -1,0 +1,18 @@
+; The same id, in the file the walk reaches second. Uniqueness is a property of
+; the model rather than of a file, so a loader which checked one file at a time
+; could not see this at all.
+
+(node site:S-101
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+; A frame is a node as much as it is a registry entry, and there is one id
+; space for the whole model, so a frame's id is taken too.
+(node frame:building
+  (label "Not the frame")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))

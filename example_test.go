@@ -137,7 +137,7 @@ func ExampleLoadNodes() {
 		fmt.Println(diagnostic)
 	}
 
-	for _, node := range nodes {
+	for node := range nodes.All() {
 		// A node with no geometry is an ordinary node and not a broken one, so
 		// the axis reports absence rather than an empty value.
 		geometry, ok := node.Geometry()
@@ -335,4 +335,51 @@ func ExampleFormatter() {
 	// Output:
 	// testdata/model/entities/level-1.dfc: not in canonical form
 	// testdata/model/registry/registry.dfc: not in canonical form
+}
+
+func ExampleParseID() {
+	// The split is on the first colon, so a local part may hold further ones
+	// and the namespace never does.
+	id, err := dfcad.ParseID("survey:2026:CP-3")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("%s | %s\n", id.Namespace(), id.Local())
+
+	// What an id which is not one broke is a field rather than wording inside a
+	// message, so a caller can tell a forgotten namespace apart from a
+	// misspelled one.
+	_, err = dfcad.ParseID("corner")
+
+	var malformed dfcad.MalformedIDError
+	if errors.As(err, &malformed) {
+		fmt.Printf("%s: %s\n", malformed.Written, malformed.Reason)
+	}
+
+	// Output:
+	// survey | 2026:CP-3
+	// corner: unqualified
+}
+
+func ExampleNodes_Node() {
+	registry, _ := dfcad.LoadRegistry("testdata/node/valid")
+
+	nodes, _ := dfcad.LoadNodes("testdata/node/valid", registry)
+
+	// Lookup is by index rather than by a scan: everything above this layer
+	// resolves references by id, and a scan apiece would make resolving a model
+	// quadratic in its size.
+	room, ok := nodes.Node("site:S-101")
+	if !ok {
+		fmt.Println("no such node")
+		return
+	}
+
+	// The label is display text. Changing it would change this line and nothing
+	// else about the node — the id it is found by least of all.
+	fmt.Printf("%s: %s, a %s\n", room.ID(), room.Label(), room.Kind())
+
+	// Output:
+	// site:S-101: Meeting Room B, a Space
 }

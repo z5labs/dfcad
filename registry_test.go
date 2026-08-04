@@ -196,8 +196,8 @@ func TestRegistryDeclarations(t *testing.T) {
 		require.True(t, ok)
 		assert.Equal(t, "Building local grid", building.Label)
 		assert.Equal(t, Unit("m"), building.Unit)
-		assert.Equal(t, "frame:survey-grid", building.Parent)
-		assert.Equal(t, "survey:C-0031", building.Transform)
+		assert.Equal(t, ID("frame:survey-grid"), building.Parent)
+		assert.Equal(t, ID("survey:C-0031"), building.Transform)
 		assert.Len(t, building.Claims, 1)
 
 		root, ok := registry.Frame("frame:survey-grid")
@@ -229,11 +229,11 @@ func TestRegistryDeclarations(t *testing.T) {
 		}
 		assert.Equal(t, []string{"colour", "frame-transform", "position", "width"}, predicates)
 
-		var frames []string
+		var frames []ID
 		for frame := range registry.Frames() {
 			frames = append(frames, frame.ID)
 		}
-		assert.Equal(t, []string{"frame:building", "frame:survey-grid"}, frames)
+		assert.Equal(t, []ID{"frame:building", "frame:survey-grid"}, frames)
 
 		var namespaces []string
 		for namespace := range registry.Namespaces() {
@@ -462,87 +462,4 @@ func TestClosedSets(t *testing.T) {
 	// vocabulary by editing what it was handed.
 	Kinds()[0] = "Sproket"
 	assert.Equal(t, KindZone, Kinds()[0])
-}
-
-func TestSplitID(t *testing.T) {
-	testCases := []struct {
-		name      string
-		id        string
-		namespace string
-		local     string
-		ok        bool
-	}{
-		{
-			name:      "splits on the colon",
-			id:        "site:S-101",
-			namespace: "site",
-			local:     "S-101",
-			ok:        true,
-		},
-		{
-			name:      "splits on the first colon only, because a local part may hold more",
-			id:        "survey:2026:CP-3",
-			namespace: "survey",
-			local:     "2026:CP-3",
-			ok:        true,
-		},
-		{
-			name: "rejects a symbol with no colon in it",
-			id:   "S-101",
-		},
-		{
-			name: "rejects an empty namespace",
-			id:   ":S-101",
-		},
-		{
-			name: "rejects an empty local part",
-			id:   "site:",
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			namespace, local, ok := splitID(testCase.id)
-
-			assert.Equal(t, testCase.ok, ok)
-			assert.Equal(t, testCase.namespace, namespace)
-			assert.Equal(t, testCase.local, local)
-		})
-	}
-}
-
-func TestWellFormedNamespace(t *testing.T) {
-	testCases := []struct {
-		name      string
-		namespace string
-		want      bool
-	}{
-		{
-			name:      "accepts letters, digits, hyphens and underscores after a letter",
-			namespace: "acme-survey_2026",
-			want:      true,
-		},
-		{
-			name:      "rejects a namespace which begins with a digit",
-			namespace: "3d",
-		},
-		{
-			name:      "rejects a namespace holding punctuation a symbol permits and a namespace does not",
-			namespace: "site.local",
-		},
-		{
-			name:      "rejects a namespace which is not ASCII",
-			namespace: "gebäude",
-		},
-		{
-			name:      "rejects an empty namespace",
-			namespace: "",
-		},
-	}
-
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			assert.Equal(t, testCase.want, wellFormedNamespace(testCase.namespace))
-		})
-	}
 }

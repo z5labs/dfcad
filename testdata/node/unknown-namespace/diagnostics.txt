@@ -1,0 +1,8 @@
+testdata/node/unknown-namespace/nodes.dfc:6:7: error: expected a declared namespace, found sit, which no registry file declares
+6 | (node sit:S-101
+  |       ^^^^^^^^^
+  = hint: did you mean site?
+testdata/node/unknown-namespace/nodes.dfc:12:7: error: expected a declared namespace, found plot, which no registry file declares
+12 | (node plot:S-102
+   |       ^^^^^^^^^^
+   = hint: the declared namespaces are site and survey

@@ -1,0 +1,14 @@
+testdata/node/duplicate-id/level-2.dfc:5:7: error: expected an id nothing else holds, found site:S-101, which already names something in this model
+5 | (node site:S-101
+  |       ^^^^^^^^^^
+  = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/node/duplicate-id/level-1.dfc:6:7: note: first defined here
+6 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/node/duplicate-id/level-2.dfc:14:7: error: expected an id nothing else holds, found frame:building, which already names something in this model
+14 | (node frame:building
+   |       ^^^^^^^^^^^^^^
+   = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/node/duplicate-id/registry.dfc:6:8: note: first defined here, as a frame
+6 | (frame frame:building (label "Building local grid") (unit m))
+  |        ^^^^^^^^^^^^^^
