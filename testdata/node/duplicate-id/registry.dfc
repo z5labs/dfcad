@@ -1,0 +1,11 @@
+(project (globalid-namespace "https://example.org/models/ids"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))

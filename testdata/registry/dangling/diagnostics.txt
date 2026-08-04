@@ -1,7 +1,7 @@
 testdata/registry/dangling/registry.dfc:12:11: error: expected a declared frame, found frame:site-grid, which no registry file declares
 12 |   (parent frame:site-grid)
    |           ^^^^^^^^^^^^^^^
-   = hint: the declared frames are frame-detached, frame:building, frame:orphan, frame:survey-grid and grid:secondary
+   = hint: the declared frames are frame:building, frame:orphan, frame:survey-grid and grid:secondary
 testdata/registry/dangling/registry.dfc:13:14: error: expected a declared namespace, found survey, which no registry file declares
 13 |   (transform survey:C-0031))
    |              ^^^^^^^^^^^^^
@@ -13,7 +13,7 @@ testdata/registry/dangling/registry.dfc:15:8: error: expected a declared namespa
 testdata/registry/dangling/registry.dfc:20:8: error: expected an id, found frame-detached
 20 | (frame frame-detached
    |        ^^^^^^^^^^^^^^
-   = hint: an id is namespace:local, split on the first colon, and the namespace is declared in a registry file
+   = hint: an id is namespace:local, split on the first colon
 testdata/registry/dangling/registry.dfc:25:30: error: expected a (transform ...) child beside the parent, found none
 25 | (frame frame:orphan (unit m) (parent frame:survey-grid))
    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^

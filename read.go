@@ -44,6 +44,64 @@ func (r *reader) name(node *Node, what string) (string, Span, bool) {
 	return name, arg.Span, ok
 }
 
+// identifier reads the positional id of a declaration, with the span a
+// diagnostic about that id points at.
+func (r *reader) identifier(node *Node, what string) (ID, Span, bool) {
+	arg, ok := argument(node, 0)
+	if !ok {
+		return "", Span{}, false
+	}
+
+	id, ok := r.id(arg, what)
+	return id, arg.Span, ok
+}
+
+// id reads an id, reporting the rule it broke where what was written is not
+// one.
+//
+// An id which is not one yields the zero ID rather than the text it was written
+// with, for the reason every other axis of a form does: the diagnostic already
+// carries what was written, and a value which is not one of the things it could
+// have been would be judged by everything downstream as though somebody had
+// written it.
+func (r *reader) id(node *Node, what string) (ID, bool) {
+	written, ok := r.symbol(node, what)
+	if !ok {
+		return "", false
+	}
+
+	id, err := ParseID(written)
+	if malformed, ok := asMalformedID(err); ok {
+		r.add(malformedID(node.Span, malformed))
+		return "", false
+	}
+
+	return id, true
+}
+
+// registered checks that the namespace of an id is one registry declares.
+//
+// It is the whole of what this layer has to say about an id: whether the thing
+// it names exists is a question for the layer which holds those things, and
+// whether the namespace exists is a question only the registry answers
+// ([0003](docs/decisions/0003-id-namespaces-are-a-closed-registry.md)).
+//
+// The zero ID is not checked. It belongs to something which was not written or
+// which was already reported as not being an id, and a namespace diagnostic on
+// top of that is one mistake reported twice.
+func (r *reader) registered(registry *Registry, id ID, span Span) bool {
+	if id == "" {
+		return false
+	}
+
+	if !registry.Declares(SortNamespace, id.Namespace()) {
+		r.add(registry.Undeclared(SortNamespace, id.Namespace(), span))
+		return false
+	}
+
+	return true
+}
+
 // symbol reads a symbol, reporting what was written there instead.
 func (r *reader) symbol(node *Node, what string) (string, bool) {
 	datum, ok := node.Datum.(sexpr.Symbol)

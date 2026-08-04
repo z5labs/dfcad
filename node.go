@@ -7,6 +7,7 @@ package dfcad
 
 import (
 	"fmt"
+	"iter"
 	"slices"
 )
 
@@ -44,9 +45,9 @@ const nodeTag = "node"
 // no kind and no type, which is what a form nothing could be read from yields;
 // every method below works on it.
 type SemanticNode struct {
-	// id is the node's id, exactly as written. What makes it a well-formed id
-	// and whether its namespace is declared is the id layer's question.
-	id string
+	// id is the node's id. The zero ID belongs to a node whose id was not
+	// written or was not an id, which is a diagnostic carrying what was there.
+	id ID
 
 	// label is the node's display text. Empty when it was not written, which is
 	// the same thing as an empty label to everything but a person reading it.
@@ -73,7 +74,7 @@ type SemanticNode struct {
 	// hasFrame whether it has one. A `frame` child which no id could be read
 	// from leaves both as they are, for the reason above: an empty frame id
 	// reported as present names no frame.
-	frame    string
+	frame    ID
 	hasFrame bool
 
 	// span is where the node form was written.
@@ -81,11 +82,15 @@ type SemanticNode struct {
 }
 
 // ID returns the node's id, which never changes for the life of the thing it
-// names.
-func (n *SemanticNode) ID() string { return n.id }
+// names ([0002](docs/decisions/0002-immutable-id-mutable-label.md)).
+func (n *SemanticNode) ID() ID { return n.id }
 
 // Label returns the node's display text, which is empty when none was written.
-// Changing it changes nothing else about the node.
+//
+// A label is free-form and carries no uniqueness guarantee. Nothing resolves
+// through it and nothing in the engine reads it, so changing it changes the
+// label and nothing else about the node: a rename is a one-line diff and not a
+// re-identification.
 func (n *SemanticNode) Label() string { return n.label }
 
 // Kind returns the node's kind, which is one of the seven [Kinds] compiled into
@@ -113,18 +118,86 @@ func (n *SemanticNode) Geometry() (Geometry, bool) { return n.geometry, n.hasGeo
 // frame either, and a node may legitimately have neither. The second result is
 // false on the same two occasions [SemanticNode.Geometry]'s is: no `frame`
 // child, or one no id could be read from.
-func (n *SemanticNode) Frame() (string, bool) { return n.frame, n.hasFrame }
+func (n *SemanticNode) Frame() (ID, bool) { return n.frame, n.hasFrame }
 
 // Span returns where the node form was written, which is what a diagnostic
 // about the node as a whole points at.
 func (n *SemanticNode) Span() Span { return n.span }
+
+// Nodes are the semantic nodes of one load: every node the walk read, in the
+// order it read them, and indexed by id.
+//
+// The index is the load's own. A load has to build one anyway — an id is unique
+// across the whole model, and finding a duplicate means having somewhere to
+// look the id up — so handing it back costs nothing and saves every caller
+// above building a second one. Two indexes over one model would be two answers
+// to "what is site:S-101", and they would differ the first time a node moved
+// between files.
+//
+// A Nodes is read-only once loaded. The zero value holds no nodes, which is
+// what a source tree holding none yields, and every method below works on it.
+type Nodes struct {
+	// inOrder is every node read, in the order the walk reached them.
+	inOrder []*SemanticNode
+
+	// byID is the node each id names. A node whose id was not written, was not
+	// an id, or was already taken is absent: the first two have no id to be
+	// found by, and the third is a diagnostic which leaves the id naming what it
+	// named first.
+	byID map[ID]*SemanticNode
+}
+
+// Len reports how many nodes were read.
+func (n *Nodes) Len() int {
+	if n == nil {
+		return 0
+	}
+	return len(n.inOrder)
+}
+
+// All iterates the nodes in the order the walk reached them.
+//
+// That order is deterministic — the lexical order of the paths, and within a
+// file the order the forms were written — so anything built from it diffs
+// against the last run's.
+func (n *Nodes) All() iter.Seq[*SemanticNode] {
+	return func(yield func(*SemanticNode) bool) {
+		if n == nil {
+			return
+		}
+		for _, node := range n.inOrder {
+			if !yield(node) {
+				return
+			}
+		}
+	}
+}
+
+// Node returns the node id names, and whether the model holds one.
+//
+// The lookup is by index and does not scan. Every layer above resolves
+// references by id — containment, zone membership, boundaries, supersession —
+// and a scan per reference would make resolving a model quadratic in the size
+// of the thing being resolved.
+//
+// The zero ID names nothing, so a node whose id could not be read is reachable
+// through [Nodes.All] and not through here. It is a node with a diagnostic
+// against it rather than a node anything may reference.
+func (n *Nodes) Node(id ID) (*SemanticNode, bool) {
+	if n == nil {
+		return nil, false
+	}
+	node, ok := n.byID[id]
+	return node, ok
+}
 
 // LoadNodes reads every semantic node beneath root, checked against registry.
 //
 // root is what [Load] takes: a single file, or a directory beneath which every
 // file whose extension is [Extension] is read. Nodes come back in the order the
 // walk reached them, which is deterministic, so anything built from them diffs
-// against the last run's.
+// against the last run's, and indexed by id, so resolving a reference does not
+// scan.
 //
 // registry is a loaded one, because the questions this pass asks — is this type
 // declared, and does it permit the kind and the geometry form written here —
@@ -145,14 +218,24 @@ func (n *SemanticNode) Span() Span { return n.span }
 // whose type is undeclared is still a node with an id, a kind and a label, and
 // a caller reporting on a tree wants to say so rather than to lose it.
 //
+// An id is unique across the whole model, so a second definition of one is a
+// diagnostic naming both with their positions. The id goes on naming what it
+// named first: an id which moved to the later definition would be an id which
+// changed what it means, which is the one thing an id never does
+// ([0002](docs/decisions/0002-immutable-id-mutable-label.md)).
+//
 // The geometric family — `vertex`, `edge` and `loop` — is not read here. Those
 // carry neither kind nor type and validate under their own rules
 // ([0001](docs/decisions/0001-two-node-families.md)).
 //
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
-func LoadNodes(root string, registry *Registry) ([]*SemanticNode, []Diagnostic) {
-	l := &nodeLoader{registry: registry}
+func LoadNodes(root string, registry *Registry) (*Nodes, []Diagnostic) {
+	l := &nodeLoader{
+		registry: registry,
+		nodes:    &Nodes{byID: make(map[ID]*SemanticNode)},
+		defined:  make(map[ID]Span),
+	}
 
 	for path, err := range Walk(root) {
 		if err != nil {
@@ -180,7 +263,11 @@ type nodeLoader struct {
 	registry *Registry
 
 	// nodes are the nodes read so far, in the order they were reached.
-	nodes []*SemanticNode
+	nodes *Nodes
+
+	// defined is where the node holding each id was written, which is what a
+	// duplicate points its reader back at.
+	defined map[ID]Span
 }
 
 // file interprets the node forms of one loaded file.
@@ -216,6 +303,7 @@ func (l *nodeLoader) file(file *File) {
 type nodeDeclaration struct {
 	node *SemanticNode
 
+	id           Span
 	kind         Span
 	geometry     Span
 	declaredType Span
@@ -236,7 +324,9 @@ func (l *nodeLoader) declare(form *Node) {
 	d := nodeDeclaration{node: &SemanticNode{span: form.Span}}
 
 	if arg, ok := argument(form, 0); ok {
-		d.node.id, _ = l.symbol(arg, "an id")
+		if id, ok := l.id(arg, "an id"); ok {
+			d.node.id, d.id = id, arg.Span
+		}
 	}
 
 	if arg, ok := argumentOf(form, "label"); ok {
@@ -263,12 +353,58 @@ func (l *nodeLoader) declare(form *Node) {
 	}
 
 	if arg, ok := argumentOf(form, "frame"); ok {
-		d.node.frame, d.node.hasFrame = l.symbol(arg, "a frame id")
+		d.node.frame, d.node.hasFrame = l.id(arg, "a frame id")
 	}
 
+	l.identify(d)
 	l.permitted(d)
 
-	l.nodes = append(l.nodes, d.node)
+	l.nodes.inOrder = append(l.nodes.inOrder, d.node)
+}
+
+// identify checks a node's id: that its namespace is one the registry declares,
+// and that nothing else in the model already holds it.
+//
+// A node whose id could not be read is not checked here. It has no namespace to
+// look up and nothing to collide with, and both diagnostics would be about the
+// id the author has already been told is not one.
+func (l *nodeLoader) identify(d nodeDeclaration) {
+	if d.id == (Span{}) {
+		return
+	}
+
+	l.registered(l.registry, d.node.id, d.id)
+
+	// A frame is a node as much as a registry entry, and there is one id space
+	// for the whole model, so an id declared as a frame is taken. The registry
+	// resolves before any node is read, so a frame holding an id always held it
+	// first, and there is nothing a second diagnostic about the same id adds.
+	if frame, ok := l.registry.Frame(d.node.id); ok {
+		l.taken(d, frame.Span, "first defined here, as a frame")
+		return
+	}
+
+	if first, ok := l.defined[d.node.id]; ok {
+		l.taken(d, first, "first defined here")
+		return
+	}
+
+	l.defined[d.node.id] = d.id
+	l.nodes.byID[d.node.id] = d.node
+}
+
+// taken reports an id which already names something, pointing at both.
+func (l *nodeLoader) taken(d nodeDeclaration, first Span, what string) {
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     d.id,
+		Message: fmt.Sprintf(
+			"expected an id nothing else holds, found %s, which already names something in this model",
+			d.node.id,
+		),
+		Hint:    "an id is unique across the whole model, and is never issued again to a different thing",
+		Related: []RelatedLocation{{Span: first, Message: what}},
+	})
 }
 
 // kind reads the one member of the closed set of kinds a node declares.

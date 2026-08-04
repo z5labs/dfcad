@@ -1,0 +1,34 @@
+; Every way of writing something which is not an id. Each names the rule it
+; broke rather than only that it broke one, because "invalid id" leaves the
+; author to work out which half of the production they missed.
+
+; No colon at all, which is a local part with no authority behind it.
+(node S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))
+
+; A colon with nothing in front of it.
+(node :S-102
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))
+
+; A colon with nothing after it.
+(node site:
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))
+
+; A namespace beginning with a digit is not written here because it cannot be:
+; a lexeme beginning with a digit is a number attempt to the tokenizer, so
+; `3d:S-104` is a lexical error reported before any of this is consulted, and
+; one which would take the rest of the file down with it. Confining a namespace
+; to ASCII beginning with a letter is what keeps that from being the diagnostic
+; anybody sees.
+
+; Punctuation a symbol permits and a namespace does not.
+(node site.local:S-105
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))

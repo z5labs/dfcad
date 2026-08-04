@@ -28,7 +28,7 @@ func nodeFixture(name string) string { return filepath.Join("testdata", "node", 
 // whose registry did not load clean fails here rather than further down: the
 // nodes would then be judged against a registry missing whatever failed to
 // load, and the mismatched golden that produces says nothing about the reason.
-func loadNodeFixture(t *testing.T, name string) ([]*SemanticNode, string) {
+func loadNodeFixture(t *testing.T, name string) (*Nodes, string) {
 	t.Helper()
 
 	registry, registryDiags := LoadRegistry(nodeFixture(name))
@@ -78,6 +78,18 @@ func TestLoadNodes(t *testing.T) {
 			name:    "names the node, the type and the value a type does not permit",
 			fixture: "not-permitted",
 		},
+		{
+			name:    "names the rule an id which is not one broke",
+			fixture: "malformed-id",
+		},
+		{
+			name:    "names the namespace an id was minted in and the registered set",
+			fixture: "unknown-namespace",
+		},
+		{
+			name:    "names both definitions of an id the model already holds, in whichever files they are",
+			fixture: "duplicate-id",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -89,6 +101,31 @@ func TestLoadNodes(t *testing.T) {
 	}
 }
 
+// loadModel writes a one-file registry and a one-file set of nodes into a
+// temporary directory and loads them, requiring that neither has anything to
+// report.
+//
+// It is for the tests which vary one thing about a model and compare the
+// readings. A fixture on disk is the right shape for a test about diagnostics,
+// where the rendering beside the source is the point; it is the wrong shape for
+// a test whose whole subject is the difference between two models, because the
+// difference is then somewhere other than in the test.
+func loadModel(t *testing.T, registry, nodes string) *Nodes {
+	t.Helper()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "registry"+Extension), []byte(registry), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "nodes"+Extension), []byte(nodes), 0o644))
+
+	declared, diags := LoadRegistry(root)
+	require.Empty(t, diags, "the written registry loads clean")
+
+	read, diags := LoadNodes(root, declared)
+	require.Empty(t, diags, "the written nodes load clean")
+
+	return read
+}
+
 // TestLoadNodesAxes reads one node of each of the seven kinds, which is what
 // says the axes describe the whole vocabulary rather than the part somebody
 // happened to write a case for.
@@ -96,14 +133,9 @@ func TestLoadNodesAxes(t *testing.T) {
 	nodes, rendered := loadNodeFixture(t, "valid")
 	require.Empty(t, rendered, "the valid fixture loads clean")
 
-	byID := make(map[string]*SemanticNode, len(nodes))
-	for _, node := range nodes {
-		byID[node.ID()] = node
-	}
-
 	testCases := []struct {
 		name     string
-		id       string
+		id       ID
 		label    string
 		kind     Kind
 		declared string
@@ -169,7 +201,7 @@ func TestLoadNodesAxes(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			node, ok := byID[testCase.id]
+			node, ok := nodes.Node(testCase.id)
 
 			require.True(t, ok)
 			assert.Equal(t, testCase.label, node.Label())
@@ -182,7 +214,7 @@ func TestLoadNodesAxes(t *testing.T) {
 
 			frame, hasFrame := node.Frame()
 			assert.True(t, hasFrame)
-			assert.Equal(t, "frame:building", frame)
+			assert.Equal(t, ID("frame:building"), frame)
 
 			assert.Equal(t, filepath.Join(nodeFixture("valid"), "nodes.dfc"), node.Span().Start.Path)
 		})
@@ -210,13 +242,8 @@ func TestLoadNodesWithoutGeometryOrFrame(t *testing.T) {
 	nodes, rendered := loadNodeFixture(t, "valid")
 	require.Empty(t, rendered)
 
-	var node *SemanticNode
-	for _, candidate := range nodes {
-		if candidate.ID() == "site:C-01" {
-			node = candidate
-		}
-	}
-	require.NotNil(t, node, "a node with neither geometry nor frame is still loaded")
+	node, ok := nodes.Node("site:C-01")
+	require.True(t, ok, "a node with neither geometry nor frame is still loaded")
 
 	assert.Equal(t, KindZone, node.Kind())
 	assert.Equal(t, "CircuitGroup", node.Type())
@@ -235,16 +262,13 @@ func TestLoadNodesWithoutGeometryOrFrame(t *testing.T) {
 
 	// The node beside it in the same file writes both, so absence here is the
 	// node's and not the loader's.
-	for _, candidate := range nodes {
-		if candidate.ID() != "site:S-101" {
-			continue
-		}
+	beside, ok := nodes.Node("site:S-101")
+	require.True(t, ok)
 
-		_, hasGeometry := candidate.Geometry()
-		_, hasFrame := candidate.Frame()
-		assert.True(t, hasGeometry)
-		assert.True(t, hasFrame)
-	}
+	_, hasGeometry = beside.Geometry()
+	_, hasFrame = beside.Frame()
+	assert.True(t, hasGeometry)
+	assert.True(t, hasFrame)
 }
 
 // TestLoadNodesReturnsWhatItCouldRead checks that a node whose type nothing
@@ -257,32 +281,47 @@ func TestLoadNodesReturnsWhatItCouldRead(t *testing.T) {
 	nodes, rendered := loadNodeFixture(t, "undeclared-type")
 
 	require.NotEmpty(t, rendered)
-	require.Len(t, nodes, 2)
+	require.Equal(t, 2, nodes.Len())
 
-	assert.Equal(t, "site:S-101", nodes[0].ID())
-	assert.Equal(t, KindSpace, nodes[0].Kind())
-	assert.Equal(t, "MeetingRoon", nodes[0].Type())
+	node, ok := nodes.Node("site:S-101")
 
-	geometry, hasGeometry := nodes[0].Geometry()
+	require.True(t, ok)
+	assert.Equal(t, ID("site:S-101"), node.ID())
+	assert.Equal(t, KindSpace, node.Kind())
+	assert.Equal(t, "MeetingRoon", node.Type())
+
+	geometry, hasGeometry := node.Geometry()
 	assert.True(t, hasGeometry)
 	assert.Equal(t, GeometryArea, geometry)
 }
 
 // TestLoadNodesWithoutARegistry checks the load a consuming repository whose
 // registry has not been written yet gets: every node names a type nothing
-// declares, and each says so with a position.
+// declares and mints its id in a namespace nothing declares, and each says so
+// with a position.
+//
+// Both are the same shape of answer for the same reason. Types and id
+// namespaces are vocabulary the consuming repository owns, so a model with no
+// registry has neither, and saying which of the two is empty is the whole of
+// what a diagnostic here can usefully say.
 func TestLoadNodesWithoutARegistry(t *testing.T) {
 	nodes, diags := LoadNodes(nodeFixture("valid"), nil)
 
-	require.Len(t, nodes, 8)
-	require.Len(t, diags, 8, "one undeclared type per node, and nothing else")
+	require.Equal(t, 8, nodes.Len())
 
+	hints := make(map[string]int, 2)
 	for _, diagnostic := range diags {
 		assert.Equal(t, SeverityError, diagnostic.Severity)
 		assert.Contains(t, diagnostic.Message, "which no registry file declares")
-		assert.Equal(t, "no type is declared; a registry file declares one with (type ...)", diagnostic.Hint)
 		assert.NotEmpty(t, diagnostic.Span.Start.Path)
+
+		hints[diagnostic.Hint]++
 	}
+
+	assert.Equal(t, map[string]int{
+		"no type is declared; a registry file declares one with (type ...)":           8,
+		"no namespace is declared; a registry file declares one with (namespace ...)": 8,
+	}, hints, "one undeclared type and one undeclared namespace per node, and nothing else")
 }
 
 // TestLoadNodesIgnoresEverythingElse checks that this pass reads the semantic
@@ -296,14 +335,14 @@ func TestLoadNodesIgnoresEverythingElse(t *testing.T) {
 
 	nodes, diags := LoadNodes(registryFixture("valid"), registry)
 
-	assert.Empty(t, nodes)
+	assert.Zero(t, nodes.Len())
 	assert.Empty(t, diags)
 }
 
 func TestLoadNodesUnreadableRoot(t *testing.T) {
 	nodes, diags := LoadNodes(filepath.Join("testdata", "node", "no-such-directory"), nil)
 
-	assert.Empty(t, nodes)
+	assert.Zero(t, nodes.Len())
 	assert.NotEmpty(t, diags)
 }
 
@@ -322,7 +361,175 @@ func TestLoadNodesReportsStructureBeforeReadingIt(t *testing.T) {
 
 	nodes, diags := LoadNodes(path, nil)
 
-	assert.Empty(t, nodes)
+	assert.Zero(t, nodes.Len())
 	require.Len(t, diags, 1)
 	assert.Equal(t, "expected a (kind ...) child of the node form, found none", diags[0].Message)
+}
+
+// TestLoadNodesLabelIsNotIdentity checks the arrangement decision 0002 exists
+// for: an id never changes, and a label is free to.
+//
+// A room called `Office 2.14` becomes `Meeting Room B`, and that is a change in
+// what people call it rather than in which room it is. If the two were one
+// field the rename would be a delete plus an insert to everything downstream,
+// every reference would have to be rewritten in the same commit, and any
+// external record filed under the old name would silently point at nothing.
+func TestLoadNodesLabelIsNotIdentity(t *testing.T) {
+	const registry = `(project (globalid-namespace "https://example.org/models/labels"))
+(namespace site (description "Semantic nodes minted by this model."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+`
+
+	testCases := []struct {
+		name     string
+		written  string
+		expected string
+	}{
+		{
+			name:     "reads the label it was written with",
+			written:  `(node site:S-101 (label "Office 2.14") (kind Space) (type MeetingRoom) (geometry area))`,
+			expected: "Office 2.14",
+		},
+		{
+			name:     "reads a label which changed, and changes nothing else",
+			written:  `(node site:S-101 (label "Meeting Room B") (kind Space) (type MeetingRoom) (geometry area))`,
+			expected: "Meeting Room B",
+		},
+		{
+			name:    "reads a node whose label was left out, which is not a node missing something",
+			written: `(node site:S-101 (kind Space) (type MeetingRoom) (geometry area))`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			nodes := loadModel(t, registry, testCase.written+"\n")
+
+			// The same id resolves to the node however it is labelled, which is
+			// the whole of what an id is for.
+			node, ok := nodes.Node("site:S-101")
+
+			require.True(t, ok)
+			assert.Equal(t, testCase.expected, node.Label())
+
+			// And every other axis reads the same, so a rename is a one-line
+			// diff rather than a re-identification.
+			assert.Equal(t, ID("site:S-101"), node.ID())
+			assert.Equal(t, KindSpace, node.Kind())
+			assert.Equal(t, "MeetingRoom", node.Type())
+
+			geometry, hasGeometry := node.Geometry()
+			assert.True(t, hasGeometry)
+			assert.Equal(t, GeometryArea, geometry)
+		})
+	}
+}
+
+// TestLoadNodesInfersNothingFromAnID checks that the engine attaches no meaning
+// to a namespace beyond its being declared, and none at all to a local part.
+//
+// The temptation is real: a namespace called `zone` looks like it says the
+// thing is a Zone, and a model which read it that way would work until the day
+// somebody minted a Space in it. An id that encodes what a thing is becomes a
+// lie the first time the thing is reclassified, so nothing here reads one.
+func TestLoadNodesInfersNothingFromAnID(t *testing.T) {
+	const registry = `(project (globalid-namespace "https://example.org/models/namespaces"))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace zone (description "A namespace whose name is also a kind."))
+(namespace vertex (description "A namespace whose name is also a geometric tag."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+`
+
+	const written = `(node site:S-101 (kind Space) (type MeetingRoom) (geometry area))
+(node zone:S-101 (kind Space) (type MeetingRoom) (geometry area))
+(node vertex:S-101 (kind Space) (type MeetingRoom) (geometry area))
+(node site:Zone (kind Space) (type MeetingRoom) (geometry area))
+(node site:solid (kind Space) (type MeetingRoom) (geometry area))
+`
+
+	nodes := loadModel(t, registry, written)
+
+	require.Equal(t, 5, nodes.Len())
+
+	for node := range nodes.All() {
+		assert.Equal(t, KindSpace, node.Kind(), "the kind is what the node declared")
+		assert.Equal(t, "MeetingRoom", node.Type(), "the type is what the node declared")
+
+		geometry, hasGeometry := node.Geometry()
+		assert.True(t, hasGeometry)
+		assert.Equal(t, GeometryArea, geometry, "the geometry form is what the node declared")
+
+		_, hasFrame := node.Frame()
+		assert.False(t, hasFrame, "a namespace called frame or otherwise puts a node in none")
+	}
+}
+
+// TestLoadNodesIndexesByID checks that a load answers "what is site:S-101"
+// without walking the model.
+//
+// Every layer above resolves references by id — containment, zone membership,
+// boundaries, supersession — so a scan per reference would make resolving a
+// model quadratic in the size of the thing being resolved.
+func TestLoadNodesIndexesByID(t *testing.T) {
+	nodes, rendered := loadNodeFixture(t, "valid")
+	require.Empty(t, rendered)
+
+	var read int
+	for node := range nodes.All() {
+		read++
+
+		found, ok := nodes.Node(node.ID())
+
+		require.True(t, ok, "every node the walk read is reachable by its id")
+		assert.Same(t, node, found)
+	}
+	assert.Equal(t, nodes.Len(), read, "All yields every node once")
+
+	_, ok := nodes.Node("site:no-such-node")
+	assert.False(t, ok)
+}
+
+// TestLoadNodesKeepsTheFirstDefinitionOfADuplicateID checks which of two nodes
+// sharing an id the id goes on naming.
+//
+// It is the first, because an id which moved to the later definition would be
+// an id which changed what it means — the one thing an id never does. The
+// second is reported and is still a node; it is just not what that id resolves
+// to.
+func TestLoadNodesKeepsTheFirstDefinitionOfADuplicateID(t *testing.T) {
+	nodes, rendered := loadNodeFixture(t, "duplicate-id")
+
+	require.NotEmpty(t, rendered)
+	require.Equal(t, 3, nodes.Len())
+
+	node, ok := nodes.Node("site:S-101")
+
+	require.True(t, ok)
+	assert.Equal(t, "Meeting Room B", node.Label())
+
+	// The node colliding with a declared frame is not what that id resolves to
+	// either: the frame declared it first, and a frame is not a semantic node.
+	_, ok = nodes.Node("frame:building")
+	assert.False(t, ok)
+}
+
+// TestLoadNodesWithoutAnID checks that a node whose id could not be read is
+// still returned and is reachable by nothing.
+//
+// Losing it would lose the only place the mistake is visible. Indexing it under
+// the text somebody wrote would let a reference resolve through something the
+// author has already been told is not an id.
+func TestLoadNodesWithoutAnID(t *testing.T) {
+	nodes, rendered := loadNodeFixture(t, "malformed-id")
+
+	require.NotEmpty(t, rendered)
+	require.Equal(t, 4, nodes.Len())
+
+	for node := range nodes.All() {
+		assert.Equal(t, ID(""), node.ID())
+		assert.Equal(t, KindSpace, node.Kind(), "the rest of the node was still read")
+	}
+
+	_, ok := nodes.Node("")
+	assert.False(t, ok)
 }

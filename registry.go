@@ -311,7 +311,7 @@ type Predicate struct {
 type Frame struct {
 	// ID is the frame's id, which is why a frame is the one registry entry
 	// named by an id rather than by a plain symbol.
-	ID string
+	ID ID
 
 	// Label is the frame's name for a person reading it. Empty when it was not
 	// written.
@@ -323,11 +323,11 @@ type Frame struct {
 
 	// Parent is the id of the frame this one is expressed relative to. Empty
 	// for the root frame.
-	Parent string
+	Parent ID
 
 	// Transform is the id of the claim holding the transform to the parent.
 	// Empty for the root frame.
-	Transform string
+	Transform ID
 
 	// Claims are the claim forms written on the frame, unmodified. Which
 	// predicate each is under, and whether its value is what the predicate
@@ -378,7 +378,7 @@ type Registry struct {
 	namespaces map[string]Namespace
 	types      map[string]Type
 	predicates map[string]Predicate
-	frames     map[string]Frame
+	frames     map[ID]Frame
 	tolerances map[string]Tolerance
 }
 
@@ -425,7 +425,7 @@ func (r *Registry) Predicate(name string) (Predicate, bool) {
 }
 
 // Frame returns the declaration of a frame, and whether it is declared.
-func (r *Registry) Frame(id string) (Frame, bool) {
+func (r *Registry) Frame(id ID) (Frame, bool) {
 	if r == nil {
 		return Frame{}, false
 	}
@@ -449,7 +449,7 @@ func (r *Registry) Tolerance(name string) (Tolerance, bool) {
 // from one is meant to diff against the last run's.
 func (r *Registry) Namespaces() iter.Seq[Namespace] {
 	if r == nil {
-		return ordered[Namespace](nil)
+		return ordered[string, Namespace](nil)
 	}
 	return ordered(r.namespaces)
 }
@@ -457,7 +457,7 @@ func (r *Registry) Namespaces() iter.Seq[Namespace] {
 // Types iterates the declared node types in name order.
 func (r *Registry) Types() iter.Seq[Type] {
 	if r == nil {
-		return ordered[Type](nil)
+		return ordered[string, Type](nil)
 	}
 	return ordered(r.types)
 }
@@ -465,7 +465,7 @@ func (r *Registry) Types() iter.Seq[Type] {
 // Predicates iterates the declared claim predicates in name order.
 func (r *Registry) Predicates() iter.Seq[Predicate] {
 	if r == nil {
-		return ordered[Predicate](nil)
+		return ordered[string, Predicate](nil)
 	}
 	return ordered(r.predicates)
 }
@@ -473,7 +473,7 @@ func (r *Registry) Predicates() iter.Seq[Predicate] {
 // Frames iterates the declared frames in id order.
 func (r *Registry) Frames() iter.Seq[Frame] {
 	if r == nil {
-		return ordered[Frame](nil)
+		return ordered[ID, Frame](nil)
 	}
 	return ordered(r.frames)
 }
@@ -481,13 +481,17 @@ func (r *Registry) Frames() iter.Seq[Frame] {
 // Tolerances iterates the declared named tolerances in name order.
 func (r *Registry) Tolerances() iter.Seq[Tolerance] {
 	if r == nil {
-		return ordered[Tolerance](nil)
+		return ordered[string, Tolerance](nil)
 	}
 	return ordered(r.tolerances)
 }
 
 // ordered iterates the entries of one registry in key order.
-func ordered[T any](entries map[string]T) iter.Seq[T] {
+//
+// The key type is a parameter because the five registries do not share one: a
+// frame is keyed by its [ID] and the other four by a plain name. Both have a
+// string underneath, which is what the constraint says and all this needs.
+func ordered[K ~string, T any](entries map[K]T) iter.Seq[T] {
 	return func(yield func(T) bool) {
 		for _, name := range slices.Sorted(maps.Keys(entries)) {
 			if !yield(entries[name]) {
@@ -519,7 +523,7 @@ func (r *Registry) Declares(sort Sort, name string) bool {
 		_, ok := r.predicates[name]
 		return ok
 	case SortFrame:
-		_, ok := r.frames[name]
+		_, ok := r.frames[ID(name)]
 		return ok
 	case SortTolerance:
 		_, ok := r.tolerances[name]
@@ -543,7 +547,9 @@ func (r *Registry) Names(sort Sort) []string {
 	case SortPredicate:
 		return slices.Sorted(maps.Keys(r.predicates))
 	case SortFrame:
-		return slices.Sorted(maps.Keys(r.frames))
+		// A frame is the one registry entry named by an id, so its key needs
+		// spelling out where the other four are already strings.
+		return spellings(slices.Sorted(maps.Keys(r.frames)))
 	case SortTolerance:
 		return slices.Sorted(maps.Keys(r.tolerances))
 	}

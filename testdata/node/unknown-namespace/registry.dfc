@@ -1,0 +1,9 @@
+(project (globalid-namespace "https://example.org/models/ids"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Ids issued by the surveyor."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))

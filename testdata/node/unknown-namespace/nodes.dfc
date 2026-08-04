@@ -1,0 +1,15 @@
+; A namespace says which authority minted an id, and the registry is the only
+; thing which knows what those authorities are. An id in an authority nobody
+; declared is an id nobody can say anything about.
+
+; Near enough to a declared namespace to be a misspelling of it.
+(node sit:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))
+
+; Near nothing, so the diagnostic lists what is declared instead.
+(node plot:S-102
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area))
