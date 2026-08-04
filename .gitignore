@@ -33,3 +33,8 @@ go.work.sum
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# The lock a write transaction holds a model root with. It is removed when the
+# transaction finishes; one left behind belongs to a run that was killed, and
+# belongs to nobody's commit.
+.dfcad.lock

@@ -759,6 +759,81 @@ itself. A conflict is a finding, not a failure; whether a particular disagreemen
 is what `dfcad check` answers, and answering it in two commands is how the two come to
 disagree.
 
+### The shape every write command reports
+
+Adding a node, retiring one, adding a claim, correcting one, authoring geometry and
+applying a batch of edits are all commands that change the tree, and they all change it the
+same way: load the whole model, apply the change in memory, interpret the result as though
+it had already been written, and only then replace the files
+([0015](./decisions/0015-the-cli-is-the-primary-write-path.md),
+[0016](./decisions/0016-writes-are-all-or-nothing.md)). What they report is therefore the
+same too, and it is documented once here rather than repeated per command. A write command
+adds fields describing what it was asked to do; the ones below mean the same thing in all of
+them.
+
+Every write command takes one flag beyond the global ones:
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--dry-run` | off | Perform every step of the change, including validation, and write nothing. The result object says what would have changed, and carries the unified diff of each file. |
+
+```json
+{
+  "version": 1,
+  "command": "add-node",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/level-1.dfc",
+      "status": "rewritten",
+      "effects": [
+        {"op": "created", "tag": "node", "id": "site:S-103"}
+      ],
+      "diff": "--- entities/level-1.dfc.orig\n+++ entities/level-1.dfc\n@@ -7,3 +7,4 @@\n..."
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `dryRun` | boolean | Whether the change was validated and described without being written. |
+| `files` | array | One entry per file the change touched, in the lexical order of their paths, which is the order a walk of the model reaches them. Empty rather than null when the change touched no file. |
+| `files[].path` | string | The file, as the walk reached it or as the change named it. |
+| `files[].status` | string | One of `created`, `rewritten`, `unchanged` — what happened to the file, or, on a dry run, what would have. |
+| `files[].effects` | array, optional | What the change did to the *model* in this file, in the order the mutations were applied. |
+| `files[].effects[].op` | string | One of `created`, `modified`, `retired`. |
+| `files[].effects[].tag` | string | The form it was written as — `node`, `vertex`, `edge`, `loop` — so an effect says which family it is about without the reader resolving the id. |
+| `files[].effects[].id` | string, optional | The thing it was about. Absent for a form carrying no id. |
+| `files[].diff` | string, optional | The unified diff from what was on disk to what was written. Absent where the two are the same. |
+
+Statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `created` | The model held no such file before the change. |
+| `rewritten` | An existing file was replaced by its new contents, in canonical form. |
+| `unchanged` | A mutation touched the file and its canonical printing turned out to be exactly what was already on disk. Nothing was written for it. |
+
+Files nothing touched are not listed and are not rewritten, whether or not they are in
+canonical form. A write command is not a formatter: rewriting a file nobody asked about
+would put somebody else's reformatting in the author's diff. Files that *are* written are
+always written in canonical form, so what a write command leaves behind already satisfies
+`fmt --check`.
+
+Exit codes:
+
+| Code | When |
+|------|------|
+| `0` | The change was written, or, under `--dry-run`, would have been. |
+| `2` | The change was refused because the resulting model would not load, the tree did not load to begin with, the model root is held by another transaction, or a file could not be written. |
+| `3` | The invocation itself was wrong. |
+
+A refused change writes nothing at all, and its diagnostics are the ones a load of the
+result would have raised — every independent problem, each with its position, rather than
+the first. Because the model is unchanged, the correct response to a refusal is to fix the
+command and reissue it: there is no partial state to inspect and nothing to reconcile.
+
 ### Diagnostics and the exit code of a read
 
 The listings, `get`, `traverse`, `claims` and `conflicts` exit `0` whenever they answered,

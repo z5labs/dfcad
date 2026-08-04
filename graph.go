@@ -138,6 +138,21 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 		}
 		parsed = append(parsed, src)
 	}
+
+	return loadGraph(root, parsed, diags)
+}
+
+// loadGraph is [LoadGraph] over trees which have already been read, carrying
+// forward the diagnostics of the files which could not be.
+//
+// It is separate so that a model which is not on disk can be interpreted by the
+// same passes in the same order. A change being validated before it is written
+// ([Tx.Commit]) is exactly that: the files the walk read, with the ones the
+// change touched replaced by what would be written, interpreted as though the
+// write had already happened. Re-implementing the ordering there would be a
+// second answer to "what does this model mean", and the two would disagree the
+// first time a pass moved.
+func loadGraph(root string, parsed []source, diags []Diagnostic) (*Graph, []Diagnostic) {
 	sources := slices.Values(parsed)
 
 	registry, registryDiags := loadRegistry(root, sources)

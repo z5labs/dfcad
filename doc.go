@@ -36,6 +36,22 @@
 // the graph adds over calling them in order is the checks no single pass can
 // make, and not having to know what that order is.
 //
+// # Writing
+//
+// [Begin] is the entry point for changing a model. A [Tx] loads the whole
+// graph, holds every file of it in memory, applies mutations to those trees and
+// — at [Tx.Commit] — interprets the result as though it had already been
+// written. A change which would produce a model that does not load is refused
+// with the diagnostics the load would have raised, and nothing reaches the
+// filesystem; a change which validates is written in canonical form, atomically,
+// and all of its files or none of them.
+//
+// It is the mechanism every authoring command is built on rather than a command
+// itself. See docs/decisions/0015-the-cli-is-the-primary-write-path.md for why
+// the command line interface writes at all, and
+// docs/decisions/0016-writes-are-all-or-nothing.md for why a write is refused
+// rather than reported.
+//
 // # Accuracy
 //
 // This is the convention every accuracy in the engine is stated under, and it

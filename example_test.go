@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -1170,4 +1171,128 @@ func ExampleFrames_TransformBudget() {
 	// independent survey:C-0003 0.006 m
 	// combined 0.010954 m at k = 1
 	// dominated by survey:CP-3, shared by 2 fits
+}
+
+func ExampleTx() {
+	// A transaction writes, so this works on a copy of the fixture rather than
+	// on the fixture.
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Begin reads the whole model and holds the root until the transaction
+	// finishes. A tree which does not already load is refused here, before
+	// anything is asked of it, so a refusal later is about the change.
+	tx, diags, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range diags {
+		fmt.Println(diagnostic)
+	}
+	defer tx.Close()
+
+	// Every step of the change except the writing, which is what a --dry-run
+	// on a write command sets.
+	tx.DryRun = true
+
+	form, err := dfcad.Parse("", strings.NewReader(
+		`(node site:S-103 (kind Space) (type MeetingRoom) (label "Meeting Room C") (geometry area) (frame frame:building) (within site:L-01))`,
+	))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if err := tx.Insert("entities/site.dfc", form.Nodes[0]); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Committing interprets the model as it would be once written. Nothing
+	// reaches the disk unless that model loads.
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+
+	// What the change did to the model, and what it would have done to the
+	// files.
+	for _, effect := range commit.Effects() {
+		fmt.Printf("%s %s %s\n", effect.Op, effect.Tag, effect.ID)
+	}
+	for _, file := range commit.Files {
+		fmt.Printf("%s %s\n", filepath.Base(file.Path), file.Status)
+	}
+
+	// Output:
+	// created node site:S-103
+	// site.dfc rewritten
+}
+
+func ExampleTx_refused() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	// An id the model already holds. Nothing about the form itself is wrong,
+	// which is why only interpreting the whole model finds it.
+	form, err := dfcad.Parse("", strings.NewReader(
+		`(node site:S-101 (kind Space) (type MeetingRoom) (geometry area) (frame frame:building))`,
+	))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	if err := tx.Insert("entities/site.dfc", form.Nodes[0]); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// The change is refused with the diagnostics the load would have raised,
+	// and the tree is exactly as it was: no file was written, and there is
+	// nothing to reconcile before trying again.
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic.Message)
+		fmt.Println(diagnostic.Hint)
+	}
+	fmt.Println(len(commit.Files), "files changed")
+
+	// Output:
+	// expected an id nothing else holds, found site:S-101, which already names something in this model
+	// an id is unique across the whole model, and is never issued again to a different thing
+	// 0 files changed
 }
