@@ -235,7 +235,9 @@ type BudgetTerm struct {
 	// A systematic term shared by several inputs of one computation is one term
 	// with several contributors, which is what "counted once" looks like from
 	// the reporting side: the magnitude appears in the arithmetic once, and
-	// every claim which put it there is still named.
+	// every claim which put it there is still named. Each is named once, so one
+	// claim which wrote the same term id twice does not read as two
+	// measurements sharing it.
 	Contributors []*Claim
 }
 
@@ -348,7 +350,14 @@ func (b *Budget) contribute(claim *Claim, term AccuracyTerm) {
 				continue
 			}
 
-			b.terms[i].Contributors = append(b.terms[i].Contributors, claim)
+			// One claim which wrote the same term id twice is still one claim
+			// contributing it. Recording it twice would make the term read as
+			// shared between two measurements when only one carried it.
+			contributors := b.terms[i].Contributors
+			if !slices.ContainsFunc(contributors, func(in *Claim) bool { return sameClaim(in, claim) }) {
+				b.terms[i].Contributors = append(contributors, claim)
+			}
+
 			if math.Abs(term.Magnitude) > math.Abs(b.terms[i].Magnitude) {
 				b.terms[i].Magnitude = term.Magnitude
 			}

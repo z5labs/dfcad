@@ -213,6 +213,27 @@ func TestBudgetTermsAreNamedAndAttributed(t *testing.T) {
 	})
 }
 
+// TestBudgetNamesOneClaimOncePerTerm is its own function because the loader
+// does not deduplicate the terms inside one accuracy: a claim which wrote the
+// same term id twice reaches here with both, and naming it twice would read as
+// two measurements sharing an error when only one carried it.
+func TestBudgetNamesOneClaimOncePerTerm(t *testing.T) {
+	claims := writtenClaims(measured("survey:C-01",
+		systematic(0.008, "survey:CP-3"),
+		systematic(0.011, "survey:CP-3"),
+	))
+
+	var budget Budget
+	budget.Add(claims...)
+
+	terms := budget.Terms()
+	require.Len(t, terms, 1, "one term id is one term")
+
+	assert.Equal(t, []*Claim{claims[0]}, terms[0].Contributors)
+	assert.False(t, terms[0].Shared(), "one claim carried it, however many times it wrote it")
+	assert.Equal(t, 0.011, terms[0].Magnitude, "the wider of the two magnitudes written for it")
+}
+
 // TestBudgetNamesAClaimWhichWroteNoID is its own function because a claim id is
 // optional, and a term named by an empty string is a term nobody can trace.
 func TestBudgetNamesAClaimWhichWroteNoID(t *testing.T) {
