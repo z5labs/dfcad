@@ -1,0 +1,64 @@
+; A supersession which holds together, twice over. The vertex carries a chain
+; three links long — scaled off a plan, shot once, shot again — and the room
+; carries two estimates which one as-built check replaced between them.
+;
+; Nothing here is a mistake. Every deprecated claim names what stands in its
+; place, following those names reaches a claim which is still asserted, and the
+; claims which were replaced are still in the file saying what was believed.
+(vertex geom:V-02
+  (frame frame:building)
+  (position
+    (id survey:C-0100)
+    (value (3.9 0.0 0.0) m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:C-0104))
+  (position
+    (id survey:C-0104)
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:C-0181))
+  (position
+    (id survey:C-0181)
+    (value (4.05 0.0 0.0) m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))
+
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:C-0212))
+  (width
+    (id survey:C-0211)
+    (value 8.6 m)
+    (source "Field sketch FS-11")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-14")
+    (rank deprecated)
+    (superseded-by survey:C-0212))
+  (width
+    (id survey:C-0212)
+    (value 8.53 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))

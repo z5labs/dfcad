@@ -1,0 +1,7 @@
+testdata/claim/supersession-without-deprecation/claims.dfc:18:5: error: expected a replacement only where a claim was deprecated, found one on survey:C-0210, which is of rank normal
+18 |     (superseded-by survey:C-0212))
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: (superseded-by ...) says what stands in place of a retracted claim; a claim still asserted has nothing standing in place of it
+testdata/claim/supersession-without-deprecation/claims.dfc:12:9: note: the claim is written here
+12 |     (id survey:C-0210)
+   |         ^^^^^^^^^^^^^

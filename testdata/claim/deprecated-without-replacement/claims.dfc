@@ -1,0 +1,25 @@
+; Two deprecations with nothing standing in their place. The first claim wrote
+; an id and the second did not, which is the difference between a diagnostic
+; which can name the claim and one which has to say what it was about.
+;
+; This is the file the rule exists for: written as it is, deprecated is a delete
+; button, and the record of why the number changed is gone the moment somebody
+; asks what the model says.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (rank deprecated))
+  (width
+    (value 8.6 m)
+    (source "Field sketch FS-11")
+    (method method:scaled-from-plan)
+    (date "2026-01-14")
+    (rank deprecated)))

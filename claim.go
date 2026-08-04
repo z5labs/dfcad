@@ -368,6 +368,12 @@ type Claims struct {
 	// Repeating a predicate is the normal case, so a subject maps to a sequence
 	// rather than to one claim per predicate.
 	bySubject map[ID][]*Claim
+
+	// superseded is the claims each claim replaced, keyed by the id of the claim
+	// which replaced them and held in written order. It is the reverse of the
+	// reference a deprecated claim carries, which is written in one direction
+	// and walked in both.
+	superseded map[ID][]*Claim
 }
 
 // Len reports how many claims were read.
@@ -501,9 +507,13 @@ var claimBearing = sync.OnceValue(func() map[string]*form {
 // value, which is left where it was written because there is no provenance on
 // it for this pass to read.
 //
-// One thing this pass deliberately leaves alone: whether a deprecated claim
-// names the claim which replaced it, and whether that chain terminates, is the
-// supersession pass's question — what is read here is the reference itself.
+// Whether a deprecated claim names the claim which replaced it, and whether
+// following those replacements terminates, is asked once the whole tree has
+// been read rather than as each claim is: a claim in the first file the walk
+// reaches may be superseded by one in the last, and a pass which checked as it
+// read would report it missing for no reason but the order the directory
+// happened to be listed in. What is read claim by claim is the reference
+// itself.
 //
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
@@ -533,6 +543,7 @@ func LoadClaims(root string, registry *Registry) (*Claims, []Diagnostic) {
 	}
 
 	l.resolve()
+	l.supersede()
 
 	return l.claims, l.diags
 }
@@ -555,6 +566,11 @@ type claimLoader struct {
 	// resolved once every file has been read, because a claim in the last file
 	// the walk reaches is as written as one in the first.
 	references []claimReference
+
+	// supersessions are how each claim was retracted, as it was written. They
+	// are checked once every file has been read, for the reason the references
+	// beside them are.
+	supersessions []supersession
 }
 
 // claimReference is one place a claim was named by its id.
@@ -765,12 +781,7 @@ func (l *claimLoader) declare(subject ID, form *Node, predicate string, declared
 		}
 	}
 
-	if arg, ok := argumentOf(form, "superseded-by"); ok {
-		if superseded, ok := l.id(arg, "a claim id"); ok {
-			claim.supersededBy = superseded
-			l.registered(l.registry, superseded, arg.Span)
-		}
-	}
+	l.retraction(claim, form, id)
 
 	if child, ok := childForm(form, "accuracy"); ok {
 		claim.accuracy, claim.hasAccuracy = l.accuracy(child)

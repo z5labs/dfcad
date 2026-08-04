@@ -1,0 +1,4 @@
+testdata/claim/self-supersession/claims.dfc:17:20: error: expected the claim which replaced survey:C-0210, found survey:C-0210, which is the claim itself
+17 |     (superseded-by survey:C-0210)))
+   |                    ^^^^^^^^^^^^^
+   = hint: a claim is replaced by a later one; a claim replaced by itself is retracted with nothing standing in its place

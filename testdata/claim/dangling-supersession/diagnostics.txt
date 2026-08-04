@@ -1,0 +1,7 @@
+testdata/claim/dangling-supersession/claims.dfc:20:20: error: expected a claim id something in this model carries, found survey:C-0212, which names no claim
+20 |     (superseded-by survey:C-0212))
+   |                    ^^^^^^^^^^^^^
+   = hint: a claim which anything references carries an (id ...) of its own; a claim nothing references may leave it out
+testdata/claim/dangling-supersession/claims.dfc:13:9: note: the deprecation of survey:C-0210 is written here
+13 |     (id survey:C-0210)
+   |         ^^^^^^^^^^^^^
