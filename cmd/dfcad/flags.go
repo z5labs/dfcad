@@ -242,35 +242,61 @@ func newFlagSet(name string, globals *globals) *flag.FlagSet {
 
 // parse parses a subcommand's arguments and settles the global flags.
 //
-// It returns the exit code the subcommand should return, and whether it should
-// return rather than carry on. Doing this once is what keeps every subcommand
-// agreeing on which stream help goes to, which code a malformed flag exits
-// with, and that neither writes anything to stdout.
-func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, stderr io.Writer) (int, bool) {
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			// Help is for a person, so it goes where everything for a person
-			// goes. Stdout stays empty: a run that produced no result writes
-			// no result object, and never writes prose instead of one.
+// It returns the arguments which are not flags, in the order they were given,
+// the exit code the subcommand should return, and whether it should return
+// rather than carry on. Doing this once is what keeps every subcommand agreeing
+// on which stream help goes to, which code a malformed flag exits with, and
+// that neither writes anything to stdout.
+//
+// Flags and arguments may be written in any order. The flag package stops at
+// the first argument which is not a flag and hands back everything after it
+// unparsed, which would make `dfcad list-instances MeetingRoom --kind Space`
+// silently a listing of every kind — a flag that is ignored rather than
+// rejected is worse than one that does not exist. Parsing resumes after each
+// argument instead, which is what a person and an agent both expect and is why
+// it is done here rather than in each subcommand: an interface where the
+// meaning of a flag depends on which command it was written for is one nobody
+// can hold in their head.
+func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, stderr io.Writer) ([]string, int, bool) {
+	var positional []string
+
+	for {
+		if err := flags.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				// Help is for a person, so it goes where everything for a
+				// person goes. Stdout stays empty: a run that produced no
+				// result writes no result object, and never writes prose
+				// instead of one.
+				fmt.Fprint(stderr, cmd.usage)
+				return nil, exitSuccess, true
+			}
+
+			fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
 			fmt.Fprint(stderr, cmd.usage)
-			return exitSuccess, true
+			return nil, exitUsage, true
 		}
 
-		fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
-		fmt.Fprint(stderr, cmd.usage)
-		return exitUsage, true
+		args = flags.Args()
+		if len(args) == 0 {
+			break
+		}
+
+		// Everything the flag package stopped at is an argument only as far as
+		// its first element: what follows it may be a flag again.
+		positional = append(positional, args[0])
+		args = args[1:]
 	}
 
 	if err := globals.validate(); err != nil {
 		fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
 		fmt.Fprint(stderr, cmd.usage)
-		return exitUsage, true
+		return nil, exitUsage, true
 	}
 
 	if err := globals.open(); err != nil {
 		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
-		return exitLoad, true
+		return nil, exitLoad, true
 	}
 
-	return exitSuccess, false
+	return positional, exitSuccess, false
 }

@@ -164,3 +164,106 @@ Statuses:
 Exit codes: `2` if any file failed, otherwise `1` if any is `unformatted`, otherwise `0`.
 A failure outranks a file that is merely not canonical, because a run that could not read
 half the tree has not answered the question the other half answered.
+
+### `list-types`
+
+The whole registry, which is the first call to make against a model nothing has read
+before. It takes no arguments.
+
+```json
+{
+  "version": 1,
+  "command": "list-types",
+  "types": [
+    {
+      "name": "Campus",
+      "kinds": ["Zone"],
+      "geometries": [],
+      "absent": true,
+      "description": "A group of things administered together, which has no shape.",
+      "instances": 1
+    },
+    {
+      "name": "MeetingRoom",
+      "kinds": ["Space"],
+      "geometries": ["area"],
+      "absent": false,
+      "description": "An enclosed room used for meetings.",
+      "instances": 12
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `types` | array | One entry per declared type, in name order. Empty rather than null when the registry declares none. |
+| `types[].name` | string | The type name, which is what `list-instances` takes. |
+| `types[].kinds` | array | The kinds an instance may declare, in specification order rather than the order the declaration was written in. |
+| `types[].geometries` | array | The geometry forms an instance may declare, in specification order. |
+| `types[].absent` | boolean | Whether an instance may omit its geometry entirely. Absence is not a geometry form — a node with no geometry omits the child rather than naming one — so it is a field of its own rather than a member of `geometries`. |
+| `types[].description` | string, optional | The one line the registry gives the type. Absent when it was not written. |
+| `types[].instances` | integer | How many semantic nodes declare this type. |
+
+### `list-instances`
+
+The instances of one type, or of the whole model. It takes an optional type argument and
+two filters.
+
+| Flag | Meaning |
+|------|---------|
+| `--kind <kind>` | Only instances that declare this kind. |
+| `--frame <id>` | Only instances that declare this coordinate frame. |
+
+Filters combine: an instance is listed when it satisfies every filter given. Flags and the
+type argument may be written in either order.
+
+```json
+{
+  "version": 1,
+  "command": "list-instances",
+  "instances": [
+    {
+      "id": "site:S-101",
+      "label": "Meeting Room B",
+      "type": "MeetingRoom",
+      "kind": "Space",
+      "frame": "frame:building"
+    },
+    {
+      "id": "site:Z-01",
+      "label": "Riverside campus",
+      "type": "Campus",
+      "kind": "Zone"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `instances` | array | One entry per instance that satisfied every filter, in id order. Empty rather than null when nothing did. |
+| `instances[].id` | string | The id the model holds it under. |
+| `instances[].label` | string, optional | Its name for a person reading it. Absent when it was not written. |
+| `instances[].type` | string | The type it declares, reported whether or not a type was filtered on. It need not be one the registry declares: a node naming an undeclared type is a diagnostic and is still a node of the type it named. |
+| `instances[].kind` | string | The kind it declares, reported whether or not a kind was filtered on. |
+| `instances[].frame` | string, optional | The coordinate frame it is expressed in. Absent when it declares none. |
+
+Instances come back in id order rather than in walk order, so the listing does not change
+when a node is moved between files while the model it describes stays the same.
+
+A type, a kind or a frame the model does not declare is a **usage error** — exit `3`, with
+nothing on stdout — naming what was asked for and pointing at `list-types`. It is not an
+empty list: a type nobody declared and a type nothing instantiates are different answers,
+and a caller that cannot tell them apart retries a misspelling forever.
+
+### Diagnostics and the exit code of a listing
+
+Both listings exit `0` whenever they produced a listing, whatever the model's diagnostics
+say. Those diagnostics are still rendered in full on stderr.
+
+A listing says what a model holds, and a node whose containment does not resolve is still a
+node the model holds. Whether the model is *sound* is what `dfcad check` answers; answering
+it in two commands, with two definitions of sound, is how the two come to disagree. It also
+keeps discovery usable on a model somebody is halfway through writing, which is the model
+discovery is most needed on.

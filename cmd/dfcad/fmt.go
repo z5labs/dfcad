@@ -103,11 +103,11 @@ func runFmt(cmd command, args []string, stdout, stderr io.Writer) int {
 	check := flags.Bool("check", false, "")
 	diff := flags.Bool("diff", false, "")
 
-	if code, done := parse(cmd, flags, globals, args, stderr); done {
-		return code
+	paths, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
 	}
 
-	paths := flags.Args()
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
