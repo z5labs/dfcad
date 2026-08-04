@@ -362,6 +362,34 @@ func ExampleParseID() {
 	// corner: unqualified
 }
 
+func ExampleRegistry_GlobalID() {
+	// The URL is pinned in the registry, and the GlobalId falls out of it and
+	// the node id. Nothing is stored, nothing is authored, and the same two
+	// inputs produce the same 22 characters on every machine.
+	registry, _ := dfcad.LoadRegistry("testdata/model")
+
+	globalID, ok := registry.GlobalID("site:S-101")
+	if !ok {
+		fmt.Println("no project declaration to derive from")
+		return
+	}
+
+	project, _ := registry.Project()
+
+	// The project namespace UUID is the first half of the derivation, so
+	// anybody holding the URL can recompute it and check the arithmetic.
+	fmt.Println(dfcad.DeriveGlobalIDNamespace(project.GlobalIDNamespace))
+	fmt.Println(globalID)
+
+	// Renaming the room would change its label and nothing here.
+	fmt.Println(globalID == dfcad.DeriveGlobalID(project.GlobalIDNamespace, "site:S-101"))
+
+	// Output:
+	// bf22703b-ecd8-5c1f-929c-021883f35524
+	// 2GX9NtsjvT$PykCkbFuEnE
+	// true
+}
+
 func ExampleNodes_Node() {
 	registry, _ := dfcad.LoadRegistry("testdata/node/valid")
 
