@@ -166,6 +166,27 @@ func (e AmbiguousResolutionError) Error() string {
 // ([0012](docs/decisions/0012-tolerances-are-registry-data.md)), not a constant
 // hidden here.
 func (c *Claims) Resolve(subject ID, predicate string, registry *Registry) (Resolution, error) {
+	resolution := c.resolve(subject, predicate)
+
+	if resolution.Ambiguous() && isStrict(registry, predicate) {
+		return resolution, AmbiguousResolutionError{
+			Subject:    subject,
+			Predicate:  predicate,
+			Candidates: resolution.Candidates(),
+		}
+	}
+
+	return resolution, nil
+}
+
+// resolve applies the rule and reports what it found.
+//
+// It is the whole of resolution apart from what the registry says, which is why
+// it cannot fail: an ambiguity is a state of the claims, and only a predicate
+// declared strict turns that state into an error. The conflict register asks
+// for the state and never for the error, so it calls this rather than
+// [Claims.Resolve] with a discarded one.
+func (c *Claims) resolve(subject ID, predicate string) Resolution {
 	resolution := Resolution{subject: subject, predicate: predicate}
 
 	var live []*Claim
@@ -177,7 +198,7 @@ func (c *Claims) Resolve(subject ID, predicate string, registry *Registry) (Reso
 	}
 
 	if len(live) == 0 {
-		return resolution, nil
+		return resolution
 	}
 
 	candidates, ranked := narrow(live)
@@ -188,15 +209,7 @@ func (c *Claims) Resolve(subject ID, predicate string, registry *Registry) (Reso
 		resolution.claim = candidates[0]
 	}
 
-	if resolution.Ambiguous() && isStrict(registry, predicate) {
-		return resolution, AmbiguousResolutionError{
-			Subject:    subject,
-			Predicate:  predicate,
-			Candidates: resolution.Candidates(),
-		}
-	}
-
-	return resolution, nil
+	return resolution
 }
 
 // ranking is one live claim together with the figure it is ranked by.

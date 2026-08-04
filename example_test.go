@@ -575,3 +575,41 @@ func ExampleClaims_Resolve_ambiguous() {
 	// testdata/claim/strict/claims.dfc:10:3
 	// testdata/claim/strict/claims.dfc:17:3
 }
+
+// ExampleClaims_Conflicts walks the conflict register: every subject and
+// predicate the model states more than once, computed rather than recorded.
+func ExampleClaims_Conflicts() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/valid")
+	claims, _ := dfcad.LoadClaims("testdata/claim/valid", registry)
+
+	// The room's width is claimed twice, so the pair is in the register. The
+	// vertex's position is claimed twice as well and is not: one of those two is
+	// deprecated, which retracts it rather than out-ranking it, and that is the
+	// only thing which silences a conflict.
+	for conflict := range claims.Conflicts() {
+		fmt.Printf("%s %s\n", conflict.Subject(), conflict.Predicate())
+
+		for _, claim := range conflict.Claims() {
+			value, _ := claim.Value().Scalar()
+			fmt.Printf("  %g %s — %s\n", value, claim.Value().Unit(), claim.Source())
+		}
+
+		// The register says whether the disagreement has an answer. Having one
+		// does not close it: both claims are still asserted, and the pair stays
+		// here until one of them is deprecated or corrected.
+		winner, resolved := conflict.Resolution().Claim()
+		if !resolved {
+			fmt.Println("  ambiguous")
+			continue
+		}
+
+		value, _ := winner.Value().Scalar()
+		fmt.Printf("  resolves to %g %s\n", value, winner.Value().Unit())
+	}
+
+	// Output:
+	// site:S-101 width
+	//   8.5 m — Plan set A-101, sheet 3
+	//   8.53 m — As-built check AB-2026-009, Acme Surveys
+	//   resolves to 8.53 m
+}
