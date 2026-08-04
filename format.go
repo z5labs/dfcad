@@ -179,31 +179,10 @@ func (f Formatter) format(path string) Formatted {
 // one and never a prefix of the new one; an interruption at any point before
 // the rename leaves the original untouched and at worst a temporary file
 // behind.
-//
-// The temporary file is created in the target's own directory rather than in
-// the system temporary directory, because a rename across filesystems is not a
-// rename at all — it is a copy, and a copy is exactly the partial write this
-// avoids.
 func replace(path string, src []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	name, err := stage(path, src)
 	if err != nil {
-		return WriteError{Path: path, Err: err}
-	}
-
-	name := tmp.Name()
-	if err := flush(tmp, src); err != nil {
-		os.Remove(name)
-		return WriteError{Path: path, Err: err}
-	}
-
-	// A temporary file is created private to its owner, and the file it
-	// replaces was not. Carrying the mode over keeps a formatted file as
-	// readable as the one it was written from.
-	if info, err := os.Stat(path); err == nil {
-		if err := os.Chmod(name, info.Mode().Perm()); err != nil {
-			os.Remove(name)
-			return WriteError{Path: path, Err: err}
-		}
+		return err
 	}
 
 	if err := os.Rename(name, path); err != nil {
@@ -212,6 +191,45 @@ func replace(path string, src []byte) error {
 	}
 
 	return nil
+}
+
+// stage writes src to a temporary file beside path and returns its name,
+// leaving path itself untouched.
+//
+// It is the whole of a replacement but the rename, which is what makes a change
+// spanning several files all-or-nothing: every file's new contents are prepared
+// and flushed before any of them is renamed into place, so the renames — the
+// only steps which change what a reader sees — happen once nothing is left that
+// can fail for an ordinary reason
+// ([0016](docs/decisions/0016-writes-are-all-or-nothing.md)).
+//
+// The temporary file is created in the target's own directory rather than in
+// the system temporary directory, because a rename across filesystems is not a
+// rename at all — it is a copy, and a copy is exactly the partial write this
+// avoids.
+func stage(path string, src []byte) (string, error) {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
+		return "", WriteError{Path: path, Err: err}
+	}
+
+	name := tmp.Name()
+	if err := flush(tmp, src); err != nil {
+		os.Remove(name)
+		return "", WriteError{Path: path, Err: err}
+	}
+
+	// A temporary file is created private to its owner, and the file it
+	// replaces was not. Carrying the mode over keeps a formatted file as
+	// readable as the one it was written from.
+	if info, err := os.Stat(path); err == nil {
+		if err := os.Chmod(name, info.Mode().Perm()); err != nil {
+			os.Remove(name)
+			return "", WriteError{Path: path, Err: err}
+		}
+	}
+
+	return name, nil
 }
 
 // flush writes src to f and forces it to durable storage before closing it.
