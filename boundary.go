@@ -85,6 +85,21 @@ type Boundaries struct {
 	// regions.
 	bounded map[*Loop][]*SemanticNode
 	regions map[*Edge][]*SemanticNode
+
+	// backing is the elements which physically realise each edge, in the order
+	// the edge named them and holding only the references which resolved.
+	//
+	// It is the other reference which crosses between the families, and it is
+	// held here for the reason the loops are: a `backed-by` is written on an edge
+	// and names a semantic node, so the pass which has read both families is the
+	// only one which can answer it
+	// ([0001](docs/decisions/0001-two-node-families.md)).
+	//
+	// What is *not* here is whether an edge is a physical boundary or a virtual
+	// one. That is computed from this map and from what the edge wrote, every
+	// time it is asked, and is stored nowhere
+	// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+	backing map[*Edge][]*SemanticNode
 }
 
 // Loops iterates the loops region is bounded by, in the order it wrote them.
@@ -165,8 +180,9 @@ func sequence[T any](items []T) iter.Seq[T] {
 }
 
 // ResolveBoundaries joins the two families of one model: it resolves every
-// `boundary` a semantic node wrote to the loop it names, and indexes what each
-// region depends on and what depends on each loop and edge.
+// `boundary` a semantic node wrote to the loop it names and every `backed-by` an
+// edge wrote to the element it names, and indexes what each region depends on
+// and what depends on each loop and edge.
 //
 // It takes both families already loaded rather than a root, because it adds no
 // reading of its own. [LoadNodes] and [LoadTopology] each walk the tree once and
@@ -181,9 +197,10 @@ func sequence[T any](items []T) iter.Seq[T] {
 //
 // Every reference is checked and every one which fails is reported: a `boundary`
 // naming nothing this model holds, one naming a member of either family which is
-// not a loop, and one naming the same loop twice. A reference which resolves is
-// indexed; one which does not is not, because an index entry for it would be an
-// edge with one end.
+// not a loop, one naming the same loop twice, and the same three for a
+// `backed-by` which has to reach a semantic node of kind Element. A reference
+// which resolves is indexed; one which does not is not, because an index entry
+// for it would be an edge with one end.
 //
 // Whether the loops themselves close is not asked here. That is a question about
 // the edges of one loop and the positions of their vertices, it is answered
@@ -201,10 +218,12 @@ func ResolveBoundaries(nodes *Nodes, topology *Topology) (*Boundaries, []Diagnos
 			vertices: make(map[*SemanticNode][]*Vertex),
 			bounded:  make(map[*Loop][]*SemanticNode),
 			regions:  make(map[*Edge][]*SemanticNode),
+			backing:  make(map[*Edge][]*SemanticNode),
 		},
 	}
 
 	l.resolve()
+	l.back()
 	l.assembleDependencies()
 
 	return l.boundaries, l.diags

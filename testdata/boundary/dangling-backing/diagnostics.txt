@@ -1,0 +1,34 @@
+testdata/boundary/dangling-backing/model.dfc:34:14: error: expected an element geom:E-01 does not already name, found site:W-14 a second time
+34 |   (backed-by site:W-14)
+   |              ^^^^^^^^^
+   = hint: a backing is a reference and not a count; naming an element twice says exactly what naming it once says
+testdata/boundary/dangling-backing/model.dfc:33:14: note: first named here
+33 |   (backed-by site:W-14)
+   |              ^^^^^^^^^
+testdata/boundary/dangling-backing/model.dfc:35:14: error: expected a node of kind Element, found site:S-101, which is a Space
+35 |   (backed-by site:S-101)
+   |              ^^^^^^^^^^
+   = hint: an edge names what physically realises it, written (backed-by <element-id>) and naming a semantic node of kind Element; an edge which names none is a virtual boundary
+testdata/boundary/dangling-backing/model.dfc:11:7: note: the Space named as the backing element is written here
+11 | (node site:S-101
+   |       ^^^^^^^^^^
+testdata/boundary/dangling-backing/model.dfc:30:7: note: the edge it is written on is named here
+30 | (edge geom:E-01
+   |       ^^^^^^^^^
+testdata/boundary/dangling-backing/model.dfc:36:14: error: expected an element id something in this model holds, found site:W-99, which names no node
+36 |   (backed-by site:W-99))
+   |              ^^^^^^^^^
+   = hint: an edge names what physically realises it, written (backed-by <element-id>) and naming a semantic node of kind Element; an edge which names none is a virtual boundary
+testdata/boundary/dangling-backing/model.dfc:30:7: note: the edge it is written on is named here
+30 | (edge geom:E-01
+   |       ^^^^^^^^^
+testdata/boundary/dangling-backing/model.dfc:41:14: error: expected an element id, found geom:V-01, which is a vertex
+41 |   (backed-by geom:V-01))
+   |              ^^^^^^^^^
+   = hint: an edge names what physically realises it, written (backed-by <element-id>) and naming a semantic node of kind Element; an edge which names none is a virtual boundary
+testdata/boundary/dangling-backing/model.dfc:26:9: note: the vertex it names is written here
+26 | (vertex geom:V-01 (frame frame:building))
+   |         ^^^^^^^^^
+testdata/boundary/dangling-backing/model.dfc:38:7: note: the edge it is written on is named here
+38 | (edge geom:E-02
+   |       ^^^^^^^^^

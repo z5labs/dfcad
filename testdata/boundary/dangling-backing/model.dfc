@@ -1,0 +1,43 @@
+; Every way a backing reference fails to reach an element.
+;
+; The four on the first edge are the four answers a reference can get: the
+; element it names, the same element a second time, a node which is not an
+; Element, and a name nothing in the model holds. The one on the second edge
+; reaches the other family altogether.
+;
+; None of them is a quiet reclassification to virtual. An edge which says
+; something backs it and names nothing the model holds is a load error, because
+; answering "virtual" would be answering a question the model did not settle.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+(node site:W-14
+  (label "Stud partition, room B to corridor")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building))
+
+(vertex geom:V-01 (frame frame:building))
+
+(vertex geom:V-02 (frame frame:building))
+
+(edge geom:E-01
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02)
+  (backed-by site:W-14)
+  (backed-by site:W-14)
+  (backed-by site:S-101)
+  (backed-by site:W-99))
+
+(edge geom:E-02
+  (frame frame:building)
+  (vertices geom:V-02 geom:V-01)
+  (backed-by geom:V-01))
+
+(loop geom:L-01 (frame frame:building) (edges geom:E-01))

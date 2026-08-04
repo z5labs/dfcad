@@ -787,6 +787,47 @@ func ExampleResolveBoundaries() {
 	// geom:E-02 bounds site:S-102
 }
 
+// ExampleBoundaries_Classify asks what actually separates a region from what is
+// on the other side of each edge of its boundary.
+//
+// An edge which names an element the model holds is a physical boundary; one
+// which names none is virtual — the open line between a foyer and a dining room.
+// The answer is computed from the reference every time it is asked and is stored
+// nowhere: nothing in the file says "physical", so adding a wall makes the
+// boundary physical with no second edit.
+func ExampleBoundaries_Classify() {
+	root := "testdata/boundary/backed"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	room, _ := nodes.Node("site:S-101")
+	for boundary := range boundaries.Classify(room) {
+		// Every element is named rather than only the first. A stud wall with a
+		// glazed screen over it is two things, and naming one of them would
+		// answer with half the wall.
+		var backing []string
+		for _, element := range boundary.Backing() {
+			backing = append(backing, string(element.ID()))
+		}
+
+		fmt.Printf("%s is %s", boundary.Edge().ID(), boundary.Classification())
+		if len(backing) > 0 {
+			fmt.Printf(", backed by %s", strings.Join(backing, " and "))
+		}
+		fmt.Println()
+	}
+
+	// Output:
+	// geom:E-01 is virtual
+	// geom:E-02 is physical, backed by site:W-14 and site:W-15
+	// geom:E-03 is virtual
+	// geom:E-04 is virtual
+}
+
 // ExampleTopology_Assemble reads a loop as the ring its edges traverse and says
 // whether it closes, against a tolerance the registry declares by name.
 //

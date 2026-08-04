@@ -132,6 +132,17 @@ type Edge struct {
 	// was not an id, which is a diagnostic carrying what was there.
 	start ID
 	end   ID
+
+	// backing are the ids the edge wrote where the id of an element which
+	// physically realises it belongs, in the order they were written and with a
+	// repeated one held once.
+	//
+	// They are the ids as written and not the elements they reached. This pass
+	// has read one family, so it cannot know that an id names a semantic node,
+	// that it names a vertex, or that it names nothing at all
+	// ([0001](docs/decisions/0001-two-node-families.md)); each of those is a
+	// diagnostic from [ResolveBoundaries].
+	backing []ID
 }
 
 // ID returns the edge's id.
@@ -156,6 +167,25 @@ func (e *Edge) Frame() ID { return e.frame }
 // the family which is not a vertex, are each a load error rather than a state a
 // caller has to interpret.
 func (e *Edge) Vertices() (start, end ID) { return e.start, e.end }
+
+// BackedBy returns the ids this edge wrote where the id of an element which
+// physically realises it belongs, in the order they were written.
+//
+// An edge at least one of them resolves for is a physical boundary and one none
+// were written on is a virtual one — the open line between a foyer and a dining
+// room. **That classification is computed and never stored**: nothing in the
+// format says which an edge is, and adding an element flips the answer with no
+// other edit ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+// [Boundaries.Classified] is what computes it, because resolving these ids means
+// having read both families.
+//
+// **These are the ids as they were written, and not the elements they reached.**
+// An id naming a vertex, one naming a node which is not an Element, and one
+// naming nothing this model holds are each a diagnostic from [ResolveBoundaries]
+// and are each still here, because a caller reporting on an edge wants to say
+// what it says as well as what is wrong with it. A repeated id — which is a load
+// error — is held once.
+func (e *Edge) BackedBy() []ID { return slices.Clone(e.backing) }
 
 // Span returns where the edge form was written.
 func (e *Edge) Span() Span { return e.span }
@@ -259,6 +289,16 @@ type Topology struct {
 	// one which resolved the references within it: a `boundary` naming a vertex
 	// has to be able to say that it is a vertex, and to show where.
 	defined map[ID]definition
+
+	// backings are the `backed-by` references the edges wrote, in the order they
+	// were read, with the spans a diagnostic about one needs.
+	//
+	// They are kept unresolved because this pass cannot resolve them. A
+	// `backed-by` names a semantic node, and no loader which has read one family
+	// answers a question about both
+	// ([0001](docs/decisions/0001-two-node-families.md)). [ResolveBoundaries] is
+	// the pass which has read both, and this is what it reads them from.
+	backings []backingReference
 }
 
 // Len reports how many geometric nodes were read, of all three sorts together.
@@ -598,12 +638,6 @@ func (l *topologyLoader) vertex(form *Node) {
 }
 
 // edge reads one structurally valid edge form.
-//
-// The pair of endpoints is read here and checked once the whole tree has been:
-// whether the two ids name vertices is a question about every file, and an edge
-// written in the first one may run between vertices written in the last.
-// Whether they are the same vertex is not — that is a property of the form
-// alone, and is reported where it was written.
 func (l *topologyLoader) edge(form *Node) {
 	g, at := l.read(form)
 
@@ -614,6 +648,18 @@ func (l *topologyLoader) edge(form *Node) {
 		l.topology.edgeByID[edge.id] = edge
 	}
 
+	l.ends(edge, form, at)
+	l.backing(edge, form, at)
+}
+
+// ends reads the two vertices an edge runs between.
+//
+// The pair is read here and checked once the whole tree has been: whether the
+// two ids name vertices is a question about every file, and an edge written in
+// the first one may run between vertices written in the last. Whether they are
+// the same vertex is not — that is a property of the form alone, and is reported
+// where it was written.
+func (l *topologyLoader) ends(edge *Edge, form *Node, at Span) {
 	child, ok := childForm(form, verticesChild)
 	if !ok {
 		return
@@ -652,6 +698,41 @@ func (l *topologyLoader) edge(form *Node) {
 	edge.start, edge.end = ends[0].id, ends[1].id
 
 	l.degenerate(edge, ends[0].at, ends[1].at)
+}
+
+// backing reads the ids of the elements an edge says physically realise it.
+//
+// They are recorded and not resolved, for the reason the endpoints are checked
+// after the walk and then some: a `backed-by` names a member of the other family
+// altogether, and no pass which has read one family can say whether an id names
+// a member of the other ([0001](docs/decisions/0001-two-node-families.md)).
+// [ResolveBoundaries] is what answers them.
+func (l *topologyLoader) backing(edge *Edge, form *Node, at Span) {
+	for _, child := range childForms(form, backedByChild) {
+		arg, ok := argument(child, 0)
+		if !ok {
+			continue
+		}
+
+		element, ok := l.id(arg, "a node id")
+		if !ok {
+			continue
+		}
+
+		// An element named twice is a load error and is held once, so that
+		// walking what backs an edge reports what realises it rather than the
+		// number of times somebody wrote one of them down.
+		if !slices.Contains(edge.backing, element) {
+			edge.backing = append(edge.backing, element)
+		}
+
+		l.topology.backings = append(l.topology.backings, backingReference{
+			edge:    edge,
+			element: element,
+			at:      arg.Span,
+			where:   l.where(form, at),
+		})
+	}
 }
 
 // degenerate reports an edge whose two ends are the same vertex.
