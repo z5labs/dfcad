@@ -114,6 +114,74 @@ func Walk(root string) iter.Seq2[string, error] {
 	}
 }
 
+// source is one file of a walked tree: the tree it parsed into, or the
+// diagnostic which says why it did not.
+//
+// It exists so that reading a tree is written once and every pass which
+// interprets one reads the same thing. A pass which walked and parsed for
+// itself would be a second answer to "which files are in this model", and the
+// two would disagree the first time one of them learned about a file the other
+// did not.
+type source struct {
+	// path is the file the walk reached, which is the Path of every Position
+	// read out of it.
+	path string
+
+	// file is the tree it parsed into, and is nil where reading it failed.
+	file *File
+
+	// diag is why it failed, and is meaningful only where file is nil.
+	diag Diagnostic
+}
+
+// readTree yields every entity file beneath root, in walk order, parsed.
+//
+// Parsing happens as each file is reached rather than up front, so a pass which
+// reads a tree once holds one file at a time. A caller which reads the same
+// tree with several passes collects this into a slice instead and hands the
+// same trees to each of them, which is what [LoadGraph] does: parsing a model
+// four times to ask four questions about it is four times the reading for one
+// answer.
+func readTree(root string) iter.Seq[source] {
+	return func(yield func(source) bool) {
+		for path, err := range Walk(root) {
+			if err != nil {
+				if !yield(source{path: path, diag: diagnose(path, err)}) {
+					return
+				}
+				continue
+			}
+
+			file, err := LoadFile(path)
+			if err != nil {
+				if !yield(source{path: path, diag: diagnose(path, err)}) {
+					return
+				}
+				continue
+			}
+
+			if !yield(source{path: path, file: file}) {
+				return
+			}
+		}
+	}
+}
+
+// interpret feeds every parsed file of a tree to one pass, in walk order,
+// reporting the files which could not be read as diagnostics of that pass.
+//
+// The report is here rather than in each pass so that a file which does not
+// parse says so once per pass which needed it and always in the same words.
+func interpret(r *reader, sources iter.Seq[source], file func(*File)) {
+	for src := range sources {
+		if src.file == nil {
+			r.add(src.diag)
+			continue
+		}
+		file(src.file)
+	}
+}
+
 // LoadFile reads one file into a spanned tree, whatever its extension.
 //
 // This is the path a file named explicitly — on a command line, in a test —

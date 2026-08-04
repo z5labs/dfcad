@@ -1,0 +1,39 @@
+; Two ids each held by two things, and neither pair is one a single pass can
+; see: an id is unique across the whole model rather than within a family.
+;
+; The claim below is written on the vertex it collides with, which is the shape
+; the mistake actually takes — somebody names a claim after the corner it
+; measures, and the id which named the corner now names two things.
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (id geom:V-01)
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-02
+  (label "The shared wall, north end")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+; A room and a wall of it, sharing an id across the two families.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+(edge site:S-101
+  (label "Room B, north wall")
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02))

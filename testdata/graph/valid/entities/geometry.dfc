@@ -1,0 +1,97 @@
+; The geometric family of the model: where the corners are, which corners the
+; walls run between, and which walls close each room.
+;
+; This file is walked before the semantic nodes which reference its loops and
+; before the registry which declares its frame, which is the point of it being
+; here. A reference resolves because the whole tree was read before anything was
+; resolved, not because the file holding the other end happened to sort first.
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-02
+  (label "The shared wall, north end")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-03
+  (label "The shared wall, south end")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-04
+  (label "Room B, south-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-05
+  (label "Corridor, north-east corner")
+  (frame frame:building)
+  (position
+    (value (8.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-06
+  (label "Corridor, south-east corner")
+  (frame frame:building)
+  (position
+    (value (8.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-01 (label "Room B, north wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+; The shared partition, written once, referenced from both rooms and backed by
+; the element which physically realises it — which is written in the file the
+; walk reaches after this one.
+(edge geom:E-02
+  (label "Partition, room B to corridor")
+  (frame frame:building)
+  (vertices geom:V-02 geom:V-03)
+  (backed-by site:E-01))
+
+(edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+(edge geom:E-04 (label "Room B, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+
+(edge geom:E-05 (label "Corridor, north wall") (frame frame:building) (vertices geom:V-02 geom:V-05))
+
+(edge geom:E-06 (label "Corridor, east wall") (frame frame:building) (vertices geom:V-05 geom:V-06))
+
+(edge geom:E-07 (label "Corridor, south wall") (frame frame:building) (vertices geom:V-06 geom:V-03))
+
+(loop geom:L-01
+  (label "Meeting Room B boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(loop geom:L-02
+  (label "East Corridor boundary")
+  (frame frame:building)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-02))

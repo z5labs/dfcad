@@ -83,7 +83,7 @@ func TestLoadClaims(t *testing.T) {
 			fixture: "unknown-rank",
 		},
 		{
-			name:    "names both claims holding one id, in whichever files they are",
+			name:    "names both claims holding one id, in whichever files they are, and the frame a claim named itself after",
 			fixture: "duplicate-id",
 		},
 		{

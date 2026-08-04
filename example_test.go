@@ -66,6 +66,38 @@ func ExampleLoad() {
 	// testdata/model/registry/registry.dfc: 4 top-level forms
 }
 
+func ExampleLoadGraph() {
+	// One call reads the whole model: the registry, both families of nodes, the
+	// claims written on them, the frames and the boundaries. Every file beneath
+	// the root is read once, whichever of the six the forms in it belong to.
+	graph, diags := dfcad.LoadGraph("testdata/graph/valid")
+	for _, diagnostic := range diags {
+		fmt.Println(diagnostic)
+	}
+
+	fmt.Println(graph.Summary())
+
+	// An id names one thing in the whole model, so a lookup takes an id and not
+	// an id and a family.
+	room, ok := graph.Node("site:S-101")
+	if !ok {
+		return
+	}
+	fmt.Println(room.Label())
+
+	// What contains it, outwards.
+	for related := range graph.Ancestors(room) {
+		fmt.Println(related.Relation(), related.Node().ID())
+	}
+
+	// Output:
+	// 7 nodes, 6 vertices, 7 edges, 2 loops, 10 claims, 1 conflicts, 0 unresolved
+	// Meeting Room B
+	// containment site:L-01
+	// containment site:B-01
+	// containment site:S-01
+}
+
 func ExampleDiagnostic_Render() {
 	const path = "entities/level-1.dfc"
 

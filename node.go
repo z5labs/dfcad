@@ -348,6 +348,12 @@ func (n *Nodes) Node(id ID) (*SemanticNode, bool) {
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadNodes(root string, registry *Registry) (*Nodes, []Diagnostic) {
+	return loadNodes(readTree(root), registry)
+}
+
+// loadNodes is [LoadNodes] over a tree somebody else read, which is what lets
+// [LoadGraph] read the files once and interpret them four times.
+func loadNodes(sources iter.Seq[source], registry *Registry) (*Nodes, []Diagnostic) {
 	l := &nodeLoader{
 		registry: registry,
 		nodes: &Nodes{
@@ -356,20 +362,7 @@ func LoadNodes(root string, registry *Registry) (*Nodes, []Diagnostic) {
 		},
 	}
 
-	for path, err := range Walk(root) {
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		file, err := LoadFile(path)
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		l.file(file)
-	}
+	interpret(&l.reader, sources, l.file)
 
 	l.relate()
 

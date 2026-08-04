@@ -1,7 +1,14 @@
-testdata/claim/duplicate-id/more-claims.dfc:7:9: error: expected an id nothing else holds, found survey:C-0210, which already names a claim in this model
-7 |     (id survey:C-0210)
-  |         ^^^^^^^^^^^^^
-  = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/claim/duplicate-id/more-claims.dfc:10:9: error: expected an id nothing else holds, found survey:C-0210, which already names something in this model
+10 |     (id survey:C-0210)
+   |         ^^^^^^^^^^^^^
+   = hint: an id is unique across the whole model, and is never issued again to a different thing
 testdata/claim/duplicate-id/claims.dfc:8:9: note: first defined here
 8 |     (id survey:C-0210)
   |         ^^^^^^^^^^^^^
+testdata/claim/duplicate-id/more-claims.dfc:16:9: error: expected an id nothing else holds, found frame:building, which already names something in this model
+16 |     (id frame:building)
+   |         ^^^^^^^^^^^^^^
+   = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/claim/duplicate-id/registry.dfc:38:8: note: first defined here, as a frame
+38 | (frame frame:building (label "Building local grid") (unit m))
+   |        ^^^^^^^^^^^^^^

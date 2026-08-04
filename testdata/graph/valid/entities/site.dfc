@@ -1,0 +1,89 @@
+; The semantic family of the model: a campus, the parcel it holds, the building
+; on it, one storey, two rooms and the partition between them.
+;
+; Containment nests strictly and zone membership does not, so both are written
+; here: the rooms are within the storey and are also members of the campus,
+; which contains nothing.
+(node site:Z-01
+  (label "Riverside campus")
+  (kind Zone)
+  (type Campus))
+
+(node site:S-01
+  (label "Riverside parcel")
+  (kind Site)
+  (type SiteBoundary)
+  (geometry area)
+  (frame frame:building))
+
+(node site:B-01
+  (label "Riverside House")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building)
+  (within site:S-01))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry surface)
+  (frame frame:building)
+  (within site:B-01))
+
+; Both rooms reference a loop written in the file the walk reached first, and
+; the partition beneath them is referenced back from that file's shared edge.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-01))
+
+(node site:S-102
+  (label "East Corridor")
+  (kind Space)
+  (type Corridor)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-01)
+  (boundary geom:L-02))
+
+; Three claims about how thick the partition is: one scaled off a plan and
+; retracted, and two live measurements which disagree. The disagreement is the
+; conflict the summary counts, and it is a finding rather than a fault.
+(node site:E-01
+  (label "Partition between B and the corridor")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:S-101)
+  (width
+    (id survey:W-0001)
+    (value 0.1 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:W-0002))
+  (width
+    (id survey:W-0002)
+    (value 0.102 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06"))
+  (width
+    (id survey:W-0003)
+    (value 0.104 m)
+    (source "Fit-out check FC-2026-002, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-11")))

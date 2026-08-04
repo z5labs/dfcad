@@ -7,6 +7,7 @@ package dfcad
 
 import (
 	"fmt"
+	"iter"
 	"net/url"
 	"slices"
 	"strings"
@@ -55,6 +56,12 @@ var registrySorts = map[string]Sort{
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadRegistry(root string) (*Registry, []Diagnostic) {
+	return loadRegistry(root, readTree(root))
+}
+
+// loadRegistry is [LoadRegistry] over a tree somebody else read, which is what
+// lets [LoadGraph] read the files once and interpret them four times.
+func loadRegistry(root string, sources iter.Seq[source]) (*Registry, []Diagnostic) {
 	l := &registryLoader{
 		root: root,
 		registry: &Registry{
@@ -66,20 +73,7 @@ func LoadRegistry(root string) (*Registry, []Diagnostic) {
 		},
 	}
 
-	for path, err := range Walk(root) {
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		file, err := LoadFile(path)
-		if err != nil {
-			l.add(diagnose(path, err))
-			continue
-		}
-
-		l.file(file)
-	}
+	interpret(&l.reader, sources, l.file)
 
 	l.resolve()
 

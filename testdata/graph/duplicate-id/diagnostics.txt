@@ -1,0 +1,14 @@
+testdata/graph/duplicate-id/model.dfc:11:9: error: expected an id nothing else holds, found geom:V-01, which already names something in this model
+11 |     (id geom:V-01)
+   |         ^^^^^^^^^
+   = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/graph/duplicate-id/model.dfc:7:9: note: first defined here, as a vertex
+7 | (vertex geom:V-01
+  |         ^^^^^^^^^
+testdata/graph/duplicate-id/model.dfc:36:7: error: expected an id nothing else holds, found site:S-101, which already names something in this model
+36 | (edge site:S-101
+   |       ^^^^^^^^^^
+   = hint: an id is unique across the whole model, and is never issued again to a different thing
+testdata/graph/duplicate-id/model.dfc:29:7: note: first defined here, as a node
+29 | (node site:S-101
+   |       ^^^^^^^^^^
