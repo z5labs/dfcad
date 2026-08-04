@@ -204,7 +204,7 @@ func TestRunFmt(t *testing.T) {
 			require.Equal(t, testCase.expectedCode, code)
 
 			result := decoded(t, ".", stdout.String())
-			assert.Equal(t, fmtVersion, result.Version)
+			assert.Equal(t, outputVersion, result.Version)
 			assert.Equal(t, "fmt", result.Command)
 			assert.Equal(t, testCase.expectedStatuses, statuses(result))
 
@@ -347,18 +347,25 @@ func TestRunFmtUsage(t *testing.T) {
 		name           string
 		args           []string
 		expectedCode   int
-		expectedStdout string
+		expectedStderr string
 	}{
 		{
-			name:           "prints the fmt usage to stdout and succeeds when asked for help",
+			name:           "prints the fmt usage to stderr and succeeds when asked for help",
 			args:           []string{"fmt", "-h"},
 			expectedCode:   exitSuccess,
-			expectedStdout: fmtUsage,
+			expectedStderr: fmtUsage,
 		},
 		{
-			name:         "names the unknown flag on stderr and reports a usage error",
-			args:         []string{"fmt", "--rewrite"},
-			expectedCode: exitUsage,
+			name:           "names the unknown flag on stderr and reports a usage error",
+			args:           []string{"fmt", "--rewrite"},
+			expectedCode:   exitUsage,
+			expectedStderr: "dfcad fmt: flag provided but not defined: -rewrite\n\n" + fmtUsage,
+		},
+		{
+			name:           "names the unknown format on stderr and reports a usage error",
+			args:           []string{"fmt", "--format", "yaml"},
+			expectedCode:   exitUsage,
+			expectedStderr: "dfcad fmt: " + UnknownFormatError{Format: "yaml", Known: formats}.Error() + "\n\n" + fmtUsage,
 		},
 	}
 
@@ -371,7 +378,11 @@ func TestRunFmtUsage(t *testing.T) {
 			code := run(testCase.args, &stdout, &stderr)
 
 			require.Equal(t, testCase.expectedCode, code)
-			assert.Equal(t, testCase.expectedStdout, stdout.String())
+
+			// Help and a wrong invocation both produce no result, so neither
+			// writes anything to the stream a caller pipes.
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, testCase.expectedStderr, stderr.String())
 		})
 	}
 }
@@ -416,10 +427,13 @@ func TestFmtErrorsAreNotSwallowed(t *testing.T) {
 	assert.Contains(t, stderr.String(), "dfcad fmt:")
 }
 
+// errBrokenWriter is what a [brokenWriter] fails with.
+var errBrokenWriter = errors.New("broken")
+
 // brokenWriter is a stdout that cannot be written to.
 type brokenWriter struct{}
 
 // Write implements [io.Writer].
 func (brokenWriter) Write([]byte) (int, error) {
-	return 0, errors.New("broken")
+	return 0, errBrokenWriter
 }

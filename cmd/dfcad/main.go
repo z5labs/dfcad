@@ -10,51 +10,133 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
-// Exit codes. Structured results go to stdout; everything human facing goes to
-// stderr, so a caller can pipe stdout without parsing prose.
+// command is one dfcad subcommand.
 //
-// The four are the ones documented in
-// docs/decisions/0014-the-machine-output-contract-is-part-of-the-interface.md,
-// and they are what they are so that a caller can branch on the code alone. A
-// model that is wrong and an invocation that is wrong are completely different
-// situations for a CI job, and telling them apart must not mean matching a
-// message.
-const (
-	// exitSuccess reports that the command did what was asked.
-	exitSuccess = 0
+// A subcommand is a value in [commands] rather than a case in a switch so that
+// everything which has to be true of every subcommand — that it takes the
+// global flags, that its help describes the contract and exits zero, that it
+// writes nothing but a result object to stdout — is checkable by walking the
+// list, rather than by remembering to add each new one to a test.
+type command struct {
+	// name is what selects it on the command line.
+	name string
 
-	// exitCheck reports that the command ran and answered, and the answer is
-	// no: an assertion did not hold, a file is not in canonical form. Nothing
-	// went wrong.
-	exitCheck = 1
+	// summary is its line in the top-level usage.
+	summary string
 
-	// exitLoad reports that a file could not be read, did not parse, or could
-	// not be written. Nothing downstream of it means anything.
-	exitLoad = 2
+	// usage is its own help message, printed for -h and for a malformed
+	// invocation.
+	usage string
 
-	// exitUsage reports that the invocation itself was wrong — no subcommand,
-	// an unknown one, or a malformed flag. Nothing was loaded and nothing ran.
-	exitUsage = 3
-)
+	// run does the work and returns the exit code.
+	run func(cmd command, args []string, stdout, stderr io.Writer) int
+}
 
-const usage = `dfcad — a data-first CAD engine.
+// commands is every subcommand, in the order the usage lists them.
+var commands = []command{
+	{
+		name:    "fmt",
+		summary: "rewrite entity files into canonical form",
+		usage:   fmtUsage,
+		run:     runFmt,
+	},
+}
+
+// lookup is the subcommand of that name.
+func lookup(name string) (command, bool) {
+	for _, cmd := range commands {
+		if cmd.name == name {
+			return cmd, true
+		}
+	}
+	return command{}, false
+}
+
+// globalFlagsHelp describes the flags every subcommand takes. It is part of
+// every help message, because a flag documented in one place and accepted in
+// all of them is a flag nobody finds.
+const globalFlagsHelp = `Global flags, taken by every command:
+
+	--root <dir>     the model root; a relative path is resolved against it
+	                 (default ".")
+	--format <fmt>   how the run reports itself to a person on stderr: json,
+	                 which reports only problems, or human, which adds a
+	                 readable summary of the result. Neither changes stdout
+	                 (default "json")
+	-v, --verbose    say more on stderr about what the run is doing and about
+	                 what it found; repeat for more
+	-h, --help       print this message and exit
+`
+
+// outputContractHelp describes the two streams, the versioning rule and the
+// exit codes. It is part of every help message for the same reason as the
+// flags: the contract is the interface, and an interface documented only in a
+// file somewhere in the repository is one a caller has to go looking for.
+const outputContractHelp = `Output:
+
+	Stdout is one JSON object and nothing else, so it can be piped into jq
+	without filtering prose out of it first. The object carries a "version"
+	field: fields are added compatibly, and a field is never removed, renamed
+	or given a different meaning without that number changing. The same input
+	produces byte-identical stdout.
+
+	A run which produces no result — help, a usage error, a model root that
+	cannot be read — writes nothing at all to stdout.
+
+	Diagnostics, progress and everything else for a person go to stderr, on
+	every run and in every format. Nothing human-facing is ever on stdout.
+
+Exit codes:
+
+	0   success: the command did what was asked
+	1   check failure: it ran and answered, and the answer is no
+	2   load failure: input could not be read, did not parse, or was not
+	    written
+	3   usage error: the invocation itself was wrong
+
+The shape of each command's object is documented in docs/machine-output.md.
+`
+
+// usageHead is the top-level help, up to the list of commands.
+const usageHead = `dfcad — a data-first CAD engine.
 
 Usage:
 
-	dfcad <command> [arguments]
+	dfcad <command> [flags] [arguments]
 
 Commands:
 
-	fmt    rewrite entity files into canonical form
-
-Flags:
-
-	-h, --help   print this message and exit
-
-Run ` + "`dfcad <command> -h`" + ` for the arguments and exit codes of a command.
 `
+
+// usage is the top-level help.
+//
+// It is built from [commands] so that a subcommand cannot exist without being
+// listed, which is the sort of drift nobody notices until they go looking for
+// a command that is right there.
+func usage() string {
+	var out strings.Builder
+
+	out.WriteString(usageHead)
+
+	width := 0
+	for _, cmd := range commands {
+		width = max(width, len(cmd.name))
+	}
+	for _, cmd := range commands {
+		fmt.Fprintf(&out, "\t%-*s   %s\n", width, cmd.name, cmd.summary)
+	}
+
+	out.WriteString("\n")
+	out.WriteString(globalFlagsHelp)
+	out.WriteString("\n")
+	out.WriteString(outputContractHelp)
+	out.WriteString("\nRun `dfcad <command> -h` for the arguments of a command.\n")
+
+	return out.String()
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -65,20 +147,26 @@ func main() {
 // subprocess and without touching the real os.Stdout.
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		fmt.Fprint(stderr, usage())
 		return exitUsage
 	}
 
 	switch args[0] {
 	case "-h", "--help", "help":
-		// Help was asked for, so it is the result rather than a diagnostic.
-		fmt.Fprint(stdout, usage)
+		// Help was asked for, so it is a success rather than a usage error. It
+		// is still for a person, so it is still on stderr and stdout stays
+		// empty: a caller piping stdout gets a result object or nothing at
+		// all, and never a page of prose in place of one.
+		fmt.Fprint(stderr, usage())
 		return exitSuccess
-	case "fmt":
-		return runFmt(args[1:], stdout, stderr)
-	default:
+	}
+
+	cmd, ok := lookup(args[0])
+	if !ok {
 		fmt.Fprintf(stderr, "dfcad: unknown command %q\n\n", args[0])
-		fmt.Fprint(stderr, usage)
+		fmt.Fprint(stderr, usage())
 		return exitUsage
 	}
+
+	return cmd.run(cmd, args[1:], stdout, stderr)
 }

@@ -6,9 +6,6 @@
 package main
 
 import (
-	"encoding/json"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 
@@ -23,7 +20,8 @@ Usage:
 
 A path names a file, which is formatted whatever its extension, or a directory,
 beneath which every file ending in .dfc is formatted. Several of each may be
-given. With no path, the tree beneath the current directory is formatted.
+given. A relative path is resolved against the model root. With no path, the
+tree beneath the model root is formatted.
 
 A file is replaced atomically, so an interrupted run leaves the file it was
 writing as it was rather than half of what it was going to be. A file that does
@@ -34,41 +32,24 @@ Flags:
 
 	--check   write nothing, and report which files are not in canonical form
 	--diff    write nothing, and print what would change as a unified diff
-	-h        print this message and exit
 
 --diff implies --check: nothing is written, and the exit code says whether
 anything would change.
 
-Exit codes:
-
-	0   every file is in canonical form, or was rewritten into it
-	1   --check or --diff: a file is not in canonical form
-	2   a file could not be read, did not parse, or could not be written
-	3   the invocation was wrong
-
-Results go to stdout as one JSON object. Diagnostics, the list of files that
-are not in canonical form, and any diff go to stderr.
+` + globalFlagsHelp + `
+` + outputContractHelp + `
+The object fmt writes carries "files": one entry per file the run reached, in
+walk order, each with its path, its status — unchanged, formatted, unformatted
+or failed — and the machine-readable form of any diagnostic found in it.
 `
-
-// fmtVersion is the version of the object fmt writes to stdout.
-//
-// A caller reading a documented field keeps working across releases: fields
-// are added compatibly, and one is never removed, renamed or given a different
-// meaning without this changing.
-const fmtVersion = 1
 
 // fmtResult is the object fmt writes to stdout, and is the whole of stdout.
 //
-// It is a struct rather than a map so that its keys come out in a fixed order,
-// which is half of what makes two runs over the same tree byte-identical. The
-// other half is that the files below arrive in the order the walk yields them.
+// The envelope is embedded rather than nested so that "version" and "command"
+// come out ahead of the payload, in the same place they do for every other
+// command.
 type fmtResult struct {
-	// Version is the version of this object's shape.
-	Version int `json:"version"`
-
-	// Command names what produced it, so that a caller reading a collected
-	// result knows which contract it is reading.
-	Command string `json:"command"`
+	envelope
 
 	// Files is one entry per file the command reached, in walk order, plus one
 	// for each path it could not reach at all.
@@ -115,42 +96,37 @@ const (
 )
 
 // runFmt is the fmt command.
-func runFmt(args []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("fmt", flag.ContinueOnError)
-
-	// The flag package writes its own usage, which is neither this message nor
-	// on the stream this command was handed. Silencing it leaves both to the
-	// code below.
-	flags.SetOutput(io.Discard)
-	flags.Usage = func() {}
+func runFmt(cmd command, args []string, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd.name, globals)
 
 	check := flags.Bool("check", false, "")
 	diff := flags.Bool("diff", false, "")
 
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			// Help was asked for, so it is the result rather than a
-			// diagnostic.
-			fmt.Fprint(stdout, fmtUsage)
-			return exitSuccess
-		}
-
-		fmt.Fprintf(stderr, "dfcad fmt: %v\n\n", err)
-		fmt.Fprint(stderr, fmtUsage)
-		return exitUsage
+	if code, done := parse(cmd, flags, globals, args, stderr); done {
+		return code
 	}
 
 	paths := flags.Args()
 	if len(paths) == 0 {
 		paths = []string{"."}
 	}
+	for i, path := range paths {
+		paths[i] = globals.resolve(path)
+	}
+
+	if globals.Verbosity >= verbosityProgress {
+		for _, path := range paths {
+			fmt.Fprintf(stderr, "dfcad fmt: searching %s\n", path)
+		}
+	}
 
 	formatter := dfcad.Formatter{Rewrite: !*check && !*diff, Diff: *diff}
 	formatted := formatter.Format(paths...)
 
-	report(formatted, stderr)
+	report(formatted, globals, stderr)
 
-	if err := emit(formatted, stdout); err != nil {
+	if err := emit(stdout, result(formatted)); err != nil {
 		fmt.Fprintf(stderr, "dfcad fmt: %v\n", err)
 		return exitLoad
 	}
@@ -161,11 +137,12 @@ func runFmt(args []string, stdout, stderr io.Writer) int {
 // report writes the human rendering of a run to stderr: the diagnostics of
 // every file that has any, the failures that are not about a file's contents,
 // and each file that is not in canonical form, with its diff where one was
-// asked for.
+// asked for. Asked for the human format, it adds the status of every file and
+// a summary.
 //
-// Nothing here goes to stdout. A caller piping stdout into jq gets one JSON
-// object whatever this printed.
-func report(formatted []dfcad.Formatted, stderr io.Writer) {
+// Nothing here goes to stdout, in any format and at any verbosity. A caller
+// piping stdout gets one JSON object whatever this printed.
+func report(formatted []dfcad.Formatted, globals *globals, stderr io.Writer) {
 	src := dfcad.FileSources{}
 
 	for _, file := range formatted {
@@ -187,13 +164,48 @@ func report(formatted []dfcad.Formatted, stderr io.Writer) {
 			fmt.Fprint(stderr, file.Diff)
 		}
 	}
+
+	if !globals.human() {
+		return
+	}
+
+	counts := map[string]int{}
+	for _, file := range formatted {
+		counts[status(file)]++
+
+		// The status of every file, rather than only of the ones something is
+		// wrong with, is detail rather than result — the lines above already
+		// name each file that failed or is not canonical.
+		if globals.Verbosity >= verbosityProgress {
+			fmt.Fprintf(stderr, "%s: %s\n", file.Path, status(file))
+		}
+	}
+
+	// The statuses are listed rather than ranged over so that the summary
+	// reads the same way every time, whichever of them a run happened to
+	// produce.
+	fmt.Fprintf(stderr, "%s: %d unchanged, %d formatted, %d unformatted, %d failed\n",
+		plural(len(formatted), "file"),
+		counts[statusUnchanged],
+		counts[statusFormatted],
+		counts[statusUnformatted],
+		counts[statusFailed],
+	)
 }
 
-// emit writes the result object to stdout.
-func emit(formatted []dfcad.Formatted, stdout io.Writer) error {
-	result := fmtResult{
-		Version: fmtVersion,
-		Command: "fmt",
+// plural is a count and its noun, so that a summary meant for a person does
+// not say "1 files".
+func plural(count int, noun string) string {
+	if count == 1 {
+		return fmt.Sprintf("%d %s", count, noun)
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
+}
+
+// result is the object a run writes to stdout.
+func result(formatted []dfcad.Formatted) fmtResult {
+	out := fmtResult{
+		envelope: newEnvelope("fmt"),
 
 		// The slice is made rather than declared so that a run reaching no
 		// file writes an empty list rather than a null, and a caller indexing
@@ -202,21 +214,14 @@ func emit(formatted []dfcad.Formatted, stdout io.Writer) error {
 	}
 
 	for _, file := range formatted {
-		out := fmtFile{Path: file.Path, Status: status(file), Diagnostics: file.Diagnostics}
+		entry := fmtFile{Path: file.Path, Status: status(file), Diagnostics: file.Diagnostics}
 		if file.Err != nil {
-			out.Error = file.Err.Error()
+			entry.Error = file.Err.Error()
 		}
-		result.Files = append(result.Files, out)
+		out.Files = append(out.Files, entry)
 	}
 
-	encoder := json.NewEncoder(stdout)
-
-	// Escaping the characters that matter in HTML would rewrite bytes of a
-	// path or a message that mean nothing of the sort here, and the output is
-	// read by a pipeline rather than embedded in a page.
-	encoder.SetEscapeHTML(false)
-
-	return encoder.Encode(result)
+	return out
 }
 
 // status is what one file came back as.

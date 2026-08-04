@@ -98,6 +98,10 @@ modelling a different subject, it is not an engine change.
   Each states the decision, its reasoning, what it costs and what would reverse
   it. The identity, claim and uncertainty decisions are recorded, as are the
   engine-boundary, CLI and authoring ones.
+- [`docs/machine-output.md`](./docs/machine-output.md) — the command line
+  interface's output contract: what is on stdout, what is on stderr, the shape
+  of each command's JSON object and the rule by which that shape may change,
+  and what each exit code means.
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
   arity and ordering, and the canonical printing of each. It is the definition
   of the format; the loader is implemented against it, not the other way round.
