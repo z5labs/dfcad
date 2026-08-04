@@ -137,7 +137,13 @@ func corpus(t *testing.T) []string {
 	t.Helper()
 
 	var paths []string
-	for _, pattern := range []string{"testdata/print/*", "testdata/corpus/valid/*", "testdata/validate/*.dfc", "testdata/model/*/*.dfc"} {
+	for _, pattern := range []string{
+		"testdata/print/*",
+		"testdata/corpus/valid/*",
+		"testdata/validate/*.dfc",
+		"testdata/model/*/*.dfc",
+		"testdata/registry/*/*.dfc",
+	} {
 		matched, err := filepath.Glob(pattern)
 		require.NoError(t, err)
 		paths = append(paths, matched...)

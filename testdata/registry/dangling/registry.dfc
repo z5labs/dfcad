@@ -1,0 +1,25 @@
+; The references one registry makes into another: a frame's id and its
+; transform draw on the id namespace registry, and its parent on the frame
+; registry itself.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (unit m)
+  (parent frame:site-grid)
+  (transform survey:C-0031))
+
+(frame grid:secondary
+  (unit m)
+  (parent frame:survey-grid)
+  (transform frame:C-0032))
+
+(frame frame-detached
+  (unit m)
+  (parent frame:survey-grid)
+  (transform frame:C-0033))
+
+(frame frame:orphan (unit m) (parent frame:survey-grid))

@@ -1,0 +1,51 @@
+testdata/registry/duplicates/two.dfc:5:1: error: expected one project declaration for the model, found another
+5 | (project
+  | ^^^^^^^^
+6 |   (label "Riverside, again")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+7 |   (globalid-namespace "https://example.org/models/riverside-again"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: a model declares its project once, in one registry file, however many files it is spread over
+testdata/registry/duplicates/one.dfc:1:1: note: first declared here
+1 | (project
+  | ^^^^^^^^
+2 |   (label "Riverside example")
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3 |   (globalid-namespace "https://example.org/models/riverside"))
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/registry/duplicates/two.dfc:9:12: error: expected an undeclared namespace, found site, which is already declared
+9 | (namespace site (description "Semantic nodes, declared twice."))
+  |            ^^^^
+testdata/registry/duplicates/one.dfc:6:12: note: first declared here
+6 | (namespace site (description "Semantic nodes minted by this model."))
+  |            ^^^^
+testdata/registry/duplicates/two.dfc:11:7: error: expected an undeclared type, found MeetingRoom, which is already declared
+11 | (type MeetingRoom
+   |       ^^^^^^^^^^^
+testdata/registry/duplicates/one.dfc:8:7: note: first declared here
+8 | (type MeetingRoom
+  |       ^^^^^^^^^^^
+testdata/registry/duplicates/two.dfc:13:9: error: expected a kind which is not already permitted, found Space
+13 |   (kind Space)
+   |         ^^^^^
+testdata/registry/duplicates/two.dfc:12:9: note: first written here
+12 |   (kind Space)
+   |         ^^^^^
+testdata/registry/duplicates/two.dfc:17:12: error: expected an undeclared predicate, found width, which is already declared
+17 | (predicate width (unit m) (shape scalar) (description "A clear width, again."))
+   |            ^^^^^
+testdata/registry/duplicates/one.dfc:13:12: note: first declared here
+13 | (predicate width (unit m) (shape scalar) (description "A clear width."))
+   |            ^^^^^
+testdata/registry/duplicates/two.dfc:19:12: error: expected an undeclared tolerance, found boundary-closure, which is already declared
+19 | (tolerance boundary-closure (value 0.01 m))
+   |            ^^^^^^^^^^^^^^^^
+testdata/registry/duplicates/one.dfc:15:12: note: first declared here
+15 | (tolerance boundary-closure (value 0.005 m))
+   |            ^^^^^^^^^^^^^^^^
+testdata/registry/duplicates/two.dfc:21:8: error: expected an undeclared frame, found frame:building, which is already declared
+21 | (frame frame:building (unit ft))
+   |        ^^^^^^^^^^^^^^
+testdata/registry/duplicates/one.dfc:17:8: note: first declared here
+17 | (frame frame:building (label "Building local grid") (unit m))
+   |        ^^^^^^^^^^^^^^

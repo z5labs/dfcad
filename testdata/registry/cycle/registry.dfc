@@ -1,0 +1,12 @@
+; A parent chain which never reaches a root. It is reported once, against the
+; frame the walk re-entered, and names every frame in the cycle: one diagnostic
+; per member would turn one mistake into three which say the same thing.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+
+(frame frame:a (unit m) (parent frame:b) (transform frame:T-1))
+
+(frame frame:b (unit m) (parent frame:c) (transform frame:T-2))
+
+(frame frame:c (unit m) (parent frame:a) (transform frame:T-3))

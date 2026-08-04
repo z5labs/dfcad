@@ -16,6 +16,7 @@ the goldens beside the fixtures are invisible to it.
 | `corpus/valid`             | One file per construct of [`SPEC.md`](../SPEC.md), plus one combined model. Each has its canonical printing recorded beside it as `.want`. |
 | `corpus/invalid`           | One file per error case about a file and its lexis. Each has its rendered diagnostic recorded beside it as `.txt`. |
 | `validate`                 | The validator's own fixtures: the error cases about the shape of a form, each with its rendered diagnostic as `.txt`, plus three files which are accepted. |
+| `registry`                 | The registry loader's own fixtures. One *directory* per case, because a registry is a property of a source tree and not of a file, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `print`                    | The printer's own fixtures: one per printing behaviour, each with its canonical printing as `.want`. |
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `model`                    | A two-file model the runnable examples load.                                                |
@@ -47,8 +48,8 @@ nobody regenerated, fails there.
 ## Which fixture covers which error case
 
 The cases about a file and its lexis are in `corpus/invalid`; the cases about
-the shape of a form are in `validate`, which is where the validator's own tests
-read them from.
+the shape of a form are in `validate`; the cases about what a registry declares
+are in `registry`. Each is where the tests of that layer read them from.
 
 | Specification | Error case                                          | Fixture                                     |
 |---------------|-----------------------------------------------------|---------------------------------------------|
@@ -73,6 +74,17 @@ read them from.
 | 6             | A datum written where a form belongs                 | `validate/not-a-form.dfc`                   |
 | 6.5           | A claim whose children are wrong                     | `validate/claim-children.dfc`               |
 | —             | Several independent problems in one file             | `validate/one-pass.dfc`                     |
+| 7             | A name declared twice, in one file and across two    | `registry/duplicates/`                      |
+| 4.1, 7.2      | A namespace which is not one                         | `registry/malformed/`                       |
+| 4.2, 7.4      | A predicate colliding with a reserved structural tag | `registry/malformed/`                       |
+| 1, 7.3, 7.4   | A kind, a geometry form, a shape or a dimension which is not one | `registry/malformed/`           |
+| 4.3, 7.6      | A tolerance magnitude written as a count             | `registry/malformed/`                       |
+| 7.1           | A `globalid-namespace` which is not a URL            | `registry/malformed/`                       |
+| 5, 7          | A child a registry form does not permit              | `registry/unknown-key/`                     |
+| 4.1, 7.5      | A frame naming an unregistered namespace, or a parent nothing declares | `registry/dangling/`      |
+| 7.5           | A frame parent chain which never reaches a root      | `registry/cycle/`                           |
+| 7.5           | A second root frame, and half of a non-root one      | `registry/roots/`                           |
+| 7.1           | A model declaring no project at all                  | `registry/empty/`                           |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could
@@ -84,11 +96,12 @@ boolean written outside the positions which take one. Which positions those are
 is partly registry data — a check's parameters are declared by the check
 registry, and a predicate's value shape by the predicate registry — so the
 engine cannot decide it until those registries load. It belongs with the layer
-which reads them, and so do the error cases of sections 4.1, 4.2, 4.5, 6.6 and
-6.9: an unregistered namespace, a predicate colliding with a reserved tag, a
-unit of the wrong quantity, a value of the wrong shape, and a reference which
-does not resolve. None of them is a structural question, and none of them is
-answerable here yet.
+which reads them, and so do the remaining error cases of sections 4.5, 6.6 and
+6.9: a unit of the wrong quantity, a claim value of the wrong shape, and a
+reference from one entity to another which does not resolve. None of them is a
+structural question, and none of them is a question about the registry set on
+its own; each is answered by the layer which reads entity forms against a loaded
+registry.
 
 ## The properties
 

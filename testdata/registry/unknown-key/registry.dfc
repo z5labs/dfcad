@@ -1,0 +1,16 @@
+; A registry form is validated against the form tables before anything reads
+; it, and one which is structurally wrong is not interpreted at all: reading a
+; predicate which is missing its shape would mean either inventing a shape or
+; reporting its absence a second time.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (descrption "A child the type form does not permit."))
+
+(predicate width
+  (unit m)
+  (description "A predicate with no shape at all."))

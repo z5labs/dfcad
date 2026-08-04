@@ -1,0 +1,41 @@
+; Between them the two files write every child of every registry form, and both
+; the written and the omitted spelling of every default.
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (geometry absent)
+  (description "An enclosed room used for meetings.")
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+
+(type Partition
+  (kind Element)
+  (kind Interface)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces."))
+
+(predicate colour
+  (shape text)
+  (claim-bearing #f)
+  (description "The finish a surface was specified in."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (strict #t)
+  (description "The clear width between two faces."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))
