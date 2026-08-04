@@ -125,6 +125,10 @@ type pair struct {
 // which keeps the claims of an entry in written order without a map deciding
 // it, and then sorts the entries themselves. The pairs are unique, so the sort
 // is total and the answer is a function of the claims rather than of the walk.
+//
+// Each entry is resolved from the live claims the walk already holds rather
+// than by asking [Claims.resolve] for them again, which would re-read the
+// claims of a subject once per predicate written on it.
 func (c *Claims) register() []Conflict {
 	if c == nil {
 		return nil
@@ -134,11 +138,11 @@ func (c *Claims) register() []Conflict {
 	var order []pair
 
 	for _, claim := range c.inOrder {
-		if claim.rank == RankDeprecated {
+		if claim.Rank() == RankDeprecated {
 			continue
 		}
 
-		of := pair{subject: claim.subject, predicate: claim.predicate}
+		of := pair{subject: claim.Subject(), predicate: claim.Predicate()}
 		if _, seen := live[of]; !seen {
 			order = append(order, of)
 		}
@@ -157,7 +161,7 @@ func (c *Claims) register() []Conflict {
 
 		register = append(register, Conflict{
 			claims:     competing,
-			resolution: c.resolve(of.subject, of.predicate),
+			resolution: resolutionOf(of.subject, of.predicate, competing),
 		})
 	}
 

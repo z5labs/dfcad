@@ -187,8 +187,6 @@ func (c *Claims) Resolve(subject ID, predicate string, registry *Registry) (Reso
 // for the state and never for the error, so it calls this rather than
 // [Claims.Resolve] with a discarded one.
 func (c *Claims) resolve(subject ID, predicate string) Resolution {
-	resolution := Resolution{subject: subject, predicate: predicate}
-
 	var live []*Claim
 	for claim := range c.Under(subject, predicate) {
 		if claim.Rank() == RankDeprecated {
@@ -196,6 +194,19 @@ func (c *Claims) resolve(subject ID, predicate string) Resolution {
 		}
 		live = append(live, claim)
 	}
+
+	return resolutionOf(subject, predicate, live)
+}
+
+// resolutionOf applies the rule to the live claims of one pair, which the
+// caller has already separated from the deprecated ones.
+//
+// It is split from [Claims.resolve] for the conflict register, which has the
+// live claims of every pair in hand by the time it wants a resolution of each.
+// Asking resolve for them again would re-read the claims of a subject once per
+// predicate written on it, which is a scan the walk has already done.
+func resolutionOf(subject ID, predicate string, live []*Claim) Resolution {
+	resolution := Resolution{subject: subject, predicate: predicate}
 
 	if len(live) == 0 {
 		return resolution
