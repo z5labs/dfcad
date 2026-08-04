@@ -172,3 +172,45 @@ go vet ./...
 go test -race ./...
 gofmt -l .
 ```
+
+## Continuous integration
+
+CI and release are not hand-rolled in YAML. They call
+[`z5labs/devex/daggerverse/z5labs`](https://github.com/z5labs/devex/tree/main/daggerverse/z5labs),
+the Dagger module that implements the Z5Labs standard pipeline for a shippable,
+containerized application. dfcad ships `cmd/dfcad`, so it is the module's `GoApp`
+archetype — not `GoLib`.
+
+A workflow job is a thin wrapper around one Dagger call:
+
+```sh
+dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
+  go-app --source=. --pkg=./cmd/dfcad \
+  ci
+```
+
+What follows from that:
+
+- **`GoApp.Ci` owns the check stages.** It runs `fmt`, `vet`, `golangci-lint` and
+  `go test -race` against the source, then builds a scratch image per platform and
+  publishes it when the ref matches `publishOn`. Do not reimplement any of those as
+  their own workflow steps — a step that duplicates a module stage is a second
+  definition of the standard, and the two will drift.
+- **`--source` must be a git working tree.** The module reads refs from `HEAD` to
+  decide whether to publish and how to tag, so a checkout with `fetch-depth: 0` and
+  the `.git` directory intact is required. A tarball or a shallow, detached checkout
+  fails the pipeline up front.
+- **Publishing is by ref, not by an `if:` on the job.** The registry, the credentials
+  and the `publishOn` regex are inputs to the module call. Branch builds tag as
+  `<short-sha>-<commit-time>`; tag builds tag as the git tag.
+- **`Builder` is the local sibling.** `builder container` / `builder binary` produce
+  the same artifact single-arch, so a change to the pipeline is testable without a
+  push.
+- **Repo-specific verification stays in this repo,** but as its own job — the golden
+  regeneration check (`go test . -update` and a clean `git diff -- testdata`), and
+  anything that runs the `dfcad` binary against the fixture model. The module has no
+  hook for project commands, and the standard is not the place to put them.
+- **A gap in the module is fixed in `z5labs/devex`,** not worked around here. If a
+  story needs something the module does not expose — build-time `ldflags`, release
+  assets attached to a GitHub release, an SBOM — the change belongs upstream and the
+  story says so rather than growing a bespoke workflow beside the standard one.
