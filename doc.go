@@ -21,4 +21,36 @@
 // There is no database, no daemon and no network transport. The library is
 // paired with a command line interface under cmd/dfcad, which is the intended
 // entry point for scripts, CI and agents.
+//
+// # Accuracy
+//
+// This is the convention every accuracy in the engine is stated under, and it
+// is stated here because a consumer combining two numbers has to be able to
+// find it in one place.
+//
+// An accuracy is a standard uncertainty: one standard deviation, k = 1, stated
+// in a unit of the same quantity as the claim's own value and written beside
+// the magnitude. There is no other storage convention. A figure quoted at any
+// other coverage — a half-width bound, a 95% interval, a manufacturer's
+// "typical" — is converted to 1σ at the point it enters the model, by whoever
+// enters it, and the conversion is part of the claim's provenance rather than
+// something the engine guesses. A bare number with no stated meaning is worse
+// than none at all, because it gets combined arithmetically anyway and the
+// three conventions differ by a factor of two.
+//
+// Nothing converts between units. Terms written in more than one unit do not
+// combine, and a budget holding them says so rather than reconciling them.
+//
+// Each term of an accuracy is tagged independent or systematic, because whether
+// an error is shared is a fact about how the measurement was made and cannot be
+// inferred from the number. Independent terms combine in quadrature. A
+// systematic term — a georeference fit applied to every indoor fact alike —
+// does not partially cancel and does not average away, so it adds linearly, and
+// a term reached through two inputs of one computation is counted once.
+// [Budget] is where that arithmetic lives, [Uncertainty] is what comes out of
+// it, and a figure widened past 1σ always states the coverage factor it was
+// widened by. Nothing widened is ever stored.
+//
+// See docs/decisions/0006-accuracy-is-one-sigma.md for why, and specification
+// section 6.6.5 for how an accuracy is written down.
 package dfcad

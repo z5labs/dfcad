@@ -291,24 +291,113 @@ func (f *Frames) TransformPoint(point Point, from, to ID) (Point, error) {
 		}
 	}
 
+	climb, descend, err := f.route(from, to)
+	if err != nil {
+		return Point{}, err
+	}
+
+	for _, id := range climb {
+		if point, err = f.toParent(point, id); err != nil {
+			return Point{}, err
+		}
+	}
+
+	for _, id := range descend {
+		if point, err = f.fromParent(point, id); err != nil {
+			return Point{}, err
+		}
+	}
+
+	return point, nil
+}
+
+// TransformBudget returns the accumulated uncertainty of the relationship
+// between two frames.
+//
+// It is the budget of every answer [Frames.TransformPoint] produces along the
+// same route, and it exists separately because a position and how well that
+// position is known are two questions with two answers: a caller placing a
+// point wants the point, and a caller deciding against a clearance wants the
+// budget behind it.
+//
+// The terms are the accuracies of the fits the route passes through, in the
+// order it passes through them, and a systematic term shared by two of those
+// fits is counted once however many frames it is reached through
+// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)). That is the whole
+// difference between an honest cross-frame budget and an optimistic one: a
+// building georeferenced against the same control point as the site it sits in
+// does not get to cancel that control point's error against itself.
+//
+// Two frames which are the same frame have a budget of no terms, which
+// [Budget.Combined] reports as [ErrEmptyBudget] rather than as an exact zero. A
+// point is not transformed at all in that case, so there is nothing to be
+// uncertain about and nothing to state a figure for.
+//
+// A fit which states no accuracy taints the budget rather than being read as
+// exact, and every way a route can fail to exist is the error
+// [Frames.TransformPoint] reports for it.
+//
+// Nothing here converts between units. Where the route passes through frames of
+// different linear units, the fits' accuracies are in the units they were
+// written in, and [Budget.Combined] reports that disagreement as a
+// [MixedUnitsError] rather than reconciling it
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
+func (f *Frames) TransformBudget(from, to ID) (Budget, error) {
+	if f == nil {
+		return Budget{}, UndeclaredFrameError{Frame: from}
+	}
+
+	for _, id := range []ID{from, to} {
+		if _, ok := f.registry.Frame(id); !ok {
+			return Budget{}, UndeclaredFrameError{Frame: id}
+		}
+	}
+
+	climb, descend, err := f.route(from, to)
+	if err != nil {
+		return Budget{}, err
+	}
+
+	var budget Budget
+	for _, id := range slices.Concat(climb, descend) {
+		claim, measured := f.Measurement(id)
+		if !measured {
+			declared, _ := f.registry.Frame(id)
+			return Budget{}, UnmeasuredFrameError{Frame: id, Parent: declared.Parent}
+		}
+		budget.Add(claim)
+	}
+
+	return budget, nil
+}
+
+// route is the frames whose transforms a cross-frame answer applies: those
+// climbed from one frame up to the lowest frame both chains pass through, and
+// those descended from there down to the other.
+//
+// Meeting at the lowest common frame rather than at the root is what keeps the
+// route honest about what it read. Walking to the root and back would give the
+// same answer wherever both chains reach one, and a different one wherever a
+// frame above the meeting point is unmeasured — reporting that a fit nobody
+// needed is missing.
+//
+// Two frames which are the same frame route through nothing, which is the
+// identity: no transform is applied and no fit is read.
+func (f *Frames) route(from, to ID) (climb, descend []ID, err error) {
 	if from == to {
-		return point, nil
+		return nil, nil, nil
 	}
 
 	up, err := f.ancestry(from)
 	if err != nil {
-		return Point{}, err
+		return nil, nil, err
 	}
 
 	down, err := f.ancestry(to)
 	if err != nil {
-		return Point{}, err
+		return nil, nil, err
 	}
 
-	// The lowest frame both chains pass through. Walking to the root and back
-	// would give the same answer wherever both chains reach one, and a different
-	// one wherever a frame between them is unmeasured — reporting that a fit
-	// nobody needed is missing.
 	meet, arrival := -1, -1
 	for i, id := range up {
 		if j := slices.Index(down, id); j >= 0 {
@@ -317,22 +406,13 @@ func (f *Frames) TransformPoint(point Point, from, to ID) (Point, error) {
 		}
 	}
 	if meet < 0 {
-		return Point{}, UnrelatedFramesError{From: from, To: to}
+		return nil, nil, UnrelatedFramesError{From: from, To: to}
 	}
 
-	for _, id := range up[:meet] {
-		if point, err = f.toParent(point, id); err != nil {
-			return Point{}, err
-		}
-	}
+	descend = slices.Clone(down[:arrival])
+	slices.Reverse(descend)
 
-	for i := arrival - 1; i >= 0; i-- {
-		if point, err = f.fromParent(point, down[i]); err != nil {
-			return Point{}, err
-		}
-	}
-
-	return point, nil
+	return up[:meet], descend, nil
 }
 
 // ancestry is the ids of [Frames.Chain], which is what composing a route along
