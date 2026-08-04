@@ -1,0 +1,10 @@
+testdata/registry/cycle/registry.dfc:8:8: error: expected a parent chain which reaches a root frame, found the cycle frame:a -> frame:b -> frame:c -> frame:a
+8 | (frame frame:a (unit m) (parent frame:b) (transform frame:T-1))
+  |        ^^^^^^^
+  = hint: exactly one frame is the root, and every other frame reaches it through its parents
+testdata/registry/cycle/registry.dfc:10:8: note: and through here
+10 | (frame frame:b (unit m) (parent frame:c) (transform frame:T-2))
+   |        ^^^^^^^
+testdata/registry/cycle/registry.dfc:12:8: note: and through here
+12 | (frame frame:c (unit m) (parent frame:a) (transform frame:T-3))
+   |        ^^^^^^^

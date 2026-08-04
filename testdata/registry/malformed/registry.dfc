@@ -1,0 +1,46 @@
+; Every entry here is a legal S-expression written with the wrong sort of datum
+; in it, or with a value the registry it belongs to does not permit. None of it
+; is a structural problem, which is why none of it is caught by the pass over
+; the form tables.
+(project
+  (label "Riverside example")
+  (globalid-namespace "riverside"))
+
+(namespace site.local (description "A namespace holding a character it may not."))
+
+(namespace "site" (description "A namespace written as a string."))
+
+(type MeetingRoom
+  (kind Roome)
+  (geometry aera)
+  (description "An enclosed room used for meetings."))
+
+(predicate label (shape scalar) (description "A structural tag."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (description "A coordinate which never says how many components it has."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (dimension 3)
+  (claim-bearing yes)
+  (description "A scalar which declares a dimension anyway."))
+
+(predicate finish
+  (unit m)
+  (shape text)
+  (description "Text is non-dimensional by construction."))
+
+(predicate depth (shape scale) (description "A shape which is not one."))
+
+(predicate height
+  (shape coordinate)
+  (dimension 4)
+  (description "A dimension which is neither 2 nor 3."))
+
+(tolerance boundary-closure
+  (value 5 mm)
+  (description "A magnitude written as a count."))

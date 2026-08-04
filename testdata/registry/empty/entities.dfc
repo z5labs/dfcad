@@ -1,0 +1,11 @@
+; A source tree holding entity forms and no registry form at all. Loading it
+; yields an empty registry rather than a nil one, so every node in it is invalid
+; against a registry which declares nothing, one clear diagnostic at a time.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+(vertex geom:V-01 (frame frame:building))

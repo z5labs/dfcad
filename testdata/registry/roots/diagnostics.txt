@@ -1,0 +1,15 @@
+testdata/registry/roots/registry.dfc:10:8: error: expected one root frame for the model, found another
+10 | (frame frame:state-plane (label "State plane grid") (unit usft))
+   |        ^^^^^^^^^^^^^^^^^
+   = hint: the root frame is the projected coordinate reference system every other frame is expressed relative to
+testdata/registry/roots/registry.dfc:8:8: note: first root frame declared here
+8 | (frame frame:survey-grid (label "Site survey grid") (unit m))
+  |        ^^^^^^^^^^^^^^^^^
+testdata/registry/roots/registry.dfc:12:32: error: expected a (transform ...) child beside the parent, found none
+12 | (frame frame:building (unit m) (parent frame:survey-grid))
+   |                                ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: parent and transform are present together or absent together, because the relationship between two frames is a measurement
+testdata/registry/roots/registry.dfc:14:32: error: expected a (parent ...) child beside the transform, found none
+14 | (frame frame:interior (unit m) (transform frame:T-9))
+   |                                ^^^^^^^^^^^^^^^^^^^^^
+   = hint: parent and transform are present together or absent together, because a transform maps this frame into its parent

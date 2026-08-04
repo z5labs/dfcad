@@ -1,0 +1,14 @@
+; Two frames declaring no parent, and one declaring half of the pair a
+; non-root frame is written with. A model has one projected coordinate
+; reference system, and a second is a second answer to where the model is.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+
+(frame frame:survey-grid (label "Site survey grid") (unit m))
+
+(frame frame:state-plane (label "State plane grid") (unit usft))
+
+(frame frame:building (unit m) (parent frame:survey-grid))
+
+(frame frame:interior (unit m) (transform frame:T-9))

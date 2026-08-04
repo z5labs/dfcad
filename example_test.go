@@ -100,6 +100,58 @@ func ExampleDiagnostic_Render() {
 	//   = hint: units are registry data; a frame declares the one its coordinates are in
 }
 
+func ExampleLoadRegistry() {
+	// One registry for the whole source tree: the frame declared in the first
+	// file names a parent declared in the second, and both are one registry.
+	registry, diagnostics := dfcad.LoadRegistry("testdata/registry/valid")
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	project, _ := registry.Project()
+	fmt.Println(project.GlobalIDNamespace)
+
+	room, _ := registry.Type("MeetingRoom")
+	fmt.Println(room.PermitsKind(dfcad.KindSpace), room.PermitsGeometry(dfcad.GeometrySolid))
+
+	building, _ := registry.Frame("frame:building")
+	fmt.Println(building.Unit, building.Parent)
+
+	// Output:
+	// https://example.org/models/riverside
+	// true false
+	// m frame:survey-grid
+}
+
+func ExampleRegistry_Undeclared() {
+	const path = "entities/level-1.dfc"
+
+	source := "(node site:S-101 (kind Space) (type MeetingRoom))\n"
+
+	file, err := dfcad.Parse(path, strings.NewReader(source))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// A repository which has not written its registry yet loads, and every node
+	// in it is invalid against a registry which declares nothing.
+	registry, _ := dfcad.LoadRegistry("testdata/registry/empty")
+
+	written := file.Nodes[0].Children[3].Children[1]
+	undeclared := registry.Undeclared(dfcad.SortType, "MeetingRoom", written.Span)
+
+	if err := undeclared.Render(os.Stdout, dfcad.Sources{path: []byte(source)}); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// entities/level-1.dfc:1:37: error: expected a declared type, found MeetingRoom, which no registry file declares
+	// 1 | (node site:S-101 (kind Space) (type MeetingRoom))
+	//   |                                     ^^^^^^^^^^^
+	//   = hint: no type is declared; a registry file declares one with (type ...)
+}
+
 func ExampleValidate() {
 	const path = "registry/registry.dfc"
 

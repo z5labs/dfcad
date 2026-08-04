@@ -1,0 +1,21 @@
+; Every name here is declared a second time. A registry is a property of the
+; whole source tree, so a second declaration in a second file is as much a
+; collision as one further down the same file, and each is reported against
+; both places rather than against the later one alone.
+(project
+  (label "Riverside, again")
+  (globalid-namespace "https://example.org/models/riverside-again"))
+
+(namespace site (description "Semantic nodes, declared twice."))
+
+(type MeetingRoom
+  (kind Space)
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room, declared twice."))
+
+(predicate width (unit m) (shape scalar) (description "A clear width, again."))
+
+(tolerance boundary-closure (value 0.01 m))
+
+(frame frame:building (unit ft))

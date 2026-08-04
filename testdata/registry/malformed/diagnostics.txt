@@ -1,0 +1,55 @@
+testdata/registry/malformed/registry.dfc:7:23: error: expected an absolute URL, found "riverside"
+7 |   (globalid-namespace "riverside"))
+  |                       ^^^^^^^^^^^
+  = hint: every GlobalId derives from this URL, so it names something the project controls and does not change
+testdata/registry/malformed/registry.dfc:9:12: error: expected a namespace, found site.local
+9 | (namespace site.local (description "A namespace holding a character it may not."))
+  |            ^^^^^^^^^^
+  = hint: a namespace is ASCII, begins with a letter, and continues with letters, digits, hyphens and underscores
+testdata/registry/malformed/registry.dfc:11:12: error: expected a namespace, found the string "site"
+11 | (namespace "site" (description "A namespace written as a string."))
+   |            ^^^^^^
+testdata/registry/malformed/registry.dfc:14:9: error: expected a kind, found Roome
+14 |   (kind Roome)
+   |         ^^^^^
+   = hint: a kind is one of Zone, Site, Building, Storey, Space, Element and Interface
+testdata/registry/malformed/registry.dfc:15:13: error: expected a geometry form or absent, found aera
+15 |   (geometry aera)
+   |             ^^^^
+   = hint: a geometry form is one of point, line, area, surface and solid, and absent permits an instance to omit the child
+testdata/registry/malformed/registry.dfc:18:12: error: expected a predicate name, found label, which is a structural child tag
+18 | (predicate label (shape scalar) (description "A structural tag."))
+   |            ^^^^^
+   = hint: a claim is written under its predicate's name, so a predicate may not be named for a child of a form which carries claims
+testdata/registry/malformed/registry.dfc:20:1: error: expected a (dimension ...) child of the predicate form, found none
+20 | (predicate position
+   | ^^^^^^^^^^^^^^^^^^^
+21 |   (unit m)
+   | ^^^^^^^^^^
+22 |   (shape coordinate)
+   | ^^^^^^^^^^^^^^^^^^^^
+23 |   (description "A coordinate which never says how many components it has."))
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a coordinate predicate declares how many components its values have
+testdata/registry/malformed/registry.dfc:28:3: error: expected no (dimension ...) child of a scalar predicate, found one
+28 |   (dimension 3)
+   |   ^^^^^^^^^^^^^
+   = hint: only a coordinate predicate declares a dimension
+testdata/registry/malformed/registry.dfc:29:18: error: expected #t or #f, found the symbol yes
+29 |   (claim-bearing yes)
+   |                  ^^^
+testdata/registry/malformed/registry.dfc:33:3: error: expected no (unit ...) child of a text predicate, found one
+33 |   (unit m)
+   |   ^^^^^^^^
+   = hint: a text predicate is non-dimensional by construction
+testdata/registry/malformed/registry.dfc:37:25: error: expected a value shape, found scale
+37 | (predicate depth (shape scale) (description "A shape which is not one."))
+   |                         ^^^^^
+   = hint: a value shape is one of scalar, coordinate, transform and text
+testdata/registry/malformed/registry.dfc:41:14: error: expected a dimension of 2 or 3, found 4
+41 |   (dimension 4)
+   |              ^
+testdata/registry/malformed/registry.dfc:45:10: error: expected a real number, found the number 5
+45 |   (value 5 mm)
+   |          ^
+   = hint: a real number is written with a fraction or an exponent, so that it reads back as a real
