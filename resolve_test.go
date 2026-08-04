@@ -188,6 +188,7 @@ func TestClaimsResolve(t *testing.T) {
 		resolved   ID
 		ambiguous  bool
 		candidates []ID
+		reason     Reason
 	}{
 		{
 			name: "picks the claim whose accuracy is smallest",
@@ -197,6 +198,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-02",
 			candidates: []ID{"survey:C-02"},
+			reason:     ReasonAccuracy,
 		},
 		{
 			name: "prefers the more accurate claim over the more recent one",
@@ -206,6 +208,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-01",
 			candidates: []ID{"survey:C-01"},
+			reason:     ReasonAccuracy,
 		},
 		{
 			name: "breaks an accuracy tie by the most recent date",
@@ -215,6 +218,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-02",
 			candidates: []ID{"survey:C-02"},
+			reason:     ReasonRecency,
 		},
 		{
 			name: "reports both claims where neither accuracy nor date separates them",
@@ -224,6 +228,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			ambiguous:  true,
 			candidates: []ID{"survey:C-01", "survey:C-02"},
+			reason:     ReasonAmbiguous,
 		},
 		{
 			name: "passes over a deprecated claim however good it is",
@@ -239,6 +244,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-02",
 			candidates: []ID{"survey:C-02"},
+			reason:     ReasonOnly,
 		},
 		{
 			name: "resolves nothing where every claim has been deprecated",
@@ -251,6 +257,7 @@ func TestClaimsResolve(t *testing.T) {
 					rank:  RankDeprecated,
 				},
 			),
+			reason: ReasonUnclaimed,
 		},
 		{
 			name: "returns the unrankable claims as candidates where nothing rankable exists",
@@ -260,6 +267,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			ambiguous:  true,
 			candidates: []ID{"survey:C-01", "survey:C-02"},
+			reason:     ReasonAmbiguous,
 		},
 		{
 			name: "returns one unrankable claim as a candidate without letting it win",
@@ -267,6 +275,7 @@ func TestClaimsResolve(t *testing.T) {
 				claimSpec{id: "survey:C-01", value: 8.5, date: "2026-01-09"},
 			),
 			candidates: []ID{"survey:C-01"},
+			reason:     ReasonUnranked,
 		},
 		{
 			name: "keeps an unrankable claim from winning against a rankable one",
@@ -276,6 +285,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-01",
 			candidates: []ID{"survey:C-01"},
+			reason:     ReasonAccuracy,
 		},
 		{
 			name: "ranks a claim by its independent and systematic terms together",
@@ -293,6 +303,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-01",
 			candidates: []ID{"survey:C-01"},
+			reason:     ReasonAccuracy,
 		},
 		{
 			name: "leaves a claim whose accuracy mixes units unrankable rather than converting it",
@@ -307,6 +318,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-02",
 			candidates: []ID{"survey:C-02"},
+			reason:     ReasonAccuracy,
 		},
 		{
 			name: "reports accuracies in different units as tied rather than converting between them",
@@ -321,10 +333,12 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			ambiguous:  true,
 			candidates: []ID{"survey:C-01", "survey:C-02"},
+			reason:     ReasonAmbiguous,
 		},
 		{
 			name:   "resolves nothing about a subject nothing claims",
 			claims: nil,
+			reason: ReasonUnclaimed,
 		},
 		{
 			name: "considers only the claims written under the predicate asked for",
@@ -340,6 +354,7 @@ func TestClaimsResolve(t *testing.T) {
 			),
 			resolved:   "survey:C-02",
 			candidates: []ID{"survey:C-02"},
+			reason:     ReasonOnly,
 		},
 	}
 
@@ -354,6 +369,12 @@ func TestClaimsResolve(t *testing.T) {
 			assert.Equal(t, testCase.resolved != "", got.Resolved())
 			assert.Equal(t, testCase.ambiguous, got.Ambiguous())
 			assert.Equal(t, testCase.candidates, idsOf(got.Candidates()))
+
+			// The reason is which step of the rule produced the outcome, and
+			// it is asserted beside the outcome so that the two cannot drift:
+			// a resolution which says it won on accuracy and did not is worse
+			// than one which says nothing.
+			assert.Equal(t, testCase.reason, got.Reason())
 
 			claim, resolved := got.Claim()
 			require.Equal(t, testCase.resolved != "", resolved)

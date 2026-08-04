@@ -80,10 +80,19 @@ classified as one or the other, and that judgement is a review burden on purpose
 | 1 | Check failure. It ran and answered, and the answer is no. | The result object. |
 | 2 | Load failure. Input could not be read, did not parse, or was not written. | The result object, or empty when nothing could be loaded at all. |
 | 3 | Usage error. The invocation itself was wrong. | Empty. |
+| 4 | Ambiguous. Resolution could not choose between the claims, and every one it could not choose between is in the result. | The result object. |
+| 5 | Strict ambiguity. The same, under a predicate the registry declares strict. | The result object. |
 
 A caller can branch on the code alone, without reading a message. A check failure and a
 broken invocation are different situations for a CI job — one says the model is wrong, the
 other says the job is — and telling them apart must never mean matching prose.
+
+Codes `4` and `5` are what `resolve` answers with, and they are codes of their own for the
+same reason. An ambiguity is a state of the model rather than a rule the model broke: two
+equally good measurements of one thing genuinely do not decide between themselves, and a
+caller that is going to ask a person needs to tell that from a model that says nothing at
+all. `5` separates the case where the author declared that for this quantity no answer is
+safer than an arbitrary one, which is not a file to fix but a thing to go and measure.
 
 ## Global flags
 
@@ -373,6 +382,113 @@ was meant. It is not an empty answer: a thing that is not there and a thing with
 said about it are different answers. An argument that is not a well-formed id is the same
 exit code, reporting the rule it broke rather than a lookup that was never going to find
 anything.
+
+### `resolve`
+
+One predicate about one thing, answered: the value, the unit it is in, how well it is
+known, the claim it came from and which step of the rule picked that claim.
+
+```json
+{
+  "version": 1,
+  "command": "resolve",
+  "subject": "site:S-101",
+  "predicate": "area",
+  "outcome": "resolved",
+  "reason": "accuracy",
+  "strict": false,
+  "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+  "claim": {
+    "id": "survey:A-0002",
+    "predicate": "area",
+    "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+    "source": "As-built check AB-2026-009, Acme Surveys",
+    "method": "method:total-station",
+    "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+    "date": "2026-05-06",
+    "rank": "normal",
+    "resolution": "current",
+    "span": {"start": {"path": "entities/site.dfc", "line": 18, "column": 3, "offset": 402},
+             "end": {"path": "entities/site.dfc", "line": 24, "column": 26, "offset": 619}}
+  }
+}
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--candidates` | Report every live claim under the predicate beside the answer, each marked with what resolution made of it. |
+| `--frame <id>` | Express a coordinate answer in this frame rather than in the one the thing is written in. |
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the question was asked about. |
+| `predicate` | string | The predicate it was asked under. |
+| `outcome` | string | `resolved`, `unranked`, `ambiguous` or `unclaimed`. It says which of the fields below to expect. |
+| `reason` | string | Which step of the rule produced that outcome: `only`, `accuracy`, `recency`, `unranked`, `ambiguous` or `unclaimed`. |
+| `strict` | boolean | Whether the registry declares the predicate strict. Written whatever the outcome. |
+| `value` | object, optional | The answer, in the same shape `claims[].value` takes elsewhere. Absent where nothing resolved. |
+| `frame` | string, optional | The coordinate frame the value is expressed in. Absent for a value that is not a position, which is in no frame. |
+| `claim` | object, optional | The claim the answer came from, in the shape documented under `get`. Absent where nothing resolved. |
+| `candidates` | array, optional | Claims that could still be the answer, each in that same shape and marked with its `resolution`. |
+| `budget` | object, optional | The accumulated error of a cross-frame answer, broken out by term. Written only where a frame transform was applied. |
+
+The four outcomes and the four exit codes line up, because what a caller does about each is
+different:
+
+| Outcome | Exit | Carries |
+|---------|------|---------|
+| `resolved` | `0` | `value` and `claim`. `reason` is `only`, `accuracy` or `recency`. |
+| `unranked` | `0` | `value` and `claim`. The one live claim under a predicate nothing rankable was said about: still what the model says, and not an answer the rule chose. |
+| `ambiguous` | `4`, or `5` where `strict` | `candidates`, every one of them. No `value` and no `claim`. |
+| `unclaimed` | `1` | Neither. Nothing live is written under the predicate. |
+
+An ambiguity is never broken by picking one. Every tied claim comes back whether or not
+`--candidates` was given, because narrowing four claims to two is most of the work of
+deciding between them and a caller shown one of the two cannot tell the other is there.
+
+`--candidates` widens `candidates` from the tied claims to **every live claim** under the
+predicate, each marked `current`, `tied`, `unranked` or `outranked`. Deprecated claims are
+not among them at any time: a deprecated claim is retracted rather than out-ranked and was
+never a candidate, so listing it would say the rule weighed something it never saw. `dfcad
+claims` is the view that reports a retraction.
+
+An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
+naming it and the nearest id there is. That is a different answer from `unclaimed`, which
+is the model answering that nobody has measured the thing; a caller that cannot tell them
+apart retries a misspelling forever. A predicate no registry file declares, and a `--frame`
+no registry file declares, are usage errors for the same reason.
+
+#### `budget`
+
+Written when `--frame` moved the answer between two frames, because the accuracy of such an
+answer is not the accuracy of the claim it came from: the fits along the route are part of
+what is known about it.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `budget.from` | string | The frame the value was written in. |
+| `budget.to` | string | The frame it was expressed in. |
+| `budget.terms[].kind` | string | `independent` or `systematic`, which is how it combines: independent terms in quadrature, systematic terms linearly. |
+| `budget.terms[].name` | string | The id a systematic error is shared with, or the name of the claim an independent one came from. |
+| `budget.terms[].magnitude` | number | The one-sigma figure, as it was written. |
+| `budget.terms[].unit` | string | The unit that figure is expressed in. |
+| `budget.terms[].source` | string, optional | The id a systematic error is shared with. Absent for an independent term. |
+| `budget.terms[].contributors` | array | The claims that carried the term, each once. More than one is a shared term counted once. |
+| `budget.combined` | object, optional | The terms reduced to one standard uncertainty: `magnitude`, `unit` and `coverage-factor`, which is `1` for everything the engine produces. |
+| `budget.unknown` | array, optional | The claims the answer was computed from that stated no accuracy. One of them taints the whole budget, and `combined` is then absent: an unstated accuracy is unknown rather than zero. |
+| `budget.units` | array, optional | The units the terms were written in where they disagree. Nothing converts between them, so `combined` is absent rather than reconciled. |
+
+The terms are a list rather than a figure on purpose. "±0.0098 m" is an answer nobody can
+act on; "the control point is most of it, and these two claims put it there" says what to
+re-measure.
+
+A `--frame` the model cannot relate the subject's frame to is a **load failure** — exit
+`2`, with nothing on stdout. A frame whose fit is missing, two frames whose chains never
+meet, a chain that cycles and a transform that cannot be run backwards are all the model
+failing to say how the two relate, and a position computed anyway would be the invented
+georeference the whole arrangement exists to prevent. `--frame` naming the frame the thing
+is already written in transforms nothing and reports no budget, which is what asking
+without the flag answers.
 
 ### `claims`
 

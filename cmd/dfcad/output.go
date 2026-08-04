@@ -35,6 +35,29 @@ const (
 	// exitUsage reports that the invocation itself was wrong — no subcommand,
 	// an unknown one, or a malformed flag. Nothing was loaded and nothing ran.
 	exitUsage = 3
+
+	// exitAmbiguous reports that resolution could not choose between the claims
+	// it was given, and that every claim it could not choose between is in the
+	// result.
+	//
+	// It is a code of its own rather than a check failure because an ambiguity
+	// is a state of the model rather than a rule the model broke: two equally
+	// good measurements of one thing genuinely do not decide between
+	// themselves. A caller which is going to ask a person is the caller this
+	// code exists for, and it must be able to tell that case from a model which
+	// says nothing at all without matching a message.
+	exitAmbiguous = 4
+
+	// exitStrict reports the same ambiguity under a predicate the registry
+	// declares strict, which is a failure rather than a finding.
+	//
+	// Strictness is the author's assertion that for this quantity no answer is
+	// safer than an arbitrary one, and a run which reported it with the code
+	// above would leave a caller free to carry on as though the disagreement
+	// were routine. It is separate rather than folded into the check failure
+	// for the same reason: what to do about it is to go and measure, not to fix
+	// the file.
+	exitStrict = 5
 )
 
 // outputVersion is the version of the object every command writes to stdout.

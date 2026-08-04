@@ -39,6 +39,63 @@ type Resolution struct {
 	// a property of where they were written rather than of the order they were
 	// read.
 	candidates []*Claim
+
+	// reason is which step of the rule produced this outcome. It is empty on
+	// the zero Resolution, which [Resolution.Reason] reports as
+	// [ReasonUnclaimed].
+	reason Reason
+}
+
+// Reason is which step of the resolution rule produced an outcome.
+//
+// It exists because an answer which cannot say why it is the answer is a number
+// again. "24.2 m²" and "24.2 m², because it is the most accurate of three
+// claims" are different things to act on: the first invites a re-measurement
+// nobody needed, and the second says which claim to go and read.
+//
+// The set is closed and mirrors [Claims.Resolve]'s rule step for step, so a
+// caller branching on it is branching on the rule rather than on a message.
+type Reason string
+
+// The reasons, one per step of the rule.
+const (
+	// ReasonUnclaimed is a subject with no live claim under the predicate at
+	// all. It is what the zero [Resolution] reports, and it is not the same as
+	// an unranked one: nothing was said, rather than nothing rankable.
+	ReasonUnclaimed Reason = "unclaimed"
+
+	// ReasonOnly is the one live claim under the predicate, which wins by there
+	// being nothing to compare it against.
+	ReasonOnly Reason = "only"
+
+	// ReasonAccuracy is a claim whose accuracy is smaller than that of every
+	// claim it could be compared against, which is the criterion.
+	ReasonAccuracy Reason = "accuracy"
+
+	// ReasonRecency is a claim which tied on accuracy and carried the later
+	// date. Recency is the tiebreaker and never the criterion, which is why it
+	// is a reason of its own rather than folded into the one above.
+	ReasonRecency Reason = "recency"
+
+	// ReasonUnranked is the one live claim under a predicate nothing rankable
+	// was said about. It is still what the model says and is still the answer;
+	// what it is not is an answer the rule chose.
+	ReasonUnranked Reason = "unranked"
+
+	// ReasonAmbiguous is more than one claim the rule cannot separate, whether
+	// because they are equally accurate and equally recent, because their
+	// accuracies are in units nothing converts between, or because nothing
+	// rankable was said about any of them.
+	ReasonAmbiguous Reason = "ambiguous"
+)
+
+// decided reports whether the reason is one which picked a claim.
+func (r Reason) decided() bool {
+	switch r {
+	case ReasonOnly, ReasonAccuracy, ReasonRecency:
+		return true
+	}
+	return false
 }
 
 // Subject returns the id of the thing the resolution is about.
@@ -77,6 +134,20 @@ func (r Resolution) Value() (Value, bool) {
 
 // Resolved reports whether one claim won outright.
 func (r Resolution) Resolved() bool { return r.claim != nil }
+
+// Reason returns which step of the rule produced this outcome.
+//
+// The zero [Resolution] reports [ReasonUnclaimed], which is what a subject
+// nothing has been claimed about resolves to. Every other reason is written by
+// the step which produced it, so the reason and the outcome cannot drift apart:
+// [Resolution.Resolved] is true exactly for the three reasons which picked a
+// claim, and [Resolution.Ambiguous] is true exactly for [ReasonAmbiguous].
+func (r Resolution) Reason() Reason {
+	if r.reason == "" {
+		return ReasonUnclaimed
+	}
+	return r.reason
+}
 
 // Ambiguous reports whether more than one claim is equally current.
 //
@@ -211,11 +282,12 @@ func resolutionOf(subject ID, predicate string, live []*Claim) Resolution {
 		return resolution
 	}
 
-	candidates, ranked := narrow(live)
+	candidates, reason := narrow(live)
 	slices.SortStableFunc(candidates, compareClaims)
 
 	resolution.candidates = candidates
-	if ranked && len(candidates) == 1 {
+	resolution.reason = reason
+	if reason.decided() && len(candidates) == 1 {
 		resolution.claim = candidates[0]
 	}
 
@@ -236,13 +308,20 @@ type ranking struct {
 }
 
 // narrow reduces the live claims to those which could still be the answer, and
-// reports whether it ranked them.
+// reports which step of the rule got it there.
 //
-// A false second result is the case where nothing could be ranked: every live
-// claim comes back, and none of them wins. That is deliberate — an unrankable
-// claim is still what the model says, and hiding it would leave a caller unable
-// to tell a subject with an unmeasured claim from one with no claim at all.
-func narrow(live []*Claim) (candidates []*Claim, ranked bool) {
+// The reason is produced here rather than reconstructed by a caller comparing
+// the candidates afterwards, because reconstructing it means re-implementing the
+// rule: which of two equally accurate claims is more recent is the same question
+// this function already answered, and a second answer to it is free to disagree
+// with the first.
+//
+// A reason of [ReasonUnranked] or [ReasonAmbiguous] is the case where no claim
+// won: every claim which could still be it comes back, and none of them is the
+// answer. That is deliberate — an unrankable claim is still what the model says,
+// and hiding it would leave a caller unable to tell a subject with an unmeasured
+// claim from one with no claim at all.
+func narrow(live []*Claim) (candidates []*Claim, reason Reason) {
 	var rankable []ranking
 	for _, claim := range live {
 		// One claim is one budget. Ranking by the same arithmetic which
@@ -265,7 +344,13 @@ func narrow(live []*Claim) (candidates []*Claim, ranked bool) {
 	}
 
 	if len(rankable) == 0 {
-		return slices.Clone(live), false
+		// One unrankable claim standing alone is not ambiguity. There is
+		// nothing to be ambiguous between, and the answer is simply the one
+		// thing anybody said.
+		if len(live) == 1 {
+			return slices.Clone(live), ReasonUnranked
+		}
+		return slices.Clone(live), ReasonAmbiguous
 	}
 
 	unbeaten := smallest(rankable)
@@ -275,10 +360,25 @@ func narrow(live []*Claim) (candidates []*Claim, ranked bool) {
 	// tiebreak applied where the criterion could not be is that ordering
 	// inverted by an implementation detail.
 	if mixedUnits(unbeaten) {
-		return claimsOf(unbeaten), true
+		return claimsOf(unbeaten), ReasonAmbiguous
 	}
 
-	return claimsOf(mostRecent(unbeaten)), true
+	recent := mostRecent(unbeaten)
+	if len(recent) > 1 {
+		return claimsOf(recent), ReasonAmbiguous
+	}
+
+	switch {
+	case len(live) == 1:
+		// Nothing to compare it against, so no step of the rule chose it.
+		return claimsOf(recent), ReasonOnly
+	case len(unbeaten) > 1:
+		// Accuracy left more than one standing, so the date is what separated
+		// them.
+		return claimsOf(recent), ReasonRecency
+	default:
+		return claimsOf(recent), ReasonAccuracy
+	}
 }
 
 // smallest returns the rankings nothing comparable beats.

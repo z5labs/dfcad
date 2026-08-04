@@ -669,6 +669,12 @@ func ExampleClaims_Resolve() {
 	width, _ := claim.Value().Scalar()
 	fmt.Printf("%g %s, %s\n", width, claim.Value().Unit(), claim.Source())
 
+	// And which step of the rule picked it. An answer which cannot say why it
+	// is the answer is a bare number again: "the most accurate of two claims"
+	// says which claim to go and read, where the value alone invites a
+	// re-measurement nobody needed.
+	fmt.Println(resolution.Reason())
+
 	// The answer names the claim it came from. This one wrote no id of its own
 	// — a claim needs a name only where something references it — so what
 	// traces it back is where it was written.
@@ -680,6 +686,7 @@ func ExampleClaims_Resolve() {
 
 	// Output:
 	// 8.53 m, As-built check AB-2026-009, Acme Surveys
+	// accuracy
 	// testdata/claim/valid/claims.dfc:18:3
 }
 
@@ -692,7 +699,7 @@ func ExampleClaims_Resolve_ambiguous() {
 	// Equally good, equally recent, and they disagree. That is a state of the
 	// measurements rather than a mistake in the file, so both come back.
 	resolution, err := claims.Resolve("site:S-101", "width", registry)
-	fmt.Println(err, resolution.Ambiguous())
+	fmt.Println(err, resolution.Ambiguous(), resolution.Reason())
 	for _, candidate := range resolution.Candidates() {
 		id, _ := candidate.ID()
 		value, _ := candidate.Value().Scalar()
@@ -714,7 +721,7 @@ func ExampleClaims_Resolve_ambiguous() {
 	}
 
 	// Output:
-	// <nil> true
+	// <nil> true ambiguous
 	// survey:C-0312 claims 8.5 m
 	// survey:C-0313 claims 8.53 m
 	// expected one current bearing of site:S-101, found 2 equally current: bearing is declared strict
