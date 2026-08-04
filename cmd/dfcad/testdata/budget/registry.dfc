@@ -1,0 +1,124 @@
+; The registry of Riverside House: the vocabulary this model is authored
+; against. It is one file because a consuming repository's vocabulary is small
+; and is read whole, which is what `dfcad list-types` reports.
+(project
+  (label "Riverside House")
+  (globalid-namespace "https://example.org/models/riverside-house"))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace
+  survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+(type
+  Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms."))
+(type
+  Doorway
+  (kind Element)
+  (geometry line)
+  (description "An opening formed through a partition."))
+(type
+  MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+(type
+  OccupancyZone
+  (kind Zone)
+  (geometry absent)
+  (geometry area)
+  (description "A region occupancy is counted over."))
+(type
+  Office
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used as workspace.")
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+(type
+  OfficeBuilding
+  (kind Building)
+  (geometry solid)
+  (description "A building let as offices."))
+(type
+  OfficeStorey
+  (kind Storey)
+  (geometry absent)
+  (geometry solid)
+  (description "One occupied level of a building."))
+(type
+  Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces."))
+(type
+  ServiceRiser
+  (kind Space)
+  (geometry area)
+  (description "A shaft carrying services between storeys."))
+(type
+  Threshold
+  (kind Interface)
+  (geometry line)
+  (description "Where two spaces meet at a doorway."))
+(predicate
+  area
+  (unit m2)
+  (shape scalar)
+  (description "How much floor a space has."))
+(predicate
+  colour
+  (shape text)
+  (claim-bearing #f)
+  (description "A finish named rather than measured."))
+(predicate
+  fire-rating
+  (unit min)
+  (shape scalar)
+  (description "How long an element resists fire for."))
+(predicate
+  frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+(predicate
+  occupancy
+  (shape scalar)
+  (strict #t)
+  (description "How many people a space is counted as holding."))
+(predicate
+  position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+(predicate
+  storey-height
+  (unit m)
+  (shape scalar)
+  (description "Floor to floor height of a storey."))
+(tolerance
+  boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+(frame
+  frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (frame-transform
+    (id survey:C-0031)
+    (value
+      (transform
+        (translation 401235.117 3.172884902e+06 44.318)
+        (rotation 0.9999985 -0.0017453 0.0 0.0017453 0.9999985 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-11")))
+(frame frame:survey-grid (label "Site survey grid") (unit m))

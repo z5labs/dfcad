@@ -1,0 +1,496 @@
+; The outline of level 2: the surveyed corners, the edges between
+; them and the rings each space is bounded by. Adjacent spaces share an edge
+; rather than a coordinate, so a corner that moves moves once.
+(vertex
+  geom:V-2-A1
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-A2
+  (frame frame:building)
+  (position
+    (value (0.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-A3
+  (frame frame:building)
+  (position
+    (value (0.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-A4
+  (frame frame:building)
+  (position
+    (value (0.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-B1
+  (frame frame:building)
+  (position
+    (value (5.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-B2
+  (frame frame:building)
+  (position
+    (id survey:P-211a)
+    (value (5.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:P-211b))
+  (position
+    (id survey:P-211b)
+    (value (5.0 6.412 4.05) m)
+    (source "As-built check AB-2026-029, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06")))
+(vertex
+  geom:V-2-B3
+  (frame frame:building)
+  (position
+    (value (5.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-B4
+  (frame frame:building)
+  (position
+    (value (5.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-C1
+  (frame frame:building)
+  (position
+    (value (10.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-C2
+  (frame frame:building)
+  (position
+    (value (10.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-C3
+  (frame frame:building)
+  (position
+    (value (10.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-C4
+  (frame frame:building)
+  (position
+    (value (10.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-D1
+  (frame frame:building)
+  (position
+    (value (15.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-D2
+  (frame frame:building)
+  (position
+    (value (15.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-D3
+  (frame frame:building)
+  (position
+    (id survey:P-232a)
+    (value (15.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:P-232b))
+  (position
+    (id survey:P-232b)
+    (value (15.0 8.612 4.05) m)
+    (source "As-built check AB-2026-029, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06")))
+(vertex
+  geom:V-2-D4
+  (frame frame:building)
+  (position
+    (value (15.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-E1
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-E2
+  (frame frame:building)
+  (position
+    (value (20.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-E3
+  (frame frame:building)
+  (position
+    (value (20.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-E4
+  (frame frame:building)
+  (position
+    (value (20.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-F1
+  (frame frame:building)
+  (position
+    (id survey:P-250a)
+    (value (25.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:P-250b))
+  (position
+    (id survey:P-250b)
+    (value (25.0 0.012 4.05) m)
+    (source "As-built check AB-2026-029, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06")))
+(vertex
+  geom:V-2-F2
+  (frame frame:building)
+  (position
+    (value (25.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-F3
+  (frame frame:building)
+  (position
+    (value (25.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-F4
+  (frame frame:building)
+  (position
+    (value (25.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-G1
+  (frame frame:building)
+  (position
+    (value (30.0 0.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-G2
+  (frame frame:building)
+  (position
+    (value (30.0 6.4 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-G3
+  (frame frame:building)
+  (position
+    (value (30.0 8.6 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-2-G4
+  (frame frame:building)
+  (position
+    (id survey:P-263a)
+    (value (30.0 15.0 4.05) m)
+    (source "Interior control set IC-2, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:P-263b))
+  (position
+    (id survey:P-263b)
+    (value (30.0 15.012 4.05) m)
+    (source "As-built check AB-2026-029, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m survey:CP-3))
+    (date "2026-05-06")))
+(edge geom:E-2-A1-A2 (frame frame:building) (vertices geom:V-2-A1 geom:V-2-A2))
+(edge geom:E-2-A1-B1 (frame frame:building) (vertices geom:V-2-A1 geom:V-2-B1))
+(edge geom:E-2-A2-A3 (frame frame:building) (vertices geom:V-2-A2 geom:V-2-A3))
+(edge
+  geom:E-2-A2-B2
+  (frame frame:building)
+  (vertices geom:V-2-A2 geom:V-2-B2)
+  (backed-by site:W-211))
+(edge geom:E-2-A3-A4 (frame frame:building) (vertices geom:V-2-A3 geom:V-2-A4))
+(edge
+  geom:E-2-A3-B3
+  (frame frame:building)
+  (vertices geom:V-2-A3 geom:V-2-B3)
+  (backed-by site:W-212))
+(edge geom:E-2-A4-B4 (frame frame:building) (vertices geom:V-2-A4 geom:V-2-B4))
+(edge
+  geom:E-2-B1-B2
+  (frame frame:building)
+  (vertices geom:V-2-B1 geom:V-2-B2)
+  (backed-by site:W-201))
+(edge geom:E-2-B1-C1 (frame frame:building) (vertices geom:V-2-B1 geom:V-2-C1))
+(edge geom:E-2-B2-B3 (frame frame:building) (vertices geom:V-2-B2 geom:V-2-B3))
+(edge
+  geom:E-2-B2-C2
+  (frame frame:building)
+  (vertices geom:V-2-B2 geom:V-2-C2)
+  (backed-by site:D-201)
+  (backed-by site:W-211))
+(edge
+  geom:E-2-B3-B4
+  (frame frame:building)
+  (vertices geom:V-2-B3 geom:V-2-B4)
+  (backed-by site:W-206))
+(edge
+  geom:E-2-B3-C3
+  (frame frame:building)
+  (vertices geom:V-2-B3 geom:V-2-C3)
+  (backed-by site:W-212))
+(edge geom:E-2-B4-C4 (frame frame:building) (vertices geom:V-2-B4 geom:V-2-C4))
+(edge
+  geom:E-2-C1-C2
+  (frame frame:building)
+  (vertices geom:V-2-C1 geom:V-2-C2)
+  (backed-by site:W-202))
+(edge geom:E-2-C1-D1 (frame frame:building) (vertices geom:V-2-C1 geom:V-2-D1))
+(edge geom:E-2-C2-C3 (frame frame:building) (vertices geom:V-2-C2 geom:V-2-C3))
+(edge
+  geom:E-2-C2-D2
+  (frame frame:building)
+  (vertices geom:V-2-C2 geom:V-2-D2)
+  (backed-by site:W-211))
+(edge
+  geom:E-2-C3-C4
+  (frame frame:building)
+  (vertices geom:V-2-C3 geom:V-2-C4)
+  (backed-by site:W-207))
+(edge
+  geom:E-2-C3-D3
+  (frame frame:building)
+  (vertices geom:V-2-C3 geom:V-2-D3)
+  (backed-by site:W-212))
+(edge geom:E-2-C4-D4 (frame frame:building) (vertices geom:V-2-C4 geom:V-2-D4))
+(edge
+  geom:E-2-D1-D2
+  (frame frame:building)
+  (vertices geom:V-2-D1 geom:V-2-D2)
+  (backed-by site:W-203))
+(edge geom:E-2-D1-E1 (frame frame:building) (vertices geom:V-2-D1 geom:V-2-E1))
+(edge geom:E-2-D2-D3 (frame frame:building) (vertices geom:V-2-D2 geom:V-2-D3))
+(edge
+  geom:E-2-D2-E2
+  (frame frame:building)
+  (vertices geom:V-2-D2 geom:V-2-E2)
+  (backed-by site:W-211))
+(edge
+  geom:E-2-D3-D4
+  (frame frame:building)
+  (vertices geom:V-2-D3 geom:V-2-D4)
+  (backed-by site:W-208))
+(edge
+  geom:E-2-D3-E3
+  (frame frame:building)
+  (vertices geom:V-2-D3 geom:V-2-E3)
+  (backed-by site:W-212))
+(edge geom:E-2-D4-E4 (frame frame:building) (vertices geom:V-2-D4 geom:V-2-E4))
+(edge
+  geom:E-2-E1-E2
+  (frame frame:building)
+  (vertices geom:V-2-E1 geom:V-2-E2)
+  (backed-by site:W-204))
+(edge geom:E-2-E1-F1 (frame frame:building) (vertices geom:V-2-E1 geom:V-2-F1))
+(edge geom:E-2-E2-E3 (frame frame:building) (vertices geom:V-2-E2 geom:V-2-E3))
+(edge
+  geom:E-2-E2-F2
+  (frame frame:building)
+  (vertices geom:V-2-E2 geom:V-2-F2)
+  (backed-by site:W-211))
+(edge
+  geom:E-2-E3-E4
+  (frame frame:building)
+  (vertices geom:V-2-E3 geom:V-2-E4)
+  (backed-by site:W-209))
+(edge
+  geom:E-2-E3-F3
+  (frame frame:building)
+  (vertices geom:V-2-E3 geom:V-2-F3)
+  (backed-by site:D-202)
+  (backed-by site:W-212))
+(edge geom:E-2-E4-F4 (frame frame:building) (vertices geom:V-2-E4 geom:V-2-F4))
+(edge
+  geom:E-2-F1-F2
+  (frame frame:building)
+  (vertices geom:V-2-F1 geom:V-2-F2)
+  (backed-by site:W-205))
+(edge geom:E-2-F1-G1 (frame frame:building) (vertices geom:V-2-F1 geom:V-2-G1))
+(edge geom:E-2-F2-F3 (frame frame:building) (vertices geom:V-2-F2 geom:V-2-F3))
+(edge
+  geom:E-2-F2-G2
+  (frame frame:building)
+  (vertices geom:V-2-F2 geom:V-2-G2)
+  (backed-by site:W-211))
+(edge
+  geom:E-2-F3-F4
+  (frame frame:building)
+  (vertices geom:V-2-F3 geom:V-2-F4)
+  (backed-by site:W-210))
+(edge
+  geom:E-2-F3-G3
+  (frame frame:building)
+  (vertices geom:V-2-F3 geom:V-2-G3)
+  (backed-by site:W-212))
+(edge geom:E-2-F4-G4 (frame frame:building) (vertices geom:V-2-F4 geom:V-2-G4))
+(edge geom:E-2-G1-G2 (frame frame:building) (vertices geom:V-2-G1 geom:V-2-G2))
+(edge geom:E-2-G2-G3 (frame frame:building) (vertices geom:V-2-G2 geom:V-2-G3))
+(edge geom:E-2-G3-G4 (frame frame:building) (vertices geom:V-2-G3 geom:V-2-G4))
+(loop
+  geom:L-201
+  (frame frame:building)
+  (edges geom:E-2-A1-B1 geom:E-2-B1-B2 geom:E-2-A2-B2 geom:E-2-A1-A2))
+(loop
+  geom:L-202
+  (frame frame:building)
+  (edges geom:E-2-B1-C1 geom:E-2-C1-C2 geom:E-2-B2-C2 geom:E-2-B1-B2))
+(loop
+  geom:L-203
+  (frame frame:building)
+  (edges geom:E-2-C1-D1 geom:E-2-D1-D2 geom:E-2-C2-D2 geom:E-2-C1-C2))
+(loop
+  geom:L-204
+  (frame frame:building)
+  (edges geom:E-2-D1-E1 geom:E-2-E1-E2 geom:E-2-D2-E2 geom:E-2-D1-D2))
+(loop
+  geom:L-205
+  (frame frame:building)
+  (edges geom:E-2-E1-F1 geom:E-2-F1-F2 geom:E-2-E2-F2 geom:E-2-E1-E2))
+(loop
+  geom:L-206
+  (frame frame:building)
+  (edges geom:E-2-F1-G1 geom:E-2-G1-G2 geom:E-2-F2-G2 geom:E-2-F1-F2))
+(loop
+  geom:L-207
+  (frame frame:building)
+  (edges geom:E-2-A3-B3 geom:E-2-B3-B4 geom:E-2-A4-B4 geom:E-2-A3-A4))
+(loop
+  geom:L-208
+  (frame frame:building)
+  (edges geom:E-2-B3-C3 geom:E-2-C3-C4 geom:E-2-B4-C4 geom:E-2-B3-B4))
+(loop
+  geom:L-209
+  (frame frame:building)
+  (edges geom:E-2-C3-D3 geom:E-2-D3-D4 geom:E-2-C4-D4 geom:E-2-C3-C4))
+(loop
+  geom:L-210
+  (frame frame:building)
+  (edges geom:E-2-D3-E3 geom:E-2-E3-E4 geom:E-2-D4-E4 geom:E-2-D3-D4))
+(loop
+  geom:L-211
+  (frame frame:building)
+  (edges geom:E-2-E3-F3 geom:E-2-F3-F4 geom:E-2-E4-F4 geom:E-2-E3-E4))
+(loop
+  geom:L-212
+  (frame frame:building)
+  (edges geom:E-2-F3-G3 geom:E-2-G3-G4 geom:E-2-F4-G4 geom:E-2-F3-F4))
+(loop
+  geom:L-213
+  (frame frame:building)
+  (edges
+    geom:E-2-A2-B2
+    geom:E-2-B2-C2
+    geom:E-2-C2-D2
+    geom:E-2-D2-E2
+    geom:E-2-E2-F2
+    geom:E-2-F2-G2
+    geom:E-2-G2-G3
+    geom:E-2-F3-G3
+    geom:E-2-E3-F3
+    geom:E-2-D3-E3
+    geom:E-2-C3-D3
+    geom:E-2-B3-C3
+    geom:E-2-A3-B3
+    geom:E-2-A2-A3))
