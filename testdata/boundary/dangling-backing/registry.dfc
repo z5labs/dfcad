@@ -1,0 +1,20 @@
+; The vocabulary the model beside this file is judged against.
+(project
+  (label "Dangling backing fixture")
+  (globalid-namespace "https://example.org/models/dangling-backing"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between two spaces."))

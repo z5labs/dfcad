@@ -45,7 +45,13 @@ type boundaryModel struct {
 func loadBoundaryModel(t *testing.T, name string) boundaryModel {
 	t.Helper()
 
-	root := boundaryFixture(name)
+	return loadBoundaryModelAt(t, boundaryFixture(name))
+}
+
+// loadBoundaryModelAt is [loadBoundaryModel] against a root of its own, for the
+// cases which build the model they load rather than reading one from testdata.
+func loadBoundaryModelAt(t *testing.T, root string) boundaryModel {
+	t.Helper()
 
 	registry, registryDiags := LoadRegistry(root)
 	require.Empty(t, registryDiags, "the fixture registry loads clean")
@@ -127,6 +133,10 @@ func TestResolveBoundaries(t *testing.T) {
 		{
 			name:    "names a boundary which reaches nothing, one which reaches the wrong sort of node, and one written twice",
 			fixture: "dangling-boundary",
+		},
+		{
+			name:    "names a backing which reaches nothing, one which reaches the wrong sort of node, and one written twice",
+			fixture: "dangling-backing",
 		},
 	}
 
@@ -269,6 +279,12 @@ func TestBoundariesOfNothingAnswerNothing(t *testing.T) {
 			assert.Empty(t, slices.Collect(testCase.boundaries.Vertices(node)))
 			assert.Empty(t, slices.Collect(testCase.boundaries.Bounded(&Loop{})))
 			assert.Empty(t, slices.Collect(testCase.boundaries.Regions(&Edge{})))
+			assert.Empty(t, slices.Collect(testCase.boundaries.Classify(node)))
+
+			// An edge which named nothing is backed by nothing, whoever is
+			// asked. A join which resolved no reference has no answer of its own
+			// to give, and the edge's own emptiness is the whole of it.
+			assert.Equal(t, ClassificationVirtual, testCase.boundaries.Classified(&Edge{}).Classification())
 		})
 	}
 }

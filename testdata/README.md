@@ -113,6 +113,7 @@ tests of that layer read them from.
 | 6.3           | An edge which starts and ends at one vertex           | `topology/degenerate-edge/`                 |
 | 4.1, 6.2–6.4  | One id written on two geometric nodes across two files, on nodes of two sorts, and on a node and a frame | `topology/duplicate-id/` |
 | 6.1, 6.9      | A `boundary` naming nothing this model holds, one naming a geometric node which is not a loop, one naming a semantic node, and a loop named twice | `boundary/dangling-boundary/` |
+| 6.3, 6.9      | A `backed-by` naming nothing this model holds, one naming a node which is not an `Element`, one naming a geometric node, and an element named twice | `boundary/dangling-backing/` |
 | 6.4, 7.6      | A loop which does not close, beside one which closes within the declared tolerance | `boundary/closure/`         |
 | 6.4           | A loop whose edges form one ring written in the order it is not traversed | `boundary/out-of-order/`     |
 | 6.4           | A loop with a branch, one which traverses an edge twice, and one whose edges form two rings | `boundary/not-a-simple-cycle/` |
@@ -126,13 +127,13 @@ diagnostics one run retains.
 boolean written outside the positions which take one. Which positions those are
 is partly registry data — a check's parameters are declared by the check
 registry — so the engine cannot decide it until that registry loads, and it
-belongs with the layer which reads it. What is left of section 6.9 is
-`backed-by`, written on an edge and naming a semantic node: it is a question
-about both families rather than about either, so it belongs to a pass which has
-read both, as `boundary` does in `boundary/` above. The references written
-within one family are answered by the loader of that family, because one pass
-reads both ends of each: `within` and `member-of` in `node`, and `vertices` and
-`edges` in `topology`.
+belongs with the layer which reads it. The references of section 6.9 which cross
+between the families — `boundary`, written on a semantic node and naming a loop,
+and `backed-by`, written on an edge and naming a semantic node — are answered by
+the pass which has read both, which is why the fixtures for both are in
+`boundary/`. The references written within one family are answered by the loader
+of that family, because one pass reads both ends of each: `within` and
+`member-of` in `node`, and `vertices` and `edges` in `topology`.
 
 ## The properties
 
