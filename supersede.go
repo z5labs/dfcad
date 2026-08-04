@@ -385,18 +385,23 @@ func (l *claimLoader) cycles() {
 	}
 }
 
-// ring puts the claims of one cycle in the order they are reported: the claim
-// written first, and then the rest of the ring in the order the supersessions
-// lead through it.
-func ring(cycle []*Claim, order map[*Claim]int) []*Claim {
+// ring puts the members of one cycle in the order they are reported: the one
+// read first, and then the rest of the ring in the order the references lead
+// through it.
+//
+// It is written once for both cycles the loader finds — supersessions between
+// claims and containment between nodes — because rotating a ring to a canonical
+// start is the same operation whatever is in it, and two copies of it would be
+// two orders one model could be reported in.
+func ring[T comparable](cycle []T, order map[T]int) []T {
 	first := 0
-	for i, claim := range cycle {
-		if order[claim] < order[cycle[first]] {
+	for i, member := range cycle {
+		if order[member] < order[cycle[first]] {
 			first = i
 		}
 	}
 
-	return append(append([]*Claim{}, cycle[first:]...), cycle[:first]...)
+	return append(append([]T{}, cycle[first:]...), cycle[:first]...)
 }
 
 // cycle reports one ring of claims which supersede one another.

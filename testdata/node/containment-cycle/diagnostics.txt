@@ -1,0 +1,10 @@
+testdata/node/containment-cycle/nodes.dfc:10:11: error: expected a containment which ends in a node nothing contains, found a cycle: site:S-101, then site:S-102, then site:S-103, then site:S-101
+10 |   (within site:S-102))
+   |           ^^^^^^^^^^
+   = hint: every node is written inside one nearer the root, so following the containment has to reach a node with no parent
+testdata/node/containment-cycle/nodes.dfc:18:11: note: site:S-102 names the next node of the cycle here
+18 |   (within site:S-103))
+   |           ^^^^^^^^^^
+testdata/node/containment-cycle/nodes.dfc:26:11: note: site:S-103 names the next node of the cycle here
+26 |   (within site:S-101))
+   |           ^^^^^^^^^^

@@ -1,0 +1,28 @@
+testdata/node/nesting-not-permitted/nodes.dfc:32:11: error: expected a kind the hierarchy permits to contain a Storey, found site:S-101, which is a Space
+32 |   (within site:S-101))
+   |           ^^^^^^^^^^
+   = hint: a Storey is written within a Building
+testdata/node/nesting-not-permitted/nodes.dfc:11:7: note: the Space named as the parent is written here
+11 | (node site:S-101
+   |       ^^^^^^^^^^
+testdata/node/nesting-not-permitted/nodes.dfc:41:11: error: expected a kind the hierarchy permits to contain a Building, found site:Z-fire, which is a Zone
+41 |   (within site:Z-fire))
+   |           ^^^^^^^^^^^
+   = hint: a Building is written within a Site
+testdata/node/nesting-not-permitted/nodes.dfc:18:7: note: the Zone named as the parent is written here
+18 | (node site:Z-fire
+   |       ^^^^^^^^^^^
+testdata/node/nesting-not-permitted/nodes.dfc:50:11: error: expected a kind the hierarchy permits to contain a Zone, found site:S-01, which is a Site
+50 |   (within site:S-01))
+   |           ^^^^^^^^^
+   = hint: a Zone is never written within anything; a zone groups nodes by (member-of <zone-id>), which is a different relation
+testdata/node/nesting-not-permitted/nodes.dfc:4:7: note: the Site named as the parent is written here
+4 | (node site:S-01
+  |       ^^^^^^^^^
+testdata/node/nesting-not-permitted/nodes.dfc:59:11: error: expected a kind the hierarchy permits to contain a Site, found site:S-01, which is a Site
+59 |   (within site:S-01))
+   |           ^^^^^^^^^
+   = hint: a Site is a root of the containment hierarchy and is never written within anything
+testdata/node/nesting-not-permitted/nodes.dfc:4:7: note: the Site named as the parent is written here
+4 | (node site:S-01
+  |       ^^^^^^^^^

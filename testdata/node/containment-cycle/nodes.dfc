@@ -1,0 +1,26 @@
+; Two rooms each written inside the other, and a third joining the ring, so that
+; following the containment never reaches a node with no parent. The cycle is
+; reported once and named from the node read first.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-102))
+
+(node site:S-102
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-103))
+
+(node site:S-103
+  (label "Meeting Room D")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-101))

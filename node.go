@@ -77,6 +77,19 @@ type SemanticNode struct {
 	frame    ID
 	hasFrame bool
 
+	// within is the id of the node which strictly contains this one, and
+	// hasWithin whether it has one. A node with no parent is ordinary: a site is
+	// the root of its hierarchy, and a circuit group sits in no hierarchy at all.
+	// A `within` child which no id could be read from leaves both as they are,
+	// for the reason [SemanticNode.Frame]'s pair does.
+	within    ID
+	hasWithin bool
+
+	// zones are the ids of the zones this node declares membership of, in the
+	// order they were written and with a repeated one written once. Membership
+	// is many to many, so the field is a slice and its emptiness is ordinary.
+	zones []ID
+
 	// span is where the node form was written.
 	span Span
 }
@@ -120,6 +133,30 @@ func (n *SemanticNode) Geometry() (Geometry, bool) { return n.geometry, n.hasGeo
 // child, or one no id could be read from.
 func (n *SemanticNode) Frame() (ID, bool) { return n.frame, n.hasFrame }
 
+// Within returns the id of the node which strictly contains this one, and
+// whether it wrote one.
+//
+// Containment nests strictly, so there is at most one: a node is written inside
+// one other node, never two. A node with no parent is ordinary rather than
+// incomplete, which is why the second result is a state and not a failure.
+//
+// This is the id as the node wrote it. [Nodes.Within] resolves it to the node,
+// labelled with the relation which produced it, and is what a traversal uses.
+func (n *SemanticNode) Within() (ID, bool) { return n.within, n.hasWithin }
+
+// MemberOf returns the ids of the zones this node declares membership of, in
+// the order they were written.
+//
+// Membership is many to many and unconstrained in its count: a node belongs to
+// as many zones as it says, and one belonging to none is as ordinary as one
+// belonging to three. Nothing here reads the containment references, so a
+// node's zones are its own and never inherited from what contains it.
+//
+// These are the ids as the node wrote them, with a repeated one — which is a
+// load error — held once. [Nodes.Zones] resolves them to the zones, labelled
+// with the relation which produced them.
+func (n *SemanticNode) MemberOf() []ID { return slices.Clone(n.zones) }
+
 // Span returns where the node form was written, which is what a diagnostic
 // about the node as a whole points at.
 func (n *SemanticNode) Span() Span { return n.span }
@@ -145,6 +182,15 @@ type Nodes struct {
 	// found by, and the third is a diagnostic which leaves the id naming what it
 	// named first.
 	byID map[ID]*SemanticNode
+
+	// contained is the nodes written directly within the node each id names, in
+	// the order the walk read them. The reference is written on the contained
+	// node, so this direction is written nowhere and is indexed at load.
+	contained map[ID][]*SemanticNode
+
+	// members is the nodes which declared membership of the zone each id names,
+	// in the order the walk read them, and is indexed for the reason above.
+	members map[ID][]*SemanticNode
 }
 
 // Len reports how many nodes were read.
@@ -224,6 +270,15 @@ func (n *Nodes) Node(id ID) (*SemanticNode, bool) {
 // changed what it means, which is the one thing an id never does
 // ([0002](docs/decisions/0002-immutable-id-mutable-label.md)).
 //
+// The two relations a node writes to other nodes are read here and checked once
+// the whole tree has been: containment, which nests strictly, and zone
+// membership, which does not. A reference naming no node, a nesting the
+// hierarchy does not permit, a containment cycle and a `member-of` naming
+// something which is not a Zone are each a diagnostic. They are checked after
+// the walk rather than during it because a node in the first file it reaches may
+// be written inside one in the last. [Nodes.Within], [Nodes.Contains],
+// [Nodes.Zones] and [Nodes.Members] are what read them back.
+//
 // The geometric family — `vertex`, `edge` and `loop` — is not read here. Those
 // carry neither kind nor type and validate under their own rules
 // ([0001](docs/decisions/0001-two-node-families.md)).
@@ -252,6 +307,8 @@ func LoadNodes(root string, registry *Registry) (*Nodes, []Diagnostic) {
 		l.file(file)
 	}
 
+	l.relate()
+
 	return l.nodes, l.diags
 }
 
@@ -268,6 +325,14 @@ type nodeLoader struct {
 	// defined is where the node holding each id was written, which is what a
 	// duplicate points its reader back at.
 	defined map[ID]Span
+
+	// containments and memberships are the two relations as they were written.
+	// Both are checked once every file has been read, because a node in the
+	// first file the walk reaches may be written inside one in the last, and a
+	// loader which resolved as it read would report it missing for no reason but
+	// the order the directory happened to be listed in.
+	containments []containment
+	memberships  []membership
 }
 
 // file interprets the node forms of one loaded file.
@@ -356,10 +421,63 @@ func (l *nodeLoader) declare(form *Node) {
 		d.node.frame, d.node.hasFrame = l.id(arg, "a frame id")
 	}
 
+	l.relations(d, form)
+
 	l.identify(d)
 	l.permitted(d)
 
 	l.nodes.inOrder = append(l.nodes.inOrder, d.node)
+}
+
+// relations reads the two relations a node writes to other nodes — the one node
+// which contains it, and the zones it is a member of — and records each of them
+// to be checked once every file has been read.
+//
+// The two are read together and kept apart, which is the whole point of them.
+// They are different relations with different shapes: containment is at most one
+// and nests, membership is any number and does not, and neither is ever derived
+// from the other.
+//
+// Nothing is resolved here. Whether the ids name nodes this model holds, whether
+// the hierarchy permits the pairing and whether following the containment
+// terminates are questions about the whole source tree, and [nodeLoader.relate]
+// asks them once it has been read.
+func (l *nodeLoader) relations(d nodeDeclaration, form *Node) {
+	// A diagnostic about a reference points back at the node making it, named by
+	// its own id where it wrote one: a related location spanning the whole node
+	// quotes a dozen lines to point at one.
+	where := d.id
+	if where == (Span{}) {
+		where = tagSpan(form)
+	}
+
+	if arg, ok := argumentOf(form, "within"); ok {
+		if within, ok := l.id(arg, "a node id"); ok {
+			d.node.within, d.node.hasWithin = within, true
+			l.containments = append(l.containments, containment{node: d.node, at: arg.Span, where: where})
+		}
+	}
+
+	for _, child := range childForms(form, "member-of") {
+		arg, ok := argument(child, 0)
+		if !ok {
+			continue
+		}
+
+		zone, ok := l.id(arg, "a zone node id")
+		if !ok {
+			continue
+		}
+
+		// A zone named twice is a load error and is held once, so that a
+		// traversal of the node's zones reports the relation rather than the
+		// number of times somebody wrote it.
+		if !slices.Contains(d.node.zones, zone) {
+			d.node.zones = append(d.node.zones, zone)
+		}
+
+		l.memberships = append(l.memberships, membership{node: d.node, zone: zone, at: arg.Span, where: where})
+	}
 }
 
 // identify checks a node's id: that its namespace is one the registry declares,

@@ -1,0 +1,51 @@
+; The vocabulary the nodes beside this file are judged against. Between them the
+; types below permit every kind the containment hierarchy names, plus the two a
+; zone takes: one with a shape, and one with none.
+(project
+  (label "Containment and zone membership fixture")
+  (globalid-namespace "https://example.org/models/containment"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type Compartment
+  (kind Zone)
+  (geometry area)
+  (description "A group of things treated together, which may overlap another."))
+
+(type CircuitGroup
+  (kind Zone)
+  (geometry absent)
+  (description "A set of circuits fed from one board, which has no shape."))
+
+(type SiteBoundary
+  (kind Site)
+  (geometry area)
+  (description "The extent of the land a project sits on."))
+
+(type OfficeBuilding
+  (kind Building)
+  (geometry solid)
+  (description "A building let as offices."))
+
+(type Level
+  (kind Storey)
+  (geometry surface)
+  (description "One storey, taken as its finished floor."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces."))
+
+(type Doorway
+  (kind Interface)
+  (geometry point)
+  (description "Where one space opens into another."))

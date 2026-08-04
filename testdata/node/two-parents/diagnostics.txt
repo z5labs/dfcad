@@ -1,0 +1,7 @@
+testdata/node/two-parents/nodes.dfc:33:3: error: expected at most one (within ...) child of the node form, found another
+33 |   (within site:B-01))
+   |   ^^^^^^^^^^^^^^^^^^
+   = hint: a node is strictly contained by one other node, so the two (within ...) children here claim two parents for it; a node grouped with more than one thing is written (member-of <zone-id>)
+testdata/node/two-parents/nodes.dfc:32:3: note: first written here
+32 |   (within site:L-01)
+   |   ^^^^^^^^^^^^^^^^^^

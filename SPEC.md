@@ -658,6 +658,38 @@ duplicate and cyclic references are reported distinctly.
 definitions with their positions. Claim ids share the same space as node ids, so a claim id
 and a node id can never collide either.
 
+#### 6.9.1 The containment hierarchy
+
+Containment and zone membership are different relations and are never derived from one
+another. `within` is physical enclosure and nests strictly — one parent, no overlap, and
+following it reaches a node nothing contains. `member-of` is arbitrary grouping and is
+many-to-many — a node is in any number of zones, a zone holds any number of nodes, and
+neither says anything about where anything is. A wall belonging to two rooms and a circuit
+belonging to no room are both ordinary rather than special cases.
+
+Which kinds nest inside which is compiled into the engine, like the closed set of kinds
+itself, and is this:
+
+| Kind        | May be written within                              |
+|-------------|-----------------------------------------------------|
+| `Zone`      | Nothing. A zone groups by `member-of`, not by `within`. |
+| `Site`      | Nothing. A site is a root of the hierarchy.         |
+| `Building`  | `Site`                                              |
+| `Storey`    | `Building`                                          |
+| `Space`     | `Storey`, `Space`                                   |
+| `Element`   | `Site`, `Building`, `Storey`, `Space`, `Element`     |
+| `Interface` | `Site`, `Building`, `Storey`, `Space`               |
+
+`Space` nests inside `Space` and `Element` inside `Element` because both genuinely do — an
+alcove is a space inside a room, and a mullion is part of a curtain wall. Neither weakens
+strict nesting, which is about a node having one parent rather than about the parent being
+of a different kind.
+
+A pairing the table does not list is a load error naming the kind written, the node it was
+written inside, that node's kind, and where a node of the kind does belong. So is a `within`
+naming the node it was written on, and so is a ring of nodes which contain one another,
+which is named in full. A node with no parent and no zone is valid and is not reported.
+
 Registry names are resolved by the same rule and are not in the table because they are not
 ids: a `type`, a claim's predicate tag, a tolerance name in an assertion parameter, and a
 check name in `assert` or `invariant` must each be declared in the registry of its layer, and

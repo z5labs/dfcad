@@ -92,6 +92,10 @@ where the tests of that layer read them from.
 | 1, 6.1        | A node kind or geometry form which is not one, and `absent` named on a node | `node/unknown-value/`         |
 | 6.1, 7.3      | A node naming a type no registry file declares       | `node/undeclared-type/`                     |
 | 6.1, 7.3      | A node whose type permits a different kind or geometry form, and one whose type does not permit absence | `node/not-permitted/` |
+| 6.1, 6.9.1    | A node written inside two things                     | `node/two-parents/`                         |
+| 6.9.1         | A containment which never reaches a node with no parent | `node/containment-cycle/`                |
+| 6.9.1         | A nesting the containment hierarchy does not permit, including a zone at either end of one | `node/nesting-not-permitted/` |
+| 6.9, 6.9.1    | A `within` or a `member-of` naming no node, a `member-of` naming a node which is not a `Zone`, a zone named twice, and each relation naming the node it was written on | `node/dangling-relation/` |
 | 6.5, 7.4      | A claim written under a predicate no registry file declares | `claim/undeclared-predicate/`         |
 | 6.6           | A claim value of a shape the predicate does not declare, and a coordinate of the wrong length | `claim/wrong-shape/` |
 | 4.5, 6.6      | A claim value in a unit the predicate does not declare, one written with no unit, and one written with a unit where the predicate declares none | `claim/wrong-unit/` |
@@ -111,10 +115,13 @@ diagnostics one run retains.
 boolean written outside the positions which take one. Which positions those are
 is partly registry data — a check's parameters are declared by the check
 registry — so the engine cannot decide it until that registry loads, and it
-belongs with the layer which reads it. So does what is left of section 6.9: a
-reference from one entity to another which does not resolve is a question about
-the whole graph rather than about any one family of it, and it is answered by
-the pass which has read every family.
+belongs with the layer which reads it. So does what is left of section 6.9: the
+references a node makes into the geometric family and the ones that family makes
+within itself — `boundary`, `vertices`, `edges` and `backed-by` — are questions
+about the whole graph rather than about any one family of it, and they are
+answered by the pass which has read every family. The two references a node
+makes to another node, `within` and `member-of`, are answered above because both
+ends of each are semantic nodes, which one pass reads.
 
 ## The properties
 
