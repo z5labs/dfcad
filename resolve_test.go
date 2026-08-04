@@ -33,6 +33,10 @@ type claimSpec struct {
 	// the answer can be named.
 	id ID
 
+	// subject is the thing it is about, which is [resolutionSubject] unless the
+	// case is about more than one thing being claimed about.
+	subject ID
+
 	// predicate is the tag it was written under, which is `width` unless the
 	// case is about asking under a different one.
 	predicate string
@@ -66,6 +70,11 @@ func writtenClaims(specs ...claimSpec) []*Claim {
 			predicate = "width"
 		}
 
+		subject := spec.subject
+		if subject == "" {
+			subject = resolutionSubject
+		}
+
 		rank := spec.rank
 		if rank == "" {
 			rank = RankNormal
@@ -73,7 +82,7 @@ func writtenClaims(specs ...claimSpec) []*Claim {
 
 		claim := &Claim{
 			id:        spec.id,
-			subject:   resolutionSubject,
+			subject:   subject,
 			predicate: predicate,
 			value:     Value{shape: ShapeScalar, number: spec.value, unit: "m"},
 			date:      day(spec.date),
