@@ -53,6 +53,7 @@ var samples = map[string][]string{
 	"list-instances": {},
 	"get":            {"site:S-101"},
 	"resolve":        {"site:S-101", "area"},
+	"traverse":       {"contains", "site:S-101"},
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
 }

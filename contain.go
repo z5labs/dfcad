@@ -12,23 +12,25 @@ import (
 	"strings"
 )
 
-// Relation is which of the two relations between semantic nodes produced a
-// traversal result.
+// Relation is which relation produced a traversal result.
 //
-// The two are not interchangeable and are never collapsed into one. Containment
-// is physical enclosure and nests strictly: a node is written inside at most one
-// other, and following those references reaches a root. Membership is arbitrary
-// grouping and is many to many: a node is written into any number of zones, and
-// a zone holds any number of nodes.
+// The two the format writes between semantic nodes are not interchangeable and
+// are never collapsed into one. Containment is physical enclosure and nests
+// strictly: a node is written inside at most one other, and following those
+// references reaches a root. Membership is arbitrary grouping and is many to
+// many: a node is written into any number of zones, and a zone holds any number
+// of nodes.
 //
-// Every traversal in this file yields its results labelled with the relation
-// which produced them, because a caller which cannot tell the two apart cannot
-// trust either. "The things in this storey" and "the things grouped with this
-// storey" are different questions, and a result which answers one while looking
-// like the other is worse than no result at all.
+// Every traversal in this package yields its results labelled with the relation
+// which produced them, because a caller which cannot tell them apart cannot
+// trust any of them. "The things in this storey" and "the things grouped with
+// this storey" are different questions, and a result which answers one while
+// looking like the other is worse than no result at all.
 type Relation string
 
-// The relations, which are the two the format writes between semantic nodes.
+// The relations a traversal reports. The first two are written in the format;
+// the last two are read from what is written and are stored nowhere
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
 const (
 	// RelationContainment is the relation `(within <node-id>)` writes: the node
 	// which strictly contains this one.
@@ -37,6 +39,19 @@ const (
 	// RelationMembership is the relation `(member-of <zone-id>)` writes: a zone
 	// this node is grouped into.
 	RelationMembership Relation = "membership"
+
+	// RelationBoundary is the relation `(boundary <loop-id>)` writes, followed
+	// through the loop to what it is assembled from: the edges a region's
+	// outline is made of. It crosses between the two families rather than
+	// joining two semantic nodes, which is why what it reaches is an [Edge]
+	// rather than a node ([0001](docs/decisions/0001-two-node-families.md)).
+	RelationBoundary Relation = "boundary"
+
+	// RelationAdjacency is the relation nothing writes: two regions are adjacent
+	// when an edge is part of the boundary of both. It is computed from the
+	// boundary references every time it is asked, so a wall which comes to be
+	// shared makes two regions adjacent with no edit which says so.
+	RelationAdjacency Relation = "adjacency"
 )
 
 // Related is one node a traversal reached, together with the relation which
@@ -54,6 +69,9 @@ type Related struct {
 
 	// relation is which relation reached it.
 	relation Relation
+
+	// depth is how many steps of that relation it took to reach it.
+	depth int
 }
 
 // Node returns the node the traversal reached.
@@ -62,6 +80,18 @@ func (r Related) Node() *SemanticNode { return r.node }
 // Relation returns which relation reached it, which is what says whether the
 // result means physical enclosure or arbitrary grouping.
 func (r Related) Relation() Relation { return r.relation }
+
+// Depth returns how many steps of that relation the traversal took to reach it.
+//
+// A traversal which follows one reference answers 1, which is the node next to
+// the one the question was asked about. A walk answers how far out it had got,
+// so that a caller can say "the storey, two levels up" rather than counting the
+// results and hoping the order it read them in meant something.
+//
+// The bounded walks go level by level, so what they report is the fewest steps
+// there are — a node a walk could reach two ways is reached at the depth of the
+// shorter of them, once.
+func (r Related) Depth() int { return r.depth }
 
 // nests is the containment hierarchy: the kinds a node of each kind may be
 // written within.
@@ -119,7 +149,7 @@ func (n *Nodes) Within(node *SemanticNode) (Related, bool) {
 	if !ok {
 		return Related{}, false
 	}
-	return Related{node: parent, relation: RelationContainment}, true
+	return Related{node: parent, relation: RelationContainment, depth: 1}, true
 }
 
 // parent is [Nodes.Within] without the label, for the walks which need the node
@@ -152,7 +182,7 @@ func (n *Nodes) Contains(node *SemanticNode) iter.Seq[Related] {
 			if contained == node {
 				continue
 			}
-			if !yield(Related{node: contained, relation: RelationContainment}) {
+			if !yield(Related{node: contained, relation: RelationContainment, depth: 1}) {
 				return
 			}
 		}
@@ -178,14 +208,14 @@ func (n *Nodes) Ancestors(node *SemanticNode) iter.Seq[Related] {
 
 		seen := map[*SemanticNode]bool{node: true}
 
-		for {
+		for depth := 1; ; depth++ {
 			parent, ok := n.parent(node)
 			if !ok || seen[parent] {
 				return
 			}
 			seen[parent] = true
 
-			if !yield(Related{node: parent, relation: RelationContainment}) {
+			if !yield(Related{node: parent, relation: RelationContainment, depth: depth}) {
 				return
 			}
 			node = parent
@@ -211,22 +241,23 @@ func (n *Nodes) Descendants(node *SemanticNode) iter.Seq[Related] {
 
 		seen := map[*SemanticNode]bool{node: true}
 
-		var walk func(*SemanticNode) bool
-		walk = func(node *SemanticNode) bool {
+		var walk func(*SemanticNode, int) bool
+		walk = func(node *SemanticNode, depth int) bool {
 			for contained := range n.Contains(node) {
 				if seen[contained.node] {
 					continue
 				}
 				seen[contained.node] = true
 
-				if !yield(contained) || !walk(contained.node) {
+				contained.depth = depth
+				if !yield(contained) || !walk(contained.node, depth+1) {
 					return false
 				}
 			}
 			return true
 		}
 
-		walk(node)
+		walk(node, 1)
 	}
 }
 
@@ -257,7 +288,7 @@ func (n *Nodes) Zones(node *SemanticNode) iter.Seq[Related] {
 			if !ok || zone == node {
 				continue
 			}
-			if !yield(Related{node: zone, relation: RelationMembership}) {
+			if !yield(Related{node: zone, relation: RelationMembership, depth: 1}) {
 				return
 			}
 		}
@@ -290,9 +321,117 @@ func (n *Nodes) Members(zone *SemanticNode) iter.Seq[Related] {
 			if member == zone {
 				continue
 			}
-			if !yield(Related{node: member, relation: RelationMembership}) {
+			if !yield(Related{node: member, relation: RelationMembership, depth: 1}) {
 				return
 			}
+		}
+	}
+}
+
+// Unbounded is the depth at which a bounded traversal follows its relation as
+// far as the model goes.
+//
+// It is a named value rather than a large number or a zero, because both of
+// those read as a bound at the call site: a walk asked for a depth of a thousand
+// looks like one somebody measured, and one asked for a depth of nothing looks
+// like a mistake. A depth of zero takes no step at all and yields nothing, which
+// is what asking for nothing means.
+const Unbounded = -1
+
+// AncestorsTo iterates the nodes which contain node, nearest first, and stops
+// after depth steps.
+//
+// It is [Nodes.Ancestors] with a bound: a depth of one is the node this one sits
+// in, a depth of two adds the node that one sits in, and [Unbounded] is the walk
+// to the root which Ancestors is. A depth of zero takes no step and yields
+// nothing.
+//
+// The bound is what makes a traversal safe to run against a model nobody has
+// read: "the two levels above this outlet" is a question with an answer whose
+// size is known before it is asked, where "everything above it" is a question
+// whose answer is the height of whatever hierarchy it happens to be in.
+func (n *Nodes) AncestorsTo(node *SemanticNode, depth int) iter.Seq[Related] {
+	return bounded(node, depth, func(from *SemanticNode) iter.Seq[Related] {
+		return func(yield func(Related) bool) {
+			if parent, ok := n.Within(from); ok {
+				yield(parent)
+			}
+		}
+	})
+}
+
+// DescendantsTo iterates everything contained by node and stops after depth
+// steps, level by level.
+//
+// It is [Nodes.Descendants] with a bound, and it is level by level rather than
+// depth first because a bound is a statement about levels: a depth of two is
+// what a node holds and what those hold, and a walk which went deep before it
+// went wide would report the deepest thing it found before the second thing the
+// node holds. Descendants, which has no bound, has no such choice to make and
+// goes depth first.
+//
+// Each node comes back once, at the fewest steps it can be reached in.
+func (n *Nodes) DescendantsTo(node *SemanticNode, depth int) iter.Seq[Related] {
+	return bounded(node, depth, n.Contains)
+}
+
+// ZonesTo iterates the zones node is a member of, and the zones those are
+// members of, stopping after depth steps.
+//
+// It is [Nodes.Zones] followed as far as membership nests. A zone is a node like
+// any other and may itself be written into a zone, so "which zones is this in"
+// has more than one level to it whenever a model groups its groups; a depth of
+// one is the zones the node itself names, which is what it wrote.
+//
+// Nothing here reads containment, at any depth. A node does not join its
+// parent's zones by being inside it, and a walk which reached one through the
+// other would be the conflation the two relations exist to keep out of the
+// model.
+func (n *Nodes) ZonesTo(node *SemanticNode, depth int) iter.Seq[Related] {
+	return bounded(node, depth, n.Zones)
+}
+
+// bounded is the walk every traversal with a depth is: level by level from
+// start, following step, to at most depth levels.
+//
+// Each node is yielded once, at the first level which reaches it, and is
+// expanded once. That is what makes a cycle terminate and a diamond a single
+// result: a room reachable through two zones is one room, and a containment
+// which returns to where it started — a load error, and still a model this can
+// be asked of — runs out of unseen nodes rather than running forever.
+//
+// The order is the level, and within a level the order the step gave them,
+// which is the order the relation was written or read in. It is deterministic,
+// so anything built from it diffs against the last run's.
+func bounded(start *SemanticNode, depth int, step func(*SemanticNode) iter.Seq[Related]) iter.Seq[Related] {
+	return func(yield func(Related) bool) {
+		if start == nil || depth == 0 {
+			return
+		}
+
+		seen := map[*SemanticNode]bool{start: true}
+		frontier := []*SemanticNode{start}
+
+		for level := 1; len(frontier) > 0 && (depth < 0 || level <= depth); level++ {
+			var next []*SemanticNode
+
+			for _, from := range frontier {
+				for related := range step(from) {
+					if related.node == nil || seen[related.node] {
+						continue
+					}
+					seen[related.node] = true
+
+					related.depth = level
+					if !yield(related) {
+						return
+					}
+
+					next = append(next, related.node)
+				}
+			}
+
+			frontier = next
 		}
 	}
 }

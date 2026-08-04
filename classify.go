@@ -144,6 +144,11 @@ func (b BoundaryEdge) Classification() Classification {
 // holds, which is [ClassificationPhysical].
 func (b BoundaryEdge) Physical() bool { return b.Classification() == ClassificationPhysical }
 
+// Relation returns [RelationBoundary], which is what says the result is part of
+// what a region's outline is made of rather than something the region encloses
+// or is grouped with.
+func (b BoundaryEdge) Relation() Relation { return RelationBoundary }
+
 // Classified pairs edge with its classification and with the elements which back
 // it.
 //

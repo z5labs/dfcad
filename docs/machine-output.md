@@ -490,6 +490,107 @@ georeference the whole arrangement exists to prevent. `--frame` naming the frame
 is already written in transforms nothing and reports no budget, which is what asking
 without the flag answers.
 
+### `traverse`
+
+A walk of the model: what contains what, what belongs to what, and what borders what. It
+takes a query, an id, and three flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--depth <n>` | How many steps of the relation to follow: a count of one or more, or `all` to follow it as far as the model goes. Default `1`. |
+| `--kind <kind>` | Only results that declare this kind. |
+| `--type <name>` | Only results that declare this type. |
+
+| Query | Answers | Relation |
+|-------|---------|----------|
+| `contains` | What the thing holds, level by level inward. | `containment` |
+| `contained-by` | What holds the thing, outward towards the root. | `containment` |
+| `members-of` | The zones the thing is a member of, and the zones those are members of where membership nests. | `membership` |
+| `boundary-of` | The edges the thing's outline is assembled from, each classified by what physically realises it. | `boundary` |
+| `adjacent-to` | The things that share a boundary edge with it. | `adjacency` |
+
+```json
+{
+  "version": 1,
+  "command": "traverse",
+  "subject": "site:S-101",
+  "query": "adjacent-to",
+  "depth": 1,
+  "results": [
+    {
+      "id": "site:S-102",
+      "family": "node",
+      "relation": "adjacency",
+      "depth": 1,
+      "label": "East Corridor",
+      "kind": "Space",
+      "type": "Corridor",
+      "frame": "frame:building",
+      "via": ["geom:E-02"],
+      "span": {
+        "start": {"path": "entities/site.dfc", "line": 41, "column": 1, "offset": 812},
+        "end": {"path": "entities/site.dfc", "line": 48, "column": 25, "offset": 994}
+      }
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the walk started from. |
+| `query` | string | The query it answered, which is what says which relation the results carry. |
+| `depth` | integer | The bound the walk was given, and `-1` where it was told to follow the relation as far as the model goes. It is what tells a caller reading a stored result whether the walk stopped where the model ran out or where the bound did. |
+| `results` | array | What the walk reached. Empty rather than null where it reached nothing. |
+| `results[].id` | string | The id the model holds it under. |
+| `results[].family` | string | `node`, or `edge` for the boundary of one. |
+| `results[].relation` | string | Which relation reached it: `containment`, `membership`, `boundary` or `adjacency`. |
+| `results[].depth` | integer | How many steps of that relation the walk took to reach it, which is the fewest there are. |
+| `results[].label` | string, optional | Its name for a person reading it. |
+| `results[].kind`, `results[].type` | string, optional | What a semantic node declares. Absent for an edge, which declares neither. |
+| `results[].frame` | string, optional | The coordinate frame it is expressed in. |
+| `results[].classification` | string, optional | What an edge of a boundary separates the region by: `physical`, `virtual`, or `unresolved` where it names a backing element the model does not hold. Absent for a result that is not an edge. |
+| `results[].backing` | array, optional | The ids of the elements that physically realise an edge, in the order the edge named them. Absent for a virtual edge, which names none. |
+| `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. Written under `adjacent-to` and absent otherwise. |
+| `results[].span` | object | Where it was written. |
+
+Every result says which relation produced it, and containment is never reported as
+membership or the other way round. A wall inside a storey and grouped into three zones is
+inside one thing and a member of three; a result that blurred the two would answer "what is
+in this storey" with the zones.
+
+Adjacency is **shared boundary edges and nothing else**: two things are adjacent when an
+edge is part of the boundary of both. An edge is one node with one identity, so this is a
+fact about the model rather than a comparison of two outlines — two boundaries drawn along
+the same line with two edges are not adjacent. A doorway and the wall it is cut into are two
+shared edges between the same pair of rooms, so the neighbour is reported once carrying
+both, and `boundary-of` is what says which of them is a wall.
+
+Depth is bounded by default, because a traversal of a model nobody has read should not be
+able to return the whole of it by accident; `--depth all` is how a caller asks for that on
+purpose. Each thing is reported once, at the fewest steps it can be reached in, so a cycle in
+the model terminates and something reachable two ways is one result rather than two.
+
+A filter narrows what is reported and never what is walked. Every room three levels below a
+site is still reached with `--kind Space`, though the building and the storey between them
+are not reported.
+
+Results come back in depth order and then in id order, so two runs over one model diff
+against each other and moving a node between files does not move the answer. The edges of a
+boundary are the exception: they come back in the order the loops traverse them, because
+that order is the ring itself and is data rather than presentation.
+
+`boundary-of` is one step from the thing it bounds, and its results are edges. `--depth`,
+`--kind` and `--type` written beside it are **usage errors** rather than flags that are
+quietly ignored, for the reason `--deprecated` beside `--claims resolved` is: a flag that is
+silently dropped answers a different question from the one that was asked.
+
+An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
+naming it and the nearest id there is, exactly as `get` reports one. An id that names a
+vertex, an edge or a loop is a usage error too, naming which of them it is: the relations
+above are written between semantic nodes, and a shape is reached through the node it bounds.
+A walk that reaches nothing is not an error — it is an empty `results` and exit `0`.
+
 ### `claims`
 
 Every claim written on one thing, live and retracted alike. It takes an id and an optional
@@ -660,8 +761,8 @@ disagree.
 
 ### Diagnostics and the exit code of a read
 
-The listings, `get`, `claims` and `conflicts` exit `0` whenever they answered, whatever the
-model's diagnostics say. Those diagnostics are still rendered in full on stderr.
+The listings, `get`, `traverse`, `claims` and `conflicts` exit `0` whenever they answered,
+whatever the model's diagnostics say. Those diagnostics are still rendered in full on stderr.
 
 A listing says what a model holds, and a node whose containment does not resolve is still a
 node the model holds. Whether the model is *sound* is what `dfcad check` answers; answering

@@ -1,0 +1,116 @@
+; Three rooms in a row, and what borders what.
+;
+; Room A and the corridor share two edges — a partition with a doorway through
+; it — and the corridor and room C share one. Room A and room C share none, so
+; they are two steps apart and never one, however close the two of them look on
+; a plan.
+;
+; Nothing in this file says any of that. Adjacency is read from the edges the
+; loops name: an edge is one node with one identity, and two regions are
+; adjacent exactly when both of their boundaries reach it.
+(node site:S-A
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+(node site:S-B
+  (label "East Corridor")
+  (kind Space)
+  (type Corridor)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+
+(node site:S-C
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-03))
+
+; The two walls which are really there. The doorway between room A and the
+; corridor is not among them: nothing realises an opening.
+(node site:W-01
+  (label "Stud partition, room A to corridor")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building))
+
+(node site:W-02
+  (label "Stud partition, corridor to room C")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building))
+
+(vertex geom:V-01 (label "Room A, south-west corner") (frame frame:building))
+
+(vertex geom:V-02 (label "Room A, south-east corner") (frame frame:building))
+
+(vertex geom:V-03 (label "The doorway, south jamb") (frame frame:building))
+
+(vertex geom:V-04 (label "Room A, north-east corner") (frame frame:building))
+
+(vertex geom:V-05 (label "Room A, north-west corner") (frame frame:building))
+
+(vertex geom:V-06 (label "Corridor, south-east corner") (frame frame:building))
+
+(vertex geom:V-07 (label "Corridor, north-east corner") (frame frame:building))
+
+(vertex geom:V-08 (label "Room C, south-east corner") (frame frame:building))
+
+(vertex geom:V-09 (label "Room C, north-east corner") (frame frame:building))
+
+(edge geom:E-01 (label "Room A, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+; The two edges room A shares with the corridor. One is a wall and one is the
+; way through it, which is the difference between what separates two rooms and
+; how anybody gets between them.
+(edge geom:E-02
+  (label "Partition, room A to corridor")
+  (frame frame:building)
+  (vertices geom:V-02 geom:V-03)
+  (backed-by site:W-01))
+
+(edge geom:E-03 (label "Doorway, room A to corridor") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+(edge geom:E-04 (label "Room A, north wall") (frame frame:building) (vertices geom:V-04 geom:V-05))
+
+(edge geom:E-05 (label "Room A, west wall") (frame frame:building) (vertices geom:V-05 geom:V-01))
+
+(edge geom:E-06 (label "Corridor, south wall") (frame frame:building) (vertices geom:V-02 geom:V-06))
+
+; The one edge the corridor shares with room C.
+(edge geom:E-07
+  (label "Partition, corridor to room C")
+  (frame frame:building)
+  (vertices geom:V-06 geom:V-07)
+  (backed-by site:W-02))
+
+(edge geom:E-08 (label "Corridor, north wall") (frame frame:building) (vertices geom:V-07 geom:V-04))
+
+(edge geom:E-09 (label "Room C, south wall") (frame frame:building) (vertices geom:V-06 geom:V-08))
+
+(edge geom:E-10 (label "Room C, east wall") (frame frame:building) (vertices geom:V-08 geom:V-09))
+
+(edge geom:E-11 (label "Room C, north wall") (frame frame:building) (vertices geom:V-09 geom:V-07))
+
+(loop geom:L-01
+  (label "Meeting Room A boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04 geom:E-05))
+
+(loop geom:L-02
+  (label "East Corridor boundary")
+  (frame frame:building)
+  (edges geom:E-06 geom:E-07 geom:E-08 geom:E-03 geom:E-02))
+
+(loop geom:L-03
+  (label "Meeting Room C boundary")
+  (frame frame:building)
+  (edges geom:E-09 geom:E-10 geom:E-11 geom:E-07))
