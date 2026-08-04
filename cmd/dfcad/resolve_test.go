@@ -677,7 +677,7 @@ func TestRunResolveRejectsWhatTheModelDoesNotHold(t *testing.T) {
 // command turns on, and it is one assertion about two runs rather than a case in
 // a table.
 func TestRunResolveDistinguishesAnUnknownSubjectFromAnUnmeasuredOne(t *testing.T) {
-	run := func(t *testing.T, args ...string) (int, string, string) {
+	attempt := func(t *testing.T, args ...string) (int, string, string) {
 		t.Helper()
 
 		t.Chdir(tree(t, answerable()))
@@ -688,8 +688,8 @@ func TestRunResolveDistinguishesAnUnknownSubjectFromAnUnmeasuredOne(t *testing.T
 		return code, stdout.String(), stderr.String()
 	}
 
-	unknown, unknownOut, unknownErr := run(t, "site:S-999", "area")
-	unmeasured, unmeasuredOut, unmeasuredErr := run(t, "site:Z-01", "area")
+	unknown, unknownOut, unknownErr := attempt(t, "site:S-999", "area")
+	unmeasured, unmeasuredOut, unmeasuredErr := attempt(t, "site:Z-01", "area")
 
 	// An id nothing holds is the invocation being wrong: nothing ran, so there
 	// is no result, and the diagnostic is about the id.
