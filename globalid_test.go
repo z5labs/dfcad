@@ -96,9 +96,10 @@ func TestDeriveGlobalID(t *testing.T) {
 // own, which is what anybody reading the registry can reproduce from the URL
 // recorded there.
 //
-// The Python vector is the well-known one from RFC 4122's own worked example,
-// so a version 5 UUID computed here is checkable against an implementation
-// which never saw this package.
+// The last two cases are the vectors Python's uuid module documents, which are
+// the ones reproduced wherever a UUIDv5 implementation states what it agrees
+// with, so a value computed here is checkable against an implementation which
+// never saw this package.
 func TestDeriveGlobalIDNamespace(t *testing.T) {
 	testCases := []struct {
 		name      string
@@ -119,7 +120,7 @@ func TestDeriveGlobalIDNamespace(t *testing.T) {
 			want:      "4c565f0d-3f5a-5890-b41b-20cf47701c5e",
 		},
 		{
-			name: "derives the DNS namespace vector RFC 4122 records",
+			name: "derives the DNS namespace vector under the other namespace RFC 4122 fixes",
 			namespace: uuid{
 				0x6b, 0xa7, 0xb8, 0x10, 0x9d, 0xad, 0x11, 0xd1,
 				0x80, 0xb4, 0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8,
