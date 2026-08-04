@@ -171,11 +171,13 @@ func (e *Edge) Vertices() (start, end ID) { return e.start, e.end }
 // BackedBy returns the ids this edge wrote where the id of an element which
 // physically realises it belongs, in the order they were written.
 //
-// An edge at least one of them resolves for is a physical boundary and one none
-// were written on is a virtual one — the open line between a foyer and a dining
-// room. **That classification is computed and never stored**: nothing in the
-// format says which an edge is, and adding an element flips the answer with no
-// other edit ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+// An edge which at least one of these ids resolves for is a physical boundary;
+// an edge which wrote none of them is a virtual one — the open line between a
+// foyer and a dining room.
+//
+// **That classification is computed and never stored.** Nothing in the format
+// says which an edge is, and adding an element flips the answer with no other
+// edit ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
 // [Boundaries.Classified] is what computes it, because resolving these ids means
 // having read both families.
 //

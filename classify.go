@@ -144,7 +144,7 @@ func (b BoundaryEdge) Classification() Classification {
 // holds, which is [ClassificationPhysical].
 func (b BoundaryEdge) Physical() bool { return b.Classification() == ClassificationPhysical }
 
-// Classified returns edge with its classification and the elements which back
+// Classified pairs edge with its classification and with the elements which back
 // it.
 //
 // The answer is computed here and is held nowhere: ask it again after adding an
