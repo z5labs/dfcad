@@ -8,7 +8,6 @@ package dfcad
 import (
 	"cmp"
 	"fmt"
-	"math"
 	"slices"
 )
 
@@ -246,17 +245,23 @@ type ranking struct {
 func narrow(live []*Claim) (candidates []*Claim, ranked bool) {
 	var rankable []ranking
 	for _, claim := range live {
-		accuracy, ok := claim.Accuracy()
-		if !ok {
+		// One claim is one budget. Ranking by the same arithmetic which
+		// accumulates a derived answer's budget is what keeps the two from
+		// drifting apart: a claim unrankable here is one whose accuracy could
+		// not be combined there either, for the same reason.
+		var budget Budget
+		budget.Add(claim)
+
+		combined, err := budget.Combined()
+		if err != nil {
 			continue
 		}
 
-		magnitude, unit, ok := combined(accuracy)
-		if !ok {
-			continue
-		}
-
-		rankable = append(rankable, ranking{claim: claim, magnitude: magnitude, unit: unit})
+		rankable = append(rankable, ranking{
+			claim:     claim,
+			magnitude: combined.Magnitude,
+			unit:      combined.Unit,
+		})
 	}
 
 	if len(rankable) == 0 {
@@ -335,54 +340,6 @@ func claimsOf(rankings []ranking) []*Claim {
 		out = append(out, r.claim)
 	}
 	return out
-}
-
-// combined reduces an accuracy to the one figure resolution ranks by, the unit
-// it is expressed in, and whether it could be reduced at all.
-//
-// The terms combine the way specification section 6.6.5 says they do:
-// independent terms in quadrature, systematic terms linearly, and the two
-// together in quadrature. Every magnitude is already one standard deviation
-// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)), so the result is too.
-//
-// Terms written in more than one unit do not combine. Nothing here converts
-// between units ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)), and
-// adding a figure in millimetres to one in metres to get a rank would be the
-// silent conversion the rest of the engine refuses — so the claim is unrankable
-// instead, which is a state the caller can see.
-func combined(accuracy Accuracy) (float64, Unit, bool) {
-	if len(accuracy.Terms) == 0 {
-		return 0, "", false
-	}
-
-	unit := accuracy.Terms[0].Unit
-
-	// squares is the independent terms in quadrature; shared is the systematic
-	// ones, which add linearly because they are the same error appearing twice
-	// rather than two errors which might cancel.
-	var squares, shared float64
-
-	for _, term := range accuracy.Terms {
-		if term.Unit != unit {
-			return 0, "", false
-		}
-
-		magnitude := math.Abs(term.Magnitude)
-		if math.IsNaN(magnitude) || math.IsInf(magnitude, 0) {
-			return 0, "", false
-		}
-
-		switch term.Kind {
-		case TermIndependent:
-			squares += magnitude * magnitude
-		case TermSystematic:
-			shared += magnitude
-		default:
-			return 0, "", false
-		}
-	}
-
-	return math.Sqrt(squares + shared*shared), unit, true
 }
 
 // isStrict reports whether the registry declares the predicate strict.

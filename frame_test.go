@@ -7,6 +7,7 @@ package dfcad
 
 import (
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -287,6 +288,162 @@ func TestFramesComposeAlongTheChain(t *testing.T) {
 	}
 }
 
+// TestFramesBudgetTheRouteTheyComposeAlong is its own function because the
+// assertion is an error budget rather than a position: how well the
+// relationship a cross-frame answer was computed through is known.
+//
+// The route from the room to the annex passes through three fits, two of which
+// were made against the same control point. Counting survey:CP-3 once however
+// many frames it is reached through is the whole difference between an honest
+// cross-frame budget and an optimistic one.
+func TestFramesBudgetTheRouteTheyComposeAlong(t *testing.T) {
+	frames, rendered := resolveFrames(t, frameFixture("valid"))
+	require.Empty(t, rendered, "the valid fixture resolves clean")
+
+	t.Run("carries a term for every fit the route passes through", func(t *testing.T) {
+		budget, err := frames.TransformBudget("frame:room", "frame:annex")
+		require.NoError(t, err)
+
+		terms := budget.Terms()
+		require.Len(t, terms, 4, "three independent fits and one shared control point")
+
+		var names []string
+		for _, term := range terms {
+			names = append(names, term.Name)
+		}
+		assert.Equal(t,
+			[]string{"survey:C-0004", "survey:C-0002", "survey:CP-3", "survey:C-0003"},
+			names,
+			"in the order the route reads them, up one chain and down the other")
+	})
+
+	t.Run("counts the shared control point once and names both fits which brought it", func(t *testing.T) {
+		budget, err := frames.TransformBudget("frame:room", "frame:annex")
+		require.NoError(t, err)
+
+		shared := budget.Terms()[2]
+		require.Equal(t, TermSystematic, shared.Kind)
+		assert.Equal(t, ID("survey:CP-3"), shared.Source)
+		assert.Equal(t, 0.008, shared.Magnitude)
+
+		var contributors []ID
+		for _, claim := range shared.Contributors {
+			id, _ := claim.ID()
+			contributors = append(contributors, id)
+		}
+		assert.Equal(t, []ID{"survey:C-0002", "survey:C-0003"}, contributors)
+	})
+
+	t.Run("combines to the figure the linear rule gives rather than the quadrature one", func(t *testing.T) {
+		budget, err := frames.TransformBudget("frame:room", "frame:annex")
+		require.NoError(t, err)
+
+		combined, err := budget.Combined()
+		require.NoError(t, err)
+
+		// √(0.002² + 0.004² + 0.006² + 0.008²), the shared 0.008 m appearing
+		// once. Read as two independent terms it would come to √(184e-6), and
+		// counted twice over it would come to √(312e-6).
+		assert.InDelta(t, math.Sqrt(120e-6), combined.Magnitude, frameRoundTripTolerance)
+		assert.Equal(t, UnitMetre, combined.Unit)
+		assert.Equal(t, 1.0, combined.CoverageFactor)
+	})
+
+	t.Run("says which term dominates the budget", func(t *testing.T) {
+		budget, err := frames.TransformBudget("frame:room", "frame:annex")
+		require.NoError(t, err)
+
+		dominant, ok := budget.Dominant()
+
+		require.True(t, ok)
+		assert.Equal(t, "survey:CP-3", dominant.Name)
+	})
+
+	t.Run("budgets a one-level route from the one fit it applies", func(t *testing.T) {
+		budget, err := frames.TransformBudget("frame:building", "frame:site")
+		require.NoError(t, err)
+
+		combined, err := budget.Combined()
+		require.NoError(t, err)
+
+		// √(0.004² + 0.008²), which is the building's own fit and nothing else.
+		assert.InDelta(t, math.Sqrt(80e-6), combined.Magnitude, frameRoundTripTolerance)
+	})
+
+	t.Run("budgets the same route the same way run backwards", func(t *testing.T) {
+		there, err := frames.TransformBudget("frame:room", "frame:annex")
+		require.NoError(t, err)
+		back, err := frames.TransformBudget("frame:annex", "frame:room")
+		require.NoError(t, err)
+
+		forwards, err := there.Combined()
+		require.NoError(t, err)
+		backwards, err := back.Combined()
+		require.NoError(t, err)
+
+		assert.InDelta(t, forwards.Magnitude, backwards.Magnitude, frameRoundTripTolerance)
+	})
+
+	t.Run("budgets nothing for a frame against itself, which applies no transform", func(t *testing.T) {
+		budget, err := frames.TransformBudget("frame:building", "frame:building")
+		require.NoError(t, err)
+
+		assert.Empty(t, budget.Terms())
+
+		_, err = budget.Combined()
+		assert.ErrorIs(t, err, ErrEmptyBudget)
+	})
+}
+
+// TestFramesRefuseABudgetForARouteTheyCannotWalk is its own function because it
+// asserts the errors of a different method: a budget for a route which does not
+// exist is refused the same way the position along it is.
+func TestFramesRefuseABudgetForARouteTheyCannotWalk(t *testing.T) {
+	t.Run("names the frame nothing declares", func(t *testing.T) {
+		frames, rendered := resolveFrames(t, frameFixture("valid"))
+		require.Empty(t, rendered)
+
+		_, err := frames.TransformBudget("frame:nowhere", "frame:site")
+
+		var undeclared UndeclaredFrameError
+		require.ErrorAs(t, err, &undeclared)
+		assert.Equal(t, ID("frame:nowhere"), undeclared.Frame)
+	})
+
+	t.Run("names both ends of a relationship nothing measured", func(t *testing.T) {
+		frames, rendered := resolveFrames(t, frameFixture("not-a-transform"))
+		require.NotEmpty(t, rendered, "the fixture reports the claim which is not a transform")
+
+		_, err := frames.TransformBudget("frame:building", "frame:survey-grid")
+
+		var unmeasured UnmeasuredFrameError
+		require.ErrorAs(t, err, &unmeasured)
+		assert.Equal(t, ID("frame:building"), unmeasured.Frame)
+		assert.Equal(t, ID("frame:survey-grid"), unmeasured.Parent)
+	})
+
+	t.Run("names both frames when their chains reach no common frame", func(t *testing.T) {
+		frames := resolveFramesRegardless(t, registryFixture("roots"))
+
+		_, err := frames.TransformBudget("frame:building", "frame:state-plane")
+
+		var unrelated UnrelatedFramesError
+		require.ErrorAs(t, err, &unrelated)
+		assert.Equal(t, ID("frame:building"), unrelated.From)
+		assert.Equal(t, ID("frame:state-plane"), unrelated.To)
+	})
+
+	t.Run("stops at the frame a cyclic chain re-enters rather than walking it forever", func(t *testing.T) {
+		frames := resolveFramesRegardless(t, registryFixture("cycle"))
+
+		_, err := frames.TransformBudget("frame:a", "frame:c")
+
+		var cycle FrameCycleError
+		require.ErrorAs(t, err, &cycle)
+		assert.Equal(t, ID("frame:a"), cycle.Frame)
+	})
+}
+
 // TestFramesRoundTripAPointThroughEveryFrame is its own function because it is a
 // property rather than a case: a position taken into another frame and brought
 // back is the position it started as, whichever frame it went through.
@@ -485,6 +642,9 @@ func TestFramesOfNothingAnswerNothing(t *testing.T) {
 			assert.False(t, transformed)
 
 			_, err := testCase.frames.TransformPoint(Point{}, "frame:building", "frame:survey-grid")
+			assert.True(t, errors.As(err, &UndeclaredFrameError{}))
+
+			_, err = testCase.frames.TransformBudget("frame:building", "frame:survey-grid")
 			assert.True(t, errors.As(err, &UndeclaredFrameError{}))
 		})
 	}

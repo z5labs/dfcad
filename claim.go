@@ -76,6 +76,10 @@ const (
 // is no other storage convention, and a figure quoted at any other coverage is
 // converted at the point it enters the model, by whoever enters it
 // ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
+//
+// A term is what a claim wrote down. Combining the terms of several claims into
+// the error budget of one computed answer is [Budget], which is where the
+// difference between the two kinds below is arithmetic rather than only a tag.
 type AccuracyTerm struct {
 	// Kind is which of the two terms this is.
 	Kind TermKind

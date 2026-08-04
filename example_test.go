@@ -918,3 +918,122 @@ func ExampleResolveFrames() {
 	// [3000.0 4000.0 0.0] mm becomes [113.000 224.000 0.000] m
 	// Georeferencing report GR-2026-002, Acme Surveys, by method:gnss-static on 2026-02-11, +/- 0.012 m
 }
+
+func ExampleBudget() {
+	root := "testdata/claim/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	claims, _ := dfcad.LoadClaims(root, registry)
+
+	// Two facts, each resolved to the claim which is current. Both were shot
+	// from the same control point, so both carry survey:CP-3.
+	width, _ := claims.Resolve("site:S-101", "width", registry)
+	position, _ := claims.Resolve("geom:V-02", "position", registry)
+
+	var budget dfcad.Budget
+	for _, resolution := range []dfcad.Resolution{width, position} {
+		claim, _ := resolution.Claim()
+		budget.Add(claim)
+	}
+
+	// The budget is itemised rather than a single number: which term dominates
+	// is a more useful answer than the total, because it says what to
+	// re-measure.
+	for _, term := range budget.Terms() {
+		fmt.Printf("%-11s %-14s %g %s, from %d claim(s)\n",
+			term.Kind, term.Name, term.Magnitude, term.Unit, len(term.Contributors))
+	}
+
+	// The two independent terms combine in quadrature. The control point is one
+	// systematic term shared by both facts, so it is counted once and added
+	// linearly rather than being allowed to cancel against itself.
+	combined, err := budget.Combined()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Printf("combined %.6f %s at k = %g\n", combined.Magnitude, combined.Unit, combined.CoverageFactor)
+
+	// Storage is always one standard deviation. Widening happens where the
+	// figure is reported, and the factor travels with it.
+	widened, _ := combined.Widen(2)
+	fmt.Printf("reported %.6f %s at k = %g\n", widened.Magnitude, widened.Unit, widened.CoverageFactor)
+
+	// Output:
+	// independent the width of site:S-101 0.003 m, from 1 claim(s)
+	// systematic  survey:CP-3    0.008 m, from 2 claim(s)
+	// independent survey:C-0181  0.003 m, from 1 claim(s)
+	// combined 0.009055 m at k = 1
+	// reported 0.018111 m at k = 2
+}
+
+func ExampleBudget_Add_unknown() {
+	root := "testdata/claim/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	claims, _ := dfcad.LoadClaims(root, registry)
+
+	// The occupancy of the room is rated rather than measured, so it says
+	// nothing about how well it is known.
+	occupancy, _ := claims.Resolve("site:S-101", "occupancy", registry)
+
+	var budget dfcad.Budget
+	for _, claim := range occupancy.Candidates() {
+		budget.Add(claim)
+	}
+
+	// An unstated accuracy is unknown and not zero. It taints the budget, and
+	// no combined figure comes out of it at all — because a figure computed
+	// from the inputs which did state one would be narrower than the truth
+	// while looking exactly like it.
+	fmt.Println("known:", budget.Known())
+
+	if _, err := budget.Combined(); err != nil {
+		var unknown dfcad.UnknownAccuracyError
+		if errors.As(err, &unknown) {
+			for _, claim := range unknown.Claims {
+				fmt.Printf("no accuracy: %s of %s, %s\n",
+					claim.Predicate(), claim.Subject(), claim.Source())
+			}
+		}
+	}
+
+	// Output:
+	// known: false
+	// no accuracy: occupancy of site:S-101, Fire strategy FS-2026-001
+}
+
+func ExampleFrames_TransformBudget() {
+	root := "testdata/frame/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	frames, _ := dfcad.ResolveFrames(registry, claims)
+
+	// The route from the room to the annex climbs two fits and comes back down
+	// through a third. Two of the three were fitted against the same control
+	// point.
+	budget, err := frames.TransformBudget("frame:room", "frame:annex")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	for _, term := range budget.Terms() {
+		fmt.Printf("%-11s %-13s %g %s\n", term.Kind, term.Name, term.Magnitude, term.Unit)
+	}
+
+	combined, _ := budget.Combined()
+	fmt.Printf("combined %.6f %s at k = %g\n", combined.Magnitude, combined.Unit, combined.CoverageFactor)
+
+	dominant, _ := budget.Dominant()
+	fmt.Printf("dominated by %s, shared by %d fits\n", dominant.Name, len(dominant.Contributors))
+
+	// Output:
+	// independent survey:C-0004 0.002 m
+	// independent survey:C-0002 0.004 m
+	// systematic  survey:CP-3   0.008 m
+	// independent survey:C-0003 0.006 m
+	// combined 0.010954 m at k = 1
+	// dominated by survey:CP-3, shared by 2 fits
+}
