@@ -1,0 +1,51 @@
+; One node whose bearing claims and whose width claims are tied in exactly the
+; same way — same accuracy, same date, two values which disagree — and whose
+; height claims are not. Nothing here is malformed: an ambiguous answer is a
+; state of the measurements rather than a mistake in the file.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (bearing
+    (id survey:C-0310)
+    (value 41.7 deg)
+    (source "As-built check AB-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 deg))
+    (date "2026-05-06"))
+  (bearing
+    (id survey:C-0311)
+    (value 41.9 deg)
+    (source "As-built check AB-2026-012, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 deg))
+    (date "2026-05-06"))
+  (width
+    (id survey:C-0312)
+    (value 8.5 m)
+    (source "As-built check AB-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06"))
+  (width
+    (id survey:C-0313)
+    (value 8.53 m)
+    (source "As-built check AB-2026-012, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06"))
+  (height
+    (id survey:C-0314)
+    (value 2.7 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09"))
+  (height
+    (id survey:C-0315)
+    (value 2.74 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-05-06")))

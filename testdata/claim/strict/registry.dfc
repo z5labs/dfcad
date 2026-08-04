@@ -1,0 +1,39 @@
+; A vocabulary whose three predicates differ in one thing: whether an ambiguous
+; resolution of them is reported or is a failure.
+;
+; `bearing` is the case the flag exists for. Two equally good readings of one
+; direction do not average, and setting out from either of them is a decision
+; somebody has to make rather than one this engine makes by picking. `width` is
+; the same shape of claim with the flag left off, so what the two resolutions do
+; differently is the flag and nothing else. `height` is strict and not ambiguous,
+; which is the case that says strict is about ambiguity rather than about
+; refusing to answer.
+(project
+  (label "Strict resolution fixture")
+  (globalid-namespace "https://example.org/models/strict"))
+
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate bearing
+  (unit deg)
+  (shape scalar)
+  (strict #t)
+  (description "Which way the thing faces, clockwise from grid north."))
+
+(predicate height
+  (unit m)
+  (shape scalar)
+  (strict #t)
+  (description "How far it is from the floor to the underside of the slab."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How wide the thing is, across its shorter axis."))

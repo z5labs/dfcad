@@ -499,3 +499,79 @@ func ExampleNodes_Node() {
 	// Output:
 	// site:S-101: Meeting Room B, a Space
 }
+
+func ExampleClaims_Resolve() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/valid")
+	claims, _ := dfcad.LoadClaims("testdata/claim/valid", registry)
+
+	// Two claims disagree about how wide the room is. Which of them is current
+	// is one stated rule rather than whichever file happened to load first:
+	// accuracy decides it, and recency only breaks a tie, so a dimension
+	// scaled off a plan does not beat a survey shot by being newer.
+	resolution, err := claims.Resolve("site:S-101", "width", registry)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	claim, ok := resolution.Claim()
+	if !ok {
+		fmt.Println("nothing rankable is claimed")
+		return
+	}
+
+	width, _ := claim.Value().Scalar()
+	fmt.Printf("%g %s, %s\n", width, claim.Value().Unit(), claim.Source())
+
+	// The answer names the claim it came from. This one wrote no id of its own
+	// — a claim needs a name only where something references it — so what
+	// traces it back is where it was written.
+	if id, wrote := resolution.ClaimID(); wrote {
+		fmt.Println(id)
+	} else {
+		fmt.Println(claim.Span().Start)
+	}
+
+	// Output:
+	// 8.53 m, As-built check AB-2026-009, Acme Surveys
+	// testdata/claim/valid/claims.dfc:18:3
+}
+
+// ExampleClaims_Resolve_ambiguous is the other half of the rule: where nothing
+// separates two claims, the engine says so instead of picking one.
+func ExampleClaims_Resolve_ambiguous() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/strict")
+	claims, _ := dfcad.LoadClaims("testdata/claim/strict", registry)
+
+	// Equally good, equally recent, and they disagree. That is a state of the
+	// measurements rather than a mistake in the file, so both come back.
+	resolution, err := claims.Resolve("site:S-101", "width", registry)
+	fmt.Println(err, resolution.Ambiguous())
+	for _, candidate := range resolution.Candidates() {
+		id, _ := candidate.ID()
+		value, _ := candidate.Value().Scalar()
+		fmt.Printf("%s claims %g %s\n", id, value, candidate.Value().Unit())
+	}
+
+	// A predicate the registry declares strict escalates the same ambiguity to
+	// a failure, because for some quantities no answer is safer than an
+	// arbitrary one. The tied claims come back with the error rather than only
+	// a count of them.
+	_, err = claims.Resolve("site:S-101", "bearing", registry)
+
+	var ambiguous dfcad.AmbiguousResolutionError
+	if errors.As(err, &ambiguous) {
+		fmt.Println(err)
+		for _, candidate := range ambiguous.Candidates {
+			fmt.Println(candidate.Span().Start)
+		}
+	}
+
+	// Output:
+	// <nil> true
+	// survey:C-0312 claims 8.5 m
+	// survey:C-0313 claims 8.53 m
+	// expected one current bearing of site:S-101, found 2 equally current: bearing is declared strict
+	// testdata/claim/strict/claims.dfc:10:3
+	// testdata/claim/strict/claims.dfc:17:3
+}
