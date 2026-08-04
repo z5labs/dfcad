@@ -275,6 +275,77 @@ func (g *Graph) Entity(id ID) (Entity, bool) {
 	return nil, false
 }
 
+// Nearest returns the id closest to the one asked for which the model does
+// hold, and whether one is close enough to be worth suggesting.
+//
+// It is what turns "nothing answers to site:S-1O1" into a sentence somebody can
+// act on. Ids are written by hand and by agents, and most of the ones which
+// reach nothing are the id which was meant with a character wrong; a lookup
+// which reports only that it found nothing leaves whoever wrote it reading the
+// files to find out which character.
+//
+// Close is what it is for a misspelled tag: the same distance and the same
+// tolerance, which is one edit for something short and two for anything longer.
+// The measure counts a transposition as one mistake rather than two, because
+// swapping two characters is what typing produces.
+//
+// Only entities are considered, which is what [Graph.Entity] answers for. A
+// claim id is not among them, for the reason it is not an [Entity]: a claim id
+// is optional, and the model holds only the claims which wrote one.
+//
+// Candidates are considered in lexical order, so two ids equally close to what
+// was asked for resolve to the same suggestion on every run and the answer is a
+// property of the model rather than of the order the walk read it in.
+func (g *Graph) Nearest(id ID) (ID, bool) {
+	if g == nil || id == "" {
+		return "", false
+	}
+
+	found, ok := nearest(string(id), slices.Sorted(g.ids()))
+	return ID(found), ok
+}
+
+// ids iterates the id of every entity the model holds, family by family.
+//
+// The zero id is not among them. It belongs to a thing whose id could not be
+// read, which is a diagnostic carrying what was written rather than a name
+// anything resolves.
+func (g *Graph) ids() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if g == nil {
+			return
+		}
+
+		for _, entities := range []iter.Seq[Entity]{
+			asEntities(g.nodes.All()),
+			asEntities(g.topology.Vertices()),
+			asEntities(g.topology.Edges()),
+			asEntities(g.topology.Loops()),
+		} {
+			for entity := range entities {
+				if entity.ID() == "" {
+					continue
+				}
+				if !yield(string(entity.ID())) {
+					return
+				}
+			}
+		}
+	}
+}
+
+// asEntities is a sequence of one family's members as the interface all four
+// share, so that a walk over every family is one loop rather than four.
+func asEntities[T Entity](seq iter.Seq[T]) iter.Seq[Entity] {
+	return func(yield func(Entity) bool) {
+		for member := range seq {
+			if !yield(member) {
+				return
+			}
+		}
+	}
+}
+
 // Node returns the semantic node id names, and whether the model holds one.
 //
 // It is [Graph.Entity] narrowed to the family most questions are about, so that

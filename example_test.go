@@ -98,6 +98,34 @@ func ExampleLoadGraph() {
 	// containment site:S-01
 }
 
+func ExampleGraph_Nearest() {
+	graph, _ := dfcad.LoadGraph("testdata/graph/valid")
+
+	// An id which reaches nothing is usually the id which was meant with a
+	// character wrong, so the answer to a failed lookup is what to try instead
+	// rather than only that it failed.
+	if _, ok := graph.Entity("site:S-1O1"); !ok {
+		if nearest, close := graph.Nearest("site:S-1O1"); close {
+			fmt.Println("did you mean", nearest)
+		}
+	}
+
+	// A misspelling of a vertex is answered by the vertex: an id is unique
+	// across the whole model, so the suggestion is not a question of family
+	// either.
+	fmt.Println(graph.Nearest("geom:V-O1"))
+
+	// An id nothing in the model resembles gets no suggestion. One nobody meant
+	// is worse than none: it sends the reader to change a line which was never
+	// the problem.
+	fmt.Println(graph.Nearest("other:nothing-like-it"))
+
+	// Output:
+	// did you mean site:S-101
+	// geom:V-01 true
+	//  false
+}
+
 func ExampleDiagnostic_Render() {
 	const path = "entities/level-1.dfc"
 

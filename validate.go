@@ -487,9 +487,9 @@ func join(items []string, conjunction string) string {
 // nearest returns the candidate closest to the tag written, and whether one is
 // close enough to be read as a misspelling of it.
 //
-// Candidates are considered in the order they are given, which is the canonical
-// child order, so two candidates equally close resolve the same way on every
-// run.
+// Candidates are considered in the order they are given — the canonical child
+// order for a tag, lexical order for an id — so two candidates equally close
+// resolve the same way on every run.
 func nearest(tag string, candidates []string) (string, bool) {
 	best, distance := "", 0
 

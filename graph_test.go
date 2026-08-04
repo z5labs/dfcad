@@ -207,6 +207,95 @@ func TestGraphLookupFindsNothingUnderAnIdNothingHolds(t *testing.T) {
 	}
 }
 
+func TestGraphNearest(t *testing.T) {
+	graph, diags := loadGraphFixture(t, "valid")
+	require.Empty(t, diags, "the valid fixture loads clean")
+
+	testCases := []struct {
+		name     string
+		id       ID
+		expected ID
+	}{
+		{
+			name:     "suggests the node an id was misspelled from",
+			id:       "site:S-1O1",
+			expected: "site:S-101",
+		},
+		{
+			name:     "suggests across the families rather than only the semantic one",
+			id:       "geom:V-O1",
+			expected: "geom:V-01",
+		},
+		{
+			name:     "reads two characters the wrong way round as the one mistake it is",
+			id:       "geom:L-10",
+			expected: "geom:L-01",
+		},
+		{
+			name:     "suggests the id itself, which is what an exact match is nearest to",
+			id:       "site:S-101",
+			expected: "site:S-101",
+		},
+		{
+			name:     "suggests nothing for an id nothing in the model resembles",
+			id:       "other:nothing-like-it",
+			expected: "",
+		},
+		{
+			name:     "suggests nothing for a claim id, which is not an entity",
+			id:       "survey:W-000",
+			expected: "",
+		},
+		{
+			name:     "suggests nothing for the zero id, which names nothing",
+			id:       "",
+			expected: "",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			nearest, ok := graph.Nearest(testCase.id)
+
+			assert.Equal(t, testCase.expected, nearest)
+			assert.Equal(t, testCase.expected != "", ok)
+		})
+	}
+}
+
+// TestGraphNearestIsAPropertyOfTheModel is its own function because it asserts
+// about two loads rather than one: a suggestion which came out of the order the
+// walk read the files in would change when a node moved between them, while the
+// model went on holding the same ids.
+func TestGraphNearestIsAPropertyOfTheModel(t *testing.T) {
+	graph, diags := loadGraphFixture(t, "valid")
+	require.Empty(t, diags, "the valid fixture loads clean")
+
+	// Every id which is one edit from an id the model holds, asked for twice.
+	for id := range graph.ids() {
+		first, ok := graph.Nearest(ID(id))
+		require.True(t, ok, id)
+
+		second, _ := graph.Nearest(ID(id))
+		assert.Equal(t, first, second)
+	}
+}
+
+// TestGraphNearestOnAnEmptyModel is its own function because a model holding
+// nothing has nothing to suggest, and a lookup which invented something would
+// be worse than one which said so.
+func TestGraphNearestOnAnEmptyModel(t *testing.T) {
+	// The empty fixture has a diagnostic of its own — a model declares one
+	// project and this one declares none — and it is not what this is about: a
+	// graph is usable whatever its diagnostics say.
+	graph, _ := loadGraphFixture(t, "empty")
+
+	nearest, ok := graph.Nearest("site:S-101")
+
+	assert.False(t, ok)
+	assert.Empty(t, nearest)
+}
+
 func TestGraphIteration(t *testing.T) {
 	graph, diags := loadGraphFixture(t, "valid")
 	require.Empty(t, diags, "the valid fixture loads clean")

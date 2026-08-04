@@ -264,9 +264,118 @@ seven, which are a closed set compiled into the engine and are not in `list-type
 An unknown **frame** lists the frames the registry declares, which `list-types` does not
 list either.
 
-### Diagnostics and the exit code of a listing
+### `get`
 
-Both listings exit `0` whenever they produced a listing, whatever the model's diagnostics
+One thing, by its id, with the claims written on it. It takes one id argument and two
+flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--claims <how>` | `full` (default), every claim written on it, or `resolved`, the current claim under each predicate. |
+| `--deprecated` | Include the claims that have been deprecated. Refused beside `--claims resolved`. |
+
+An id is unique across the whole model, so this is one command for both families. A vertex,
+an edge and a loop are retrieved by the same call a semantic node is, and `family` says
+which came back and so which of the fields to expect.
+
+```json
+{
+  "version": 1,
+  "command": "get",
+  "entity": {
+    "id": "site:S-101",
+    "family": "node",
+    "label": "Meeting Room A",
+    "kind": "Space",
+    "type": "MeetingRoom",
+    "geometry": "area",
+    "frame": "frame:building",
+    "within": "site:L-01",
+    "member-of": ["site:Z-01"],
+    "boundaries": ["geom:L-01"],
+    "span": {
+      "start": {"path": "entities/site.dfc", "line": 13, "column": 1, "offset": 142},
+      "end": {"path": "entities/site.dfc", "line": 52, "column": 43, "offset": 1284}
+    },
+    "claims": [
+      {
+        "id": "survey:A-0002",
+        "predicate": "area",
+        "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+        "source": "As-built check AB-2026-009, Acme Surveys",
+        "method": "method:total-station",
+        "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+        "date": "2026-05-06",
+        "rank": "normal",
+        "span": {
+          "start": {"path": "entities/site.dfc", "line": 30, "column": 3, "offset": 712},
+          "end": {"path": "entities/site.dfc", "line": 36, "column": 25, "offset": 934}
+        }
+      }
+    ]
+  }
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `entity` | object | The thing the id named. |
+| `entity.id` | string | The id the model holds it under, which is the id that was asked for. |
+| `entity.family` | string | One of `node`, `vertex`, `edge`, `loop`. It says which of the fields below to expect. |
+| `entity.label` | string, optional | Its name for a person reading it. |
+| `entity.kind` | string, optional | The kind a semantic node declares. |
+| `entity.type` | string, optional | The type a semantic node declares, which need not be one the registry declares. |
+| `entity.geometry` | string, optional | The geometry form a semantic node declares. Absent when it has none, which is ordinary rather than incomplete. |
+| `entity.frame` | string, optional | The coordinate frame it is expressed in. |
+| `entity.within` | string, optional | The id of the node that strictly contains a semantic node. |
+| `entity.member-of` | array, optional | The ids of the zones a semantic node declares membership of, in the order it wrote them. |
+| `entity.boundaries` | array, optional | The ids a semantic node wrote where a loop id belongs, in the order it wrote them, and as written rather than as resolved. |
+| `entity.start`, `entity.end` | string, optional | The ids of the vertices an edge runs between. |
+| `entity.backed-by` | array, optional | The ids of the elements that physically realise an edge. |
+| `entity.edges` | array, optional | The ids of the edges a loop is assembled from, in the order it wrote them. |
+| `entity.span` | object | Where it was written: file, line, column and byte offset, at both ends of the form. |
+| `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
+
+Every claim carries the evidence for its value, because a value without it is the bare
+number the format exists to stop:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `claims[].id` | string, optional | The claim's own id. Absent when it wrote none, which is the great majority of claims. |
+| `claims[].predicate` | string | The predicate it was written under. |
+| `claims[].value` | object | `shape` is one of `scalar`, `coordinate`, `text`, `transform`, and says which of `scalar`, `coordinate`, `text` and `transform` carries the value. `unit` is absent for a non-dimensional predicate and for the shapes that carry no unit. |
+| `claims[].source` | string, optional | What the value is evidenced by — a report, a drawing, an instrument log. |
+| `claims[].method` | string, optional | The id naming how the value was obtained. |
+| `claims[].accuracy` | array, optional | One entry per term, each with its `kind` (`independent` or `systematic`), its one-sigma `magnitude`, its `unit`, and the `source` a systematic term is shared with. Absent when the claim carries none, which makes it unrankable rather than exact. |
+| `claims[].date` | string, optional | The day the value was obtained, as a full date. |
+| `claims[].rank` | string | `normal` or `deprecated`, reported whether or not it was written. |
+| `claims[].superseded-by` | string, optional | The id of the claim that replaced this one. |
+| `claims[].resolution` | string, optional | What the rule left this claim as: `current`, `tied` or `unranked`. Written under `--claims resolved` and absent otherwise, because under `--claims full` nothing has been resolved. |
+| `claims[].span` | object | Where the claim was written. |
+
+Under `--claims resolved` a predicate appears once, as the claim that won. Where nothing
+won it appears as every claim that could still be the answer — `tied` where the rule could
+not separate them, `unranked` where nothing rankable was said — because narrowing four
+claims to two is most of the work of deciding between them, and a caller shown one of the
+two cannot tell that the other exists.
+
+Deprecated claims are left out unless `--deprecated` asks for them. `--deprecated` beside
+`--claims resolved` is a **usage error** rather than a flag that is quietly ignored: a
+deprecated claim is retracted rather than out-ranked, and resolution never considers one.
+
+References are ids and are never the things they name, so the answer is the size of the
+thing that was asked for rather than of the model behind it. Following one is another call.
+
+An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
+naming it, and naming the nearest id there is when one is close enough to be the id that
+was meant. It is not an empty answer: a thing that is not there and a thing with nothing
+said about it are different answers. An argument that is not a well-formed id is the same
+exit code, reporting the rule it broke rather than a lookup that was never going to find
+anything.
+
+### Diagnostics and the exit code of a read
+
+The listings and `get` exit `0` whenever they answered, whatever the model's diagnostics
 say. Those diagnostics are still rendered in full on stderr.
 
 A listing says what a model holds, and a node whose containment does not resolve is still a
