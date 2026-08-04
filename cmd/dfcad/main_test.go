@@ -18,44 +18,43 @@ func TestRun(t *testing.T) {
 		name           string
 		args           []string
 		expectedCode   int
-		expectedStdout string
 		expectedStderr string
 	}{
 		{
 			name:           "prints usage to stderr and fails when given no arguments",
 			args:           nil,
 			expectedCode:   exitUsage,
-			expectedStderr: usage,
+			expectedStderr: usage(),
 		},
 		{
-			name:           "prints usage to stdout and succeeds when asked for help",
+			name:           "prints usage to stderr and succeeds when asked for help",
 			args:           []string{"--help"},
 			expectedCode:   exitSuccess,
-			expectedStdout: usage,
+			expectedStderr: usage(),
 		},
 		{
-			name:           "prints usage to stdout and succeeds for the short help flag",
+			name:           "prints usage to stderr and succeeds for the short help flag",
 			args:           []string{"-h"},
 			expectedCode:   exitSuccess,
-			expectedStdout: usage,
+			expectedStderr: usage(),
 		},
 		{
-			name:           "prints usage to stdout and succeeds for the help subcommand",
+			name:           "prints usage to stderr and succeeds for the help subcommand",
 			args:           []string{"help"},
 			expectedCode:   exitSuccess,
-			expectedStdout: usage,
+			expectedStderr: usage(),
 		},
 		{
 			name:           "names the unknown command on stderr and fails",
 			args:           []string{"resolev"},
 			expectedCode:   exitUsage,
-			expectedStderr: "dfcad: unknown command \"resolev\"\n\n" + usage,
+			expectedStderr: "dfcad: unknown command \"resolev\"\n\n" + usage(),
 		},
 		{
 			name:           "takes the command from the first argument, not a later one",
 			args:           []string{"resolev", "help"},
 			expectedCode:   exitUsage,
-			expectedStderr: "dfcad: unknown command \"resolev\"\n\n" + usage,
+			expectedStderr: "dfcad: unknown command \"resolev\"\n\n" + usage(),
 		},
 	}
 
@@ -66,8 +65,22 @@ func TestRun(t *testing.T) {
 			code := run(testCase.args, &stdout, &stderr)
 
 			require.Equal(t, testCase.expectedCode, code)
-			assert.Equal(t, testCase.expectedStdout, stdout.String())
+
+			// None of these produced a result, so none of them wrote anything
+			// to the stream a caller pipes.
+			assert.Empty(t, stdout.String())
 			assert.Equal(t, testCase.expectedStderr, stderr.String())
 		})
+	}
+}
+
+// TestUsageListsEveryCommand is its own function because it is about the help
+// staying in step with the command table rather than about one invocation.
+func TestUsageListsEveryCommand(t *testing.T) {
+	help := usage()
+
+	for _, cmd := range commands {
+		assert.Contains(t, help, cmd.name)
+		assert.Contains(t, help, cmd.summary)
 	}
 }
