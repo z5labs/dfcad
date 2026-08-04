@@ -1,0 +1,17 @@
+testdata/claim/cyclic-supersession/claims.dfc:17:20: error: expected a supersession which ends in a claim nothing replaced, found a cycle: survey:C-0104, then survey:C-0181, then survey:C-0104
+17 |     (superseded-by survey:C-0181))
+   |                    ^^^^^^^^^^^^^
+   = hint: every deprecated claim is replaced by a later one, so following the replacements has to reach a claim which is still asserted
+testdata/claim/cyclic-supersession/claims.dfc:26:20: note: survey:C-0181 names the next claim of the cycle here
+26 |     (superseded-by survey:C-0104)))
+   |                    ^^^^^^^^^^^^^
+testdata/claim/cyclic-supersession/claims.dfc:40:20: error: expected a supersession which ends in a claim nothing replaced, found a cycle: survey:C-0210, then survey:C-0211, then survey:C-0212, then survey:C-0210
+40 |     (superseded-by survey:C-0211))
+   |                    ^^^^^^^^^^^^^
+   = hint: every deprecated claim is replaced by a later one, so following the replacements has to reach a claim which is still asserted
+testdata/claim/cyclic-supersession/claims.dfc:49:20: note: survey:C-0211 names the next claim of the cycle here
+49 |     (superseded-by survey:C-0212))
+   |                    ^^^^^^^^^^^^^
+testdata/claim/cyclic-supersession/claims.dfc:58:20: note: survey:C-0212 names the next claim of the cycle here
+58 |     (superseded-by survey:C-0210)))
+   |                    ^^^^^^^^^^^^^

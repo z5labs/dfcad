@@ -52,6 +52,10 @@ type claimSpec struct {
 
 	// rank is its rank, which is [RankNormal] unless written.
 	rank Rank
+
+	// supersededBy is the id of the claim it names as its replacement, which
+	// only a deprecated claim writes.
+	supersededBy ID
 }
 
 // writtenClaims builds the claims of one test as though they had been written
@@ -81,13 +85,14 @@ func writtenClaims(specs ...claimSpec) []*Claim {
 		}
 
 		claim := &Claim{
-			id:        spec.id,
-			subject:   subject,
-			predicate: predicate,
-			value:     Value{shape: ShapeScalar, number: spec.value, unit: "m"},
-			date:      day(spec.date),
-			rank:      rank,
-			span:      writtenAt(i),
+			id:           spec.id,
+			subject:      subject,
+			predicate:    predicate,
+			value:        Value{shape: ShapeScalar, number: spec.value, unit: "m"},
+			date:         day(spec.date),
+			rank:         rank,
+			supersededBy: spec.supersededBy,
+			span:         writtenAt(i),
 		}
 
 		if len(spec.terms) > 0 {
@@ -156,6 +161,11 @@ func resolving(claims []*Claim) *Claims {
 		}
 		out.bySubject[claim.subject] = append(out.bySubject[claim.subject], claim)
 	}
+
+	// A load indexes the supersessions once it has read every file, and a
+	// collection built without that index answers a traversal with nothing
+	// rather than with what the claims say.
+	out.link()
 
 	return out
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/z5labs/dfcad"
 )
@@ -612,4 +613,51 @@ func ExampleClaims_Conflicts() {
 	//   8.5 m — Plan set A-101, sheet 3
 	//   8.53 m — As-built check AB-2026-009, Acme Surveys
 	//   resolves to 8.53 m
+}
+
+// ExampleClaims_History traces a current value back through everything it
+// replaced, which is what deprecating a claim rather than deleting one leaves
+// behind.
+func ExampleClaims_History() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/supersession")
+	claims, _ := dfcad.LoadClaims("testdata/claim/supersession", registry)
+
+	// Where the vertex is now: three claims were made about it and two of them
+	// were retracted, so resolution has one to choose from.
+	resolution, _ := claims.Resolve("geom:V-02", "position", registry)
+
+	current, ok := resolution.Claim()
+	if !ok {
+		fmt.Println("nothing rankable is claimed")
+		return
+	}
+
+	fmt.Printf("%s — %s\n", mustID(current), current.Source())
+
+	// And why it says that: each claim it stands in place of, nearest first.
+	// Every one of them is still in the file, saying what was believed and on
+	// what evidence.
+	for replaced := range claims.History(current) {
+		fmt.Printf("  replaced %s — %s, %s\n", mustID(replaced), replaced.Source(), replaced.Date().Format(time.DateOnly))
+	}
+
+	// The chain is walkable in the other direction too, which is how a value
+	// read out of a superseded report is followed forward to what the model
+	// says now.
+	oldest, _ := claims.Claim("survey:C-0100")
+	reached, _ := claims.Current(oldest)
+	fmt.Printf("%s is now %s\n", mustID(oldest), mustID(reached))
+
+	// Output:
+	// survey:C-0181 — As-built check AB-2026-009, Acme Surveys
+	//   replaced survey:C-0104 — Interior control set IC-01, Acme Surveys, 2026-02-18
+	//   replaced survey:C-0100 — Plan set A-101, sheet 3, 2026-01-09
+	// survey:C-0100 is now survey:C-0181
+}
+
+// mustID names a claim by the id it wrote, which every claim of a supersession
+// writes: a claim something references is found by the name it wrote.
+func mustID(claim *dfcad.Claim) dfcad.ID {
+	id, _ := claim.ID()
+	return id
 }

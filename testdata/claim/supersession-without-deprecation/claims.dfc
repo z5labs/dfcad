@@ -1,0 +1,25 @@
+; A claim which is still asserted and names what replaced it anyway. Written as
+; it is the model holds two live widths, one of which says it was superseded,
+; and the conflict register reports a disagreement the file believes it settled.
+;
+; The remedy is one word rather than a deletion: deprecating the claim retracts
+; it, and the pointer at what replaced it then says what stands in its place.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (superseded-by survey:C-0212))
+  (width
+    (id survey:C-0212)
+    (value 8.53 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))

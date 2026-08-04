@@ -98,6 +98,26 @@ func TestLoadClaims(t *testing.T) {
 			name:    "names a claim written under a predicate declared to take a plain value",
 			fixture: "claim-for-a-plain-value",
 		},
+		{
+			name:    "names a deprecation which left out what replaced it, and the claim it retracted",
+			fixture: "deprecated-without-replacement",
+		},
+		{
+			name:    "names both ends of a supersession pointing at a claim the model does not hold",
+			fixture: "dangling-supersession",
+		},
+		{
+			name:    "names a claim which gave itself as what replaced it",
+			fixture: "self-supersession",
+		},
+		{
+			name:    "names every claim of a supersession cycle, once for the ring",
+			fixture: "cyclic-supersession",
+		},
+		{
+			name:    "names a replacement written on a claim which was never deprecated",
+			fixture: "supersession-without-deprecation",
+		},
 	}
 
 	for _, testCase := range testCases {

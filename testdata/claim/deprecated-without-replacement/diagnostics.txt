@@ -1,0 +1,14 @@
+testdata/claim/deprecated-without-replacement/claims.dfc:19:5: error: expected the claim which replaced survey:C-0210, found a deprecation naming none
+19 |     (rank deprecated))
+   |     ^^^^^^^^^^^^^^^^^
+   = hint: a deprecated claim carries (superseded-by <claim-id>) naming what replaced it, which is what keeps deprecated from being a delete
+testdata/claim/deprecated-without-replacement/claims.dfc:13:9: note: the deprecated claim is written here
+13 |     (id survey:C-0210)
+   |         ^^^^^^^^^^^^^
+testdata/claim/deprecated-without-replacement/claims.dfc:25:5: error: expected the claim which replaced the width of site:S-101, found a deprecation naming none
+25 |     (rank deprecated)))
+   |     ^^^^^^^^^^^^^^^^^
+   = hint: a deprecated claim carries (superseded-by <claim-id>) naming what replaced it, which is what keeps deprecated from being a delete
+testdata/claim/deprecated-without-replacement/claims.dfc:20:4: note: the deprecated claim is written here
+20 |   (width
+   |    ^^^^^

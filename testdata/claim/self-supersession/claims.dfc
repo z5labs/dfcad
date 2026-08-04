@@ -1,0 +1,17 @@
+; A claim which names itself as what replaced it, which is the shortest way of
+; writing a deprecation that replaces nothing: the rule asking for a replacement
+; is satisfied by the letter of it and the record it exists to keep is not
+; there.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (id survey:C-0210)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:C-0210)))
