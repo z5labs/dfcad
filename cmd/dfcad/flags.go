@@ -139,6 +139,11 @@ func (v *verbosity) IsBoolFlag() bool {
 	return true
 }
 
+// endOfFlags is the argument which says that nothing after it is a flag,
+// however it is spelled. It is the flag package's own spelling, and is named
+// here because [parse] has to recognise one the flag package has already eaten.
+const endOfFlags = "--"
+
 // globals are the flags every subcommand takes, and takes identically.
 //
 // They are defined here once rather than per subcommand so that --root cannot
@@ -242,35 +247,77 @@ func newFlagSet(name string, globals *globals) *flag.FlagSet {
 
 // parse parses a subcommand's arguments and settles the global flags.
 //
-// It returns the exit code the subcommand should return, and whether it should
-// return rather than carry on. Doing this once is what keeps every subcommand
-// agreeing on which stream help goes to, which code a malformed flag exits
-// with, and that neither writes anything to stdout.
-func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, stderr io.Writer) (int, bool) {
-	if err := flags.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			// Help is for a person, so it goes where everything for a person
-			// goes. Stdout stays empty: a run that produced no result writes
-			// no result object, and never writes prose instead of one.
+// It returns the arguments which are not flags, in the order they were given,
+// the exit code the subcommand should return, and whether it should return
+// rather than carry on. Doing this once is what keeps every subcommand agreeing
+// on which stream help goes to, which code a malformed flag exits with, and
+// that neither writes anything to stdout.
+//
+// Flags and arguments may be written in any order. The flag package stops at
+// the first argument which is not a flag and hands back everything after it
+// unparsed, which would make `dfcad list-instances MeetingRoom --kind Space`
+// silently a listing of every kind — a flag that is ignored rather than
+// rejected is worse than one that does not exist. Parsing resumes after each
+// argument instead, which is what a person and an agent both expect and is why
+// it is done here rather than in each subcommand: an interface where the
+// meaning of a flag depends on which command it was written for is one nobody
+// can hold in their head.
+func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, stderr io.Writer) ([]string, int, bool) {
+	var positional []string
+
+	for {
+		if err := flags.Parse(args); err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				// Help is for a person, so it goes where everything for a
+				// person goes. Stdout stays empty: a run that produced no
+				// result writes no result object, and never writes prose
+				// instead of one.
+				fmt.Fprint(stderr, cmd.usage)
+				return nil, exitSuccess, true
+			}
+
+			fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
 			fmt.Fprint(stderr, cmd.usage)
-			return exitSuccess, true
+			return nil, exitUsage, true
 		}
 
-		fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
-		fmt.Fprint(stderr, cmd.usage)
-		return exitUsage, true
+		rest := flags.Args()
+
+		// A `--` ends the flags for good, and everything after it is an
+		// argument however it is spelled. Resuming past one would reject
+		// `dfcad fmt -- -a.dfc -b.dfc`, which is the one spelling there is for
+		// a file whose name begins with a dash, and would read the `--kind` of
+		// `dfcad list-instances -- MeetingRoom --kind Space` as a filter after
+		// being told not to.
+		//
+		// The flag package consumes the `--` and does not report that it did,
+		// so where it was is what says so: it is the last argument consumed
+		// before what came back.
+		if consumed := len(args) - len(rest); consumed > 0 && args[consumed-1] == endOfFlags {
+			positional = append(positional, rest...)
+			break
+		}
+
+		if len(rest) == 0 {
+			break
+		}
+
+		// Everything else the flag package stopped at is an argument only as
+		// far as its first element: what follows it may be a flag again.
+		positional = append(positional, rest[0])
+		args = rest[1:]
 	}
 
 	if err := globals.validate(); err != nil {
 		fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
 		fmt.Fprint(stderr, cmd.usage)
-		return exitUsage, true
+		return nil, exitUsage, true
 	}
 
 	if err := globals.open(); err != nil {
 		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
-		return exitLoad, true
+		return nil, exitLoad, true
 	}
 
-	return exitSuccess, false
+	return positional, exitSuccess, false
 }

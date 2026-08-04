@@ -43,6 +43,18 @@ var commands = []command{
 		usage:   fmtUsage,
 		run:     runFmt,
 	},
+	{
+		name:    "list-types",
+		summary: "list the node types the model declares",
+		usage:   listTypesUsage,
+		run:     runListTypes,
+	},
+	{
+		name:    "list-instances",
+		summary: "list the instances of a type",
+		usage:   listInstancesUsage,
+		run:     runListInstances,
+	},
 }
 
 // lookup is the subcommand of that name.
