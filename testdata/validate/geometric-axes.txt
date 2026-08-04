@@ -1,0 +1,27 @@
+testdata/validate/geometric-axes.dfc:7:3: error: expected a child of the vertex form, found (kind ...) on geom:V-01, which is an axis of the semantic family
+7 |   (kind Space))
+  |   ^^^^^^^^^^^^
+  = hint: a vertex, an edge and a loop carry no kind and no type; the two families are different shapes rather than one shape with fields left out, and what a geometric node carries is a frame, claims and references to other geometric nodes
+testdata/validate/geometric-axes.dfc:12:3: error: expected a child of the edge form, found (type ...) on geom:E-01, which is an axis of the semantic family
+12 |   (type Partition))
+   |   ^^^^^^^^^^^^^^^^
+   = hint: a vertex, an edge and a loop carry no kind and no type; the two families are different shapes rather than one shape with fields left out, and what a geometric node carries is a frame, claims and references to other geometric nodes
+testdata/validate/geometric-axes.dfc:17:3: error: expected a child of the loop form, found (kind ...) on geom:L-01, which is an axis of the semantic family
+17 |   (kind Space)
+   |   ^^^^^^^^^^^^
+   = hint: a vertex, an edge and a loop carry no kind and no type; the two families are different shapes rather than one shape with fields left out, and what a geometric node carries is a frame, claims and references to other geometric nodes
+testdata/validate/geometric-axes.dfc:18:3: error: expected a child of the loop form, found (type ...) on geom:L-01, which is an axis of the semantic family
+18 |   (type SiteBoundary))
+   |   ^^^^^^^^^^^^^^^^^^^
+   = hint: a vertex, an edge and a loop carry no kind and no type; the two families are different shapes rather than one shape with fields left out, and what a geometric node carries is a frame, claims and references to other geometric nodes
+testdata/validate/geometric-axes.dfc:20:1: error: expected an id after the vertex tag, found none
+20 | (vertex
+   | ^^^^^^^
+21 |   (frame frame:building)
+   | ^^^^^^^^^^^^^^^^^^^^^^^^
+22 |   (kind Space))
+   | ^^^^^^^^^^^^^^^
+testdata/validate/geometric-axes.dfc:22:3: error: expected a child of the vertex form, found (kind ...), which is an axis of the semantic family
+22 |   (kind Space))
+   |   ^^^^^^^^^^^^
+   = hint: a vertex, an edge and a loop carry no kind and no type; the two families are different shapes rather than one shape with fields left out, and what a geometric node carries is a frame, claims and references to other geometric nodes

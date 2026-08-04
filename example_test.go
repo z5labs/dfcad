@@ -160,6 +160,63 @@ func ExampleLoadNodes() {
 	// site:C-01: Zone CircuitGroup, no geometry
 }
 
+func ExampleLoadTopology() {
+	// The geometric family is read by a pass of its own, because it validates
+	// under its own rules: a vertex is not a node missing its kind.
+	registry, diagnostics := dfcad.LoadRegistry("testdata/topology/valid")
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	topology, diagnostics := dfcad.LoadTopology("testdata/topology/valid", registry)
+	for _, diagnostic := range diagnostics {
+		fmt.Println(diagnostic)
+	}
+
+	// An edge is an ordered pair of vertices: start then end, never sorted.
+	edge, _ := topology.Edge("geom:E-01")
+	start, end := edge.Vertices()
+	fmt.Printf("%s: %s to %s\n", edge.ID(), start, end)
+
+	// A loop is the ring of edges the outline is traversed through, in the
+	// order it was written. Two rooms either side of a partition reference the
+	// same edge, which is what makes the partition one thing rather than two
+	// copies free to drift apart.
+	loop, _ := topology.Loop("geom:L-01")
+	fmt.Println(loop.ID(), loop.Edges())
+
+	// Output:
+	// geom:E-01: geom:V-01 to geom:V-02
+	// geom:L-01 [geom:E-03 geom:E-04 geom:E-01 geom:E-02]
+}
+
+// ExampleLoadTopology_position is the arrangement two node families exist for:
+// where a corner was measured is a claim on the corner, with the same
+// provenance and the same accuracy rules as the width of a room.
+func ExampleLoadTopology_position() {
+	registry, _ := dfcad.LoadRegistry("testdata/topology/valid")
+	topology, _ := dfcad.LoadTopology("testdata/topology/valid", registry)
+	claims, _ := dfcad.LoadClaims("testdata/topology/valid", registry)
+
+	corner, _ := topology.Vertex("geom:V-01")
+
+	// One corner, surveyed twice. Neither reading is thrown away, and the
+	// engine has no coordinate field which could have held only one of them.
+	for claim := range claims.Under(corner.ID(), "position") {
+		position, _ := claim.Value().Coordinate()
+		accuracy, _ := claim.Accuracy()
+
+		fmt.Printf("%v %s +/- %g %s, %s\n",
+			position, claim.Value().Unit(),
+			accuracy.Terms[0].Magnitude, accuracy.Terms[0].Unit,
+			claim.Date().Format("2006-01-02"))
+	}
+
+	// Output:
+	// [0 0 0] m +/- 0.012 m, 2026-02-18
+	// [0.004 0 0] m +/- 0.003 m, 2026-05-06
+}
+
 func ExampleLoadClaims() {
 	// The registry resolves first. Which predicates exist, which of the four
 	// shapes each one's value takes and which unit it is expressed in are the

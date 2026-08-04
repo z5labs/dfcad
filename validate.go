@@ -109,6 +109,13 @@ type scope struct {
 	// span is the enclosing form, which is what a diagnostic about something
 	// missing from it points at. The top level of a file has none.
 	span Span
+
+	// subject is the id the enclosing form was written with, which is what a
+	// diagnostic naming the thing rather than the shape of it says. It is the
+	// zero ID where the form takes no id, where none was written, and where
+	// what was written is not one — in each of which the diagnostic names the
+	// form and leaves the span to say which one.
+	subject ID
 }
 
 // check validates one written form against the description of it, and then
@@ -139,6 +146,7 @@ func (v *validator) check(node *Node, f *form, tag string) {
 		expected: "a child of " + f.name(tag),
 		where:    f.name(tag),
 		span:     node.Span,
+		subject:  subjectID(node),
 	}, children)
 }
 
@@ -173,6 +181,8 @@ func (v *validator) children(s scope, elements []*Node) {
 			continue
 		}
 
+		reject, rejected := s.form.rejection(tag)
+
 		switch c, permitted := s.form.child(tag); {
 		case permitted:
 			seen[tag] = append(seen[tag], element)
@@ -180,6 +190,12 @@ func (v *validator) children(s scope, elements []*Node) {
 
 		case s.form.free:
 			// An assertion's parameters belong to the check registry.
+
+		// A tag this form answers for itself, which it does where the reason it
+		// is not a child here is a rule about the model rather than about which
+		// table the tag appears in.
+		case rejected:
+			v.rejected(s, element, tag, reject)
 
 		case s.form.claims != nil && !forms().reserved[tag]:
 			v.claim(element, tag)
@@ -286,6 +302,29 @@ func (v *validator) misplaced(s scope, node *Node, tag string) {
 	}
 
 	v.add(node.Span, fmt.Sprintf("expected %s, found (%s ...), which is not permitted here", s.expected, tag), hint)
+}
+
+// rejected reports a tag the enclosing form answers for itself, naming the
+// thing the form was written about rather than only the form.
+//
+// It is reported apart from a misplaced form because the two are different
+// mistakes with different fixes, in the way a misplaced form is reported apart
+// from an unknown tag. A misplaced form is a child on the wrong node, and
+// saying where it does belong is the answer; a rejected one is a child the node
+// has no place for at all, and where the tag belongs elsewhere is beside the
+// point.
+func (v *validator) rejected(s scope, node *Node, tag string, r rejection) {
+	v.add(node.Span, fmt.Sprintf("expected %s, found (%s ...)%s, which %s", s.expected, tag, on(s.subject), r.because), r.hint)
+}
+
+// on names the subject of a form for a diagnostic about something written
+// inside it, and names nothing where the form wrote no id a reader could be
+// pointed at.
+func on(subject ID) string {
+	if subject == "" {
+		return ""
+	}
+	return " on " + string(subject)
 }
 
 // unknown reports a tag the format does not know, with the nearest tag it does

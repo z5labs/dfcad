@@ -1,0 +1,22 @@
+; Specification section 6.1. A geometric node carries no kind and no type, and
+; writing either is an error naming the node rather than a field quietly
+; ignored. The node with no id is named by what it is, because there is nothing
+; else to call it.
+(vertex geom:V-01
+  (frame frame:building)
+  (kind Space))
+
+(edge geom:E-01
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02)
+  (type Partition))
+
+(loop geom:L-01
+  (frame frame:building)
+  (edges geom:E-01)
+  (kind Space)
+  (type SiteBoundary))
+
+(vertex
+  (frame frame:building)
+  (kind Space))

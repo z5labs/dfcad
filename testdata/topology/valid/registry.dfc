@@ -1,0 +1,29 @@
+; The vocabulary the geometry beside this file is judged against.
+;
+; Two of the predicates are worth reading together. `position` is what makes a
+; corner a measurement rather than a coordinate, and `arc-centre` is what makes
+; an edge non-straight: neither is known to the engine, both are declared here,
+; and adding the second took no change to any form.
+(project
+  (label "Geometric family fixture")
+  (globalid-namespace "https://example.org/models/geometry"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey
+  (description "Claim ids and control points issued by Acme Surveys."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate arc-centre
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The centre an edge curves about, which makes it an arc rather than a segment."))

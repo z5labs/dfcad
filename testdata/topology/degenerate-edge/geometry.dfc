@@ -1,0 +1,13 @@
+; An edge which starts and ends at the same vertex. Both of its ends resolve, so
+; the reference is not what is wrong with it: an edge of one vertex has no
+; length and no direction, and a loop traversed through it would arrive back
+; where it started without having gone anywhere.
+(vertex geom:V-01 (frame frame:building))
+
+(vertex geom:V-02 (frame frame:building))
+
+(edge geom:E-01 (label "The wall which is a point") (frame frame:building) (vertices geom:V-01 geom:V-01))
+
+; The edge beside it names two different vertices, so the rule is about the pair
+; and not about the form.
+(edge geom:E-02 (frame frame:building) (vertices geom:V-01 geom:V-02))

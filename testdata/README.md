@@ -19,6 +19,7 @@ the goldens beside the fixtures are invisible to it.
 | `registry`                 | The registry loader's own fixtures. One *directory* per case, because a registry is a property of a source tree and not of a file, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `node`                     | The semantic node loader's own fixtures. One *directory* per case, each a registry and the nodes judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `claim`                    | The claim loader's own fixtures. One *directory* per case, each a registry and the claims judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
+| `topology`                 | The geometric node loader's own fixtures. One *directory* per case, each a registry and the vertices, edges and loops judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `print`                    | The printer's own fixtures: one per printing behaviour, each with its canonical printing as `.want`. |
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `model`                    | A two-file model the runnable examples load.                                                |
@@ -52,8 +53,9 @@ nobody regenerated, fails there.
 The cases about a file and its lexis are in `corpus/invalid`; the cases about
 the shape of a form are in `validate`; the cases about what a registry declares
 are in `registry`; the cases about a node read against a loaded registry are in
-`node`, and the cases about a claim read against one are in `claim`. Each is
-where the tests of that layer read them from.
+`node`, the cases about a claim read against one are in `claim`, and the cases
+about the geometric family read against one are in `topology`. Each is where the
+tests of that layer read them from.
 
 | Specification | Error case                                          | Fixture                                     |
 |---------------|-----------------------------------------------------|---------------------------------------------|
@@ -105,6 +107,10 @@ where the tests of that layer read them from.
 | 6.5           | A reference to a claim which carries no id of its own | `claim/dangling-reference/`                 |
 | 6.5, 7.4      | A bare scalar where a claim-bearing predicate belongs, beside the minimal and the full claim of the same predicate | `claim/bare-scalar/` |
 | 6.5, 7.4      | A claim written under a predicate declared non-claim-bearing, beside the plain value it takes | `claim/claim-for-a-plain-value/` |
+| 6.1           | A kind or a type written on a geometric node          | `validate/geometric-axes.dfc`               |
+| 6.3, 6.4, 6.9 | A `vertices` or an `edges` naming nothing this model holds, and one naming the wrong sort of geometric node | `topology/dangling-reference/` |
+| 6.3           | An edge which starts and ends at one vertex           | `topology/degenerate-edge/`                 |
+| 4.1, 6.2–6.4  | One id written on two geometric nodes across two files, on nodes of two sorts, and on a node and a frame | `topology/duplicate-id/` |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could
@@ -116,12 +122,13 @@ boolean written outside the positions which take one. Which positions those are
 is partly registry data — a check's parameters are declared by the check
 registry — so the engine cannot decide it until that registry loads, and it
 belongs with the layer which reads it. So does what is left of section 6.9: the
-references a node makes into the geometric family and the ones that family makes
-within itself — `boundary`, `vertices`, `edges` and `backed-by` — are questions
-about the whole graph rather than about any one family of it, and they are
-answered by the pass which has read every family. The two references a node
-makes to another node, `within` and `member-of`, are answered above because both
-ends of each are semantic nodes, which one pass reads.
+references which cross between the two families — `boundary`, written on a
+semantic node and naming a loop, and `backed-by`, written on an edge and naming
+a semantic node — are questions about the whole graph rather than about any one
+family of it, and they are answered by the pass which has read every family. The
+references written within one family are answered above, because one pass reads
+both ends of each: `within` and `member-of` in `node`, and `vertices` and
+`edges` in `topology`.
 
 ## The properties
 

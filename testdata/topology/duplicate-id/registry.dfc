@@ -1,0 +1,6 @@
+(project (globalid-namespace "https://example.org/models/duplicate-geometry"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))

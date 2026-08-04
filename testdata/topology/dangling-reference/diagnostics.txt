@@ -1,0 +1,28 @@
+testdata/topology/dangling-reference/geometry.dfc:12:60: error: expected a vertex id something in this model holds, found geom:V-09, which names no vertex
+12 | (edge geom:E-02 (frame frame:building) (vertices geom:V-01 geom:V-09))
+   |                                                            ^^^^^^^^^
+   = hint: an edge runs between two vertices, written (vertices <vertex-id> <vertex-id>) in the order start then end
+testdata/topology/dangling-reference/geometry.dfc:12:7: note: the edge which names it is written here
+12 | (edge geom:E-02 (frame frame:building) (vertices geom:V-01 geom:V-09))
+   |       ^^^^^^^^^
+testdata/topology/dangling-reference/geometry.dfc:14:50: error: expected a vertex id, found geom:L-01, which is a loop
+14 | (edge geom:E-03 (frame frame:building) (vertices geom:L-01 geom:V-02))
+   |                                                  ^^^^^^^^^
+   = hint: an edge runs between two vertices, written (vertices <vertex-id> <vertex-id>) in the order start then end
+testdata/topology/dangling-reference/geometry.dfc:17:7: note: the loop it names is written here
+17 | (loop geom:L-01
+   |       ^^^^^^^^^
+testdata/topology/dangling-reference/geometry.dfc:19:20: error: expected an edge id something in this model holds, found geom:E-77, which names no edge
+19 |   (edges geom:E-01 geom:E-77 geom:V-01))
+   |                    ^^^^^^^^^
+   = hint: a loop is a ring of edges, written (edges <edge-id> ...) in the order the loop is traversed
+testdata/topology/dangling-reference/geometry.dfc:17:7: note: the loop which names it is written here
+17 | (loop geom:L-01
+   |       ^^^^^^^^^
+testdata/topology/dangling-reference/geometry.dfc:19:30: error: expected an edge id, found geom:V-01, which is a vertex
+19 |   (edges geom:E-01 geom:E-77 geom:V-01))
+   |                              ^^^^^^^^^
+   = hint: a loop is a ring of edges, written (edges <edge-id> ...) in the order the loop is traversed
+testdata/topology/dangling-reference/geometry.dfc:4:9: note: the vertex it names is written here
+4 | (vertex geom:V-01 (frame frame:building))
+  |         ^^^^^^^^^
