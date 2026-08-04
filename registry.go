@@ -10,6 +10,7 @@ import (
 	"iter"
 	"maps"
 	"slices"
+	"strings"
 )
 
 // Kind is one of the node kinds compiled into the engine.
@@ -221,6 +222,7 @@ const (
 	SortPredicate Sort = "predicate"
 	SortFrame     Sort = "frame"
 	SortTolerance Sort = "tolerance"
+	SortRoute     Sort = "route"
 )
 
 // plural is how a diagnostic names more than one entry of this sort. Every tag
@@ -428,9 +430,85 @@ type Tolerance struct {
 	Span Span
 }
 
+// Route is one declared file routing rule, per specification section 7.7.
+//
+// A routing rule answers the question a write path has to answer and a read
+// path never asks: which file does a newly authored node go in. Left to each
+// author it becomes "wherever the last person put things", which is how one
+// category of thing ends up spread over six files.
+//
+// The three criteria are the axes a new node has before it has anything else:
+// the namespace of its id, its kind and its type. A criterion left out matches
+// anything, so a rule written with none of them matches every node. Which
+// criteria are worth writing is the consuming repository's judgement and not
+// the engine's ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+type Route struct {
+	// Name is the rule name, which is a plain symbol and not an id. It is what a
+	// report of where a node went, and a refusal to route one, name the rule by.
+	Name string
+
+	// Namespace is the id namespace an instance must carry. Empty matches any.
+	Namespace string
+
+	// Kind is the kind an instance must declare. Empty matches any.
+	Kind Kind
+
+	// Type is the type name an instance must declare. Empty matches any.
+	Type string
+
+	// File is the target file, relative to the model root and written with
+	// forward slashes.
+	File string
+
+	// Description is free text. Empty when it was not written.
+	Description string
+
+	// Span is where the declaration was written.
+	Span Span
+}
+
+// Matches reports whether a new node with these axes satisfies every criterion
+// the rule writes.
+//
+// A criterion the rule leaves out is not a criterion: it matches anything. That
+// is what lets a registry say "every Space goes here" without also having to
+// enumerate the types which are spaces.
+func (r Route) Matches(subject Subject) bool {
+	if r.Namespace != "" && r.Namespace != subject.ID.Namespace() {
+		return false
+	}
+	if r.Kind != "" && r.Kind != subject.Kind {
+		return false
+	}
+	if r.Type != "" && r.Type != subject.Type {
+		return false
+	}
+	return true
+}
+
+// criteria spells what the rule matches on, for a message which lists the rules
+// consulted. A rule with no criteria says so rather than reading as a rule with
+// nothing written after its name.
+func (r Route) criteria() string {
+	var written []string
+	if r.Namespace != "" {
+		written = append(written, "namespace "+r.Namespace)
+	}
+	if r.Kind != "" {
+		written = append(written, "kind "+string(r.Kind))
+	}
+	if r.Type != "" {
+		written = append(written, "type "+r.Type)
+	}
+	if len(written) == 0 {
+		return "any node"
+	}
+	return strings.Join(written, ", ")
+}
+
 // Registry is the vocabulary one consuming repository declares: its types,
-// claim predicates, frames, id namespaces and tolerances, plus the one project
-// declaration.
+// claim predicates, frames, id namespaces, tolerances and file routing rules,
+// plus the one project declaration.
 //
 // It is the whole registry set of a model rather than one file's worth, and it
 // is queryable as a whole so that every layer above validates against it
@@ -448,6 +526,7 @@ type Registry struct {
 	predicates map[string]Predicate
 	frames     map[ID]Frame
 	tolerances map[string]Tolerance
+	routes     map[string]Route
 }
 
 // Project returns the model's project declaration, and whether it has one.
@@ -511,6 +590,16 @@ func (r *Registry) Tolerance(name string) (Tolerance, bool) {
 	return entry, ok
 }
 
+// Route returns the declaration of a file routing rule, and whether it is
+// declared.
+func (r *Registry) Route(name string) (Route, bool) {
+	if r == nil {
+		return Route{}, false
+	}
+	entry, ok := r.routes[name]
+	return entry, ok
+}
+
 // Namespaces iterates the declared id namespaces in name order.
 //
 // Every iterator here is ordered rather than in map order, because output built
@@ -552,6 +641,19 @@ func (r *Registry) Tolerances() iter.Seq[Tolerance] {
 		return ordered[string, Tolerance](nil)
 	}
 	return ordered(r.tolerances)
+}
+
+// Routes iterates the declared file routing rules in name order.
+//
+// Name order rather than the order they were written, for the reason every
+// other iterator here is ordered: a rule which matches is chosen by matching
+// and not by position, so nothing about routing depends on the order, and a
+// listing which did would change when a registry file moved.
+func (r *Registry) Routes() iter.Seq[Route] {
+	if r == nil {
+		return ordered[string, Route](nil)
+	}
+	return ordered(r.routes)
 }
 
 // ordered iterates the entries of one registry in key order.
@@ -596,6 +698,9 @@ func (r *Registry) Declares(sort Sort, name string) bool {
 	case SortTolerance:
 		_, ok := r.tolerances[name]
 		return ok
+	case SortRoute:
+		_, ok := r.routes[name]
+		return ok
 	}
 	return false
 }
@@ -620,6 +725,8 @@ func (r *Registry) Names(sort Sort) []string {
 		return spellings(slices.Sorted(maps.Keys(r.frames)))
 	case SortTolerance:
 		return slices.Sorted(maps.Keys(r.tolerances))
+	case SortRoute:
+		return slices.Sorted(maps.Keys(r.routes))
 	}
 	return nil
 }

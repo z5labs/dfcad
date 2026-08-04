@@ -89,3 +89,25 @@
 (tolerance boundary-closure
   (value 0.005 m)
   (description "How far a loop may fail to close and still count as closed."))
+
+; Where a newly authored node is filed. The rules are disjoint over what they
+; cover, which is what makes each of them the whole answer for its part of the
+; tree: rooms and corridors share a kind and are told apart by their type, and
+; geometry matches on a namespace alone because a vertex has neither of the
+; other two axes to match on.
+(route geometry
+  (namespace geom)
+  (file "entities/geometry.dfc")
+  (description "Every vertex, edge and loop of this model."))
+
+(route rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/site.dfc")
+  (description "Meeting rooms, beside the building they are in."))
+
+(route corridors
+  (kind Space)
+  (type Corridor)
+  (file "entities/circulation.dfc")
+  (description "Circulation, kept apart from the rooms it connects."))

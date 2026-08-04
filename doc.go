@@ -15,8 +15,9 @@
 // The engine is generic. The only vocabulary compiled in is a small closed set
 // — node kinds and geometry forms. Everything domain specific arrives as
 // registry data supplied by the consuming repository: types, claim predicates,
-// frames, id namespaces and tolerances. A domain concept therefore never needs
-// a change here, which is what keeps vocabulary growth reviewable.
+// frames, id namespaces, tolerances and the rules saying which file a new node
+// is written to. A domain concept therefore never needs a change here, which is
+// what keeps vocabulary growth reviewable.
 //
 // There is no database, no daemon and no network transport. The library is
 // paired with a command line interface under cmd/dfcad, which is the intended
@@ -45,6 +46,12 @@
 // with the diagnostics the load would have raised, and nothing reaches the
 // filesystem; a change which validates is written in canonical form, atomically,
 // and all of its files or none of them.
+//
+// Which file a new node goes in is [Registry.Destination], from the routing
+// rules the registry declares, or [Override] where a command was told outright.
+// Deciding it is separate from writing it so that the destination can be
+// reported before anything is written, and so that a node the rules do not
+// place is refused rather than filed somewhere plausible.
 //
 // It is the mechanism every authoring command is built on rather than a command
 // itself. See docs/decisions/0015-the-cli-is-the-primary-write-path.md for why

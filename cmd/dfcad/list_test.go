@@ -82,6 +82,19 @@ const listRegistry = `(project
 (predicate frame-transform
   (shape transform)
   (description "The rigid transform from a frame to its parent."))
+
+(route buildings
+  (kind Building)
+  (type OfficeBuilding)
+  (file "entities/buildings.dfc"))
+
+(route campuses (kind Zone) (type Campus) (file "entities/campuses.dfc"))
+
+(route rooms
+  (kind Space)
+  (type MeetingRoom)
+  (file "entities/site.dfc")
+  (description "Meeting rooms, beside the building they are in."))
 `
 
 // listModel is written with its nodes out of id order, so that a listing which

@@ -85,6 +85,12 @@ var commands = []command{
 		usage:   conflictsUsage,
 		run:     runConflicts,
 	},
+	{
+		name:    "route",
+		summary: "say which file a new node would be written to",
+		usage:   routeUsage,
+		run:     runRoute,
+	},
 }
 
 // lookup is the subcommand of that name.

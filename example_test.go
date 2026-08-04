@@ -1296,3 +1296,81 @@ func ExampleTx_refused() {
 	// an id is unique across the whole model, and is never issued again to a different thing
 	// 0 files changed
 }
+
+// ExampleRegistry_Destination routes a new node to the file the registry says
+// it belongs in, and shows what happens to one the rules do not cover.
+func ExampleRegistry_Destination() {
+	registry, diags := dfcad.LoadRegistry("testdata/graph/valid")
+	for _, diagnostic := range diags {
+		fmt.Println(diagnostic)
+	}
+
+	// A node the rules place: one rule matches it, and the destination says
+	// which, so that "where did this go" and "why there" are one answer.
+	destination, err := registry.Destination(dfcad.Subject{
+		ID:   "site:S-104",
+		Kind: dfcad.KindSpace,
+		Type: "MeetingRoom",
+	})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(destination.Path, "by rule", destination.Rule)
+
+	// A geometric node carries neither a kind nor a type, so it is routed by a
+	// rule which matches on its namespace alone.
+	geometry, err := registry.Destination(dfcad.Subject{ID: "geom:V-07"})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(geometry.Path, "by rule", geometry.Rule)
+
+	// A node no rule covers is refused rather than filed somewhere plausible.
+	// The refusal names it and every rule there was, because the fix is a rule
+	// and a fix nobody is told to make is one nobody makes.
+	_, err = registry.Destination(dfcad.Subject{
+		ID:   "site:P-01",
+		Kind: dfcad.KindElement,
+		Type: "Partition",
+	})
+
+	var unplaced dfcad.RoutingError
+	if errors.As(err, &unplaced) {
+		fmt.Println("ambiguous:", unplaced.Ambiguous())
+		for _, rule := range unplaced.Consulted {
+			fmt.Println(" consulted", rule.Name, "->", rule.File)
+		}
+	}
+
+	// Output:
+	// entities/site.dfc by rule rooms
+	// entities/geometry.dfc by rule geometry
+	// ambiguous: false
+	//  consulted corridors -> entities/circulation.dfc
+	//  consulted geometry -> entities/geometry.dfc
+	//  consulted rooms -> entities/site.dfc
+}
+
+// ExampleOverride takes a destination the caller named outright, which is what
+// a write command's --file flag does with what it was given.
+func ExampleOverride() {
+	destination, err := dfcad.Override("entities/annexe.dfc")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(destination.Path, "overridden:", destination.Overridden, "rule:", destination.Rule == "")
+
+	// A file no walk of the model reaches is refused: writing into one is a
+	// change which appears to have been made and was not.
+	_, err = dfcad.Override("notes.md")
+	fmt.Println(err)
+	fmt.Println(errors.Is(err, dfcad.ErrNotAnEntityFile))
+
+	// Output:
+	// entities/annexe.dfc overridden: true rule: true
+	// notes.md: not an entity file
+	// true
+}

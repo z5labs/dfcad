@@ -9,7 +9,7 @@ testdata/validate/unknown-tag.dfc:1:1: error: expected a top-level form, found (
 testdata/validate/unknown-tag.dfc:5:1: error: expected a top-level form, found (sproket ...), which is not a known form
 5 | (sproket geom:V-01)
   | ^^^^^^^^^^^^^^^^^^^
-  = hint: the top level of a file takes (project ...), (namespace ...), (type ...), (predicate ...), (tolerance ...), (frame ...), (node ...), (vertex ...), (edge ...) and (loop ...)
+  = hint: the top level of a file takes (project ...), (namespace ...), (type ...), (predicate ...), (tolerance ...), (frame ...), (route ...), (node ...), (vertex ...), (edge ...) and (loop ...)
 testdata/validate/unknown-tag.dfc:7:1: error: expected a (globalid-namespace ...) child of the project form, found none
 7 | (project
   | ^^^^^^^^

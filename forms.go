@@ -232,7 +232,7 @@ func article(tag string) string {
 // The forms of the entity format, as specification sections 6 and 7 give them.
 // Each var is one table there, and the comment above it cites which.
 var (
-	// topLevelForm is the ten top-level tags of section 6.
+	// topLevelForm is the eleven top-level tags of sections 6 and 7.
 	//
 	// Every one of them is repeatable because a file constrains none of their
 	// counts: "exactly one project" is a rule about a whole model, checked once
@@ -248,6 +248,7 @@ var (
 			{tag: "predicate", arity: repeated, form: predicateForm},
 			{tag: "tolerance", arity: repeated, form: toleranceForm},
 			{tag: "frame", arity: repeated, form: frameForm},
+			{tag: "route", arity: repeated, form: routeForm},
 			{tag: "node", arity: repeated, form: nodeForm},
 			{tag: "vertex", arity: repeated, form: vertexForm},
 			{tag: "edge", arity: repeated, form: edgeForm},
@@ -461,6 +462,24 @@ var (
 			{tag: "transform", arity: atMost(1), form: args(exactly(1), "a claim id")},
 		},
 		claims: claimForm,
+	}
+
+	// routeForm is section 7.7.
+	//
+	// The three criteria are optional because a criterion left out matches
+	// anything, and a rule written with none of them is the catch-all a small
+	// model files everything through. Only the target file is required: a rule
+	// which names no file decides nothing.
+	routeForm = &form{
+		args:     exactly(1),
+		argsDesc: "a rule name",
+		children: []child{
+			{tag: "namespace", arity: atMost(1), form: args(exactly(1), "a namespace")},
+			{tag: "kind", arity: atMost(1), form: args(exactly(1), "a kind")},
+			{tag: "type", arity: atMost(1), form: args(exactly(1), "a type name")},
+			{tag: "file", arity: exactly(1), form: args(exactly(1), "a string holding a path")},
+			{tag: "description", arity: atMost(1), form: args(exactly(1), "a string")},
+		},
 	}
 
 	// toleranceForm is section 7.6.
