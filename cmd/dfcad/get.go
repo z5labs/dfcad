@@ -305,8 +305,10 @@ type claimValue struct {
 	// significant and is never sorted.
 	Coordinate []float64 `json:"coordinate,omitempty"`
 
-	// Text is a text value.
-	Text string `json:"text,omitempty"`
+	// Text is a text value. It is a pointer for the reason Scalar is: the empty
+	// string is a text value a claim can legally hold, and a field which went
+	// missing would read as a value which could not be read at all.
+	Text *string `json:"text,omitempty"`
 
 	// Transform is a transform value.
 	Transform *claimTransform `json:"transform,omitempty"`
@@ -600,7 +602,7 @@ func valueOf(value dfcad.Value) claimValue {
 		out.Coordinate = coordinate
 	}
 	if text, ok := value.Text(); ok {
-		out.Text = text
+		out.Text = &text
 	}
 	if transform, ok := value.Transform(); ok {
 		out.Transform = &claimTransform{
@@ -671,6 +673,11 @@ func spellClaim(claim claimEntry) string {
 }
 
 // spellClaimValue is a value for a person, in whichever shape it has.
+//
+// A claim whose value could not be read has no shape at all and reads as
+// nothing rather than as an empty one of the four: the diagnostic saying why is
+// already on the same stream, and a line spelling it `""` would say the file
+// held a value it does not.
 func spellClaimValue(value claimValue) string {
 	var written string
 
@@ -689,8 +696,10 @@ func spellClaimValue(value claimValue) string {
 			number(value.Transform.Translation[1]),
 			number(value.Transform.Translation[2]),
 		}, " ") + ")"
+	case value.Text != nil:
+		written = strconv.Quote(*value.Text)
 	default:
-		written = strconv.Quote(value.Text)
+		written = "(no value)"
 	}
 
 	if value.Unit == "" {

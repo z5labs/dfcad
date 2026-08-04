@@ -159,7 +159,12 @@ const getModel = `(node site:Z-01
   (type Partition)
   (geometry line)
   (frame frame:building)
-  (within site:S-101))
+  (within site:S-101)
+  (note
+    (value "")
+    (source "Fit-out check FC-2026-002, Acme Surveys")
+    (method method:assumed)
+    (date "2026-02-01")))
 `
 
 // getGeometry is the geometric family: the four corners of the room, the walls
@@ -518,20 +523,43 @@ func TestRunGetReportsEveryShapeOfValue(t *testing.T) {
 
 	note := byPredicate["note"]
 	assert.Equal(t, string(dfcad.ShapeText), note.Value.Shape)
-	assert.Equal(t, "Booked through the front desk.", note.Value.Text)
+	require.NotNil(t, note.Value.Text)
+	assert.Equal(t, "Booked through the front desk.", *note.Value.Text)
 	assert.Nil(t, note.Value.Scalar)
 }
 
-// TestRunGetReportsAValueOfZero is its own function because it is about the one
-// value a payload silently drops: a claim of zero is a measurement, and a field
-// which went missing would read as a claim which was never written.
-func TestRunGetReportsAValueOfZero(t *testing.T) {
-	t.Chdir(tree(t, retrievable()))
+// TestRunGetReportsAnEmptyValue is its own function because it is about the two
+// values a payload silently drops: a claim of zero and a claim of the empty
+// string are each a claim somebody wrote, and a field which went missing would
+// read as a claim which was never written at all.
+func TestRunGetReportsAnEmptyValue(t *testing.T) {
+	testCases := []struct {
+		name     string
+		id       string
+		expected string
+	}{
+		{
+			name:     "writes a scalar of zero rather than dropping the field",
+			id:       "site:S-101",
+			expected: `"scalar":0`,
+		},
+		{
+			name:     "writes text of the empty string rather than dropping the field",
+			id:       "site:E-01",
+			expected: `"text":""`,
+		},
+	}
 
-	var stdout, stderr bytes.Buffer
-	require.Equal(t, exitSuccess, run([]string{"get", "site:S-101"}, &stdout, &stderr), stderr.String())
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, retrievable()))
 
-	assert.Contains(t, stdout.String(), `"scalar":0`)
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run([]string{"get", testCase.id}, &stdout, &stderr), stderr.String())
+
+			assert.Contains(t, stdout.String(), testCase.expected)
+		})
+	}
 }
 
 // TestRunGetSaysWhereItWasDefined is its own function because it is about the
