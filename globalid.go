@@ -116,13 +116,16 @@ func DeriveGlobalIDNamespace(url string) string {
 }
 
 // GlobalID returns the GlobalID of id under the URL the model's project
-// declaration pins, and whether the model has a project declaration to derive
-// from.
+// declaration pins, and whether the model pinned one.
 //
-// A model without one is a load error already, so the false here is what a
-// caller holding the registry of a load which failed gets: no GlobalID, rather
-// than one derived from an empty URL which would be a stable identifier for a
-// model nobody pinned.
+// A model with no project declaration, and a model whose declaration does not
+// pin a URL a GlobalID could derive from, are both load errors already — so the
+// false here is what a caller holding the registry of a load which failed gets.
+// It is the answer rather than a derivation from the empty URL, which would be
+// 22 characters indistinguishable from any other GlobalID, stable across runs,
+// and a stable identifier for a model nobody pinned. A registry which recorded
+// a project whose `globalid-namespace` was not a URL holds the empty string for
+// it, so absent and unusable are the same case here on purpose.
 //
 // Any [ID] derives, including a geometric node's. What IFC gives a GlobalId to
 // is IFC's question, and answering it here would be this package holding an
@@ -130,7 +133,7 @@ func DeriveGlobalIDNamespace(url string) string {
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
 func (r *Registry) GlobalID(id ID) (GlobalID, bool) {
 	project, ok := r.Project()
-	if !ok {
+	if !ok || project.GlobalIDNamespace == "" {
 		return "", false
 	}
 	return DeriveGlobalID(project.GlobalIDNamespace, id), true

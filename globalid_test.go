@@ -354,24 +354,47 @@ func collectIDs(node *Node, seen map[ID]bool, into *[]ID) {
 	}
 }
 
-// TestGlobalIDWithoutAProject checks that a registry with no project
-// declaration answers rather than derives.
+// TestGlobalIDWithoutAPinnedURL checks that a registry which pins no URL a
+// GlobalID could derive from answers rather than derives.
 //
-// A model without one is a load error, so this is the registry a caller who did
-// not read the diagnostics is holding. Deriving from the empty URL would hand
-// that caller 22 characters which look like every other GlobalID and identify a
-// model nobody pinned.
-func TestGlobalIDWithoutAProject(t *testing.T) {
-	registry, _ := LoadRegistry("testdata/registry/empty")
+// Each of these is a load error already, so this is the registry a caller who
+// did not read the diagnostics is holding. Deriving from the empty URL would
+// hand that caller 22 characters which look like every other GlobalID, are
+// stable across every run, and identify a model nobody pinned — the failure is
+// that nothing about the value says so.
+func TestGlobalIDWithoutAPinnedURL(t *testing.T) {
+	testCases := []struct {
+		name string
+		root string
+	}{
+		{
+			name: "answers for a model which declares no project at all",
+			root: "testdata/registry/empty",
+		},
+		{
+			name: "answers for a project whose pinned namespace is not a URL, which is not recorded",
+			root: "testdata/registry/malformed",
+		},
+	}
 
-	globalID, ok := registry.GlobalID("site:S-101")
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			registry, diagnostics := LoadRegistry(testCase.root)
+			require.NotEmpty(t, diagnostics, "the fixture is one the load reports")
 
-	assert.False(t, ok)
-	assert.Empty(t, globalID)
+			globalID, ok := registry.GlobalID("site:S-101")
 
-	// A registry nothing loaded at all answers the same way rather than
-	// panicking, as every other query on one does.
-	globalID, ok = (*Registry)(nil).GlobalID("site:S-101")
+			assert.False(t, ok)
+			assert.Empty(t, globalID)
+		})
+	}
+}
+
+// TestGlobalIDOfARegistryWhichLoadedNothing is its own function because it
+// asserts on a receiver rather than on a fixture: a nil registry answers rather
+// than panicking, as every other query on one does.
+func TestGlobalIDOfARegistryWhichLoadedNothing(t *testing.T) {
+	globalID, ok := (*Registry)(nil).GlobalID("site:S-101")
 
 	assert.False(t, ok)
 	assert.Empty(t, globalID)
