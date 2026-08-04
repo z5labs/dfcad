@@ -333,7 +333,11 @@ func combined(accuracy Accuracy) (float64, Unit, bool) {
 
 	unit := accuracy.Terms[0].Unit
 
-	var independent, systematic float64
+	// squares is the independent terms in quadrature; shared is the systematic
+	// ones, which add linearly because they are the same error appearing twice
+	// rather than two errors which might cancel.
+	var squares, shared float64
+
 	for _, term := range accuracy.Terms {
 		if term.Unit != unit {
 			return 0, "", false
@@ -346,15 +350,15 @@ func combined(accuracy Accuracy) (float64, Unit, bool) {
 
 		switch term.Kind {
 		case TermIndependent:
-			independent += magnitude * magnitude
+			squares += magnitude * magnitude
 		case TermSystematic:
-			systematic += magnitude
+			shared += magnitude
 		default:
 			return 0, "", false
 		}
 	}
 
-	return math.Sqrt(independent + systematic*systematic), unit, true
+	return math.Sqrt(squares + shared*shared), unit, true
 }
 
 // isStrict reports whether the registry declares the predicate strict.
