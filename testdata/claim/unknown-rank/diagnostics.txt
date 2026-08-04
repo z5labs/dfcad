@@ -1,0 +1,8 @@
+testdata/claim/unknown-rank/claims.dfc:13:11: error: expected a rank, found preferred
+13 |     (rank preferred))
+   |           ^^^^^^^^^
+   = hint: a rank is one of normal and deprecated; there is no preferred, no numeric priority and no weight
+testdata/claim/unknown-rank/claims.dfc:19:11: error: expected a rank, found Deprecated
+19 |     (rank Deprecated)))
+   |           ^^^^^^^^^^
+   = hint: a rank is one of normal and deprecated; there is no preferred, no numeric priority and no weight

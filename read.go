@@ -7,6 +7,8 @@ package dfcad
 
 import (
 	"fmt"
+	"strconv"
+	"time"
 
 	sexpr "github.com/z5labs/sexpr-go"
 )
@@ -166,6 +168,43 @@ func (r *reader) real(node *Node, what string) (float64, bool) {
 		return 0, false
 	}
 	return datum.Value, true
+}
+
+// dateLayout is the one spelling of a date, per specification section 4.4: RFC
+// 3339 full-date, four-digit year, two-digit month, two-digit day, proleptic
+// Gregorian, hyphen separated. No time, no zone and no other spelling.
+const dateLayout = time.DateOnly
+
+// date reads a date, reporting the spelling it was meant to have where what was
+// written is not one.
+//
+// It is read from a string rather than from a bare symbol because it has to be:
+// `2026-03-14` begins like a number, so the delegated tokenizer classifies it as
+// a malformed one and fails before this format is reached. Quoting it is the
+// only spelling which survives that lexis.
+//
+// A failure yields the zero time rather than a partial reading, for the reason
+// every other axis of a form does: the diagnostic already carries what was
+// written, and a date nobody wrote would be compared by everything downstream as
+// though somebody had.
+func (r *reader) date(node *Node, what string) (time.Time, bool) {
+	written, ok := r.text(node, what)
+	if !ok {
+		return time.Time{}, false
+	}
+
+	date, err := time.Parse(dateLayout, written)
+	if err != nil {
+		r.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     node.Span,
+			Message:  fmt.Sprintf("expected %s, found %s", what, strconv.Quote(written)),
+			Hint:     `a date is written as a string in RFC 3339 full-date form, "YYYY-MM-DD", with no time and no zone`,
+		})
+		return time.Time{}, false
+	}
+
+	return date, true
 }
 
 // wrong reports a datum of the wrong sort written where a form wanted one of

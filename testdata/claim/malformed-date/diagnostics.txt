@@ -1,0 +1,16 @@
+testdata/claim/malformed-date/claims.dfc:12:11: error: expected a date, found "14/03/2026"
+12 |     (date "14/03/2026"))
+   |           ^^^^^^^^^^^^
+   = hint: a date is written as a string in RFC 3339 full-date form, "YYYY-MM-DD", with no time and no zone
+testdata/claim/malformed-date/claims.dfc:17:11: error: expected a date, found "2026-3-14"
+17 |     (date "2026-3-14"))
+   |           ^^^^^^^^^^^
+   = hint: a date is written as a string in RFC 3339 full-date form, "YYYY-MM-DD", with no time and no zone
+testdata/claim/malformed-date/claims.dfc:22:11: error: expected a date, found "2026-05-06T09:41:00Z"
+22 |     (date "2026-05-06T09:41:00Z"))
+   |           ^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a date is written as a string in RFC 3339 full-date form, "YYYY-MM-DD", with no time and no zone
+testdata/claim/malformed-date/claims.dfc:27:11: error: expected a date, found "2026-02-30"
+27 |     (date "2026-02-30")))
+   |           ^^^^^^^^^^^^
+   = hint: a date is written as a string in RFC 3339 full-date form, "YYYY-MM-DD", with no time and no zone

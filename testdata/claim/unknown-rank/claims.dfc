@@ -1,0 +1,19 @@
+; The two ranks somebody reaches for which the format deliberately does not
+; have. A claim cannot be promoted above its peers, so there is no preferred and
+; there is no priority to write a number into.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "2026-01-09")
+    (rank preferred))
+  (width
+    (value 8.53 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06")
+    (rank Deprecated)))

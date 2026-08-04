@@ -1,0 +1,38 @@
+; The vocabulary the claims beside this file are judged against.
+(project (globalid-namespace "https://example.org/models/claims"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How wide the thing is, across its shorter axis."))
+
+(predicate occupancy
+  (shape scalar)
+  (description "How many people the thing is rated for."))
+
+(predicate finish
+  (shape text)
+  (description "What the thing was finished in."))
+
+(frame frame:building (label "Building local grid") (unit m))

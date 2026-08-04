@@ -62,6 +62,20 @@ func Validate(file *File) []Diagnostic {
 	return v.diags
 }
 
+// validateForm checks one written form against the description of it, which is
+// what a pass interpreting that form does before reading it.
+//
+// [Validate] is the same thing over a whole file, from the top level down. This
+// is the entry a loader which has already found the form it interprets takes, so
+// that a pass reporting on a claim does not also report on the node the claim
+// was written on — a second copy of every diagnostic the pass which owns that
+// node already produced, from a second walk over the same tree.
+func validateForm(node *Node, f *form, tag string) []Diagnostic {
+	v := &validator{}
+	v.check(node, f, tag)
+	return v.diags
+}
+
 // validator collects the diagnostics of one pass.
 type validator struct {
 	diags []Diagnostic

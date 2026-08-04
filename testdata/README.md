@@ -18,6 +18,7 @@ the goldens beside the fixtures are invisible to it.
 | `validate`                 | The validator's own fixtures: the error cases about the shape of a form, each with its rendered diagnostic as `.txt`, plus three files which are accepted. |
 | `registry`                 | The registry loader's own fixtures. One *directory* per case, because a registry is a property of a source tree and not of a file, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `node`                     | The semantic node loader's own fixtures. One *directory* per case, each a registry and the nodes judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
+| `claim`                    | The claim loader's own fixtures. One *directory* per case, each a registry and the claims judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `print`                    | The printer's own fixtures: one per printing behaviour, each with its canonical printing as `.want`. |
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `model`                    | A two-file model the runnable examples load.                                                |
@@ -51,7 +52,8 @@ nobody regenerated, fails there.
 The cases about a file and its lexis are in `corpus/invalid`; the cases about
 the shape of a form are in `validate`; the cases about what a registry declares
 are in `registry`; the cases about a node read against a loaded registry are in
-`node`. Each is where the tests of that layer read them from.
+`node`, and the cases about a claim read against one are in `claim`. Each is
+where the tests of that layer read them from.
 
 | Specification | Error case                                          | Fixture                                     |
 |---------------|-----------------------------------------------------|---------------------------------------------|
@@ -90,6 +92,13 @@ are in `registry`; the cases about a node read against a loaded registry are in
 | 1, 6.1        | A node kind or geometry form which is not one, and `absent` named on a node | `node/unknown-value/`         |
 | 6.1, 7.3      | A node naming a type no registry file declares       | `node/undeclared-type/`                     |
 | 6.1, 7.3      | A node whose type permits a different kind or geometry form, and one whose type does not permit absence | `node/not-permitted/` |
+| 6.5, 7.4      | A claim written under a predicate no registry file declares | `claim/undeclared-predicate/`         |
+| 6.6           | A claim value of a shape the predicate does not declare, and a coordinate of the wrong length | `claim/wrong-shape/` |
+| 4.5, 6.6      | A claim value in a unit the predicate does not declare, one written with no unit, and one written with a unit where the predicate declares none | `claim/wrong-unit/` |
+| 4.4, 6.5      | A date which is not RFC 3339 full-date                | `claim/malformed-date/`                     |
+| 6.5           | A rank outside the closed set                         | `claim/unknown-rank/`                       |
+| 4.1, 6.5      | One claim id written on two claims, across two files  | `claim/duplicate-id/`                       |
+| 6.5           | A reference to a claim which carries no id of its own | `claim/dangling-reference/`                 |
 
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could
@@ -99,14 +108,11 @@ diagnostics one run retains.
 **What is not covered, and why.** Specification section 2 also excludes a
 boolean written outside the positions which take one. Which positions those are
 is partly registry data — a check's parameters are declared by the check
-registry, and a predicate's value shape by the predicate registry — so the
-engine cannot decide it until those registries load. It belongs with the layer
-which reads them, and so do the remaining error cases of sections 4.5, 6.6 and
-6.9: a unit of the wrong quantity, a claim value of the wrong shape, and a
-reference from one entity to another which does not resolve. None of them is a
-structural question, and none of them is a question about the registry set on
-its own; each is answered by the layer which reads entity forms against a loaded
-registry.
+registry — so the engine cannot decide it until that registry loads, and it
+belongs with the layer which reads it. So does what is left of section 6.9: a
+reference from one entity to another which does not resolve is a question about
+the whole graph rather than about any one family of it, and it is answered by
+the pass which has read every family.
 
 ## The properties
 

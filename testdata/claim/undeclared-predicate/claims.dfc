@@ -1,0 +1,17 @@
+; A predicate nothing declares, and one which is close enough to a declared one
+; to be a misspelling of it. Both are the tag the claim was written under, so
+; both diagnostics point at the tag rather than at the whole claim.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (widht
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "2026-01-09"))
+  (thermal-transmittance
+    (value 0.28 m)
+    (source "Fabric schedule FB-07")
+    (method method:assumed)
+    (date "2026-03-14")))

@@ -1,0 +1,27 @@
+; Four spellings of a date which are not the one spelling. The last is a
+; well-formed date of a day which does not exist, which reads as correct until
+; something tries to order it.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "14/03/2026"))
+  (width
+    (value 8.51 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (date "2026-3-14"))
+  (width
+    (value 8.52 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-05-06T09:41:00Z"))
+  (width
+    (value 8.53 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (date "2026-02-30")))
