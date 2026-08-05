@@ -456,9 +456,13 @@ func annotated(path string, result reviewResult, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
+	// Closed exactly once, and which error comes back says which thing went
+	// wrong: a write which failed is reported as itself, and a write which
+	// succeeded has only reached the kernel, so a full disk is reported by the
+	// close or by nothing at all.
 	if _, err := io.WriteString(file, rendered); err != nil {
+		_ = file.Close()
 		return err
 	}
 

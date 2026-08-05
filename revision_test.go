@@ -115,14 +115,20 @@ func TestOpenRepository(t *testing.T) {
 		assert.False(t, repo.Shallow())
 	})
 
-	t.Run("reports a directory which is not inside one", func(t *testing.T) {
+	t.Run("reports a directory which is not inside one, and says which", func(t *testing.T) {
 		if _, err := exec.LookPath("git"); err != nil {
 			t.Skip("git is not on the path, and this is what it tests")
 		}
 
-		_, err := OpenRepository(t.TempDir())
+		dir := t.TempDir()
 
-		assert.ErrorIs(t, err, ErrNotARepository)
+		_, err := OpenRepository(dir)
+
+		require.ErrorIs(t, err, ErrNotARepository)
+
+		var outside NotARepositoryError
+		require.ErrorAs(t, err, &outside)
+		assert.Equal(t, dir, outside.Dir)
 	})
 }
 
@@ -159,9 +165,16 @@ func TestRepositoryPrefix(t *testing.T) {
 	}
 
 	t.Run("refuses a directory the repository does not hold", func(t *testing.T) {
-		_, err := repo.Prefix(filepath.Join(root, "..", "elsewhere"))
+		elsewhere := filepath.Join(root, "..", "elsewhere")
 
-		assert.ErrorIs(t, err, ErrOutsideModel)
+		_, err := repo.Prefix(elsewhere)
+
+		require.ErrorIs(t, err, ErrOutsideModel)
+
+		var outside OutsideRepositoryError
+		require.ErrorAs(t, err, &outside)
+		assert.Equal(t, elsewhere, outside.Dir)
+		assert.Equal(t, repo.Dir(), outside.Root)
 	})
 }
 
@@ -387,6 +400,11 @@ func TestRepositoryErrors(t *testing.T) {
 			err:              RepositoryError{Dir: "/models", Args: []string{"merge-base", "HEAD", "main"}, Stderr: "fatal: bad object", Cause: os.ErrInvalid},
 			expectedFragment: "git merge-base HEAD main in /models",
 		},
+		{
+			name:             "names the archive entry which tried to climb out",
+			err:              ArchiveEntryError{Name: "../escaped.dfc", Dest: "/tmp/base"},
+			expectedFragment: `archive entry "../escaped.dfc" does not name a path beneath /tmp/base`,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -455,9 +473,15 @@ func TestExtractRefusesAPathOutsideTheDestination(t *testing.T) {
 
 			err := unpack(archiveOf(t, testCase.entry, "(node site:S-101 (kind Space))\n"), dest)
 
-			assert.ErrorIs(t, err, ErrOutsideModel)
+			require.ErrorIs(t, err, ErrOutsideModel)
 			assert.NoFileExists(t, filepath.Join(filepath.Dir(dest), "escaped.dfc"))
 			assert.NoFileExists(t, filepath.Join(dest, "escaped.dfc"))
+
+			// The name the archive wrote, not the path joining it would have
+			// produced: what is reported is what the input said.
+			var refused ArchiveEntryError
+			require.ErrorAs(t, err, &refused)
+			assert.Equal(t, testCase.entry, refused.Name)
 		})
 	}
 }

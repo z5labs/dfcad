@@ -29,12 +29,71 @@ import (
 
 // ErrNotARepository reports a directory which is not inside a git working tree.
 //
-// It is a sentinel rather than a type because there is nothing to carry beyond
-// the path, which the error wrapping it already holds.
+// It is what [NotARepositoryError] unwraps to, so that a caller which only
+// wants to know which of the things went wrong writes [errors.Is] and one which
+// wants to say where writes [errors.As].
 var ErrNotARepository = errors.New("not inside a git working tree")
 
 // ErrGitMissing reports that git is not on the path.
 var ErrGitMissing = errors.New("git is not on the path")
+
+// NotARepositoryError is a directory which is not inside a git working tree,
+// and so has no previous revision to be compared with.
+type NotARepositoryError struct {
+	// Dir is the directory, as it was given.
+	Dir string
+}
+
+// Error implements [error].
+func (e NotARepositoryError) Error() string {
+	return fmt.Sprintf("%s is %s: a review reads the revision before this one out of git", e.Dir, ErrNotARepository)
+}
+
+// Unwrap implements the interface [errors.Is] and [errors.As] walk.
+func (e NotARepositoryError) Unwrap() error { return ErrNotARepository }
+
+// OutsideRepositoryError is a directory the working tree does not hold.
+type OutsideRepositoryError struct {
+	// Dir is the directory, as it was given.
+	Dir string
+
+	// Root is the top level it was measured against.
+	Root string
+}
+
+// Error implements [error].
+func (e OutsideRepositoryError) Error() string {
+	return fmt.Sprintf("%s is not beneath %s: the repository holds no history for it", e.Dir, e.Root)
+}
+
+// Unwrap implements the interface [errors.Is] and [errors.As] walk.
+//
+// It is [ErrOutsideModel] because it is the same mistake the engine reports
+// under that name — a path named as part of something which does not contain it
+// — seen from the repository rather than from the model root.
+func (e OutsideRepositoryError) Unwrap() error { return ErrOutsideModel }
+
+// ArchiveEntryError is an archive entry whose name is not a path beneath the
+// directory it was being written into.
+//
+// It carries the name exactly as the archive wrote it, rather than the path
+// joining it would have produced: what is being reported is what the input
+// said, and the join is the thing which never happened.
+type ArchiveEntryError struct {
+	// Name is the entry name, as the archive wrote it.
+	Name string
+
+	// Dest is the directory it was being written into.
+	Dest string
+}
+
+// Error implements [error].
+func (e ArchiveEntryError) Error() string {
+	return fmt.Sprintf("archive entry %q does not name a path beneath %s", e.Name, e.Dest)
+}
+
+// Unwrap implements the interface [errors.Is] and [errors.As] walk.
+func (e ArchiveEntryError) Unwrap() error { return ErrOutsideModel }
 
 // RepositoryError is something git was asked and could not answer.
 type RepositoryError struct {
@@ -141,7 +200,7 @@ func OpenRepository(dir string) (*Repository, error) {
 	if err != nil {
 		var refused RepositoryError
 		if errors.As(err, &refused) && refused.Cause != ErrGitMissing {
-			return nil, fmt.Errorf("%s: %w", dir, ErrNotARepository)
+			return nil, NotARepositoryError{Dir: dir}
 		}
 		return nil, err
 	}
@@ -192,7 +251,7 @@ func (r *Repository) Prefix(dir string) (string, error) {
 		return "", err
 	}
 	if relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("%s: %w", dir, ErrOutsideModel)
+		return "", OutsideRepositoryError{Dir: dir, Root: r.dir}
 	}
 	if relative == "." {
 		return "", nil
@@ -255,7 +314,12 @@ func (r *Repository) MergeBase(head, base string) (string, error) {
 // symbolic link or a device node in an archive is either not part of one or is
 // something a review should not be creating on the machine it runs on.
 func (r *Repository) Extract(revision, dest string) error {
-	command := exec.Command("git", "-C", r.dir, "archive", "--format=tar", revision)
+	// The arguments are built once and used for both the invocation and
+	// anything said about it, so that a flag added here cannot go missing from
+	// the error which reports the command that failed.
+	args := []string{"archive", "--format=tar", revision}
+
+	command := exec.Command("git", append([]string{"-C", r.dir}, args...)...)
 
 	var complaint bytes.Buffer
 	command.Stderr = &complaint
@@ -265,7 +329,7 @@ func (r *Repository) Extract(revision, dest string) error {
 		return err
 	}
 	if err := command.Start(); err != nil {
-		return started(r.dir, []string{"archive", revision}, complaint.String(), err)
+		return started(r.dir, args, complaint.String(), err)
 	}
 
 	unpacked := unpack(tar.NewReader(out), dest)
@@ -277,7 +341,7 @@ func (r *Repository) Extract(revision, dest string) error {
 	if err := command.Wait(); err != nil {
 		return RepositoryError{
 			Dir:    r.dir,
-			Args:   []string{"archive", revision},
+			Args:   args,
 			Stderr: strings.TrimRight(complaint.String(), "\n"),
 			Cause:  err,
 		}
@@ -316,7 +380,7 @@ func unpack(archive *tar.Reader, dest string) error {
 		// fact, and one refactor away from being written after the write.
 		name := filepath.FromSlash(header.Name)
 		if !filepath.IsLocal(name) {
-			return fmt.Errorf("%s: %w", header.Name, ErrOutsideModel)
+			return ArchiveEntryError{Name: header.Name, Dest: root}
 		}
 
 		target := filepath.Join(root, name)
@@ -338,14 +402,20 @@ func unpack(archive *tar.Reader, dest string) error {
 }
 
 // extractFile copies one archive entry into a new file.
+//
+// The file is closed exactly once, and which error comes back says which thing
+// went wrong. A copy which failed is reported as itself and the close after it
+// can say nothing useful; a copy which succeeded has only put the bytes into
+// the kernel, so a full disk or a filesystem which failed on flush is reported
+// by the close or by nothing at all.
 func extractFile(target string, src io.Reader) error {
 	file, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
 	if _, err := io.Copy(file, src); err != nil {
+		_ = file.Close()
 		return err
 	}
 
