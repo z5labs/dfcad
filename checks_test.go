@@ -275,6 +275,151 @@ func TestTheInitialCheckSetOnDegenerateInput(t *testing.T) {
 	})
 }
 
+// TestClaimAgreesWithGeometry is its own function because its fixture holds the
+// geometry still and varies only what is written about it.
+//
+// The shape is one outline and one run of wall, shared by every node in it, so
+// the difference between a case which passes and a case which fails is the claim
+// and nothing else. That is the failure the check is for: a number which stopped
+// matching a boundary nobody touched afterwards.
+func TestClaimAgreesWithGeometry(t *testing.T) {
+	run := runCheckFixture(t, "agreement")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "holds where the number written down is the one the shape computes to",
+			instance: "site:S-101",
+			expected: nil,
+		},
+		{
+			name:     "reports a claim larger than its shape, naming the discrepancy and which way it runs",
+			instance: "site:S-102",
+			expected: []string{
+				"expected the area claimed of site:S-102 to agree with the shape it is drawn as, found 14.0 m² " +
+					"claimed against 12.0 m² measured, which is 2.0 m² more than the shape",
+			},
+		},
+		{
+			name:     "reports a claim smaller than its shape, which is the other mistake",
+			instance: "site:S-103",
+			expected: []string{
+				"expected the area claimed of site:S-103 to agree with the shape it is drawn as, found 10.0 m² " +
+					"claimed against 12.0 m² measured, which is 2.0 m² less than the shape",
+			},
+		},
+		{
+			name:     "leaves a subject which is measured and not yet drawn alone",
+			instance: "site:S-104",
+			expected: nil,
+		},
+		{
+			name:     "leaves a subject which is drawn and not yet measured alone",
+			instance: "site:S-105",
+			expected: nil,
+		},
+		{
+			name:     "compares the claim which replaced a retracted one rather than the retracted one",
+			instance: "site:S-106",
+			expected: nil,
+		},
+		{
+			name:     "holds where the two differ by more than the declared discrepancy and less than their uncertainty",
+			instance: "site:S-107",
+			expected: nil,
+		},
+		{
+			name:     "holds where nothing says how good the claim is and the two are inside the declared discrepancy",
+			instance: "site:S-109",
+			expected: nil,
+		},
+		{
+			name:     "reports a claim which says nothing about how good it is and still does not match",
+			instance: "site:S-110",
+			expected: []string{
+				"expected the area claimed of site:S-110 to agree with the shape it is drawn as, found 12.5 m² " +
+					"claimed against 12.0 m² measured, which is 0.5 m² more than the shape",
+			},
+		},
+		{
+			name:     "reports a predicate carrying something the shape could never be compared against",
+			instance: "site:S-108",
+			expected: []string{
+				"expected the remark claimed of site:S-108 to be a number its shape could be compared against, " +
+					"found a text value",
+			},
+		},
+		{
+			name:     "holds of a length written on a run of wall which is not a ring",
+			instance: "site:W-01",
+			expected: nil,
+		},
+		{
+			name:     "reports a length which no longer matches the run it describes",
+			instance: "site:W-02",
+			expected: []string{
+				"expected the length claimed of site:W-02 to agree with the shape it is drawn as, found 6.0 m " +
+					"claimed against 7.0 m measured, which is 1.0 m less than the shape",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected,
+				reportedBy(run, "claim-agrees-with-geometry", testCase.instance))
+		})
+	}
+
+	t.Run("decides every rule the fixture states either way", func(t *testing.T) {
+		assert.Equal(t, 12, run.Rules)
+		assert.Equal(t, run.Rules, run.Ran)
+		assert.Equal(t, 5, run.Failed)
+		assert.Equal(t, 7, run.Passed)
+	})
+
+	t.Run("says what to do about each of them", func(t *testing.T) {
+		for _, violation := range run.Violations {
+			assert.NotEmpty(t, violation.Hint, violation.Instance)
+		}
+	})
+}
+
+// TestClaimAgreesWithGeometryLeadsBackToBothPlaces is its own function because
+// its assertion is about the spans rather than the messages.
+//
+// A stale number and the boundary it stopped matching are two lines, and either
+// of them may be the one to change. A failure which pointed only at the node
+// would send the reader to the form and leave them to find which of the two it
+// was about.
+func TestClaimAgreesWithGeometryLeadsBackToBothPlaces(t *testing.T) {
+	graph := loadCheckFixture(t, "agreement")
+
+	room, held := graph.Node("site:S-102")
+	require.True(t, held)
+
+	var violation Violation
+	for _, found := range graph.Rules().Select(RuleFilter{Subjects: []ID{"site:S-102"}}).Run().Violations {
+		violation = found
+	}
+	require.NotEmpty(t, violation.Check)
+
+	claim, resolved := graph.Claims().Resolve("site:S-102", "area", graph.Registry())
+	require.NoError(t, resolved)
+	current, ok := claim.Claim()
+	require.True(t, ok)
+
+	assert.Equal(t, current.Span(), violation.Subject, "the failure points at the claim which disagrees")
+	assert.NotEqual(t, room.Span(), violation.Subject)
+
+	require.Len(t, violation.Related, 1)
+	assert.NotEqual(t, violation.Subject, violation.Related[0].Span,
+		"the boundary it was compared against is a different place from the claim")
+}
+
 // TestEdgeBackingResolvesReportsEveryReferenceWhichReachesNoElement is its own
 // function because its fixture does not load clean, and that is what it is for.
 //

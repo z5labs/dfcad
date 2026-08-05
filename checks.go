@@ -36,6 +36,7 @@ import (
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
 var registeredChecks = newCheckSet(
 	boundaryLoopsClose{},
+	claimAgreesWithGeometry{},
 	containedAreasDoNotOverlap{},
 	containedAreasSum{},
 	crossFrameBudgetHolds{},
@@ -66,6 +67,15 @@ const (
 	// one.
 	positionParameter = "position"
 
+	// predicateParameter is the predicate a check is about a quantity of: the
+	// one a claim has to be written under, or the one carrying the value the
+	// check compares something with.
+	//
+	// It is the subject's own quantity, which is what tells it apart from
+	// positionParameter above: that one names a quantity of the subject's
+	// corners.
+	predicateParameter = "predicate"
+
 	// kindParameter narrows a check over what a node contains to the contents of
 	// one kind.
 	kindParameter = "kind"
@@ -74,6 +84,15 @@ const (
 	// and not the one shapes are read against: coincidence is a distance and a
 	// discrepancy between areas is an area, and one figure cannot be both.
 	areaParameter = "area-tolerance"
+
+	// discrepancyParameter is how far a figure written down and the same figure
+	// computed from a shape may differ before they disagree.
+	//
+	// It is not spelled area-tolerance because the figure it bounds is an area
+	// on a subject bounded by loops and a length on one drawn as a line, and a
+	// name which claimed to be an area would be wrong on half the subjects it is
+	// written on.
+	discrepancyParameter = "discrepancy"
 )
 
 // boundaryLoopsClose is the check that a loop is a closed cycle.
@@ -165,6 +184,464 @@ func (boundaryLoopsClose) Run(subject CheckSubject) []Failure {
 	}
 
 	return out
+}
+
+// claimAgreesWithGeometry is the check that a measurement written down still
+// matches the shape it describes.
+type claimAgreesWithGeometry struct{}
+
+// Declare implements [Check].
+func (claimAgreesWithGeometry) Declare() CheckDeclaration {
+	return CheckDeclaration{
+		Name: "claim-agrees-with-geometry",
+		Description: "The measurement claimed of the subject under the named predicate agrees with the one its " +
+			"shape computes to: an area for a subject bounded by loops, a length for one drawn as a line.",
+		Parameters: []CheckParameter{
+			{
+				Name:     predicateParameter,
+				Type:     ParameterPredicate,
+				Required: true,
+				Description: "The predicate the claimed measurement is written under, which is the number the shape " +
+					"is compared against.",
+			},
+			{
+				Name:     positionParameter,
+				Type:     ParameterPredicate,
+				Required: true,
+				Description: "The predicate a corner's position is claimed under, which is what the shape is read " +
+					"from.",
+			},
+			{
+				Name:        toleranceParameter,
+				Type:        ParameterTolerance,
+				Required:    true,
+				Description: "How close two corners are one corner, which is what the shape is read against.",
+			},
+			{
+				Name:     discrepancyParameter,
+				Type:     ParameterTolerance,
+				Required: true,
+				Description: "How far the claim and the shape may differ before they disagree. It is a figure of what " +
+					"is compared, so it is declared in the square of the frame's unit for an area — 0.05 m2 where the " +
+					"frame is in m — and in the unit itself for a length.",
+			},
+		},
+		Forms:      []SubjectForm{SubjectNode},
+		Geometries: []Geometry{GeometryArea, GeometrySurface, GeometryLine},
+	}
+}
+
+// Run implements [Runner].
+//
+// The failure this catches is quiet and entirely ordinary. A wall moves, the
+// boundary follows it, and the area written down when the room was first
+// measured stays where it was: both halves are well-formed, the conflict
+// register has nothing to say because the geometry is not a claim, and the model
+// is now wrong in a way nothing reports.
+//
+// # What is compared with what
+//
+// The claim is the one resolution makes current under the named predicate, which
+// is what keeps a deprecated number out of this: a retracted claim is never
+// resolved to ([Claims.Resolve]), and a retracted number is not a disagreement.
+// The shape is recomputed from the corners' position claims every time this
+// runs, which is what makes it unable to have gone stale
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+//
+// # Uncertainty, and why a bare tolerance is not enough
+//
+// Two figures which differ by less than their combined uncertainty do not
+// disagree. A claimed area at ±0.4 m² and a shape whose corners put its area
+// within ±0.3 m² are consistent at a 0.5 m² gap and in conflict at 2 m², and a
+// rule which compared them against a flat declared figure would report the first
+// and miss the second on a model with tighter survey.
+//
+// So the declared discrepancy is the floor rather than the whole test: the two
+// may differ by it, or by their combined one-sigma uncertainty where that is
+// wider. Where either side states no accuracy the floor is the whole of it,
+// which is what the floor is for — an unstated accuracy is unknown rather than
+// zero ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)), and a band
+// computed as though it were zero would report a disagreement the evidence
+// cannot support.
+//
+// The two are combined in quadrature, as two separate measurements of one
+// quantity. A systematic term written into both the claim and the corners is
+// therefore counted twice rather than once, which widens the band; the two
+// cannot be accumulated into one budget instead, because an area claim's
+// accuracy is in the square of the unit its corners are surveyed in and
+// [Budget.Combined] refuses to mix units — deliberately.
+//
+// The corners' budget is a distance and the figure compared may be an area, so
+// for an area it is carried across by the length of the boundary: displacing a
+// boundary of length P by δ changes the area it encloses by about P·δ. It is a
+// first-order sensitivity and is stated as one. Nothing is written back and
+// nothing about it reaches [Measurement.Budget], which reports the uncertainty
+// of the corners and reduces it to no figure of its own.
+//
+// # What it declines to decide
+//
+// A subject carrying the claim and no shape, and one with a shape and no claim
+// under the named predicate, are both left alone. There is nothing to compare in
+// either, and a room somebody has drawn and not yet measured — or measured and
+// not yet drawn — is an ordinary state of a model being written rather than a
+// disagreement.
+func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
+	node, ok := subject.Subject().(*SemanticNode)
+	if !ok {
+		return nil
+	}
+
+	predicate, ok := symbolOf(subject, predicateParameter)
+	if !ok {
+		return nil
+	}
+	position, ok := symbolOf(subject, positionParameter)
+	if !ok {
+		return nil
+	}
+	tolerance, ok := symbolOf(subject, toleranceParameter)
+	if !ok {
+		return nil
+	}
+	discrepancy, ok := symbolOf(subject, discrepancyParameter)
+	if !ok {
+		return nil
+	}
+
+	graph := subject.Graph()
+
+	declared, found := graph.Registry().Tolerance(discrepancy)
+	if !found {
+		// A rule naming a tolerance the registry does not declare is a load
+		// error which names it and points at it. Reporting it again here would
+		// be one mistake told twice, in the vocabulary of the rule rather than
+		// of the registry.
+		return nil
+	}
+
+	// The claim is read first because it is the cheaper half and because a
+	// subject which claims nothing under the predicate is left alone whatever
+	// its shape turns out to be.
+	resolution, err := graph.Claims().Resolve(node.ID(), predicate, graph.Registry())
+	if err != nil {
+		// Two equally current claims under a strict predicate are the conflict
+		// register's to report, and comparing one of them against the shape
+		// would be picking a winner this check has no rule for.
+		return nil
+	}
+
+	claim, stated := currentClaim(resolution)
+	if !stated {
+		return nil
+	}
+
+	value := claim.Value()
+	claimed, numeric := value.Scalar()
+	if !numeric {
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected the %s claimed of %s to be a number its shape could be compared against, found %s",
+				predicate, nodeName(node), describeShape(value.Shape()),
+			),
+			Hint: "a measurement which agrees or disagrees with a shape is one number; the predicate this rule names " +
+				"carries something else, so the rule as written cannot be decided either way",
+			Span:    claim.Span(),
+			Related: boundaryOf(graph, node),
+		}}
+	}
+
+	shape, failures := measuredShape(graph, node, tolerance, position)
+	if len(failures) > 0 {
+		return failures
+	}
+
+	if !shape.measured {
+		return nil
+	}
+
+	if value.Unit() != shape.unit {
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected the %s claimed of %s in %s, the unit its shape is measured in, found %s %s",
+				predicate, nodeName(node), shape.unit, decimal(claimed), value.Unit(),
+			),
+			Hint: "nothing here converts between units, so a claim written in one and a shape measured in another " +
+				"are two figures which cannot be compared",
+			Span:    claim.Span(),
+			Related: boundaryOf(graph, node),
+		}}
+	}
+
+	if declared.Unit != shape.unit {
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected the tolerance %s in %s, the unit the shape of %s is measured in, found %s %s",
+				declared.Name, shape.unit, nodeName(node), decimal(declared.Value), declared.Unit,
+			),
+			Hint: "how far a claim and a shape may differ is a figure of what they are figures of: an area for a " +
+				"subject bounded by loops and a length for one drawn as a line, and nothing here converts between " +
+				"the two",
+			Span:    graph.Nodes().named(node),
+			Related: []RelatedLocation{{Span: declared.Span, Message: "the tolerance is declared here"}},
+		}}
+	}
+
+	band := declared.Value
+	if combined, known := agreementBand(claim, shape); known && combined > band {
+		band = combined
+	}
+
+	difference := claimed - shape.value
+	if math.Abs(difference) <= band {
+		return nil
+	}
+
+	sense := "more than"
+	if difference < 0 {
+		sense = "less than"
+	}
+
+	return []Failure{{
+		Message: fmt.Sprintf(
+			"expected the %s claimed of %s to agree with the shape it is drawn as, found %s%s claimed against %s%s "+
+				"measured, which is %s%s %s the shape",
+			predicate, nodeName(node),
+			decimal(claimed), shape.suffix,
+			decimal(shape.value), shape.suffix,
+			decimal(math.Abs(difference)), shape.suffix, sense,
+		),
+		Hint: fmt.Sprintf(
+			"the shape is recomputed from the corners' %s claims, judged against the tolerance %s; the two may "+
+				"differ by %s, which is %s %s, or by their combined uncertainty where that is wider — so either the "+
+				"claim has gone stale or the boundary is drawn wrong",
+			position, tolerance, declared.Name, decimal(declared.Value), declared.Unit,
+		),
+		Span:    claim.Span(),
+		Related: boundaryOf(graph, node),
+	}}
+}
+
+// currentClaim is the claim a shape is compared against, and whether the model
+// states one to compare it against at all.
+//
+// It is the claim resolution picked, and otherwise the one live claim resolution
+// could not rank. A claim which states no accuracy is unrankable and so is never
+// what [Resolution.Claim] reports, and skipping it here would leave every
+// unmeasured number in a model exempt from this check — which is the one place
+// a stale figure is most likely to be sitting. It is still what the model says
+// about the subject; what it is not is a figure which can narrow the band, and
+// the declared discrepancy is the floor which decides it instead.
+//
+// More than one candidate is left alone. Two equally current claims are a
+// conflict the register reports, and comparing one of them against the shape
+// would be picking a winner this check has no rule for.
+func currentClaim(resolution Resolution) (*Claim, bool) {
+	if claim, resolved := resolution.Claim(); resolved {
+		return claim, true
+	}
+
+	if candidates := resolution.Candidates(); len(candidates) == 1 {
+		return candidates[0], true
+	}
+
+	return nil, false
+}
+
+// shape is what a subject's geometry computes to, together with what says how
+// well it is known.
+//
+// The figure and the unit it is in travel with the budget the corners put behind
+// it, because the whole of what this check does is compare the three against a
+// claim, and a caller which read the figure from one place and its uncertainty
+// from another could compare a figure against a budget of something else.
+type shape struct {
+	// value is the figure the geometry computes to: an area for a subject
+	// bounded by loops, a length for one drawn as a line.
+	value float64
+
+	// unit is the unit value is in, which is the square of the frame's linear
+	// unit for an area and the linear unit itself for a length.
+	unit Unit
+
+	// suffix is how that unit is written after a figure in a message.
+	suffix string
+
+	// linear is the frame's linear unit, which is what the corners' budget is
+	// accumulated in.
+	linear Unit
+
+	// sensitivity is how far value moves per unit of corner displacement: the
+	// length of the boundary for an area, and one for a length.
+	sensitivity float64
+
+	// budget is the accumulated accuracy of the position claims value was
+	// computed from.
+	budget Budget
+
+	// measured reports whether there is a figure at all. A subject which
+	// references no loop has none, and that is not the same state as a figure
+	// which came out zero.
+	measured bool
+}
+
+// measuredShape computes what a subject's geometry says it measures, and reports
+// what stopped it being read.
+//
+// The two geometries are read differently on purpose. A subject bounded by loops
+// is measured as a region, which is what nests a courtyard inside a plate and
+// takes it away. A subject drawn as a line is measured edge by edge instead:
+// reading it as a region would assemble its edges into a ring and report the gap
+// where the two ends do not meet, and a wall not being a closed cycle is what a
+// line is rather than a mistake in one.
+func measuredShape(graph *Graph, node *SemanticNode, tolerance, position string) (shape, []Failure) {
+	survey := positionSurvey(graph, tolerance, position, graph.Corners(node))
+
+	if geometry, _ := node.Geometry(); geometry == GeometryLine {
+		return measuredLine(graph, node, survey)
+	}
+
+	measurement, diags := graph.Measure(node, survey)
+	if len(diags) > 0 {
+		return shape{}, failuresOf(diags)
+	}
+
+	area, computed := measurement.Area()
+	if !computed {
+		return shape{}, nil
+	}
+
+	// The boundary's length is how much the area moves when a corner does, and
+	// a region which measured an area has one.
+	perimeter, _ := measurement.Length()
+
+	return shape{
+		value:       area,
+		unit:        squareUnit(measurement.Unit()),
+		suffix:      squareSuffix(measurement.Unit()),
+		linear:      measurement.Unit(),
+		sensitivity: perimeter,
+		budget:      measurement.Budget(),
+		measured:    true,
+	}, nil
+}
+
+// measuredLine is the total length of the edges a subject drawn as a line is
+// assembled from.
+//
+// It is every edge or none. A total summed over the edges which happened to
+// measure is a line with a piece missing and no figure saying which piece, which
+// is the answer which reads as an answer — the same refusal [Topology.MeasureRegion]
+// makes of a region one of whose rings did not assemble.
+func measuredLine(graph *Graph, node *SemanticNode, survey Survey) (shape, []Failure) {
+	var (
+		out      shape
+		failures []Failure
+		edges    int
+		measured int
+	)
+
+	for edge := range graph.Boundaries().Edges(node) {
+		edges++
+
+		measurement, diags := graph.Measure(edge, survey)
+		if len(diags) > 0 {
+			failures = append(failures, failuresOf(diags)...)
+			continue
+		}
+
+		length, computed := measurement.Length()
+		if !computed {
+			continue
+		}
+
+		measured++
+		out.value += length
+		out.unit, out.linear = measurement.Unit(), measurement.Unit()
+		out.suffix = unitSuffix(measurement.Unit())
+		out.budget.Merge(measurement.Budget())
+	}
+
+	if len(failures) > 0 {
+		return shape{}, failures
+	}
+
+	if edges == 0 || measured != edges {
+		return shape{}, nil
+	}
+
+	out.sensitivity, out.measured = 1, true
+
+	return out, nil
+}
+
+// agreementBand is the combined one-sigma uncertainty of a claimed figure and
+// the shape it is compared against, and whether either side stated an accuracy
+// at all.
+//
+// A side which stated none contributes nothing rather than stopping the
+// arithmetic, because the declared discrepancy is the floor under the answer and
+// is what decides a comparison the evidence cannot narrow. Where neither side
+// stated one there is no band here at all, and the floor is the whole of the
+// test.
+func agreementBand(claim *Claim, of shape) (float64, bool) {
+	var own Budget
+	own.Add(claim)
+
+	claimed, stated := sigmaIn(own, of.unit)
+	derived, surveyed := sigmaIn(of.budget, of.linear)
+
+	if !stated && !surveyed {
+		return 0, false
+	}
+
+	// The corners' budget is a distance and the figure may be an area, so it is
+	// carried across by how far the figure moves per unit of corner
+	// displacement.
+	derived *= of.sensitivity
+
+	return math.Sqrt(claimed*claimed + derived*derived), true
+}
+
+// sigmaIn is a budget as one standard uncertainty in the given unit, and whether
+// it combines into one at all.
+//
+// A budget which is tainted by a claim stating no accuracy, which holds no term,
+// or which accumulated in another unit is not a figure this can compare: none of
+// those is zero, and reporting zero for any of them would narrow the band on
+// evidence which does not support it.
+func sigmaIn(budget Budget, unit Unit) (float64, bool) {
+	uncertainty, err := budget.Combined()
+	if err != nil || uncertainty.Unit != unit {
+		return 0, false
+	}
+	return uncertainty.Standard(), true
+}
+
+// boundaryOf is where the outline a figure was computed from is written, for a
+// failure which has to name both places: the claim, and the geometry it
+// disagrees with.
+//
+// A subject bounded by nothing relates to nothing rather than to itself. The
+// failure already points at the claim, and a related location repeating the node
+// would send a reader to a line they are already looking at.
+func boundaryOf(graph *Graph, node *SemanticNode) []RelatedLocation {
+	var out []RelatedLocation
+	for loop := range graph.Boundaries().Loops(node) {
+		out = append(out, RelatedLocation{
+			Span:    loop.Span(),
+			Message: "the boundary it was compared against",
+		})
+	}
+	return out
+}
+
+// describeShape names the sort of value a claim carries, for a diagnostic which
+// wanted a number and found one of the other three.
+func describeShape(of Shape) string {
+	if of == "" {
+		return "a value which could not be read"
+	}
+	return article(string(of)) + " " + string(of) + " value"
 }
 
 // containedAreasDoNotOverlap is the check that the things written within a node
@@ -837,7 +1314,7 @@ func (requiredClaim) Declare() CheckDeclaration {
 			"predicate has a resolvable value on it.",
 		Parameters: []CheckParameter{
 			{
-				Name:        "predicate",
+				Name:        predicateParameter,
 				Type:        ParameterPredicate,
 				Required:    true,
 				Description: "The predicate a claim must be written under.",
@@ -1039,6 +1516,16 @@ func failureOf(diagnostic Diagnostic) Failure {
 		Span:    diagnostic.Span,
 		Related: diagnostic.Related,
 	}
+}
+
+// failuresOf carries every diagnostic a measurement raised into the failures of
+// the check which asked for it, keeping the order they were reported in.
+func failuresOf(diags []Diagnostic) []Failure {
+	out := make([]Failure, 0, len(diags))
+	for _, diagnostic := range diags {
+		out = append(out, failureOf(diagnostic))
+	}
+	return out
 }
 
 // frameOf is the frame a subject is measured in, whichever family holds it, and

@@ -1267,6 +1267,43 @@ Every violation is also rendered to stderr as a diagnostic, on every run and in 
 because it is a problem in something somebody wrote. The struct above is the machine form of
 the same finding, and neither is produced by parsing the other.
 
+#### `claim-agrees-with-geometry`
+
+The check registry is closed and compiled into the engine, and `dfcad check --list` is what
+prints the whole of it. One member of it needs saying here, because reading its violation
+means knowing what it compared and what band it compared against.
+
+It reports a **measurement written down which no longer matches the shape it describes** — an
+`area` claim on a node whose boundary computes to something else, a `length` claim on a run of
+wall which has moved. It takes four parameters, all required and none defaulted:
+`(predicate <name>)`, the predicate the claimed measurement is written under; `(position
+<name>)`, the predicate a corner's position is claimed under; `(tolerance <name>)`, how close
+two corners are one corner; and `(discrepancy <name>)`, how far the two may differ. It is
+written on a node whose geometry is `area` or `surface`, where the comparison is of areas, or
+`line`, where it is of lengths.
+
+`discrepancy` is a **floor and not the whole test.** Two figures which differ by less than
+their combined uncertainty do not disagree, so the band is the wider of the declared
+discrepancy and the two figures' combined one-sigma uncertainty: the claim's own accuracy, and
+the accuracy the corners' position claims put behind the shape. Those two are added in
+quadrature, as separate measurements of one quantity. For an area the corners' budget is a
+distance and the figure is an area, so it is carried across by the length of the boundary — a
+boundary of length P displaced by δ moves the area it encloses by about P·δ, which is a
+first-order sensitivity and is stated as one. Where a side states no accuracy it narrows
+nothing and the declared discrepancy decides, because an unstated accuracy is unknown rather
+than zero.
+
+The discrepancy in the message is **signed**: a claim larger than its shape and one smaller
+are two different mistakes, and the message says which way it runs. `subject` is the span of
+the claim that disagrees, not of the node, and `related` carries the boundary it was compared
+against — either of the two may be the one to change.
+
+Two states are **not** violations and report nothing. A subject carrying the claim and no
+shape, and one carrying a shape and no claim under the named predicate, have nothing to
+compare: a room drawn and not yet measured, or measured and not yet drawn, is an ordinary
+state of a model being written. A `deprecated` claim is never compared either — it is
+retracted rather than out-ranked, and a retracted number is not a disagreement.
+
 ### `review`
 
 The changes in this revision which need an explanation. Every rule `check` runs constrains

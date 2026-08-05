@@ -627,10 +627,18 @@ func TestCheckDeclaringARestatingParameter(t *testing.T) {
 			expected: "declares two parameters carrying a value of the subject's own",
 		},
 		{
-			name: "two predicates are refused, because nothing would say which a value is of",
+			name: "two predicates are ordinary where they are about two different things",
 			parameters: []CheckParameter{
-				{Name: "predicate", Type: ParameterPredicate, Required: true, Description: "The predicate."},
-				{Name: "against", Type: ParameterPredicate, Required: true, Description: "The other one."},
+				{Name: "predicate", Type: ParameterPredicate, Required: true, Description: "The subject's quantity."},
+				{Name: "position", Type: ParameterPredicate, Required: true, Description: "Its corners' quantity."},
+			},
+		},
+		{
+			name: "two predicates beside a value of the subject's own are refused, because nothing would say which it is of",
+			parameters: []CheckParameter{
+				{Name: "predicate", Type: ParameterPredicate, Required: true, Description: "The subject's quantity."},
+				{Name: "position", Type: ParameterPredicate, Required: true, Description: "Its corners' quantity."},
+				{Name: "is", Type: ParameterReal, Restates: true, Description: "The value."},
 			},
 			expected: "names two predicates",
 		},

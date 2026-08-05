@@ -613,7 +613,7 @@ func (r *assertionResolver) dangling(binding AssertionBinding, declared CheckPar
 // subject already says. The rule, and what it does and does not catch, is
 // [ResolveAssertions].
 func (r *assertionResolver) restatement(binding AssertionBinding) {
-	predicate, ok := binding.Check.predicateParameter()
+	predicate, ok := binding.Check.namedPredicate()
 	if !ok {
 		return
 	}
