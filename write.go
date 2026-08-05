@@ -437,17 +437,27 @@ func (tx *Tx) read() []Diagnostic {
 		diags  []Diagnostic
 	)
 
+	// The graph this builds is as much a reading of the tree as [LoadGraph]'s, so
+	// it is digested the same way and from the same bytes. A transaction's graph
+	// which could not be digested would be one nothing derived from it could
+	// ever be cached, for no reason but which function had read the files.
+	digest := newTreeDigest(tx.root)
+
 	for path, err := range Walk(tx.root) {
 		if err != nil {
+			digest.unreadable()
 			diags = append(diags, diagnose(path, err))
 			continue
 		}
 
 		src, err := os.ReadFile(path)
 		if err != nil {
+			digest.unreadable()
 			diags = append(diags, diagnose(path, err))
 			continue
 		}
+
+		digest.file(path, src)
 
 		file, err := parse(path, src)
 		if err != nil {
@@ -463,6 +473,7 @@ func (tx *Tx) read() []Diagnostic {
 	}
 
 	graph, diags := loadGraph(tx.root, parsed, diags, registeredChecks)
+	graph.digest = digest.digest()
 	tx.graph = graph
 
 	return diags

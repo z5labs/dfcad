@@ -38,3 +38,8 @@ go.work.sum
 # transaction finishes; one left behind belongs to a run that was killed, and
 # belongs to nobody's commit.
 .dfcad.lock
+
+# The build output directory derived data is written to. Nothing in it is a
+# source: every byte of it is recomputed from the entity files, and deleting it
+# costs time and nothing else.
+.dfcad/

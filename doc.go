@@ -271,6 +271,48 @@
 // area, and reporting it as an overlap would turn every pair of adjacent rooms
 // into a conflict.
 //
+// # Derived geometry, and where it is kept
+//
+// Everything above is computed on demand and none of it is stored in the model.
+// That is the whole of why an area cannot contradict the boundary it came from
+// (see docs/decisions/0009-derived-values-are-never-written-back.md), and it is
+// also why asking the same question of the same model twice pays for it twice.
+//
+// [Graph.Derive] is the answer to the second half without giving up the first.
+// It computes the derived geometry of a whole model — what each thing covers,
+// its area, its perimeter, its centroid, its bounding box and which regions it
+// lies inside — as a [Footprints], and keeps it in a [Cache] which is a build
+// output directory and never a source.
+//
+// The cache cannot serve a stale answer, because the key is a [Digest] over the
+// bytes of the source tree the geometry was derived from. A tree which changed
+// anywhere has a different key and misses. There is no invalidation pass, no
+// timestamp comparison and no dependency list to get wrong — the key *is* the
+// invalidation. The two named decisions a derivation is not otherwise pinned by
+// — the tolerance and the position predicate — are in the key as well, because a
+// footprint judged against a different tolerance is a different answer.
+//
+// It is advisory in the strongest sense: deleting it changes what a run reports
+// by nothing at all and changes only how long the run takes. Two rules hold that
+// up. An entry which does not verify — truncated, corrupt, written by another
+// version, written under another key — is discarded and recomputed rather than
+// raised, because failing a run over a damaged build output would make a
+// disposable artefact load-bearing. And only a derivation which reported no
+// diagnostic is stored, so the diagnostics a run reports never depend on what a
+// cache happens to hold.
+//
+// It is bounded by [Cache.Prune], which keeps one digest and removes every
+// other: a build which prunes with the digest it just derived against leaves
+// exactly one generation, which is the working set. Removing the directory is
+// always safe.
+//
+// Membership here is derived rather than read. A courtyard is inside the floor
+// plate around it because of where its corners are, whether or not anybody wrote
+// the containment down, and [Footprint.Within] is that answer where
+// [Nodes.Within] is the authored one. It is judged only between regions one
+// operation could be run over — one frame, one tolerance, one plane — so two
+// plates on different storeys are members of neither.
+//
 // # Reviewing a change
 //
 // Every rule above constrains one revision. Some things are suspicious only as

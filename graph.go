@@ -49,6 +49,9 @@ type Entity interface {
 // caches a derived answer: the conflict register, a loop's closure and an
 // edge's classification are computed from the model every time they are asked
 // for ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+// The one derived thing which may be kept is kept outside the graph, in a build
+// output directory a caller hands in, keyed by the digest of the tree it was
+// derived from — see [Graph.Derive] and [Cache].
 type Graph struct {
 	// root is what the load was asked for, which is where a diagnostic about
 	// the model as a whole rather than about any one file points.
@@ -76,6 +79,12 @@ type Graph struct {
 
 	// summary is what the load counted.
 	summary Summary
+
+	// digest is the digest of the bytes this graph was built from, accumulated
+	// by whoever read them. It is the zero [Digest] where they were not read
+	// from anywhere, or where a file the walk reached could not be read at all
+	// ([Graph.Digest]).
+	digest Digest
 }
 
 // LoadGraph reads the whole model beneath root in one pass.
@@ -131,7 +140,22 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 		parsed []source
 		diags  []Diagnostic
 	)
+
+	// The digest is accumulated here, from the bytes as they are read, and the
+	// bytes are then dropped rather than kept beside the trees they parsed into.
+	// Digesting the tree again later would key a derivation by whatever is on
+	// disk when somebody asks rather than by what this load read
+	// ([Graph.Digest]).
+	digest := newTreeDigest(root)
+
 	for src := range readTree(root) {
+		if src.content == nil {
+			digest.unreadable()
+		} else {
+			digest.file(src.path, src.content)
+			src.content = nil
+		}
+
 		if src.file == nil {
 			diags = append(diags, src.diag)
 			continue
@@ -139,7 +163,10 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 		parsed = append(parsed, src)
 	}
 
-	return loadGraph(root, parsed, diags, registeredChecks)
+	graph, diags := loadGraph(root, parsed, diags, registeredChecks)
+	graph.digest = digest.digest()
+
+	return graph, diags
 }
 
 // loadGraph is [LoadGraph] over trees which have already been read, carrying

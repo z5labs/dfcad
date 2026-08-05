@@ -130,6 +130,15 @@ type source struct {
 	// file is the tree it parsed into, and is nil where reading it failed.
 	file *File
 
+	// content is the bytes the file held, and is nil where they could not be
+	// read at all. It is what a digest of the tree is computed from
+	// ([Graph.Digest]), so that the digest describes the bytes a graph was
+	// actually built from rather than whatever is on disk by the time somebody
+	// asks. A caller which does not need it drops it before keeping the source,
+	// since a whole tree's bytes held beside a whole tree's parsed forms is
+	// twice the memory for a value only one pass reads.
+	content []byte
+
 	// diag is why it failed, and is meaningful only where file is nil.
 	diag Diagnostic
 }
@@ -152,7 +161,10 @@ func readTree(root string) iter.Seq[source] {
 				continue
 			}
 
-			file, err := LoadFile(path)
+			// The bytes are read here rather than by LoadFile so that a caller
+			// which digests the tree digests what this pass read, and not the
+			// file as it stands whenever it gets round to asking.
+			content, err := os.ReadFile(path)
 			if err != nil {
 				if !yield(source{path: path, diag: diagnose(path, err)}) {
 					return
@@ -160,7 +172,15 @@ func readTree(root string) iter.Seq[source] {
 				continue
 			}
 
-			if !yield(source{path: path, file: file}) {
+			file, err := parse(path, content)
+			if err != nil {
+				if !yield(source{path: path, content: content, diag: diagnose(path, err)}) {
+					return
+				}
+				continue
+			}
+
+			if !yield(source{path: path, file: file, content: content}) {
 				return
 			}
 		}

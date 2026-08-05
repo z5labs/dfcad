@@ -1,0 +1,276 @@
+; The model the derived-geometry cache is computed over.
+;
+; Nothing here says what anything covers. An area, a centroid, a bounding box and
+; which region a thing lies inside are read back out of these corners every time
+; they are asked for, and the cache beside this tree holds the answers under the
+; digest of the tree they were read from — never in the tree itself
+; (docs/decisions/0009-derived-values-are-never-written-back.md).
+;
+; The shapes are chosen so that every part of a footprint has something to say:
+; a plate with a courtyard cut out of it, the courtyard itself, a room inside the
+; plate, a desk zone inside that room and so inside both, and a store in a second
+; frame which is a member of nothing because nothing here transforms between
+; frames on its own.
+
+
+(vertex geom:V-011
+  (label "Floor plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-012
+  (label "Floor plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-013
+  (label "Floor plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (20.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-014
+  (label "Floor plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-011 (label "Floor plate, side 1") (frame frame:building) (vertices geom:V-011 geom:V-012))
+(edge geom:E-012 (label "Floor plate, side 2") (frame frame:building) (vertices geom:V-012 geom:V-013))
+(edge geom:E-013 (label "Floor plate, side 3") (frame frame:building) (vertices geom:V-013 geom:V-014))
+(edge geom:E-014 (label "Floor plate, side 4") (frame frame:building) (vertices geom:V-014 geom:V-011))
+(loop geom:L-01
+  (label "Floor plate boundary")
+  (frame frame:building)
+  (edges geom:E-011 geom:E-012 geom:E-013 geom:E-014))
+
+(vertex geom:V-021
+  (label "Courtyard, corner 1")
+  (frame frame:building)
+  (position
+    (value (8.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-022
+  (label "Courtyard, corner 2")
+  (frame frame:building)
+  (position
+    (value (12.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-023
+  (label "Courtyard, corner 3")
+  (frame frame:building)
+  (position
+    (value (12.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-024
+  (label "Courtyard, corner 4")
+  (frame frame:building)
+  (position
+    (value (8.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-021 (label "Courtyard, side 1") (frame frame:building) (vertices geom:V-021 geom:V-022))
+(edge geom:E-022 (label "Courtyard, side 2") (frame frame:building) (vertices geom:V-022 geom:V-023))
+(edge geom:E-023 (label "Courtyard, side 3") (frame frame:building) (vertices geom:V-023 geom:V-024))
+(edge geom:E-024 (label "Courtyard, side 4") (frame frame:building) (vertices geom:V-024 geom:V-021))
+(loop geom:L-02
+  (label "Courtyard boundary")
+  (frame frame:building)
+  (edges geom:E-021 geom:E-022 geom:E-023 geom:E-024))
+
+(vertex geom:V-031
+  (label "Meeting room, corner 1")
+  (frame frame:building)
+  (position
+    (value (2.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-032
+  (label "Meeting room, corner 2")
+  (frame frame:building)
+  (position
+    (value (6.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-033
+  (label "Meeting room, corner 3")
+  (frame frame:building)
+  (position
+    (value (6.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-034
+  (label "Meeting room, corner 4")
+  (frame frame:building)
+  (position
+    (value (2.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-031 (label "Meeting room, side 1") (frame frame:building) (vertices geom:V-031 geom:V-032))
+(edge geom:E-032 (label "Meeting room, side 2") (frame frame:building) (vertices geom:V-032 geom:V-033))
+(edge geom:E-033 (label "Meeting room, side 3") (frame frame:building) (vertices geom:V-033 geom:V-034))
+(edge geom:E-034 (label "Meeting room, side 4") (frame frame:building) (vertices geom:V-034 geom:V-031))
+(loop geom:L-03
+  (label "Meeting room boundary")
+  (frame frame:building)
+  (edges geom:E-031 geom:E-032 geom:E-033 geom:E-034))
+
+(vertex geom:V-041
+  (label "Desk zone, corner 1")
+  (frame frame:building)
+  (position
+    (value (3.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-042
+  (label "Desk zone, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-043
+  (label "Desk zone, corner 3")
+  (frame frame:building)
+  (position
+    (value (4.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-044
+  (label "Desk zone, corner 4")
+  (frame frame:building)
+  (position
+    (value (3.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-041 (label "Desk zone, side 1") (frame frame:building) (vertices geom:V-041 geom:V-042))
+(edge geom:E-042 (label "Desk zone, side 2") (frame frame:building) (vertices geom:V-042 geom:V-043))
+(edge geom:E-043 (label "Desk zone, side 3") (frame frame:building) (vertices geom:V-043 geom:V-044))
+(edge geom:E-044 (label "Desk zone, side 4") (frame frame:building) (vertices geom:V-044 geom:V-041))
+(loop geom:L-04
+  (label "Desk zone boundary")
+  (frame frame:building)
+  (edges geom:E-041 geom:E-042 geom:E-043 geom:E-044))
+
+(vertex geom:V-051
+  (label "Annex store, corner 1")
+  (frame frame:annex)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-052
+  (label "Annex store, corner 2")
+  (frame frame:annex)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-053
+  (label "Annex store, corner 3")
+  (frame frame:annex)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-054
+  (label "Annex store, corner 4")
+  (frame frame:annex)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-051 (label "Annex store, side 1") (frame frame:annex) (vertices geom:V-051 geom:V-052))
+(edge geom:E-052 (label "Annex store, side 2") (frame frame:annex) (vertices geom:V-052 geom:V-053))
+(edge geom:E-053 (label "Annex store, side 3") (frame frame:annex) (vertices geom:V-053 geom:V-054))
+(edge geom:E-054 (label "Annex store, side 4") (frame frame:annex) (vertices geom:V-054 geom:V-051))
+(loop geom:L-05
+  (label "Annex store boundary")
+  (frame frame:annex)
+  (edges geom:E-051 geom:E-052 geom:E-053 geom:E-054))
+
+(node site:S-01
+  (label "Floor plate")
+  (kind Space)
+  (type FloorPlate)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-02))
+(node site:S-02
+  (label "Courtyard garden")
+  (kind Space)
+  (type Courtyard)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+(node site:S-03
+  (label "Meeting room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-03))
+(node site:S-04
+  (label "Desk zone")
+  (kind Space)
+  (type Workspace)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-04))
+(node site:S-05
+  (label "Annex store")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:annex)
+  (boundary geom:L-05))
