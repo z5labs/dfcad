@@ -521,18 +521,64 @@ func TestSurfaceCostsWhatTheShotsCost(t *testing.T) {
 			"a shot brought across a measured transform is known no better than the transform")
 	})
 
-	t.Run("is never better than the best shot behind it", func(t *testing.T) {
+	// The bound is the *worst* contributing shot and not the best. Combining
+	// independent one-sigma figures under weights which sum to one gives
+	// sqrt(sum (w·s)²), which is at most sqrt(sum w²)·max(s) and so never worse
+	// than the worst shot behind it — but it is routinely worse than the best,
+	// because a weight on a poorly measured shot carries that shot's doubt into
+	// the answer. A level interpolated half from a shot known to a millimetre
+	// and half from one known to a decimetre is not known to a millimetre.
+	t.Run("is no worse than the worst shot behind it", func(t *testing.T) {
+		sigmas := make(map[ID]float64, surface.Len())
+		for _, point := range surface.Points() {
+			sigmas[point.Observation()] = point.Uncertainty()
+		}
+
+		for x := 3.0; x <= 17.0; x += 1.0 {
+			for y := 3.0; y <= 9.0; y += 1.0 {
+				at := Point{x, y, 0}
+
+				elevation, inside := surface.Elevation(at)
+				require.True(t, inside, "at %v", at)
+
+				worst := 0.0
+				for _, id := range elevation.From() {
+					sigma, behind := sigmas[id]
+					require.True(t, behind, "%s is a shot the surface rests on", id)
+					worst = math.Max(worst, sigma)
+				}
+
+				require.Positive(t, elevation.Uncertainty(), "at %v", at)
+				require.LessOrEqual(t, elevation.Uncertainty(), worst, "at %v", at)
+			}
+		}
+	})
+
+	t.Run("is better than the worst where more than one shot carries weight", func(t *testing.T) {
 		elevation, inside := surface.Elevation(Point{4, 4, 0})
 		require.True(t, inside)
 
-		var best = math.Inf(1)
+		var carrying int
+		for _, weight := range elevation.Weights() {
+			if weight > 0 {
+				carrying++
+			}
+		}
+		require.Greater(t, carrying, 1, "the point is between shots rather than on one")
+
+		sigmas := make(map[ID]float64, surface.Len())
 		for _, point := range surface.Points() {
-			best = math.Min(best, point.Uncertainty())
+			sigmas[point.Observation()] = point.Uncertainty()
 		}
 
-		assert.Positive(t, elevation.Uncertainty())
-		assert.LessOrEqual(t, elevation.Uncertainty(), best,
-			"a weighted mean of independent shots is no worse than any one of them")
+		worst := 0.0
+		for _, id := range elevation.From() {
+			worst = math.Max(worst, sigmas[id])
+		}
+
+		assert.Less(t, elevation.Uncertainty(), worst,
+			"averaging independent shots buys something, which is why the weights are propagated rather than the "+
+				"worst figure taken")
 	})
 }
 
