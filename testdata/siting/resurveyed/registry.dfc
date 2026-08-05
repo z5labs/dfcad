@@ -1,0 +1,110 @@
+; The same vocabulary as ../surveyed, with the georeference re-fitted and
+; nothing else changed. The model beside it is byte-identical to that one.
+;
+; That is the whole of this fixture: one claim was replaced by a better
+; measurement of the same thing, and both halves of every siting answer move.
+; The building lands twenty millimetres further north, so the clearance changes;
+; and the random part of the fit drops from twelve millimetres to two, so the
+; budget narrows. Neither could happen if a derived answer had been written down
+; anywhere ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+;
+; What does not move is the systematic part. Re-occupying the same control point
+; with a better instrument does not make the control point's own error smaller,
+; so control:CP-1 and control:CP-2 are written here exactly as they were — and
+; the term which dominates the answer afterwards is one of them rather than the
+; fit which was re-run.
+;
+; The georeference is the point of this fixture. The building was set out on its
+; own grid and the parcel was surveyed on the site grid, so every interior fact
+; reaches the site through this one fit — which means the fit's residual is the
+; same error applied to all of them, and does not cancel between two of them and
+; does not average away against a site corner. It is written here as a claim,
+; with the source, the method, the date and the accuracy every other measured
+; value carries, because the relationship between two frames is a measurement
+; and not a configuration constant.
+;
+; control:CP-1 is the control point the whole project is tied to: it is behind
+; the site corners, behind the interior corners and behind the georeference
+; itself, which is what makes it a term arriving from both sides of a comparison
+; and the case a budget has to count exactly once. control:CP-2 is behind the
+; georeference alone, so that the budget carries two systematic terms and adding
+; them linearly is distinguishable from adding them in quadrature.
+(project
+  (label "Siting fixture")
+  (globalid-namespace "https://example.org/models/siting"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace plan (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 5.0 4.02 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-019, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.002 m) (systematic 0.008 m control:CP-1) (systematic 0.005 m control:CP-2))
+    (date "2026-05-27")))
+
+; A third grid, set out by the contractor from the site pegs and never fitted.
+; The relationship is written down — it has to be, or nothing on that grid has a
+; position at all — and it states no accuracy, because nobody measured how well
+; it was set out.
+;
+; That is the case a budget must not read as nought. Everything expressed
+; through this transform is as well known as the transform, which is to say
+; nobody knows, and a clearance computed across it comes back with its verdict
+; withheld rather than with a figure narrower than the evidence behind it
+; ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
+(frame frame:annex
+  (label "Annex setting-out grid")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0002)
+  (frame-transform
+    (id survey:C-0002)
+    (value
+      (transform
+        (translation 5.0 14.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out sketch SK-2026-044, Acme Construction")
+    (method method:estimate)
+    (date "2026-04-30")))
+
+(type BuildableArea
+  (kind Site)
+  (geometry area)
+  (description "The part of a plot a permanent structure may stand on."))
+
+(type Footprint
+  (kind Building)
+  (geometry area)
+  (description "The area a proposed building occupies on the ground."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

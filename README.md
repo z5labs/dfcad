@@ -103,6 +103,12 @@ modelling a different subject, it is not an engine change.
   interface's output contract: what is on stdout, what is on stderr, the shape
   of each command's JSON object and the rule by which that shape may change,
   and what each exit code means.
+- [`docs/siting-worked-example.md`](./docs/siting-worked-example.md) — one
+  question, *does this building fit on this plot?*, followed from the claims it
+  is answered from through the frame chain and the overlay to the error budget
+  it comes back with, and asked again after a re-survey. It is where the
+  systematic terms earn their keep: the arithmetic is spelled out beside the
+  naive all-quadrature figure it must not equal.
 - [`docs/token-budget.md`](./docs/token-budget.md) — what the discovery path
   costs an agent, measured with a real tokenizer against a representative model,
   and how that compares with reading the files instead. It is regenerated from

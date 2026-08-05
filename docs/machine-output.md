@@ -893,6 +893,73 @@ question rather than a failure to answer it, and it is reported so that an empty
 be read as one that was never computed. What never comes back is the inside-out shape
 offsetting each edge on its own produces when the offsets cross over each other.
 
+### `site`
+
+Whether one thing fits inside another, across whatever frames the two are declared in, and
+how well that answer is known. It takes the id of the subject and four flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--within <id>` | The thing the subject has to sit inside. Required. |
+| `--position <predicate>` | The predicate a corner's position is claimed under, which both outlines are read from. Required. |
+| `--tolerance <name>` | The tolerance corners are judged coincident against and rounded corners are drawn to. Required. |
+| `--clearance <distance>` | How much room the subject has to keep between itself and the envelope's boundary, in the linear unit of the envelope's frame. Default `0`, which is "inside it at all". |
+
+The subject is read out of the corners surveyed in its own frame, carried into the envelope's
+frame across the transform claims which relate the two, grown by the required clearance,
+overlaid on the envelope and measured. Every step accumulates the accuracy of what it read
+([0006](decisions/0006-accuracy-is-one-sigma.md)), so the clearance and its error bar are two
+halves of one answer. Nothing is written back
+([0009](decisions/0009-derived-values-are-never-written-back.md)).
+
+**The budget is the point.** The georeference is one transform applied to every fact declared
+indoors, so its residual does not cancel between two indoor points and does not average away
+against an outdoor one. Systematic terms add linearly and each is counted once however many
+inputs contributed it — which matters most in exactly this query, because a control point
+behind the interior corners is routinely behind the boundary survey and the georeference as
+well. Combining everything in quadrature reports a narrower answer than the evidence
+supports, which is the direction nobody investigates.
+[The worked example](siting-worked-example.md) runs one query end to end, from the claims
+involved to the final budget.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id which was sited. |
+| `within` | string | The id it had to sit inside. |
+| `sited` | bool | Whether there is an answer below. Written whatever the outcome, so a subject which does not fit (`sited` true, `verdict` `does-not-fit`) reads differently from a question which could not be asked (`sited` false). |
+| `frame` | string, optional | The frame the answer is expressed in, which is the envelope's. |
+| `declared-in` | string, optional | The frame the subject was written in. |
+| `carried` | bool | Whether a frame chain was walked to compare the two, which is what says whether a georeference is in the budget at all. |
+| `unit` | string, optional | The linear unit of `frame`. Every distance here is in it and every area in the square of it. |
+| `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
+| `verdict` | string, optional | One of `fits`, `might-fit`, `does-not-fit`, `unknown`. |
+| `decided` | bool | Whether the verdict answers the question. False for `might-fit` and for `unknown`. |
+| `clearance.required` | number | The clearance the subject was asked to keep. |
+| `clearance.actual` | number | How much room it has. Negative where it does not sit inside: how far the part which is outside reaches past the boundary where the two overlap, and how far apart they are where the subject is not over the envelope at all. |
+| `clearance.margin` | number | `actual` less `required`, which is the quantity the verdict is decided on. |
+| `clearance.unit` | string, optional | The linear unit all three are in. |
+| `clearance.uncertainty` | object, optional | How well the margin is known: `magnitude`, `unit` and `coverage-factor`. Absent where the budget could not be reduced to one figure, which `budget` says the reason for. |
+| `envelope` | object, optional | The region the subject had to sit inside. Same shape as `buildable`'s `region`. |
+| `proposal` | object, optional | The subject, expressed in the envelope's frame. |
+| `needed` | object, optional | The proposal grown by the required clearance, which is the shape the envelope had to accommodate. The proposal itself where nothing beyond fitting at all was required. |
+| `shared` | object, optional | What the two have in common. |
+| `spill` | object, optional | What the proposal needs and the envelope does not offer. Where a refusal points: a fit answered only by "no" leaves somebody to work out which corner is over the line. |
+| `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims behind both outlines and the transform claims of every frame the subject was carried through. Same shape as [`budget`](#budget), without `from` and `to`. |
+
+The four verdicts are four different situations and are never rounded into two. A clearance
+of forty millimetres is a comfortable fit where the answer is known to five and no answer at
+all where it is known to sixty; both come back as the same number, and only the verdict tells
+them apart. `might-fit` says the model as measured cannot tell, and what to do about it is to
+re-measure whatever dominates the budget. `unknown` says the uncertainty could not be
+computed at all — an unstated accuracy is unknown rather than nought — and what to do about
+it is to state the accuracy the budget names as missing.
+
+A subject which does not fit is **exit `0`**: the command answered, and the answer is no. So
+is one whose verdict is withheld, with a warning on stderr saying which of the two reasons it
+was. **Exit `1`** is a question which could not be answered — an outline which could not be
+read, two frames with no measured chain between them, a clearance shorter than the tolerance,
+a clearance written as a distance outwards. The object still comes back with `sited` false.
+
 ### `check`
 
 Every rule the model states, run: each type's invariants bound to each of its instances, and

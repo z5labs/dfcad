@@ -84,10 +84,10 @@ const (
 // MissingVocabularyError is a run which did not say which predicate or which
 // tolerance to read the model against.
 //
-// It is one error over the three rather than three, because they are one
-// mistake: a derivation is asked in the project's own vocabulary, and a run
-// which supplied part of it has not asked a question yet. Naming every missing
-// flag at once is what makes fixing it one edit.
+// It is one error over all of them rather than one each, because they are one
+// mistake: a query is asked in the project's own vocabulary, and a run which
+// supplied part of it has not asked a question yet. Naming every missing flag
+// at once is what makes fixing it one edit.
 type MissingVocabularyError struct {
 	// Flags are the flags which were not given, spelled without their dashes,
 	// in the order the usage lists them.
@@ -102,10 +102,19 @@ func (e MissingVocabularyError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"expected the vocabulary to derive against, found no %s: which predicate carries a setback, which carries a "+
-			"position and how close two corners are one corner are project data and have no default here",
+		"expected the vocabulary to ask in, found no %s: which predicate carries which measurement, and how close "+
+			"two corners have to be to be one corner, are project data and have no default here",
 		join(spelled),
 	)
+}
+
+// given is one vocabulary flag and what a run passed for it.
+type given struct {
+	// flag is the flag's name, spelled without its dashes.
+	flag string
+
+	// value is what was passed for it, empty where nothing was.
+	value string
 }
 
 // buildableResult is the object buildable writes to stdout.
@@ -229,7 +238,11 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, UnexpectedArgumentsError{Extra: arguments[1:]}, stderr, true)
 	}
 
-	if err := vocabularyOf(*setback, *position, *tolerance); err != nil {
+	if err := vocabularyOf(
+		given{flagSetback, *setback},
+		given{flagPosition, *position},
+		given{flagTolerance, *tolerance},
+	); err != nil {
 		return usageError(cmd, err, stderr, true)
 	}
 
@@ -281,20 +294,17 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 }
 
 // vocabularyOf reports the vocabulary flags a run did not give, which is the one
-// thing this command cannot supply for itself.
-func vocabularyOf(setback, position, tolerance string) error {
+// thing a command asked in a project's own words cannot supply for itself.
+//
+// It is variadic over the flags rather than fixed to one command's, because
+// which words a query needs is a property of the query and refusing to guess at
+// them is a property of every one of them.
+func vocabularyOf(asked ...given) error {
 	var missing []string
 
-	for _, given := range []struct {
-		flag  string
-		value string
-	}{
-		{flagSetback, setback},
-		{flagPosition, position},
-		{flagTolerance, tolerance},
-	} {
-		if given.value == "" {
-			missing = append(missing, given.flag)
+	for _, one := range asked {
+		if one.value == "" {
+			missing = append(missing, one.flag)
 		}
 	}
 

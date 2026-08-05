@@ -113,6 +113,12 @@ var commands = []command{
 		run:     runBuildable,
 	},
 	{
+		name:    "site",
+		summary: "decide whether one thing fits inside another, and how well that is known",
+		usage:   siteUsage,
+		run:     runSite,
+	},
+	{
 		name:    "check",
 		summary: "run every rule the model states and say whether it holds",
 		usage:   checkUsage,

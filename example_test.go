@@ -2768,3 +2768,61 @@ func ExampleTopology_BuildableOf() {
 	// ±0.023 m, of which the largest term is the setback of geom:E-101
 	// nothing is buildable inside plan:P-02 warning
 }
+
+func ExampleTopology_FitWithin() {
+	root := "testdata/siting/surveyed"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	// The frames are joined to the claims which measure them, because the
+	// relationship between two of them is a measurement and not a setting.
+	frames, _ := dfcad.ResolveFrames(registry, claims)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	// The footprint was set out on the building's own grid and the plot was
+	// surveyed on the site grid, so deciding this reads the georeference.
+	footprint, _ := nodes.Node("plan:S-01")
+	buildable, _ := nodes.Node("plan:B-01")
+
+	answer, _ := topology.FitWithin(footprint, buildable, boundaries, survey, dfcad.Siting{Frames: frames})
+
+	combined, _ := answer.Uncertainty()
+	fmt.Printf("%s: %.2f m clear, ±%.4f m, carried across %s\n",
+		answer.Verdict(), answer.Clearance(), combined.Standard(), answer.DeclaredIn())
+
+	// The control point behind the interior corners is behind the boundary
+	// survey and the georeference as well. It is one error however many inputs
+	// reach it, so it appears in the sum once — and adds linearly rather than in
+	// quadrature, because it does not cancel against itself.
+	var shared dfcad.BudgetTerm
+	for _, term := range answer.Budget().Terms() {
+		if term.Shared() {
+			shared = term
+		}
+	}
+
+	fmt.Printf("%s %s: %.3f m from %d claims\n",
+		shared.Kind, shared.Name, shared.Magnitude, len(shared.Contributors))
+
+	// A clearance inside its own uncertainty is neither a pass nor a failure.
+	// Ten millimetres of daylight is no answer at all when the answer is known
+	// to twenty.
+	tight, _ := nodes.Node("plan:S-03")
+
+	marginal, diags := topology.FitWithin(tight, buildable, boundaries, survey, dfcad.Siting{Frames: frames})
+	fmt.Println(marginal.Verdict(), marginal.Verdict().Decided(), diags[0].Severity)
+
+	// Output:
+	// fits: 4.00 m clear, ±0.0203 m, carried across frame:building
+	// systematic control:CP-1: 0.008 m from 9 claims
+	// might-fit false warning
+}
