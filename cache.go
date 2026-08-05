@@ -619,9 +619,10 @@ func encodeEntry(key Key, prints Footprints) ([]byte, error) {
 
 	sum := sha256.Sum256(payload)
 
-	content := make([]byte, 0, hex.EncodedLen(len(sum))+1+len(payload))
-	content = append(content, []byte(hex.EncodeToString(sum[:]))...)
-	content = append(content, '\n')
+	// The buffer is grown by append rather than sized up front. Sizing it would
+	// mean arithmetic over the length of a payload with no bound on it, which is
+	// an overflow waiting to be reached by a large enough model.
+	content := append([]byte(hex.EncodeToString(sum[:])), '\n')
 	content = append(content, payload...)
 
 	return content, nil
