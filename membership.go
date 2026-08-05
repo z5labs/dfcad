@@ -64,8 +64,8 @@ type Membership struct {
 	doubt float64
 
 	// bounded is whether doubt could be arrived at at all. A transform whose
-	// accuracy nothing states leaves it unbounded, which makes every shot
-	// carried across it ambiguous rather than confidently anything.
+	// accuracy nothing states leaves it unbounded, which makes a shot carried
+	// across it reported rather than confidently anything.
 	bounded bool
 
 	// ambiguous is whether the shot is closer to the boundary than doubt.
@@ -137,8 +137,9 @@ func (m Membership) Clearance() float64 { return m.clearance }
 // It is the band [Graph.ObservationsWithin] judges the boundary against, and it
 // is three things added: the declared tolerance, the shot's own horizontal
 // precision and the standard uncertainty of the transform which carried it. A
-// false second return is a transform whose accuracy nothing states, which
-// bounds nothing and makes the shot ambiguous whatever its clearance.
+// false second return is a transform whose accuracy nothing states: the two
+// terms which were stated still decide whether the shot is a result at all, and
+// a shot which is one is reported rather than ever confidently inside.
 func (m Membership) Doubt() (float64, bool) { return m.doubt, m.bounded }
 
 // Ambiguous reports whether the shot is nearer the boundary than it is known
@@ -446,8 +447,14 @@ func (g *Graph) ObservationsWithin(subject ID, against Derivation) (Members, []D
 			continue
 		}
 
+		// Outside by further than the doubt is outside, and is no result. The
+		// rejection is not conditional on the doubt being bounded: an unbounded
+		// shot is filtered on the terms which were stated, exactly as the box
+		// above filtered it, and a filter which disagreed with its own
+		// pre-filter would report a shot as unplaceable or not according to
+		// whether it happened to fall in a bounding box.
 		clearance := caught.clearance(point)
-		if bounded && clearance < -doubt {
+		if clearance < -doubt {
 			continue
 		}
 

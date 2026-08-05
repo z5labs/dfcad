@@ -17,7 +17,9 @@
 ; and how well it arrives is a number nobody wrote down. A shot carried across a
 ; transform like that is never confidently inside anything: it is reported, and
 ; the band it would have been judged against comes back as one which could not be
-; arrived at.
+; arrived at. A shot on that grid which lands well clear of the plot is still no
+; result, because the two terms which were stated — the tolerance and the shot's
+; own precision — are what a shot has to be filtered on when the third is missing.
 (project
   (label "Stranded frame fixture")
   (globalid-namespace "https://example.org/models/stranded"))

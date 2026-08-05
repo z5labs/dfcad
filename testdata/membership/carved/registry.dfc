@@ -1,9 +1,9 @@
 ; The vocabulary of the back garden.
 ;
-; This file is byte for byte the one beside the carved model. The two fixtures
-; are one project surveyed once and drawn twice, which is the whole point of the
-; pair: what differs between them is where the boundary runs and nothing else,
-; so a difference in which shots belong where can only have come from the
+; This file is byte for byte the one in the fixture beside this one. The two
+; fixtures are one project surveyed once and drawn twice, which is the whole point
+; of the pair: what differs between them is where the boundary runs and nothing
+; else, so a difference in which shots belong where can only have come from the
 ; geometry.
 ;
 ; The tolerance is the one decision the boundary rule cannot be applied without.

@@ -506,6 +506,10 @@ func TestObservationsWithinReportsWhatItCannotReach(t *testing.T) {
 
 		assert.Contains(t, unplaceable.String(), "cannot be placed against site:S-plot")
 		assert.Contains(t, unplaceable.String(), "by an amount nothing bounds")
+
+		assert.NotContains(t, records(members.Inside()), "shot:0005")
+		assert.NotContains(t, records(members.Ambiguous()), "shot:0005",
+			"a shot on the same grid landing well clear of the plot is no result, unbounded or not")
 	})
 
 	t.Run("refuses a region which covers no area rather than reporting nothing is in it", func(t *testing.T) {
