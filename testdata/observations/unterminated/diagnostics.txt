@@ -1,0 +1,4 @@
+testdata/observations/unterminated/unterminated.obs:3:135: error: expected a line feed after the last record, found the end of the file
+3 | obs shot:0002 2026-05-06T09:16:03Z frame:site 412318.905 5318220.512 34.198 method:gnss-rtk fix:rtk-fixed 0.011 0.019 2.000 session:am
+  |                                                                                                                                       ^
+  = hint: a record whose line is not terminated is rewritten by the next append, which is the one change an observation file may not carry

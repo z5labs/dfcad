@@ -1,0 +1,3 @@
+# The last line carries no line feed, so an append would rewrite it.
+obs shot:0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 34.210 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0002 2026-05-06T09:16:03Z frame:site 412318.905 5318220.512 34.198 method:gnss-rtk fix:rtk-fixed 0.011 0.019 2.000 session:am

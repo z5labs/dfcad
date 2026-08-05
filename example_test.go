@@ -2826,3 +2826,88 @@ func ExampleTopology_FitWithin() {
 	// systematic control:CP-1: 0.008 m from 9 claims
 	// might-fit false warning
 }
+
+func ExampleLoadObservations() {
+	root := "testdata/observations/valid"
+
+	registry, _ := dfcad.LoadRegistry(root)
+
+	log, diags := dfcad.LoadObservations(root, registry)
+	fmt.Println(log.Len(), "records,", len(diags), "diagnostics")
+
+	// What the log resolves to is every observation no retirement names. The
+	// retired one is still in the file and still readable; it is simply not
+	// what the log currently says.
+	for observation := range log.Current() {
+		fmt.Printf("%s %s %.3f %s\n",
+			observation.ID, observation.Fix, observation.HorizontalPrecision, observation.Session)
+	}
+
+	retired, _ := log.Observation("shot:2026-05-06-0003")
+	retirement, _ := log.RetirementOf(retired.ID)
+
+	fmt.Printf("%s: %.3f, retired on line %d: %s\n",
+		retired.ID, retired.HorizontalPrecision, retirement.Line(), retirement.Reason)
+
+	// Output:
+	// 6 records, 0 diagnostics
+	// shot:2026-05-06-0001 fix:rtk-fixed 0.012 session:2026-05-06-am
+	// shot:2026-05-06-0002 fix:rtk-fixed 0.011 session:2026-05-06-am
+	// shot:2026-05-06-0004 fix:rtk-fixed 0.013 session:2026-05-06-am
+	// shot:2026-05-06-0005 fix:rtk-fixed 0.014 session:2026-05-06-pm
+	// shot:2026-05-06-0003: 0.240, retired on line 8: float solution beside a fixed reshot of the same corner
+}
+
+func ExampleValidateAppendOnly() {
+	read := func(name string) dfcad.ObservationSource {
+		src, _ := os.ReadFile(filepath.Join("testdata", "observations", "append", name))
+		return dfcad.ObservationSource{Path: name, Bytes: src}
+	}
+
+	base := read("base.obs")
+
+	// Bytes at the end are the only legal change, so an append has nothing to
+	// report however many records it adds.
+	fmt.Println(len(dfcad.ValidateAppendOnly(base, read("appended.obs"))), "on an append")
+
+	// A float solution quietly re-spelled as a fixed one is a correction of the
+	// data with nothing in the file to say so, which is exactly what this
+	// refuses.
+	for _, diagnostic := range dfcad.ValidateAppendOnly(base, read("edited.obs")) {
+		fmt.Println(diagnostic.Span.Start, diagnostic.Message)
+		fmt.Println(diagnostic.Related[0].Span.Start, diagnostic.Related[0].Message)
+	}
+
+	// Output:
+	// 0 on an append
+	// edited.obs:6:1 expected line 6 to be what the earlier revision wrote, found it modified
+	// base.obs:6:1 the earlier revision of line 6
+}
+
+func ExampleParseObservationTime() {
+	// Z is +00:00 and is unambiguous, and an offset is carried as written.
+	at, _ := dfcad.ParseObservationTime("2026-05-06T11:14:22+02:00")
+	fmt.Println(at.UTC().Format(time.RFC3339))
+
+	// A local time in a zone the file does not name denotes a different instant
+	// depending on where it is read, so two records written that way cannot be
+	// ordered.
+	_, err := dfcad.ParseObservationTime("2026-05-06T09:14:22")
+
+	var malformed dfcad.MalformedTimestampError
+	if errors.As(err, &malformed) {
+		fmt.Println(malformed.Reason, "-", malformed.Written)
+	}
+
+	// RFC 3339 spells an offset nobody knows -00:00, and a record whose instant
+	// is unknown is not evidence of when anything was measured.
+	_, err = dfcad.ParseObservationTime("2026-05-06T09:14:22-00:00")
+	if errors.As(err, &malformed) {
+		fmt.Println(malformed.Reason)
+	}
+
+	// Output:
+	// 2026-05-06T09:14:22Z
+	// no-offset - 2026-05-06T09:14:22
+	// unknown-offset
+}
