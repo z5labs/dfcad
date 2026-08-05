@@ -536,6 +536,83 @@ func TestMeasureEdge(t *testing.T) {
 	})
 }
 
+func TestMeasureVertex(t *testing.T) {
+	model := loadMeasuredModel(t, "shapes")
+
+	t.Run("gives where a corner is and how far it reaches", func(t *testing.T) {
+		vertex, ok := model.topology.Vertex("geom:V-03")
+		require.True(t, ok)
+
+		measurement, diags := model.topology.MeasureVertex(vertex, model.survey)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		assert.Equal(t, ID("geom:V-03"), measurement.Subject())
+		assert.Equal(t, Unit("m"), measurement.Unit())
+
+		centroid, ok := measurement.Centroid()
+		require.True(t, ok)
+		assert.Equal(t, Point{4, 3, 0}, centroid)
+
+		bounds, ok := measurement.Bounds()
+		require.True(t, ok)
+		assert.Equal(t, Box{Min: Point{4, 3, 0}, Max: Point{4, 3, 0}, Unit: "m"}, bounds,
+			"a point reaches exactly as far as itself")
+	})
+
+	t.Run("gives a corner no length and no area rather than zeroes", func(t *testing.T) {
+		vertex, ok := model.topology.Vertex("geom:V-03")
+		require.True(t, ok)
+
+		measurement, _ := model.topology.MeasureVertex(vertex, model.survey)
+
+		_, ok = measurement.Length()
+		assert.False(t, ok)
+		_, ok = measurement.Area()
+		assert.False(t, ok)
+	})
+
+	t.Run("carries the accuracy of the claim which put it there", func(t *testing.T) {
+		vertex, ok := model.topology.Vertex("geom:V-03")
+		require.True(t, ok)
+
+		measurement, _ := model.topology.MeasureVertex(vertex, model.survey)
+
+		assert.True(t, measurement.Budget().Known())
+		assert.NotEmpty(t, measurement.Budget().Terms())
+	})
+
+	t.Run("measures nothing at all", func(t *testing.T) {
+		measurement, diags := model.topology.MeasureVertex(nil, model.survey)
+
+		assert.Empty(t, diags)
+		assert.Equal(t, ID(""), measurement.Subject())
+	})
+}
+
+// TestMeasureVertexNobodyHasSurveyed is its own function because it asserts about
+// a refusal rather than about a figure: a corner nobody has claimed a position for
+// is unknown, and answering it with the origin would be the plausible-looking
+// number every other refusal here exists to avoid.
+func TestMeasureVertexNobodyHasSurveyed(t *testing.T) {
+	model := loadMeasuredModel(t, "shapes")
+
+	vertex, ok := model.topology.Vertex("geom:V-03")
+	require.True(t, ok)
+
+	unsurveyed := Survey{Tolerance: closureTolerance, Registry: model.registry}
+
+	measurement, diags := model.topology.MeasureVertex(vertex, unsurveyed)
+
+	require.Len(t, diags, 1)
+	assert.Equal(t, SeverityError, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "geom:V-03")
+
+	_, computed := measurement.Centroid()
+	assert.False(t, computed)
+	_, computed = measurement.Bounds()
+	assert.False(t, computed)
+}
+
 // TestMeasureLoopLengthIsTheSameAsItsEdgesMeasuredOneByOne is its own function
 // because it is a property rather than a value: a perimeter which disagreed with
 // the walls it is made of would be two answers to one question.
@@ -706,6 +783,275 @@ func TestMeasureNothing(t *testing.T) {
 		assert.False(t, ok)
 		_, ok = measurement.Length()
 		assert.False(t, ok)
+	})
+}
+
+// measuredGraph is one fixture loaded whole, with the survey a measurement of
+// anything in it is computed against.
+//
+// It is the whole model rather than the four passes [loadMeasuredModel] joins by
+// hand, because that is what [Graph.Measure] takes and what a caller which did
+// `go get` holds. The survey is placed over every corner the model has, which is
+// what a caller measuring more than one thing would do; [Graph.Corners] is what
+// says which of them any one answer needs.
+func measuredGraph(t *testing.T, name string) (*Graph, Survey) {
+	t.Helper()
+
+	graph, diags := LoadGraph(filepath.Join("testdata", "measure", name))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags), "the fixture loads clean")
+
+	survey := Survey{Tolerance: closureTolerance, Registry: graph.Registry()}
+	for vertex := range graph.Topology().Vertices() {
+		resolution, err := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+		require.NoError(t, err)
+
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	return graph, survey
+}
+
+func TestGraphMeasure(t *testing.T) {
+	graph, survey := measuredGraph(t, "shapes")
+
+	testCases := []struct {
+		name             string
+		id               ID
+		expectedArea     float64
+		expectedLength   float64
+		expectsArea      bool
+		expectsLength    bool
+		expectedCentroid Point
+	}{
+		{
+			name:             "measures a semantic node through the loops which bound it",
+			id:               "site:S-01",
+			expectedArea:     12.0,
+			expectsArea:      true,
+			expectedLength:   14.0,
+			expectsLength:    true,
+			expectedCentroid: Point{2, 1.5, 0},
+		},
+		{
+			name:             "measures a loop through the ring its edges traverse",
+			id:               "geom:L-01",
+			expectedArea:     12.0,
+			expectsArea:      true,
+			expectedLength:   14.0,
+			expectsLength:    true,
+			expectedCentroid: Point{2, 1.5, 0},
+		},
+		{
+			name:             "measures an edge from its two ends",
+			id:               "geom:E-02",
+			expectsArea:      false,
+			expectedLength:   3.0,
+			expectsLength:    true,
+			expectedCentroid: Point{4, 1.5, 0},
+		},
+		{
+			name:             "measures a vertex from where it is",
+			id:               "geom:V-03",
+			expectsArea:      false,
+			expectsLength:    false,
+			expectedCentroid: Point{4, 3, 0},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			entity, held := graph.Entity(testCase.id)
+			require.True(t, held, "the fixture holds %s", testCase.id)
+
+			measurement, diags := graph.Measure(entity, survey)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			assert.Equal(t, testCase.id, measurement.Subject())
+			assert.Equal(t, Unit("m"), measurement.Unit())
+
+			area, computed := measurement.Area()
+			assert.Equal(t, testCase.expectsArea, computed)
+			if testCase.expectsArea {
+				assert.InDelta(t, testCase.expectedArea, area, 1e-9)
+			}
+
+			length, computed := measurement.Length()
+			assert.Equal(t, testCase.expectsLength, computed)
+			if testCase.expectsLength {
+				assert.InDelta(t, testCase.expectedLength, length, 1e-9)
+			}
+
+			centroid, computed := measurement.Centroid()
+			require.True(t, computed)
+			assert.Equal(t, testCase.expectedCentroid, centroid)
+		})
+	}
+}
+
+// TestGraphMeasureAgreesWithMeasuringEachFamilyDirectly is its own function
+// because it is a property rather than a value: the dispatch exists so that
+// nobody writes it again, and it earns that only while it answers exactly what
+// the four calls beneath it answer.
+func TestGraphMeasureAgreesWithMeasuringEachFamilyDirectly(t *testing.T) {
+	graph, survey := measuredGraph(t, "shapes")
+
+	region, held := graph.Node("site:S-01")
+	require.True(t, held)
+
+	loop, held := graph.Topology().Loop("geom:L-01")
+	require.True(t, held)
+
+	edge, held := graph.Topology().Edge("geom:E-02")
+	require.True(t, held)
+
+	vertex, held := graph.Topology().Vertex("geom:V-03")
+	require.True(t, held)
+
+	directly := []Measurement{
+		must(graph.Topology().MeasureRegion(region, graph.Boundaries(), survey)),
+		must(graph.Topology().MeasureLoop(loop, survey)),
+		must(graph.Topology().MeasureEdge(edge, survey)),
+		must(graph.Topology().MeasureVertex(vertex, survey)),
+	}
+
+	dispatched := []Measurement{
+		must(graph.Measure(region, survey)),
+		must(graph.Measure(loop, survey)),
+		must(graph.Measure(edge, survey)),
+		must(graph.Measure(vertex, survey)),
+	}
+
+	assert.Equal(t, directly, dispatched)
+}
+
+// must is the measurement of a call which reported nothing, which is every call
+// above: the fixture measures clean, and a diagnostic here would be a fixture
+// which changed rather than a dispatch which disagreed.
+func must(measurement Measurement, _ []Diagnostic) Measurement { return measurement }
+
+// TestGraphMeasureOfSomethingWithNoFamily is its own function because it asserts
+// about the absence of a question rather than about a refusal to answer one.
+func TestGraphMeasureOfSomethingWithNoFamily(t *testing.T) {
+	graph, survey := measuredGraph(t, "shapes")
+
+	measurement, diags := graph.Measure(nil, survey)
+
+	assert.Empty(t, diags)
+	assert.Equal(t, ID(""), measurement.Subject())
+
+	var absent *Graph
+	measurement, diags = absent.Measure(nil, survey)
+
+	assert.Empty(t, diags)
+	assert.Equal(t, ID(""), measurement.Subject())
+}
+
+func TestGraphCorners(t *testing.T) {
+	graph, _ := measuredGraph(t, "shapes")
+
+	testCases := []struct {
+		name             string
+		id               ID
+		expectedVertices []ID
+	}{
+		{
+			name:             "reaches a region's corners through its loops",
+			id:               "site:S-01",
+			expectedVertices: []ID{"geom:V-01", "geom:V-02", "geom:V-03", "geom:V-04"},
+		},
+		{
+			name:             "reaches a loop's corners through the edges it names",
+			id:               "geom:L-01",
+			expectedVertices: []ID{"geom:V-01", "geom:V-02", "geom:V-03", "geom:V-04"},
+		},
+		{
+			name:             "reaches an edge's two ends",
+			id:               "geom:E-02",
+			expectedVertices: []ID{"geom:V-02", "geom:V-03"},
+		},
+		{
+			name:             "reaches a corner itself",
+			id:               "geom:V-03",
+			expectedVertices: []ID{"geom:V-03"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			entity, held := graph.Entity(testCase.id)
+			require.True(t, held, "the fixture holds %s", testCase.id)
+
+			var reached []ID
+			for vertex := range graph.Corners(entity) {
+				reached = append(reached, vertex.ID())
+			}
+
+			assert.Equal(t, testCase.expectedVertices, reached)
+		})
+	}
+
+	t.Run("reaches nothing through something of no family", func(t *testing.T) {
+		var reached []ID
+		for vertex := range graph.Corners(nil) {
+			reached = append(reached, vertex.ID())
+		}
+
+		assert.Empty(t, reached)
+	})
+}
+
+// TestGraphCornersIsWhatAMeasurementNeeds is its own function because it is the
+// contract between the two calls rather than a property of either: a survey
+// placed over exactly these corners has to measure the same as one placed over
+// the whole model, or the pair is an invitation to under-survey an answer.
+func TestGraphCornersIsWhatAMeasurementNeeds(t *testing.T) {
+	graph, whole := measuredGraph(t, "shapes")
+
+	for _, id := range []ID{"site:S-01", "geom:L-01", "geom:E-02", "geom:V-03"} {
+		t.Run("measures "+string(id)+" from its own corners alone", func(t *testing.T) {
+			entity, held := graph.Entity(id)
+			require.True(t, held)
+
+			only := Survey{Tolerance: closureTolerance, Registry: graph.Registry()}
+			for vertex := range graph.Corners(entity) {
+				resolution, err := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+				require.NoError(t, err)
+
+				only.Place(vertex.ID(), resolution)
+			}
+
+			narrow, diags := graph.Measure(entity, only)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			broad, diags := graph.Measure(entity, whole)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			assert.Equal(t, broad, narrow)
+		})
+	}
+}
+
+// TestMeasurementReport is its own function because it renders the accuracy under
+// the figures rather than the figures: a report which said how big something is
+// and not how well that is known is the bare number the claim model refuses.
+func TestMeasurementReport(t *testing.T) {
+	model := loadMeasuredModel(t, "shapes")
+
+	t.Run("writes the figures and the terms behind them", func(t *testing.T) {
+		measurement, _ := model.measure(t, "site:S-01")
+
+		report := measurement.Report()
+
+		assert.Contains(t, report, measurement.String(), "the summary is the first line of the detail")
+		assert.Contains(t, report, "corners known to")
+		assert.Contains(t, report, "systematic 0.008 m shared with control:CP-3, counted once over 4 claims")
+		assert.Contains(t, report, "independent 0.004 m")
+	})
+
+	t.Run("says when nothing states how well the corners are known", func(t *testing.T) {
+		var measurement Measurement
+
+		assert.Contains(t, measurement.Report(), "nothing states how well the corners are known")
 	})
 }
 

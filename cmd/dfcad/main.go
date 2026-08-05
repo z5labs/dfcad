@@ -117,6 +117,12 @@ var commands = []command{
 		run:     runRoute,
 	},
 	{
+		name:    "measure",
+		summary: "compute how big one thing is from the geometry it is written in terms of",
+		usage:   measureUsage,
+		run:     runMeasure,
+	},
+	{
 		name:    "buildable",
 		summary: "derive what may be built inside a boundary once its setbacks are taken off",
 		usage:   buildableUsage,

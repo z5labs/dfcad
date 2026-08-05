@@ -6,7 +6,9 @@
 package dfcad
 
 import (
+	"errors"
 	"fmt"
+	"iter"
 	"math"
 	"slices"
 	"strings"
@@ -275,6 +277,45 @@ func (m Measurement) String() string {
 	return fmt.Sprintf("%s: %s", m.subject, strings.Join(parts, ", "))
 }
 
+// Report writes the figures and, under them, the accuracy they rest on: the
+// combined uncertainty of the corners where there is one, and every term which
+// went into it.
+//
+// It is the detail under [Measurement.String] rather than a second rendering of
+// the same thing, and it is here rather than in whatever prints it so that a
+// caller reporting a measurement and a command reporting one write the same
+// words. The terms are what make the figure actionable — "±0.006 m" is a number
+// nobody can act on, and "the georeference is most of it, and three corners
+// share it" says what to re-measure ([Budget]).
+//
+// The uncertainty is of the corners and not of the area, exactly as
+// [Measurement.Budget] says. Nothing here reduces it to a tolerance on a figure.
+func (m Measurement) Report() string {
+	var out strings.Builder
+
+	out.WriteString(m.String())
+
+	combined, err := m.budget.Combined()
+	switch {
+	case err == nil:
+		fmt.Fprintf(&out, "\n  corners known to %s", combined)
+	case errors.Is(err, ErrEmptyBudget):
+		// A measurement computed from claims which stated no accuracy is one
+		// thing; one computed from no claims at all is another, and a report
+		// which said nothing here would read as the first.
+		out.WriteString("\n  nothing states how well the corners are known")
+	default:
+		fmt.Fprintf(&out, "\n  the corners cannot be combined into one figure: %v", err)
+	}
+
+	for _, term := range m.budget.Terms() {
+		out.WriteString("\n    ")
+		out.WriteString(term.String())
+	}
+
+	return out.String()
+}
+
 // printed is how many components of a point to write, which is how many the
 // positions were written with.
 func (m Measurement) printed() int {
@@ -282,6 +323,32 @@ func (m Measurement) printed() int {
 		return 3
 	}
 	return m.dimension
+}
+
+// MeasureVertex measures one corner: where it is, and how far it reaches, which
+// for a point is the same answer twice.
+//
+// A corner has no extent, so it has no length and encloses no area, and both
+// come back as no answer rather than as a zero. Its centroid is the point
+// itself, which is [Measurement.Centroid]'s own definition one dimension further
+// down than the midpoint of an edge, and its bounding box is the box of zero
+// extent there. Reporting both is what lets a caller ask how far anything
+// reaches without first asking which family it named.
+//
+// The position is read in the unit of the vertex's frame and nothing is
+// converted, exactly as it is for an edge
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)). A corner nobody
+// has surveyed yet is a diagnostic and no figures, because a position which was
+// never claimed is unknown rather than the origin.
+func (t *Topology) MeasureVertex(vertex *Vertex, survey Survey) (Measurement, []Diagnostic) {
+	if vertex == nil {
+		return Measurement{}, nil
+	}
+
+	m := t.measuring(vertex.id, vertex.frame, t.namedAt(vertex.id, vertex.span), survey)
+	m.vertex(vertex)
+
+	return m.result, m.diags
 }
 
 // MeasureEdge measures one edge: how long it is, where its midpoint is and how
@@ -387,6 +454,120 @@ func (t *Topology) MeasureRegion(region *SemanticNode, boundaries *Boundaries, s
 	m.combine(region, rings)
 
 	return m.result, m.diags
+}
+
+// Measure measures whatever an id named, whichever family holds it: a semantic
+// node from the loops which bound it, a loop from the ring its edges traverse, an
+// edge from its two ends, a vertex from where it is.
+//
+// It is the whole of the dimensional question in one call, and it is here rather
+// than left to each caller because the alternative is that every consuming
+// repository writes the same switch. A caller which dispatched for itself would
+// have to know that a region is measured through its boundaries and a loop is
+// not, that a node with no outline measures nothing rather than nothing being
+// wrong, and which of the four calls takes which argument — and a second
+// implementation of that is a second set of answers the day one of them is
+// missed.
+//
+// The survey is the caller's, because which predicate carries a position and
+// which tolerance corners are judged coincident against are the consuming
+// repository's vocabulary and never the engine's
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+// [Graph.Corners] is what says which corners have to be in it.
+//
+// Nothing is written back. Every figure is recomputed from the claims each time
+// it is asked for, which is what makes it unable to disagree with the geometry it
+// describes ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+//
+// An entity of no family — a nil, or a type from outside this package — measures
+// nothing and reports nothing, because there is no question there to refuse.
+func (g *Graph) Measure(entity Entity, survey Survey) (Measurement, []Diagnostic) {
+	if g == nil {
+		return Measurement{}, nil
+	}
+
+	switch subject := entity.(type) {
+	case *SemanticNode:
+		return g.Topology().MeasureRegion(subject, g.Boundaries(), survey)
+	case *Loop:
+		return g.Topology().MeasureLoop(subject, survey)
+	case *Edge:
+		return g.Topology().MeasureEdge(subject, survey)
+	case *Vertex:
+		return g.Topology().MeasureVertex(subject, survey)
+	}
+
+	return Measurement{}, nil
+}
+
+// Corners iterates the vertices a measurement of entity is computed from, each
+// yielded once and in the order the thing reaches them.
+//
+// It is the other half of [Graph.Measure]: a survey which is missing one of these
+// is a measurement which cannot be made, and one built by hand from a guess at
+// which corners matter is the way that happens. A caller places a position for
+// each of these with [Survey.Place] and has surveyed exactly what the answer
+// needs.
+//
+// A semantic node reaches them through its loops and its edges, which is
+// [Boundaries.Vertices]; a loop reaches them through the edges it names, in the
+// order it names them and start before end; an edge is its two ends; a vertex is
+// itself. An entity of no family reaches none.
+func (g *Graph) Corners(entity Entity) iter.Seq[*Vertex] {
+	if g == nil {
+		return sequence[*Vertex](nil)
+	}
+
+	switch subject := entity.(type) {
+	case *SemanticNode:
+		return g.Boundaries().Vertices(subject)
+	case *Loop:
+		return sequence(g.Topology().cornersOf(subject.Edges()))
+	case *Edge:
+		start, end := subject.Vertices()
+		return sequence(g.Topology().cornersOf([]ID{}, start, end))
+	case *Vertex:
+		return sequence([]*Vertex{subject})
+	}
+
+	return sequence[*Vertex](nil)
+}
+
+// cornersOf is the vertices reached through a list of edges and then through a
+// list of vertices named directly, each held once and in the order they were
+// reached.
+//
+// An id which names nothing this model holds is passed over rather than reported.
+// A loop naming an edge which is not there, and an edge naming a corner which is
+// not, are load errors already reported against the form which wrote them, and a
+// second diagnostic from a survey being assembled would say the same thing in the
+// vocabulary of the arithmetic instead of the file.
+func (t *Topology) cornersOf(edges []ID, vertices ...ID) []*Vertex {
+	var out []*Vertex
+
+	held := func(id ID) {
+		vertex, ok := t.Vertex(id)
+		if !ok || slices.Contains(out, vertex) {
+			return
+		}
+		out = append(out, vertex)
+	}
+
+	for _, id := range edges {
+		edge, ok := t.Edge(id)
+		if !ok {
+			continue
+		}
+		start, end := edge.Vertices()
+		held(start)
+		held(end)
+	}
+
+	for _, id := range vertices {
+		held(id)
+	}
+
+	return out
 }
 
 // measuring starts a measurement of one subject in one frame.
@@ -1504,6 +1685,32 @@ func (r *outline) holds(point Point) bool {
 	}
 
 	return inside
+}
+
+// vertex measures one corner, reporting a corner nothing says the position of.
+func (m *measurer) vertex(vertex *Vertex) {
+	components, ok := m.at(vertex.id)
+	if !ok {
+		m.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     m.topology.namedAt(vertex.id, vertex.span),
+			Message: fmt.Sprintf(
+				"expected a position for the vertex %s, found none to read",
+				geometricName(vertexTag, vertex.id),
+			),
+			Hint: m.positionHint(),
+		})
+		return
+	}
+
+	m.result.dimension = len(components)
+	at := asPoint(components)
+
+	m.contribute([]ID{vertex.id})
+
+	m.result.centroid, m.result.hasCentroid = at, true
+	m.result.bounds, m.result.hasBounds = boxOf([]Point{at}), true
+	m.result.bounds.Unit = m.unit
 }
 
 // edge measures one edge, reporting an edge whose ends are at one point.

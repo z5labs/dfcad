@@ -244,6 +244,37 @@ type BudgetTerm struct {
 // Shared reports whether more than one claim contributed this term.
 func (t BudgetTerm) Shared() bool { return len(t.Contributors) > 1 }
 
+// String writes the term for a person: which kind of error it is, how big it is,
+// what it is shared with, and how many inputs put it there.
+//
+// The count of contributors is written for a shared term and left out for a term
+// one claim carried, because it is the whole of what "counted once" looks like
+// from the reporting side: a figure which appears in the arithmetic once and in
+// three of the inputs is the case a budget is easiest to get wrong about, and it
+// should be readable without going to the machine payload for it.
+func (t BudgetTerm) String() string {
+	var out strings.Builder
+
+	out.WriteString(string(t.Kind))
+	out.WriteString(" ")
+	out.WriteString(decimal(t.Magnitude))
+	if t.Unit != "" {
+		out.WriteString(" ")
+		out.WriteString(string(t.Unit))
+	}
+
+	if t.Source != "" {
+		out.WriteString(" shared with ")
+		out.WriteString(string(t.Source))
+	}
+
+	if t.Shared() {
+		fmt.Fprintf(&out, ", counted once over %d claims", len(t.Contributors))
+	}
+
+	return out.String()
+}
+
 // clone is the term with contributors of its own, which is what a reader hands
 // out: a term whose slice is the budget's own would let an append reach back
 // into the budget it came from.

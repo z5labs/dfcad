@@ -60,6 +60,13 @@ var samples = map[string][]string{
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
 	"check":          {},
+	// A measurement is read out of the corners, so it is asked in the project's
+	// own words for what a position is and how close two corners are one corner.
+	"measure": {
+		"--position", "position",
+		"--tolerance", "coincident",
+		"site:S-103",
+	},
 	// A derivation is asked in the project's own vocabulary, so the three
 	// predicates and the tolerance are named rather than defaulted.
 	"buildable": {

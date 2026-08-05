@@ -952,6 +952,82 @@ specification](../SPEC.md#77-route)).
 makes, asked on its own — which is how an author checks where something would land before
 authoring it.
 
+### `measure`
+
+How big one thing is, computed from the geometry it is written in terms of. It takes the id
+of the thing to measure and two flags, neither of which has a default.
+
+| Flag | Meaning |
+|------|---------|
+| `--position <predicate>` | The predicate a corner's position is claimed under, which every figure is read from. Required. |
+| `--tolerance <name>` | The tolerance corners are judged coincident against and rings judged planar against. Required. |
+
+Which predicate carries a position and how close two corners are one corner are project data
+([0012](decisions/0012-tolerances-are-registry-data.md)), so a run that names neither is a
+**usage error** naming both flags at once.
+
+**The id is the whole of the dispatch.** There is no flag saying which family it names: a
+semantic node is measured through the loops which bound it, a loop through the ring its edges
+traverse, an edge from its two ends and a vertex from where it is. `family` says which
+answered, and so which of the figures to expect — an edge encloses nothing, and that is a
+different state from a region whose area could not be computed.
+
+**This is a computation and never an assertion.** Nothing here reads a claimed `area` and
+nothing here writes one back
+([0009](decisions/0009-derived-values-are-never-written-back.md)); every figure is recomputed
+from the corners each time it is asked for. `resolve <id> area` is the other question and
+neither substitutes for the other: a claimed area which disagrees with a computed one is the
+most valuable thing in the file, and it stays visible only while the two are asked
+separately.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the measurement was asked about. Written whatever the outcome. |
+| `family` | string, optional | Which family holds it: `node`, `vertex`, `edge` or `loop`. |
+| `derived` | bool | Whether the figures below were computed. Written whatever the outcome, so a thing which measures nothing — a node referencing no loop — reads as `derived` true with no figures, where a boundary which could not be read reads as `derived` false. |
+| `digest` | string, optional | The digest of the source tree the answer was computed against, lower-case hex, so a caller can check the computation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `frame` | string, optional | The frame the answer was computed in. |
+| `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
+| `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
+| `area.value` | number | What the thing encloses. Absent, with the whole `area` object, for anything which encloses nothing an area can be computed of. |
+| `area.unit` | string, optional | `unit` with a superscript two after it — `m²` — which is the square of the frame's linear unit. It is written that way rather than as a name of its own because the engine has none to write: what a project calls a square metre is its own vocabulary, in its own predicate declarations, and a computed area may not borrow it. |
+| `length.value` | number | The extent of an edge, or the total length of the edges of a loop or a region. For a closed ring that is its perimeter. |
+| `length.unit` | string, optional | The frame's linear unit. |
+| `centroid.at` | array | Where the area is centred, component by component. The midpoint for an edge and the point itself for a vertex, which is the same definition one and two dimensions down. It is the area centroid and never the mean of the corners. |
+| `centroid.unit` | string, optional | The frame's linear unit. |
+| `bounds.min`, `bounds.max` | array | The corners of the axis-aligned bounding box, on the frame's own axes and on no others. The extent between them is not written: it is one subtraction, and a field restating it is a second place for it to be wrong. |
+| `bounds.unit` | string, optional | The frame's linear unit. |
+| `budget` | object, optional | The accuracy of the corners every figure was computed from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. |
+
+**Every figure is written only where it could be computed.** "There is no answer" and "the
+answer is zero" are different states, and a shape which does not close has the first. Nothing
+encloses an area unless it is a ring which closes, does not cross itself and lies in one
+plane; a projection of a shape which is not planar, and the signed sum over one which crosses
+itself, are both numbers and neither is an area.
+
+**The budget is of the corners and not of the area,** and it is one budget over the whole
+measurement rather than one per figure. How much an area moves when a corner does is a
+per-corner quantity, and a single number standing in for all of them would be exactly the
+plausible-looking answer the rest of this refuses to give. What the budget does say is what
+the answer rests on: which claims, which shared terms among them were counted once, and
+whether any corner stated no accuracy at all. Independent terms combine in quadrature and
+systematic ones linearly, and a term reached through four corners appears once with all four
+named under it ([0006](decisions/0006-accuracy-is-one-sigma.md)).
+
+That budget grows with the shape while the figures do not — one term per corner — which makes
+this the most expensive call on the dimensional path. What it costs, and what each part of it
+costs, is measured in [the token budget](token-budget.md).
+
+**Exit `1`** is a measurement which could not be made: a ring which does not close, corners
+which are not in one plane, a ring which crosses itself, one whose corners are collinear, a
+corner nothing states the position of, a tolerance the registry does not declare in the unit
+of the frame. Each is its own diagnostic naming which mistake it is. The object still comes
+back with `derived` false, so a caller reads why from the diagnostics on stderr rather than
+from an empty stream.
+
+A node which references no loop is **exit `0`** with `derived` true and no figures. A circuit
+group and a warranty have no outline, which is not a fault in either of them.
+
 ### `buildable`
 
 What may be built inside a boundary once the setback claimed on each of its edges has been
