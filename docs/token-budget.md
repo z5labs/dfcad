@@ -47,7 +47,7 @@ because it is a middling type in this model — six instances against `Office`'s
 `OfficeBuilding`'s one — and measuring the smallest would report the arrangement at its
 best.
 
-**Four paths, not two.** The first measurement, for
+**Five paths, not two.** The first measurement, for
 [#38](https://github.com/z5labs/dfcad/issues/38), ran `get` between the listing and the
 resolution and called the four calls together "discovery plus a targeted fetch". `get` is
 not a targeted fetch. It retrieves a thing entire — every claim written on it, every
@@ -57,10 +57,20 @@ much has been said about the subject. So the gate is read off the three calls th
 the question, and the four-call path is still measured beside them, unchanged, so that
 #38's figure stays comparable.
 
-The other two paths are there because the costs on this path scale with different things.
+Two more paths are there because the costs on this path scale with different things.
 `list-types` grows with the registry and is paid once per cold start; `list-instances` and
 `resolve` grow with neither and are paid per question. A record that only ever reported
 their sum would hide which of the two a larger vocabulary makes worse.
+
+The fifth is the same question asked of the geometry rather than of a claim: `list-types`,
+`list-instances MeetingRoom`, then `dfcad measure`. It is measured and it is not gated,
+because it is not the same question. `resolve` answers what somebody wrote down; `measure`
+answers what the corners come to, and says how well the corners are known — which is one
+term per corner, so its cost grows with the shape while its figures do not. A target set
+for the first would be a gate on the second for reasons nobody argued. What the cost is
+made of is priced in "Where the tokens go" below, split into the budget as a whole and the
+claims named under each of its terms, so that a partitioning review of this call has both
+figures rather than a total.
 
 <!-- begin measurements -->
 
@@ -138,6 +148,19 @@ Answering: how big is Meeting Room B on level 1, retrieving the thing itself on 
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 820 tokens.
 
+## The cost of the same question answered from the geometry rather than from a claim
+
+Answering: how big is Meeting Room B on level 1 by the corners it is drawn on, starting from nothing.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad list-types` | 245 | 224 |
+| `dfcad list-instances MeetingRoom` | 183 | 182 |
+| `dfcad measure site:S-111` | 501 | 479 |
+| **the whole path** | **929** | **885** |
+
+No target: nothing asked this path to cost anything in particular. Regression ceiling 960 tokens.
+
 ## Where the tokens go
 
 What each answer costs with one field removed. Both figures in a cell are of the
@@ -151,6 +174,8 @@ from" figure differs by a token or two from the same call in the tables above.
 | the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 72, down from 180 | 68, down from 174 |
 | the spans in `get` | `dfcad get site:S-111` | 211, down from 277 | 206, down from 269 |
 | the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 72 | 49, down from 68 |
+| the error budget in `measure` | `dfcad measure site:S-111` | 169, down from 499 | 166, down from 475 |
+| the claims named under each budget term in `measure` | `dfcad measure site:S-111` | 348, down from 499 | 337, down from 475 |
 
 ## The cost of reading the files instead
 
@@ -167,6 +192,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | a dimensional question from a cold start | 41.3×, 43.7× | 7.4×, 7.8× |
 | the same question once the vocabulary is known | 81.1×, 82.8× | 14.4×, 14.7× |
 | the same question by way of a whole retrieval | 26.6×, 27.9× | 4.7×, 5.0× |
+| the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.2× |
 
 One figure per encoding, in the order of the table above.
 

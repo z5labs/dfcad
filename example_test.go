@@ -1286,6 +1286,48 @@ func ExampleTopology_MeasureRegion() {
 	// corners known to 0.013856406460551019 m (k = 1.0, ≈ 68%), mostly control:CP-3
 }
 
+// ExampleGraph_Measure asks how big something is without first working out which
+// family the id names.
+//
+// It is the same measurement [Topology.MeasureRegion] gives above, reached
+// through the one call a consumer actually wants: a room, its outline, one of its
+// walls and one of its corners are all measurable, and which of the four
+// measurements applies is a property of the model rather than of the question.
+// [Graph.Corners] is the other half — the corners a survey has to carry for the
+// answer to rest on all of them.
+func ExampleGraph_Measure() {
+	graph, _ := dfcad.LoadGraph("testdata/measure/courtyard")
+
+	// Which predicate carries a position is vocabulary this repository owns, so
+	// the positions are resolved here and handed in. Corners says which vertices
+	// the answer needs, so nothing has to guess at the ones it rests on.
+	plate, _ := graph.Entity("site:S-01")
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: graph.Registry()}
+	for vertex := range graph.Corners(plate) {
+		resolution, _ := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	measurement, _ := graph.Measure(plate, survey)
+	fmt.Println(measurement)
+
+	// The same call answers for a wall and for a corner. An edge encloses
+	// nothing and a vertex has no extent, and neither comes back as a zero.
+	wall, _ := graph.Entity("geom:E-01")
+	corner, _ := graph.Entity("geom:V-01")
+
+	for _, subject := range []dfcad.Entity{wall, corner} {
+		measured, _ := graph.Measure(subject, survey)
+		fmt.Println(measured)
+	}
+
+	// Output:
+	// site:S-01: area 84.0 m², length 56.0 m, centroid (5.0 5.0 0.0), bounds (0.0 0.0 0.0) to (10.0 10.0 0.0)
+	// geom:E-01: length 10.0 m, centroid (5.0 0.0 0.0), bounds (0.0 0.0 0.0) to (10.0 0.0 0.0)
+	// geom:V-01: centroid (0.0 0.0 0.0), bounds (0.0 0.0 0.0) to (0.0 0.0 0.0)
+}
+
 // ExampleResolveFrames relates an indoor floor plan to the survey it sits on,
 // and says how well that relationship is actually known.
 //

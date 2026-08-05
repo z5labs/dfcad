@@ -201,6 +201,14 @@ var (
 		name: "dfcad resolve site:S-111 area --evidence",
 		args: []string{"resolve", "site:S-111", "area", "--evidence", "--root", budgetRoot},
 	}
+	measureRoom = call{
+		name: "dfcad measure site:S-111",
+		args: []string{
+			"measure", "site:S-111",
+			"--position", "position", "--tolerance", "boundary-closure",
+			"--root", budgetRoot,
+		},
+	}
 )
 
 var (
@@ -235,7 +243,18 @@ var (
 		calls:   []call{listTypes, listRooms, getRoom, resolveArea},
 	}
 
-	paths = []path{discovery, coldQuestion, warmQuestion, wholeRetrieval}
+	derivedQuestion = path{
+		name: "the same question answered from the geometry rather than from a claim",
+		what: "how big is Meeting Room B on level 1 by the corners it is drawn on, starting from nothing",
+		// No target. `resolve` answers what somebody wrote down and this computes
+		// what the corners come to, and the two are not the same question: a
+		// budget set for the first would be a gate on the second for reasons
+		// nobody argued. What it costs is measured so that it cannot drift.
+		ceiling: 960,
+		calls:   []call{listTypes, listRooms, measureRoom},
+	}
+
+	paths = []path{discovery, coldQuestion, warmQuestion, wholeRetrieval, derivedQuestion}
 )
 
 // answer runs one call and returns what it wrote to stdout, which is the whole
@@ -376,6 +395,10 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 			name: "retrieves the whole thing on the way to the same answer",
 			path: wholeRetrieval,
 		},
+		{
+			name: "computes the answer from the corners instead of reading a claim",
+			path: derivedQuestion,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -433,6 +456,24 @@ var fields = []field{
 		name: "the accuracy beside the value in `resolve`",
 		call: resolveArea,
 		keys: []string{"accuracy"},
+	},
+	{
+		// A computed area rests on one claim per corner rather than on one
+		// claim, so its budget grows with the shape while the figures do not.
+		// Pricing it is what a review of this call has to start from, and the
+		// answer is not obvious: the terms are what say which corner to
+		// re-survey, and 0017 puts an accuracy term by term in the answer.
+		name: "the error budget in `measure`",
+		call: measureRoom,
+		keys: []string{"budget"},
+	},
+	{
+		// Half of that budget is where each contributing claim was written,
+		// which is provenance rather than accuracy, and priced separately so
+		// that the two are not weighed as one field.
+		name: "the claims named under each budget term in `measure`",
+		call: measureRoom,
+		keys: []string{"contributors"},
 	},
 }
 

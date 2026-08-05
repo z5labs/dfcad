@@ -213,6 +213,53 @@ func TestBudgetTermsAreNamedAndAttributed(t *testing.T) {
 	})
 }
 
+// TestBudgetTermString is its own function because the rendering is where
+// "counted once" becomes readable: a shared term written without the number of
+// inputs behind it looks exactly like a term one claim carried, and that is the
+// difference a budget is easiest to be wrong about.
+func TestBudgetTermString(t *testing.T) {
+	budget := budgetOf(
+		measured("survey:C-01", independent(0.004), systematic(0.008, "survey:CP-3")),
+		measured("survey:C-02", independent(0.003), systematic(0.008, "survey:CP-3")),
+	)
+
+	terms := budget.Terms()
+	require.Len(t, terms, 3)
+
+	testCases := []struct {
+		name     string
+		term     BudgetTerm
+		expected string
+	}{
+		{
+			name:     "writes an independent term as its kind, its size and its unit",
+			term:     terms[0],
+			expected: "independent 0.004 m",
+		},
+		{
+			name:     "names what a systematic term is shared with and how many inputs carried it",
+			term:     terms[1],
+			expected: "systematic 0.008 m shared with survey:CP-3, counted once over 2 claims",
+		},
+		{
+			name:     "leaves the count off a term one claim carried",
+			term:     terms[2],
+			expected: "independent 0.003 m",
+		},
+		{
+			name:     "writes a term with nothing in it",
+			term:     BudgetTerm{},
+			expected: " 0.0",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, testCase.term.String())
+		})
+	}
+}
+
 // TestBudgetNamesOneClaimOncePerTerm is its own function because the loader
 // does not deduplicate the terms inside one accuracy: a claim which wrote the
 // same term id twice reaches here with both, and naming it twice would read as

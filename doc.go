@@ -259,11 +259,20 @@
 // How big a room is, is computed from its boundary and is never read from a
 // field. [Topology.MeasureRegion] gives the area, the perimeter, the centroid
 // and the axis-aligned bounding box of a semantic node from the loops it
-// references; [Topology.MeasureLoop] and [Topology.MeasureEdge] do the same one
-// and two levels down. Nothing any of them produces is written back, so a
-// measurement cannot disagree with the geometry it describes: move a corner and
-// the answer moves, with no edit which says so and no recorded number left
-// behind to go stale (see docs/decisions/0009-derived-values-are-never-written-back.md).
+// references; [Topology.MeasureLoop], [Topology.MeasureEdge] and
+// [Topology.MeasureVertex] do the same one, two and three levels down. Nothing
+// any of them produces is written back, so a measurement cannot disagree with
+// the geometry it describes: move a corner and the answer moves, with no edit
+// which says so and no recorded number left behind to go stale (see
+// docs/decisions/0009-derived-values-are-never-written-back.md).
+//
+// [Graph.Measure] is the whole of that in one call, dispatching on whichever
+// family an id names, and [Graph.Corners] is the vertices a survey for it has to
+// carry. They are here so that a caller asking how big something is does not
+// write the dispatch itself: which of the four calls a subject takes, and which
+// corners the answer rests on, are properties of the model rather than of the
+// question, and a second implementation of them is a second set of answers.
+// `dfcad measure` is the same pair on the command line.
 //
 // A [Survey] is what they are computed against — where the vertices are, the
 // claims which put them there, the tolerance rings are judged against, and the
