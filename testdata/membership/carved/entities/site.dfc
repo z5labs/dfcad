@@ -1,0 +1,117 @@
+; The same back garden with a raised bed carved out of its north-east corner.
+;
+; This is the only file which differs from the garden fixture beside it. The
+; registry is the same bytes, both observation files are the same bytes, and the
+; survey behind all of it happened once — so every shot which changes hands
+; between the two models changes hands because of where a line was drawn and for
+; no other reason.
+;
+; The carve is written the way a carve is written: the garden's own boundary is
+; redrawn around the bed, and the bed is bounded by the two edges it takes from
+; the garden and two new ones. The shared edges are the same nodes reached from
+; both sides, which is what makes the two regions adjacent rather than merely
+; touching.
+;
+; The bed links no observation file. It is brand new, nobody has been out to
+; shoot it, and it still comes back holding the shots inside it.
+
+(vertex geom:V-01
+  (label "Garden, south-west corner")
+  (frame frame:site)
+  (observed-in "observations/2026-05-07-field.obs")
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+(vertex geom:V-02
+  (label "Garden, south-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+(vertex geom:V-03
+  (label "Bed, south-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 6.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-06-01")))
+(vertex geom:V-04
+  (label "Bed, south-west corner")
+  (frame frame:site)
+  (position
+    (value (14.0 6.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-06-01")))
+(vertex geom:V-05
+  (label "Bed, north-west corner")
+  (frame frame:site)
+  (position
+    (value (14.0 12.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-06-01")))
+(vertex geom:V-06
+  (label "Garden, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+(vertex geom:V-07
+  (label "Bed, north-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+
+(edge geom:E-01 (label "Garden, south boundary") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Garden, east boundary below the bed") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Bed, south edge") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Bed, west edge") (frame frame:site) (vertices geom:V-04 geom:V-05))
+(edge geom:E-05 (label "Garden, north boundary beside the bed") (frame frame:site) (vertices geom:V-05 geom:V-06))
+(edge geom:E-06 (label "Garden, west boundary") (frame frame:site) (vertices geom:V-06 geom:V-01))
+(edge geom:E-07 (label "Bed, east edge") (frame frame:site) (vertices geom:V-03 geom:V-07))
+(edge geom:E-08 (label "Bed, north edge") (frame frame:site) (vertices geom:V-07 geom:V-05))
+
+(loop geom:L-01
+  (label "Garden boundary")
+  (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04 geom:E-05 geom:E-06))
+
+(loop geom:L-02
+  (label "Bed boundary")
+  (frame frame:site)
+  (edges geom:E-03 geom:E-07 geom:E-08 geom:E-04))
+
+(node site:S-yard
+  (label "Back garden")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01)
+  (observed-in "observations/2026-05-06-yard.obs"))
+
+(node site:S-bed
+  (label "Raised bed")
+  (kind Space)
+  (type Bed)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-02))

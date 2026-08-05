@@ -1,0 +1,9 @@
+# The morning the garden's own ground level was taken.
+#
+# This is the file the garden links to, so every record in it is a shot *of* the
+# garden as well as one in it. That link is stored, because somebody decided
+# this evidence backs this thing; where the shot happens to fall is not stored
+# and never could be.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:0001 2026-05-06T09:14:22Z frame:site 3.000 3.000 0.000 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-06-am

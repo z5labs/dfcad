@@ -1,0 +1,79 @@
+; The vocabulary of the back garden.
+;
+; This file is byte for byte the one beside the carved model. The two fixtures
+; are one project surveyed once and drawn twice, which is the whole point of the
+; pair: what differs between them is where the boundary runs and nothing else,
+; so a difference in which shots belong where can only have come from the
+; geometry.
+;
+; The tolerance is the one decision the boundary rule cannot be applied without.
+; How near a shot has to be to the boundary before nobody can say which side of
+; it the shot is on is a distance this project wrote down, and never one the
+; engine picked
+; (docs/decisions/0012-tolerances-are-registry-data.md).
+;
+; The annex is a second frame with a measured fit to the site grid, so that the
+; corpus holds shots which have to be carried across before they can be placed —
+; and so that what the carrying cost is a number in the answer rather than an
+; assumption behind it.
+(project
+  (label "Spatial membership fixture")
+  (globalid-namespace "https://example.org/models/membership"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace fix (description "Fix qualities an instrument reports."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "How a value was obtained."))
+(namespace retirement (description "Retirement records issued by the field crew."))
+(namespace session (description "Field occupations: one setup, one crew, one afternoon."))
+(namespace shot (description "Observation records issued by the field crew."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(frame frame:annex
+  (label "Neighbouring plot grid")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 12.0 2.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-20")))
+
+(type Yard
+  (kind Space)
+  (geometry area)
+  (description "Open ground around a dwelling."))
+
+(type Bed
+  (kind Space)
+  (geometry area)
+  (description "Ground within a yard given over to planting."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))
+
+(route everything
+  (file "entities/site.dfc")
+  (description "One file, which is all a fixture this size needs."))

@@ -60,6 +60,21 @@
 // are an append, which is the only legal change. It knows nothing about git:
 // where the two byte sequences came from is the caller's question.
 //
+// Which shots fall inside a region is derived and is never stored.
+// [Graph.ObservationsWithin] computes it from the coordinates on the records and
+// the boundary of the region, over the whole model's corpus
+// ([Graph.AllObservations]), so carving a new bed out of the back garden gives
+// it the shots inside it with no edit to an observation file anywhere. What *is*
+// stored is the other relationship: an entity naming the file a shot was written
+// in is a deliberate statement that this evidence backs this thing, and
+// [Membership.Linked] is which of the two a result is.
+//
+// A record written in another frame is carried across before it is tested, and
+// what the transform cost widens the band the boundary is judged against. A shot
+// nearer the boundary than the survey can place it is reported rather than
+// assigned to a side, which is why [Members.Inside] and [Members.Ambiguous] are
+// separate slices and not one carrying a flag.
+//
 // docs/observation-file.md is the specification: the line schema field by
 // field, what each precision figure means and which uncertainty convention it
 // follows, and the two shapes of ambiguous timestamp the format refuses.

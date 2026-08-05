@@ -1,0 +1,68 @@
+; The back garden as one rectangle, twenty metres by twelve.
+;
+; Nothing here says which shots are in it. The garden is four corners, four
+; edges and a loop, and which of an afternoon's shots fall inside it is read
+; back out of those and the coordinates on the records every time somebody asks
+; (docs/decisions/0009-derived-values-are-never-written-back.md).
+;
+; The one link written down is the other relationship: the garden cites the
+; afternoon its own ground level was taken, which is a deliberate statement that
+; those shots are shots *of* it. The shots merely *in* it are cited by nothing,
+; and that is the difference the pair of files exists to show.
+
+(vertex geom:V-01
+  (label "Garden, south-west corner")
+  (frame frame:site)
+  (observed-in "observations/2026-05-07-field.obs")
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+(vertex geom:V-02
+  (label "Garden, south-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+(vertex geom:V-03
+  (label "Garden, north-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+(vertex geom:V-04
+  (label "Garden, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06")))
+
+(edge geom:E-01 (label "Garden, south boundary") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Garden, east boundary") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Garden, north boundary") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Garden, west boundary") (frame frame:site) (vertices geom:V-04 geom:V-01))
+
+(loop geom:L-01
+  (label "Garden boundary")
+  (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(node site:S-yard
+  (label "Back garden")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01)
+  (observed-in "observations/2026-05-06-yard.obs"))

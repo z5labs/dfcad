@@ -1,0 +1,29 @@
+# An afternoon in the garden, cited by a corner and by no region at all.
+#
+# Nothing in this file says which garden, which bed or which side of anything
+# these shots are on. Every one of them is placed by its coordinate and by where
+# a boundary drawn somewhere else happens to run, which is why carving a new bed
+# out of the garden changes what they belong to without changing a byte here.
+#
+# The shots are chosen so that each says something the others do not:
+#
+#   0002  well inside the ground a bed is later carved out of
+#   0003  well inside the ground the garden keeps
+#   0004  exactly on the line the carve is made along
+#   0005  outside the garden altogether
+#   0006  taken in the neighbouring plot's grid, landing in the garden
+#   0007  a hundred millimetres outside the north boundary, on a float solution
+#         good to two hundred and forty — nobody can say which side it is on
+#   0008  retired, and so not evidence of anything
+#   0009  taken in the neighbouring plot's grid, landing where the bed goes
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:0002 2026-05-07T13:02:11Z frame:site 17.000 9.000 0.000 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-07-pm
+obs shot:0003 2026-05-07T13:04:38Z frame:site 16.000 2.000 0.000 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-07-pm
+obs shot:0004 2026-05-07T13:07:02Z frame:site 14.000 9.000 0.000 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-07-pm
+obs shot:0005 2026-05-07T13:09:45Z frame:site 25.000 3.000 0.000 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-07-pm
+obs shot:0006 2026-05-07T13:12:19Z frame:annex 5.000 3.000 0.000 method:total-station fix:observed 0.012 0.021 1.500 session:2026-05-07-pm
+obs shot:0007 2026-05-07T13:15:50Z frame:site 10.000 12.100 0.000 method:gnss-rtk fix:rtk-float 0.240 0.510 2.000 session:2026-05-07-pm
+obs shot:0008 2026-05-07T13:18:04Z frame:site 2.000 2.000 0.000 method:gnss-rtk fix:rtk-float 0.310 0.640 2.000 session:2026-05-07-pm
+obs shot:0009 2026-05-07T13:21:33Z frame:annex 5.000 8.000 0.000 method:total-station fix:observed 0.012 0.021 1.500 session:2026-05-07-pm
+retire retirement:0001 2026-05-07T17:40:00Z shot:0008 "float solution taken while the receiver was still initialising"

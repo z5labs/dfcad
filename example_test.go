@@ -8,6 +8,7 @@ package dfcad_test
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -2894,6 +2895,70 @@ func ExampleGraph_Observations() {
 	// shot:2026-05-06-0002 fix:rtk-fixed 0.011
 	// shot:2026-05-07-0001 fix:observed 0.004
 	// shot:2026-05-07-0002 fix:observed 0.004
+}
+
+// ExampleGraph_ObservationsWithin shows what derived membership buys: a region
+// drawn today holding shots taken months before it existed, with nothing
+// appended to an observation file to say so.
+//
+// The two models below are one survey drawn twice. Every observation file is
+// byte for byte the same in both, and the bed links none of them at all — what
+// differs is where a line is drawn, and the answer moves with it.
+func ExampleGraph_ObservationsWithin() {
+	against := dfcad.Derivation{Tolerance: "boundary-closure", Position: "position"}
+
+	show := func(graph *dfcad.Graph, subject dfcad.ID) {
+		members, _ := graph.ObservationsWithin(subject, against)
+
+		for _, member := range members.Inside() {
+			// A shot in a file the region cites is a shot *of* it, which is
+			// stored. A shot merely in the place is written down nowhere.
+			relation := "in"
+			if member.Linked() {
+				relation = "of"
+			}
+
+			fmt.Printf("%s holds %s, a shot %s it, %.3f m inside\n",
+				subject, member.Observation().ID, relation, member.Clearance())
+		}
+
+		// A shot nearer the boundary than the survey can place it is reported
+		// rather than assigned to a side. The band is the registry tolerance,
+		// the shot's own precision and whatever a change of frame cost.
+		for _, member := range members.Ambiguous() {
+			doubt, _ := member.Doubt()
+
+			fmt.Printf("%s cannot place %s: %.3f m from the boundary, known to %.3f m\n",
+				subject, member.Observation().ID, math.Abs(member.Clearance()), doubt)
+		}
+	}
+
+	garden, _ := dfcad.LoadGraph("testdata/membership/yard")
+	show(garden, "site:S-yard")
+
+	fmt.Println("--- a raised bed is carved out of the north-east corner ---")
+
+	carved, _ := dfcad.LoadGraph("testdata/membership/carved")
+	show(carved, "site:S-yard")
+	show(carved, "site:S-bed")
+
+	// Output:
+	// site:S-yard holds shot:0001, a shot of it, 3.000 m inside
+	// site:S-yard holds shot:0002, a shot in it, 3.000 m inside
+	// site:S-yard holds shot:0003, a shot in it, 2.000 m inside
+	// site:S-yard holds shot:0004, a shot in it, 3.000 m inside
+	// site:S-yard holds shot:0006, a shot in it, 3.000 m inside
+	// site:S-yard holds shot:0009, a shot in it, 2.000 m inside
+	// site:S-yard cannot place shot:0007: 0.100 m from the boundary, known to 0.245 m
+	// --- a raised bed is carved out of the north-east corner ---
+	// site:S-yard holds shot:0001, a shot of it, 3.000 m inside
+	// site:S-yard holds shot:0003, a shot in it, 2.000 m inside
+	// site:S-yard holds shot:0006, a shot in it, 1.000 m inside
+	// site:S-yard cannot place shot:0004: 0.000 m from the boundary, known to 0.017 m
+	// site:S-yard cannot place shot:0007: 0.100 m from the boundary, known to 0.245 m
+	// site:S-bed holds shot:0002, a shot in it, 3.000 m inside
+	// site:S-bed holds shot:0009, a shot in it, 2.000 m inside
+	// site:S-bed cannot place shot:0004: 0.000 m from the boundary, known to 0.017 m
 }
 
 func ExampleValidateAppendOnly() {
