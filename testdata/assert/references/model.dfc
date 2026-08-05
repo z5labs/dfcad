@@ -1,0 +1,50 @@
+; Assertions which name other things, two of which name something nothing in
+; this model answers to.
+;
+; A parameter naming an id is what makes an assertion a statement about the
+; model rather than about one node in isolation — "this room must stay inside
+; that setback" is two things and a relation. Every id written in one is checked
+; to resolve when the model loads, because a reference which reaches nothing is
+; a rule about nothing.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (width
+    (id survey:W-0001)
+    (value 4.2 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06"))
+  (assert near-to
+    (of site:S-102)
+    (beside site:S-102 site:S-103)
+    (tolerance vertex-coincidence)))
+
+; site:S-104 is nobody. It is one character from the room above it, which is
+; what most ids which reach nothing are.
+(node site:S-102
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert near-to (of site:S-104) (tolerance vertex-coincidence)))
+
+; A repeated parameter written as one parenthesised list rather than as a
+; sequence, which the format permits and which resolves the same way. The claim
+; id resolves too: ids are unique across the whole model, and a claim shares
+; that space with a node.
+(node site:S-103
+  (label "Meeting Room D")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert near-to
+    (of survey:W-0001)
+    (beside (site:S-101 site:S-104))
+    (tolerance vertex-coincidence)))

@@ -142,6 +142,24 @@ type CheckParameter struct {
 	// list.
 	Repeated bool
 
+	// Restates says the parameter carries a value of the same quantity the
+	// subject's own claims carry — the value a check compares a claim under the
+	// predicate it was given against.
+	//
+	// It is the whole of what the restatement rule reads
+	// ([ResolveAssertions]), and it is declared rather than inferred because the
+	// shape alone cannot tell the two apart: `(minimum 0.9)` beside
+	// `(predicate clearance)` is a bound and constrains, while `(is 0.9)` beside
+	// it is the claim written a second time. A check which compares against a
+	// bound, a range or another node's claim declares nothing here.
+	//
+	// A check declaring one declares exactly one, declares a
+	// [ParameterPredicate] parameter beside it for the quantity it belongs to,
+	// and gives it one of the three literal types — a real, a string or a
+	// boolean. A name resolved from a registry is not a value of the subject's
+	// and cannot restate one.
+	Restates bool
+
 	// Description is what the parameter is for, in one line.
 	Description string
 }
@@ -209,6 +227,33 @@ func (d CheckDeclaration) PermitsKind(kind Kind) bool {
 // satisfies a check declaring no geometry and nothing else.
 func (d CheckDeclaration) PermitsGeometry(geometry Geometry) bool {
 	return len(d.Geometries) == 0 || slices.Contains(d.Geometries, geometry)
+}
+
+// predicateParameter returns the parameter which names the predicate the check
+// is about, and whether it declares one.
+//
+// A check declares at most one. The predicate is what says which quantity of
+// the subject the check is looking at, so a second one would be a check about
+// two quantities and neither the restatement rule nor a reader could say which
+// of them a value belonged to.
+func (d CheckDeclaration) predicateParameter() (CheckParameter, bool) {
+	for _, parameter := range d.Parameters {
+		if parameter.Type == ParameterPredicate {
+			return parameter, true
+		}
+	}
+	return CheckParameter{}, false
+}
+
+// restatingParameter returns the parameter which carries a value of the
+// subject's own, and whether the check declares one.
+func (d CheckDeclaration) restatingParameter() (CheckParameter, bool) {
+	for _, parameter := range d.Parameters {
+		if parameter.Restates {
+			return parameter, true
+		}
+	}
+	return CheckParameter{}, false
 }
 
 // parameterNames are the parameters in declared order, for a diagnostic which
@@ -351,6 +396,7 @@ func validCheck(d CheckDeclaration) error {
 	}
 
 	seen := make(map[string]struct{}, len(d.Parameters))
+	predicates, restating := 0, 0
 	for _, parameter := range d.Parameters {
 		if err := validParameter(d.Name, parameter); err != nil {
 			return err
@@ -360,6 +406,35 @@ func validCheck(d CheckDeclaration) error {
 			return invalidCheckError{Check: d.Name, Reason: fmt.Sprintf("declares the parameter %s twice", parameter.Name)}
 		}
 		seen[parameter.Name] = struct{}{}
+
+		if parameter.Type == ParameterPredicate {
+			predicates++
+		}
+		if parameter.Restates {
+			restating++
+		}
+	}
+
+	if predicates > 1 {
+		return invalidCheckError{
+			Check:  d.Name,
+			Reason: "names two predicates: a check is about one quantity of its subject, and the restatement rule cannot say which of two a value belongs to",
+		}
+	}
+
+	if restating > 1 {
+		return invalidCheckError{
+			Check:  d.Name,
+			Reason: "declares two parameters carrying a value of the subject's own, and the subject has one value under one predicate",
+		}
+	}
+
+	if restating == 1 && predicates == 0 {
+		return invalidCheckError{
+			Check: d.Name,
+			Reason: "declares a parameter carrying a value of the subject's own and names no predicate, so nothing says " +
+				"which quantity that value is of",
+		}
 	}
 
 	return nil
@@ -398,8 +473,27 @@ func validParameter(check string, p CheckParameter) error {
 		}
 	}
 
+	if p.Restates && !slices.Contains(literalTypes, p.Type) {
+		return invalidCheckError{
+			Check: check,
+			Reason: fmt.Sprintf(
+				"declares the parameter %s as %s and says it carries a value of the subject's own: a value which "+
+					"could restate a claim is written as %s",
+				p.Name, p.Type, join(spellings(literalTypes), "or"),
+			),
+		}
+	}
+
 	return nil
 }
+
+// literalTypes are the parameter types whose value is a datum written where it
+// is used rather than a name resolved from somewhere else.
+//
+// They are the only sorts of value which can restate a claim. A tolerance, a
+// predicate, a type or an id names something declared elsewhere, and naming a
+// thing is not saying how wide the room is.
+var literalTypes = []ParameterType{ParameterReal, ParameterString, ParameterBoolean}
 
 // tolerant reports whether a parameter name says it carries a tolerance, which
 // is the name itself or a name ending in it.
@@ -496,12 +590,14 @@ func LookupCheck(name string) (CheckDeclaration, bool) { return registeredChecks
 // resolves to nothing stops only the parameters, because parameters cannot be
 // judged against a check nobody named.
 func ValidateAssertion(form *Node, registry *Registry) []Diagnostic {
-	return validateAssertion(form, registry)
+	return validateAssertion(form, registry, registeredChecks)
 }
 
-// validateAssertion is [ValidateAssertion] as the loaders call it.
-func validateAssertion(form *Node, registry *Registry) []Diagnostic {
-	v := &checkValidator{set: registeredChecks, registry: registry}
+// validateAssertion is [ValidateAssertion] against a given set of checks, which
+// is what lets the engine's closed registry and a set assembled for a test be
+// the same thing exercised the same way.
+func validateAssertion(form *Node, registry *Registry, set *checkSet) []Diagnostic {
+	v := &checkValidator{set: set, registry: registry}
 	v.assertion(form)
 	return v.diags
 }

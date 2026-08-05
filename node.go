@@ -116,6 +116,17 @@ type SemanticNode struct {
 	// drift.
 	boundaries []ID
 
+	// assertions are the checks written on this node, in the order they were
+	// written and as they were written.
+	//
+	// They are the node's own rules, which is what tells them apart from the
+	// invariants of its type: an invariant is stated once for every instance and
+	// is read from the registry ([Graph.Invariants]), and these were written
+	// here by somebody looking at this thing. Nothing is resolved into them —
+	// the check name and the parameters belong to the check registry, and
+	// [Graph.Assertions] is what reads them against it.
+	assertions []Assertion
+
 	// retirement is how the node stopped existing, and is nil for one which did
 	// not — which is very nearly every node of a model.
 	//
@@ -217,6 +228,24 @@ func (n *SemanticNode) MemberOf() []ID { return slices.Clone(n.zones) }
 // Resolving them is a question about both families at once, and this pass has
 // read one, which is why the answer is not here.
 func (n *SemanticNode) Boundaries() []ID { return slices.Clone(n.boundaries) }
+
+// Assertions returns the assertions written on the node, in the order they were
+// written.
+//
+// They are what constrains the thing, where the claims are what is known about
+// it, and a caller showing one shows both: "this patio must stay inside this
+// setback" is written here and is not derivable from anything else on the node.
+//
+// They come back as they were written, which includes an assertion naming a
+// check nothing registers — a load error, and still something somebody wrote on
+// this node. [Graph.Assertions] is the same list resolved against the check
+// registry, which is what a caller wanting to know what each one constrains
+// reads.
+//
+// The invariants of the node's type are not among them. Those are stated once
+// on the type and are read with [Graph.Invariants]; a node which carried a copy
+// would be a node whose rules could drift from its type's.
+func (n *SemanticNode) Assertions() []Assertion { return cloneAssertions(n.assertions) }
 
 // Span returns where the node form was written, which is what a diagnostic
 // about the node as a whole points at.
@@ -368,14 +397,17 @@ func (n *Nodes) Node(id ID) (*SemanticNode, bool) {
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadNodes(root string, registry *Registry) (*Nodes, []Diagnostic) {
-	return loadNodes(readTree(root), registry)
+	return loadNodes(readTree(root), registry, registeredChecks)
 }
 
-// loadNodes is [LoadNodes] over a tree somebody else read, which is what lets
-// [LoadGraph] read the files once and interpret them four times.
-func loadNodes(sources iter.Seq[source], registry *Registry) (*Nodes, []Diagnostic) {
+// loadNodes is [LoadNodes] over a tree somebody else read and against a given
+// set of checks, which is what lets [LoadGraph] read the files once and
+// interpret them four times, and what lets the engine's closed check registry
+// and a set assembled for a test be the same thing exercised the same way.
+func loadNodes(sources iter.Seq[source], registry *Registry, checks *checkSet) (*Nodes, []Diagnostic) {
 	l := &nodeLoader{
 		registry: registry,
+		checks:   checks,
 		nodes: &Nodes{
 			byID:    make(map[ID]*SemanticNode),
 			namedAt: make(map[ID]Span),
@@ -395,6 +427,10 @@ type nodeLoader struct {
 
 	// registry is what the nodes are judged against. It is not written to.
 	registry *Registry
+
+	// checks is the check registry the assertions the nodes carry are validated
+	// against. It is not written to.
+	checks *checkSet
 
 	// nodes are the nodes read so far, in the order they were reached. Where
 	// the node holding each id was written is kept there rather than here,
@@ -503,6 +539,8 @@ func (l *nodeLoader) declare(form *Node) {
 	if arg, ok := argumentOf(form, "frame"); ok {
 		d.node.frame, d.node.hasFrame = l.id(arg, "a frame id")
 	}
+
+	d.node.assertions = l.assertions(form, l.registry, l.checks)
 
 	if child, ok := childForm(form, retiredChild); ok {
 		l.retire(&d, form, child)

@@ -139,7 +139,7 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 		parsed = append(parsed, src)
 	}
 
-	return loadGraph(root, parsed, diags)
+	return loadGraph(root, parsed, diags, registeredChecks)
 }
 
 // loadGraph is [LoadGraph] over trees which have already been read, carrying
@@ -152,16 +152,21 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 // write had already happened. Re-implementing the ordering there would be a
 // second answer to "what does this model mean", and the two would disagree the
 // first time a pass moved.
-func loadGraph(root string, parsed []source, diags []Diagnostic) (*Graph, []Diagnostic) {
+//
+// checks is the check registry the assertions the model writes are read
+// against, and is the engine's closed one for every load; taking it as an
+// argument is what lets a test exercise the assertion passes with a set
+// assembled for it, through the same code every model goes through.
+func loadGraph(root string, parsed []source, diags []Diagnostic, checks *checkSet) (*Graph, []Diagnostic) {
 	sources := slices.Values(parsed)
 
 	registry, registryDiags := loadRegistry(root, sources)
 	diags = append(diags, registryDiags...)
 
-	nodes, nodeDiags := loadNodes(sources, registry)
+	nodes, nodeDiags := loadNodes(sources, registry, checks)
 	diags = append(diags, nodeDiags...)
 
-	topology, topologyDiags := loadTopology(sources, registry)
+	topology, topologyDiags := loadTopology(sources, registry, checks)
 	diags = append(diags, topologyDiags...)
 
 	claims, claimDiags := loadClaims(sources, registry)
@@ -187,6 +192,14 @@ func loadGraph(root string, parsed []source, diags []Diagnostic) (*Graph, []Diag
 
 	diags = append(diags, g.unique()...)
 	g.index()
+
+	// The assertions are read last because they are the one thing which is
+	// about the whole model rather than about a family of it: an assertion may
+	// name any entity, and whether it restates a claim is a question about the
+	// claims. A pass which asked either before both had been read would report
+	// a reference missing for no reason but the order the walk happened to
+	// reach the files in.
+	diags = append(diags, resolveAssertions(g, checks)...)
 
 	return g, diags
 }
@@ -327,6 +340,31 @@ func (g *Graph) Nearest(id ID) (ID, bool) {
 // anything resolves.
 func (g *Graph) ids() iter.Seq[string] {
 	return func(yield func(string) bool) {
+		for entity := range g.entities() {
+			if entity.ID() == "" {
+				continue
+			}
+			if !yield(string(entity.ID())) {
+				return
+			}
+		}
+	}
+}
+
+// entities iterates everything the model holds, family by family in the order
+// [Graph.Entity] looks an id up and, within a family, in the order the load read
+// them.
+//
+// The order is deterministic, so anything walked over it — a listing of ids, the
+// assertions the model writes — comes back the same way on every run and diffs
+// against the last one's.
+//
+// A thing whose id could not be read is among them. It is a thing the model
+// holds with a diagnostic against it, and a walk which dropped it would report
+// on fewer things than the file describes; [Graph.ids] is the walk which wants
+// only the ones an id names.
+func (g *Graph) entities() iter.Seq[Entity] {
+	return func(yield func(Entity) bool) {
 		if g == nil {
 			return
 		}
@@ -338,10 +376,7 @@ func (g *Graph) ids() iter.Seq[string] {
 			asEntities(g.topology.Loops()),
 		} {
 			for entity := range entities {
-				if entity.ID() == "" {
-					continue
-				}
-				if !yield(string(entity.ID())) {
+				if !yield(entity) {
 					return
 				}
 			}

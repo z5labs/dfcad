@@ -627,12 +627,48 @@ no reason is a deletion wearing a hat.
 - **A tolerance parameter takes a tolerance name from the registry.** No check anywhere
   contains a numeric literal tolerance, and writing one in an assertion is a load error
   ([0012](./docs/decisions/0012-tolerances-are-registry-data.md)).
-- The node enclosing the assertion is its subject. Parameters may name other nodes by id, and
+- The form enclosing the assertion is its subject. Parameters may name other nodes by id, and
   every such id is checked to resolve at load, with a diagnostic naming both ends when one
-  does not.
+  does not. A claim id resolves as well as a node's: ids are unique across the whole model.
+- **A check declares what it applies to, and an assertion on a subject it cannot examine is a
+  load error.** The axes are the form — node, vertex, edge or loop — the node kind and the
+  geometry form; the kind and the geometry are the subject's own, so `boundary-loops-close`
+  on a node with no shape is refused. A check with nothing on its subject to look at does not
+  fail: it passes on every run forever, and the load is the only place the mistake is visible.
 - **An assertion that restates a value the claims already carry is rejected at load.** An
-  assertion constrains; it does not record. Restating a claimed width creates a second source
-  of truth for that width, which will disagree the day the claim is superseded.
+  assertion constrains; it does not record. See [6.8.1](#681-restatement).
+
+#### 6.8.1 Restatement
+
+A claim is where a value is recorded, with the source, the method, the date and the accuracy
+it came from. An assertion that repeats that value is a second source of truth for one
+quantity — one that goes on saying what it says the day the claim is superseded, and that no
+resolution rule reaches, because it is not a claim.
+
+The rule reads the check's own declaration rather than the shape of what was written. A check
+declares which parameter names the predicate and — where it has one — which parameter carries
+a value *of that quantity*. An assertion writing both, on a subject that already claims that
+predicate, is the claim written twice and is refused, whether or not the two values agree: a
+value that disagrees is the same second source of truth, found earlier.
+
+Caught, given a check declaring `(predicate …)` and a value parameter `(is …)`:
+
+```
+; Refused: the room already claims a width, and this says it again.
+(node site:S-101
+  (width (value 3.6 m) (source "Fit-out drawing FD-2026-011")
+         (method method:drawing-take-off) (date "2026-03-02"))
+  (assert claimed-value-is (predicate width) (is 3.6)))
+```
+
+Not caught, and deliberately:
+
+| Written                                                          | Why it stands                                                     |
+|------------------------------------------------------------------|-------------------------------------------------------------------|
+| `(assert clearance-at-least (predicate width) (minimum 0.9))`     | A bound. The check declares `minimum` as a limit rather than as a value of the subject's, so 0.9 is not what the room measures. |
+| `(assert required-claim (predicate width))`                       | No value at all. It says a claim must be there and does not say what it is. |
+| `(assert claimed-value-is (predicate width) (is 3.6))` on a subject claiming nothing under `width` | There is no first statement for it to be the second of. |
+| `(assert claimed-value-is (predicate clearance) (is 0.9))` on a subject claiming `width` | Two predicates are two quantities, and the rule is about one. |
 
 ### 6.9 References
 

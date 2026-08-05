@@ -409,7 +409,7 @@ func TestCheckSubject(t *testing.T) {
 	bindings := graph.Invariants(node)
 	require.Len(t, bindings, 1)
 
-	subject := CheckSubject{graph: graph, node: node, arguments: bindings[0].Arguments}
+	subject := CheckSubject{graph: graph, subject: node, arguments: bindings[0].Arguments}
 
 	assert.Same(t, graph, subject.Graph())
 	assert.Same(t, node, subject.Node())
@@ -437,7 +437,7 @@ func TestCheckSubjectIsReadOnly(t *testing.T) {
 	bindings := graph.Invariants(node)
 	require.Len(t, bindings, 1)
 
-	subject := CheckSubject{graph: graph, node: node, arguments: bindings[0].Arguments}
+	subject := CheckSubject{graph: graph, subject: node, arguments: bindings[0].Arguments}
 
 	handed := subject.Arguments()
 	require.Len(t, handed, 1)

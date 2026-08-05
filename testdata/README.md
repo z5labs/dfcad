@@ -26,6 +26,7 @@ the goldens beside the fixtures are invisible to it.
 | `diagnostics`              | One file per shape of diagnostic rendering, each as `.txt`.                                 |
 | `graph`                    | The whole-graph loader's own fixtures. One *directory* per case, each a whole model — registry, both families and the claims on them — with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `invariant`                | The fixtures of the pass which binds a type's invariants to its instances. One *directory* per case, each a whole model whose types carry invariants, and each expected to load clean — what these assert is what binds and what a run of it reports, not a diagnostic. |
+| `assert`                   | The fixtures of the pass which reads the assertions written on things against the model they were written in. One *directory* per case, each a whole model whose things carry assertions. `valid` loads clean; the rest each hold one shape of refusal, and three of them name checks the engine has not written yet and are read against a check set the test assembles. |
 | `model`                    | A two-file model the runnable examples load.                                                |
 
 `corpus/valid` is not a second copy of `print`. The printer's fixtures are one
@@ -99,6 +100,10 @@ is where the tests of that layer read them from.
 | 7.7           | A routing rule filing into a path no walk of the model reaches, and one whose criteria name a kind, a namespace or a type nothing declares | `registry/routes/` |
 | 6.8, 7.3      | An invariant naming a check nothing registers, one missing a parameter the check requires, one writing a parameter it does not take, one writing a numeric literal tolerance, and one naming a predicate nothing declares | `registry/checks/` |
 | 7.3           | An invariant naming a check written on an edge rather than on a node, and two naming one which measures a geometry form the type permits none of | `registry/invariants/` |
+| 6.8           | An assertion naming a check which applies to another form, and one naming a check which measures a geometry the node has none of | `assert/inapplicable/` |
+| 6.8           | An assertion naming a check which applies to another kind | `assert/kind/`                          |
+| 6.8, 6.9      | An assertion naming an id nothing in the model answers to, written as a single value and inside a parenthesised list | `assert/references/` |
+| 6.8.1         | An assertion which restates a claimed value, beside four which name a predicate the subject claims and do not restate it | `assert/restatement/` |
 | 1, 6.1        | A node kind or geometry form which is not one, and `absent` named on a node | `node/unknown-value/`         |
 | 6.1, 7.3      | A node naming a type no registry file declares       | `node/undeclared-type/`                     |
 | 6.1, 7.3      | A node whose type permits a different kind or geometry form, and one whose type does not permit absence | `node/not-permitted/` |

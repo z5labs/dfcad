@@ -109,6 +109,24 @@
 // docs/decisions/0012-tolerances-are-registry-data.md for why no check carries a
 // number.
 //
+// # Assertions
+//
+// An assertion is a check written on one thing — a node, a vertex, an edge or a
+// loop — and it constrains that thing. [SemanticNode.Assertions] and its
+// siblings are the ones written on it, as written; [Graph.Assertions] is the
+// same list resolved against the check registry, [Graph.AllAssertions] is every
+// one in the model and [Graph.CheckAssertions] runs them.
+//
+// [ResolveAssertions] is the half of validating one that needs the whole model,
+// and it runs as part of [LoadGraph]. A check that cannot examine the thing the
+// assertion was written on is refused, because a rule with nothing to look at
+// passes forever rather than failing. Every id an assertion names is checked to
+// resolve. And an assertion that restates a value the claims already carry is
+// refused: a claim is where a value is recorded, with the source, the method and
+// the date it came from, and repeating it is a second source of truth that goes
+// on saying what it says the day the claim is superseded. What that rule does
+// and does not catch is [ResolveAssertions].
+//
 // # Invariants
 //
 // A type registry entry may declare invariants, which are checks written once on

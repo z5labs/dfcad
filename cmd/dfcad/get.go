@@ -59,7 +59,9 @@ retries a misspelling forever.
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object get writes carries "entity": the thing found, its axes, the ids it
-references, where it was written, and its claims in predicate order.
+references, where it was written, its claims in predicate order, and the
+assertions written on it. The claims are what is known about the thing; the
+assertions are what has to hold of it.
 `
 
 // The ways get reports the claims written on the thing it found.
@@ -247,6 +249,35 @@ type getEntity struct {
 	// Claims are the claims written on it, in predicate order. Empty rather
 	// than null when nothing is claimed about it.
 	Claims []claimEntry `json:"claims"`
+
+	// Assertions are the assertions written on it, in the order they were
+	// written. Empty rather than null when nothing constrains it.
+	//
+	// They come back beside the claims because retrieving a thing is how
+	// somebody finds out about it, and what has to hold of it is half of that:
+	// the claims say what it measures and these say what it may not stop
+	// measuring. The invariants of its type are not here — those are stated on
+	// the type, and this call is about this thing.
+	Assertions []assertionEntry `json:"assertions"`
+}
+
+// assertionEntry is one assertion as get reports it.
+//
+// It is what was written rather than what the check registry makes of it: the
+// name, the parameters as they were written, and where. An assertion naming a
+// check nothing registers is a load error and is still reported here, because a
+// listing which quietly dropped it would read as though nobody had written it.
+type assertionEntry struct {
+	// Check is the check name the assertion names.
+	Check string `json:"check"`
+
+	// Parameters are the parameters it supplies, each rendered the way it was
+	// written. Absent when the check takes none.
+	Parameters []string `json:"parameters,omitempty"`
+
+	// Span is where the assertion was written, which is inside the form of the
+	// thing it constrains.
+	Span dfcad.Span `json:"span"`
 }
 
 // retiredEntry is how a node stopped existing, as get reports it.
@@ -445,9 +476,10 @@ func checkClaims(selection string, deprecated bool) error {
 // describe is one entity as the answer reports it, whichever family holds it.
 func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, deprecated bool) getEntity {
 	out := getEntity{
-		ID:     string(entity.ID()),
-		Span:   entity.Span(),
-		Claims: claimsOf(graph, entity.ID(), selection, deprecated),
+		ID:         string(entity.ID()),
+		Span:       entity.Span(),
+		Claims:     claimsOf(graph, entity.ID(), selection, deprecated),
+		Assertions: assertionsOf(entity),
 	}
 
 	switch found := entity.(type) {
@@ -497,6 +529,38 @@ func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, depreca
 		out.Label = found.Label()
 		out.Frame = string(found.Frame())
 		out.Edges = spellings(found.Edges())
+	}
+
+	return out
+}
+
+// assertionsOf is the assertions written on one thing, as the answer reports
+// them.
+//
+// Made rather than declared so that a thing nothing constrains carries an empty
+// list rather than a null, and a caller indexing it needs no special case for
+// the thing nobody has written a rule about yet.
+func assertionsOf(entity dfcad.Entity) []assertionEntry {
+	out := make([]assertionEntry, 0)
+
+	var written []dfcad.Assertion
+	switch found := entity.(type) {
+	case *dfcad.SemanticNode:
+		written = found.Assertions()
+	case *dfcad.Vertex:
+		written = found.Assertions()
+	case *dfcad.Edge:
+		written = found.Assertions()
+	case *dfcad.Loop:
+		written = found.Assertions()
+	}
+
+	for _, assertion := range written {
+		entry := assertionEntry{Check: assertion.Check, Span: assertion.Span}
+		for _, argument := range assertion.Arguments() {
+			entry.Parameters = append(entry.Parameters, argument.String())
+		}
+		out = append(out, entry)
 	}
 
 	return out
@@ -678,8 +742,15 @@ func reportEntity(entity getEntity, globals *globals, stderr io.Writer) {
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s %s at %s: %s, %s\n",
-		entity.Family, entity.ID, entity.Span.Start, spellAxes(entity), plural(len(entity.Claims), "claim"))
+	for _, assertion := range entity.Assertions {
+		if globals.Verbosity >= verbosityProgress {
+			fmt.Fprintf(stderr, "assert: %s\n", strings.TrimSpace(assertion.Check+" "+strings.Join(assertion.Parameters, " ")))
+		}
+	}
+
+	fmt.Fprintf(stderr, "%s %s at %s: %s, %s, %s\n",
+		entity.Family, entity.ID, entity.Span.Start, spellAxes(entity),
+		plural(len(entity.Claims), "claim"), plural(len(entity.Assertions), "assertion"))
 }
 
 // spellAxes is what the thing is, for a person: its label, and the axes the
