@@ -1067,7 +1067,14 @@ away is exactly the sliver a shared topology exists to prevent. `--no-snap` writ
 duplicate anyway and still reports the coincidence.
 
 Two corners of one list at the same point are refused: either a coordinate was typed twice
-or the outline doubles back, and a ring visits each of its corners once.
+or the outline doubles back, and a ring visits each of its corners once. That holds under
+`--no-snap` too — switching snapping off says to write a vertex where one already is, not
+that a ring may visit a corner twice — and it holds for two corners far enough apart to be
+corners that both land on one vertex the model already holds.
+
+A predicate the registry does not declare is refused before any corner is read, naming the
+predicates there are: which shape a position takes is what the declaration says, so there is
+nothing to read a corner against until it is known.
 
 ```json
 {

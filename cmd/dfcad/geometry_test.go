@@ -401,6 +401,21 @@ func TestRunScaffoldLoopRefusesAListItCannotMakeARingOf(t *testing.T) {
 			expectedInStderr: []string{"coordinate value", "10 0"},
 		},
 		{
+			name: "refuses a list which visits one of its corners twice with snapping off",
+			args: append(scaffold("10 0 0", "14 0 0", "10 0 0", "10 3 0"), "--no-snap"),
+			expectedInStderr: []string{
+				"corners 1 and 3", "visits each of its corners once",
+			},
+		},
+		{
+			// The refusal is the engine's words rather than a second set of
+			// them here, and it names the predicates there are.
+			name: "refuses a predicate the registry does not declare",
+			args: append(scaffold("10 0 0", "14 0 0", "14 3 0", "10 3 0"),
+				"--predicate", "where"),
+			expectedInStderr: []string{"where", "position"},
+		},
+		{
 			name: "refuses a tolerance the registry does not declare",
 			args: append(scaffold("10 0 0", "14 0 0", "14 3 0", "10 3 0"),
 				"--tolerance", "close-enough"),

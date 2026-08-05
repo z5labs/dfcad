@@ -177,7 +177,9 @@ was, so a run which chose the duplicate names what it duplicated.
 
 Two corners of one list at the same point are refused rather than folded away:
 either a coordinate was typed twice or the outline doubles back, and a ring
-visits each of its corners once.
+visits each of its corners once. That holds with --no-snap too, which says to
+write a vertex where one already is rather than that a ring may visit a corner
+twice.
 
 --dry-run reports every node which would be created and every snap which would
 happen, which is what makes it worth running first: the ids, the reuses and the
@@ -570,9 +572,13 @@ func (axes scaffoldAxes) spec(registry *dfcad.Registry) (dfcad.ScaffoldSpec, err
 
 	declared, ok := registry.Predicate(spec.Predicate)
 	if !ok {
-		// The predicate is refused in the engine's words, so a caller reads one
-		// sentence whether the refusal came from here or from a library call.
-		return spec, provenance.Check(registry)
+		// Nothing can be read from a corner without the declaration — which
+		// shape a value takes is what the declaration says — so none is read,
+		// and the list is handed over unread. [dfcad.Tx.Scaffold] checks the
+		// predicate before it looks at a corner, so the refusal is the engine's
+		// words: a caller reads one sentence whether it came from here or from
+		// a library call.
+		return spec, nil
 	}
 
 	for _, written := range *axes.corners {

@@ -830,6 +830,14 @@ type scaffolder struct {
 	// runs over one model pick the same vertex where two are equally near.
 	order []ID
 
+	// read is where each corner of the list settled, in corner order.
+	//
+	// It is the corners rather than the vertices they became, because whether a
+	// list visits one of its corners twice is a question about the list: with
+	// snapping off, two corners at one point become two vertices, and asking
+	// the vertices would answer that a ring which doubles back does not.
+	read [][]float64
+
 	built   Scaffolding
 	notices []Notice
 }
@@ -877,13 +885,35 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 		return nil, ToleranceUnitError{Tolerance: tolerance, Frame: spec.Frame, Want: frame.Unit}
 	}
 
-	// The provenance is checked once, against a corner, rather than once per
-	// corner: every claim this run writes carries the same evidence, so a
-	// missing source is a property of the invocation and reporting it against
-	// the fortieth corner says the wrong thing about which one is wrong.
+	// The predicate is checked before anything is read from a corner, and
+	// unconditionally rather than only where there are corners to read. Which
+	// shape a position takes is what the declaration says, so a caller which
+	// has not been able to read a corner at all — the command line is one —
+	// hands the list over unread and is answered here rather than having to
+	// spell the same refusal itself.
+	if !registry.Declares(SortPredicate, spec.Predicate) {
+		return nil, UnknownAxisError{
+			Axis:      string(SortPredicate),
+			Value:     spec.Predicate,
+			Permitted: registry.Names(SortPredicate),
+		}
+	}
+
+	// The provenance is checked once, against the id the first corner would be
+	// minted under, rather than once per corner: every claim this run writes
+	// carries the same evidence, so a missing source is a property of the
+	// invocation, and reporting it against the fortieth corner says the wrong
+	// thing about which one is wrong. The subject is a real id rather than a
+	// stand-in because the check is the one every claim is held to, and one
+	// held against a subject nobody is writing is a different check.
 	if len(spec.Corners) > 0 {
+		first, err := tx.MintID(spec.Namespace, vertexMark)
+		if err != nil {
+			return nil, err
+		}
+
 		probe := spec.Provenance
-		probe.Subject, probe.Predicate, probe.Value = spec.Frame, spec.Predicate, spec.Corners[0].Position
+		probe.Subject, probe.Predicate, probe.Value = first, spec.Predicate, spec.Corners[0].Position
 		if err := probe.Check(registry); err != nil {
 			return nil, err
 		}
@@ -982,16 +1012,25 @@ func (s *scaffolder) corner(index int, corner Corner) error {
 		return UnitError{Predicate: s.spec.Predicate, Want: s.unit, Got: corner.Position.Unit()}
 	}
 
+	// Whether the list visits one of its own corners twice is settled before
+	// anything else, and settled the same way whether or not snapping is on. It
+	// is a mistake in the corner list — a coordinate typed twice, or an outline
+	// which doubles back — and switching snapping off says to write a vertex
+	// where one already is, not that a ring may visit a corner twice.
+	if err := s.revisited(index, components); err != nil {
+		return err
+	}
+
 	found, distance, ok := s.nearest(components)
 
 	switch {
 	case ok && s.spec.Snap:
-		// The vertex is already in the ring, so the ring visits a corner twice:
-		// a coordinate typed twice, or an outline which doubles back. Either is
-		// refused rather than folded away.
-		if slices.Contains(s.built.Vertices, found) {
+		// Two corners far enough apart to be corners, both near enough to one
+		// vertex the model already holds to snap to it, collapse the ring just
+		// as a repeated coordinate does.
+		if at := slices.Index(s.built.Vertices, found); at >= 0 {
 			return CollapsedRingError{
-				First:     slices.Index(s.built.Vertices, found) + 1,
+				First:     at + 1,
 				Second:    index + 1,
 				Vertex:    found,
 				Tolerance: s.tolerance,
@@ -1006,6 +1045,7 @@ func (s *scaffolder) corner(index int, corner Corner) error {
 			Reused:   true,
 		})
 		s.built.Vertices = append(s.built.Vertices, found)
+		s.read = append(s.read, components)
 
 		return nil
 
@@ -1052,6 +1092,7 @@ func (s *scaffolder) mint(corner Corner, components []float64) error {
 	s.record(minted, components)
 	s.built.Vertices = append(s.built.Vertices, minted)
 	s.built.Created = append(s.built.Created, minted)
+	s.read = append(s.read, components)
 
 	if len(s.spec.Provenance.Accuracy) == 0 {
 		s.notices = append(s.notices, Notice{
@@ -1059,6 +1100,32 @@ func (s *scaffolder) mint(corner Corner, components []float64) error {
 			Subject:   minted,
 			Predicate: s.spec.Predicate,
 		})
+	}
+
+	return nil
+}
+
+// revisited reports a corner which is at a point the list has already been to.
+//
+// It is refused rather than quietly folded away, and it is refused whether or
+// not snapping is on. Two corners at one point are either a coordinate typed
+// twice or an outline which doubles back, and a scaffold which dropped one of
+// them would write a room with a wall missing and report having written the room
+// that was asked for. Switching snapping off says to write a vertex where one
+// already is; it does not say a ring may visit a corner twice.
+func (s *scaffolder) revisited(index int, components []float64) error {
+	for earlier, at := range s.read {
+		gap, ok := distanceBetween(at, components)
+		if !ok || gap > s.tolerance.Value {
+			continue
+		}
+
+		return CollapsedRingError{
+			First:     earlier + 1,
+			Second:    index + 1,
+			Vertex:    s.built.Vertices[earlier],
+			Tolerance: s.tolerance,
+		}
 	}
 
 	return nil

@@ -753,6 +753,51 @@ func TestTxScaffoldRefusesAListItCannotMakeARingOf(t *testing.T) {
 			},
 		},
 		{
+			// Switching snapping off says to write a vertex where one already
+			// is. It does not say a ring may visit a corner twice, so the
+			// refusal holds either way round.
+			name: "refuses a list which visits one of its corners twice with snapping off",
+			spec: func(t *testing.T) ScaffoldSpec {
+				spec := room(t, corner(0, 0, 0), corner(4, 0, 0), corner(0, 0, 0), corner(0, 3, 0))
+				spec.Snap = false
+				return spec
+			},
+			expect: func(t *testing.T, err error) {
+				var collapsed CollapsedRingError
+				require.ErrorAs(t, err, &collapsed)
+				assert.Equal(t, 1, collapsed.First)
+				assert.Equal(t, 3, collapsed.Second)
+			},
+		},
+		{
+			name: "refuses a predicate the registry does not declare",
+			spec: func(t *testing.T) ScaffoldSpec {
+				spec := room(t, square(4, 3)...)
+				spec.Predicate = "where"
+				return spec
+			},
+			expect: func(t *testing.T, err error) {
+				var unknown UnknownAxisError
+				require.ErrorAs(t, err, &unknown)
+				assert.Equal(t, "predicate", unknown.Axis)
+				assert.Equal(t, "where", unknown.Value)
+				assert.Contains(t, unknown.Permitted, "position")
+			},
+		},
+		{
+			name: "refuses a predicate the registry does not declare before it reads a corner",
+			spec: func(t *testing.T) ScaffoldSpec {
+				spec := room(t, square(4, 3)...)
+				spec.Predicate, spec.Corners = "where", nil
+				return spec
+			},
+			expect: func(t *testing.T, err error) {
+				var unknown UnknownAxisError
+				require.ErrorAs(t, err, &unknown)
+				assert.Equal(t, "where", unknown.Value)
+			},
+		},
+		{
 			name: "refuses a tolerance the registry does not declare",
 			spec: func(t *testing.T) ScaffoldSpec {
 				spec := room(t, square(4, 3)...)
@@ -816,6 +861,29 @@ func TestTxScaffoldRefusesAListItCannotMakeARingOf(t *testing.T) {
 			testCase.expect(t, declined(t, root, testCase.spec(t)))
 		})
 	}
+}
+
+// TestTxScaffoldRefusesTwoCornersWhichSnapOntoOneVertex is its own function
+// because it needs a model with a vertex in it: two corners far enough apart to
+// be corners can still both be near enough to one vertex the model already holds
+// to land on it, which collapses the ring exactly as a repeated coordinate does.
+func TestTxScaffoldRefusesTwoCornersWhichSnapOntoOneVertex(t *testing.T) {
+	root := geometryFixture(t, "")
+
+	first, _ := scaffolded(t, root, room(t, square(4, 3)...))
+
+	// Four millimetres either side of the room's north-west corner: eight apart
+	// from each other, which the tolerance of five does not call one point, and
+	// four from the vertex, which it does.
+	err := declined(t, root, room(t,
+		corner(-0.004, 0, 0), corner(4, 6, 0), corner(0.004, 0, 0), corner(0, 6, 0),
+	))
+
+	var collapsed CollapsedRingError
+	require.ErrorAs(t, err, &collapsed)
+	assert.Equal(t, 1, collapsed.First)
+	assert.Equal(t, 3, collapsed.Second)
+	assert.Equal(t, first.Vertices[0], collapsed.Vertex)
 }
 
 // TestTxScaffoldReportsWhatADryRunWouldWrite is its own function because it
