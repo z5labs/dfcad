@@ -168,7 +168,7 @@ jobs:
       # rather than about whether this job got far enough to run it.
       - name: Upload the structured results
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: dfcad-gate-results
           path: gate-results/
