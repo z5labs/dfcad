@@ -1789,3 +1789,236 @@ func ExampleTx_DeprecateClaim() {
 	// notices: 0
 	// live claims of the width: 1
 }
+
+// ExampleTx_AddVertex writes a corner together with where it is. The position
+// is a claim like any other, carrying its evidence, its method, its accuracy
+// and its date, so two surveys of one corner are two claims rather than a
+// number somebody overwrote.
+func ExampleTx_AddVertex() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	accuracy, err := dfcad.ParseAccuracyTerm("independent 0.004 m")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	spec := dfcad.VertexSpec{
+		ID:    "geom:V-07",
+		Label: "Store, north-east corner",
+		Frame: "frame:building",
+		Position: dfcad.ClaimSpec{
+			Predicate: "position",
+			Value:     dfcad.CoordinateValue([]float64{4, 6, 0}, "m"),
+			Source:    "Interior control set IC-01, Acme Surveys",
+			Method:    "method:total-station",
+			Accuracy:  []dfcad.AccuracyTerm{accuracy},
+			Date:      time.Date(2026, 2, 18, 0, 0, 0, 0, time.UTC),
+		},
+	}
+
+	// A geometric node declares neither a kind nor a type, so the rule which
+	// files it matches on the namespace of its id and nothing else.
+	destination, err := spec.Destination(tx.Graph().Registry(), "")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if err := tx.AddVertex(spec, destination.Path); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println(destination.Path, "by rule", destination.Rule)
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	resolution, _ := graph.Claims().Resolve("geom:V-07", "position", graph.Registry())
+	value, _ := resolution.Value()
+	at, _ := value.Coordinate()
+
+	fmt.Println("geom:V-07 is at", at, value.Unit())
+
+	// Output:
+	// entities/geometry.dfc by rule geometry
+	// geom:V-07 is at [4 6 0] m
+}
+
+// ExampleTx_Scaffold writes a room from its corners: the vertices, the edges
+// between them and the closed loop they form, in one change.
+//
+// The list is authored closed — its last corner names its first again — and a
+// corner which lands on a vertex the model already holds reuses that vertex
+// rather than writing a second one at the same point. Here the new store shares
+// the room's south wall, so both of its northern corners and the edge between
+// them are the ones already written: one node named by two loops, which cannot
+// drift apart because there is nothing to drift.
+func ExampleTx_Scaffold() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	accuracy, err := dfcad.ParseAccuracyTerm("independent 0.004 m")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	metres := func(x, y, z float64) dfcad.Corner {
+		return dfcad.Corner{Position: dfcad.CoordinateValue([]float64{x, y, z}, "m")}
+	}
+
+	built, notices, err := tx.Scaffold(dfcad.ScaffoldSpec{
+		Namespace: "geom",
+		Frame:     "frame:building",
+		Label:     "Store boundary",
+		Corners: []dfcad.Corner{
+			metres(0, 3, 0), metres(4, 3, 0), metres(4, 6, 0), metres(0, 6, 0), metres(0, 3, 0),
+		},
+		Predicate: "position",
+		Provenance: dfcad.ClaimSpec{
+			Source:   "Interior control set IC-01, Acme Surveys",
+			Method:   "method:total-station",
+			Accuracy: []dfcad.AccuracyTerm{accuracy},
+			Date:     time.Date(2026, 2, 18, 0, 0, 0, 0, time.UTC),
+		},
+		Tolerance: "boundary-closure",
+		Snap:      true,
+	}, "")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("loop:", built.Loop)
+	fmt.Println("created:", built.Created)
+	fmt.Println("reused:", built.Reused)
+	for _, snap := range built.Snaps {
+		fmt.Printf("corner %d reuses %s, %v %s away\n", snap.Corner, snap.Vertex, snap.Distance, snap.Unit)
+	}
+	fmt.Println("notices:", len(notices))
+
+	// The ring closes, judged against the tolerance the scaffold was given.
+	graph, _ := dfcad.LoadGraph(root)
+
+	positions := dfcad.Positions{}
+	for vertex := range graph.Topology().Vertices() {
+		resolution, _ := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+		if value, ok := resolution.Value(); ok {
+			positions[vertex.ID()] = value
+		}
+	}
+
+	loop, _ := graph.Topology().Loop(built.Loop)
+	assembly, _ := graph.Topology().Assemble(loop, positions, "boundary-closure", graph.Registry())
+
+	fmt.Println("closed:", assembly.Closed())
+
+	// Output:
+	// loop: geom:loop-1
+	// created: [geom:vertex-1 geom:vertex-2]
+	// reused: [geom:E-03]
+	// corner 1 reuses geom:V-04, 0 m away
+	// corner 2 reuses geom:V-03, 0 m away
+	// notices: 0
+	// closed: true
+}
+
+// ExampleTx_Scaffold_unclosed refuses a corner list which does not return to
+// where it started, naming the gap and its size.
+//
+// Closing one silently would leave the tool unable to tell an outline somebody
+// finished from one they stopped typing halfway through, and the wall it
+// invented would appear in no diagnostic anywhere.
+func ExampleTx_Scaffold_unclosed() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	metres := func(x, y, z float64) dfcad.Corner {
+		return dfcad.Corner{Position: dfcad.CoordinateValue([]float64{x, y, z}, "m")}
+	}
+
+	_, _, err = tx.Scaffold(dfcad.ScaffoldSpec{
+		Namespace: "geom",
+		Frame:     "frame:building",
+		Corners: []dfcad.Corner{
+			metres(0, 3, 0), metres(4, 3, 0), metres(4, 6, 0), metres(0, 6, 0),
+		},
+		Predicate: "position",
+		Provenance: dfcad.ClaimSpec{
+			Source: "Interior control set IC-01, Acme Surveys",
+			Method: "method:total-station",
+		},
+		Tolerance: "boundary-closure",
+		Snap:      true,
+	}, "")
+
+	var unclosed dfcad.UnclosedLoopError
+	if errors.As(err, &unclosed) {
+		fmt.Println(err)
+		fmt.Println("the gap is", unclosed.Gap, unclosed.Unit)
+	}
+
+	// Output:
+	// the corner list does not close: corner 4 is 3.0 m from corner 1, and the tolerance boundary-closure permits 0.005 m
+	// the gap is 3 m
+}

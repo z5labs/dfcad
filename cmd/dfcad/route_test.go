@@ -54,6 +54,16 @@ func TestRunRoute(t *testing.T) {
 			expectedFor: routedSubject{ID: "site:C-02", Kind: "Zone", Type: "Campus"},
 		},
 		{
+			name: "routes a geometric node on the namespace of its id, which is all it has",
+			args: []string{"geom:V-05"},
+			expected: routedDestination{
+				Path:   "entities/geometry.dfc",
+				Rule:   "geometry",
+				Exists: true,
+			},
+			expectedFor: routedSubject{ID: "geom:V-05"},
+		},
+		{
 			name: "takes an explicit --file over the rules, naming no rule for it",
 			args: []string{"--kind", "Space", "--type", "MeetingRoom", "--file", "entities/annexe.dfc", "site:S-104"},
 			expected: routedDestination{
@@ -100,9 +110,14 @@ func TestRunRouteRefusesAnInvocationItCannotAnswer(t *testing.T) {
 			expectedInStderr: []string{"site:F-01", "buildings", "campuses", "rooms"},
 		},
 		{
+			// Every rule of the site namespace matches on a kind and a type, and
+			// a geometric node declares neither, so none of them places one.
+			// That is the property being asserted rather than a fact about this
+			// namespace: a rule written with either criterion never files
+			// geometry as a side effect.
 			name:             "refuses a geometric node no rule matches, which has neither axis to match on",
-			args:             []string{"geom:V-01"},
-			expectedInStderr: []string{"geom:V-01", "no kind and no type"},
+			args:             []string{"site:V-01"},
+			expectedInStderr: []string{"site:V-01", "no kind and no type"},
 		},
 		{
 			name:             "refuses an invocation which names no node",

@@ -111,7 +111,7 @@ func TestRunAddClaimWritesAFullClaim(t *testing.T) {
 	result, _, root := recorded(t, append([]string{"add-claim"}, aFullClaim("site:S-102", "area")...)...)
 
 	assert.False(t, result.DryRun)
-	assert.Equal(t, []string{"entities/site.dfc"}, files(t, root, writeResult{Commit: result.Commit}))
+	assert.Equal(t, []string{"entities/site.dfc"}, files(t, root, result.Commit))
 	assert.True(t, result.Rankable)
 	assert.Empty(t, result.Notices, "a rankable claim on a pair nothing states says nothing")
 
