@@ -107,6 +107,12 @@ var commands = []command{
 		run:     runRoute,
 	},
 	{
+		name:    "buildable",
+		summary: "derive what may be built inside a boundary once its setbacks are taken off",
+		usage:   buildableUsage,
+		run:     runBuildable,
+	},
+	{
 		name:    "check",
 		summary: "run every rule the model states and say whether it holds",
 		usage:   checkUsage,

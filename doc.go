@@ -271,6 +271,32 @@
 // area, and reporting it as an overlap would turn every pair of adjacent rooms
 // into a conflict.
 //
+// # The buildable region
+//
+// [Topology.BuildableOf] is the derivation those operations exist for: the area
+// left inside a boundary once the setback claimed on each of its edges has been
+// taken off it, as a [Buildable] carrying the parcel, the region left and the
+// [Setback] applied to each edge.
+//
+// It is derived and never authored, and that matters more here than anywhere
+// else in this package. A buildable region written down as a polygon of its own
+// is a second statement of where a permanent structure may go, and the day a
+// setback claim changes it is the wrong one (see
+// docs/decisions/0009-derived-values-are-never-written-back.md).
+//
+// A setback is a claim on the edge it governs, so different setbacks per edge —
+// front, rear, flank — need nothing from the engine but the predicate they were
+// written under: which edge is which is project vocabulary and never lands here
+// (see docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md). An edge
+// with no live claim under that predicate is a diagnostic naming that edge and
+// no region, because reading the silence as nought would site a building up
+// against a boundary nobody intended it to touch; an edge which really is not
+// set back says so, as a claim with a value of nought. Setbacks which meet in
+// the middle leave a region covering nothing, reported as a warning rather than
+// as a failure, because that is the answer to the question. The [Budget] of the
+// answer is accumulated over the position claims and the setback claims
+// together, so a control point reached through both is counted once.
+//
 // # Derived geometry, and where it is kept
 //
 // Everything above is computed on demand and none of it is stored in the model.

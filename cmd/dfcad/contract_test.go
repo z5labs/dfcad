@@ -57,6 +57,14 @@ var samples = map[string][]string{
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
 	"check":          {},
+	// A derivation is asked in the project's own vocabulary, so the three
+	// predicates and the tolerance are named rather than defaulted.
+	"buildable": {
+		"--setback", "setback",
+		"--position", "position",
+		"--tolerance", "coincident",
+		"site:P-01",
+	},
 	// A review needs a revision to compare against, and the fixture tree is not
 	// a repository. Comparing the model with itself is the invocation which
 	// exercises the contract without one, and it finds nothing, which is what a

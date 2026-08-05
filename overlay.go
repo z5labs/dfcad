@@ -152,8 +152,43 @@ type Region struct {
 	// pieces are what it covers.
 	pieces []Piece
 
+	// segments are the straight runs of the boundary it was read from, in the
+	// order the loops traverse them, each paired with the edge it was written
+	// as.
+	//
+	// They are what a derivation which has to treat one edge differently from
+	// another is computed from — a setback per edge is the case this exists for
+	// — and nothing else in this file reads them.
+	//
+	// A region an operation produced carries none, and that includes
+	// [Region.In]. The boundary of an intersection runs partly along each
+	// operand and partly along where they cross, so attributing any of it to an
+	// edge somebody wrote would be a lie the next operation would act on; and a
+	// region carried into another frame has corners in that frame and edges
+	// whose coordinates were never in it, which is a pair that would drift the
+	// moment either was read on its own. Both are recovered the same way, by
+	// reading the region again with [Topology.RegionOf].
+	segments []boundarySegment
+
 	// budget is the accumulated accuracy of the position claims behind it.
 	budget Budget
+}
+
+// boundarySegment is one straight run of a region's boundary: the edge it was
+// written as and the two corners it runs between.
+//
+// The corners are held as they were read rather than projected into the
+// region's plane, for the reason [Region.figure] projects rather than caching a
+// projection: one projection, done where it is used, cannot fall out of step
+// with the figure it has to line up with.
+type boundarySegment struct {
+	// edge is the edge the run was written as.
+	edge *Edge
+
+	// from and to are the corners it runs between, in the order the loop
+	// traversed them.
+	from Point
+	to   Point
 }
 
 // RegionOf reads the area a semantic node covers out of the loops bounding it.
@@ -260,9 +295,39 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 	region.ready = true
 	region.dimension = rings[0].dimension
 	region.budget = m.result.budget
+	region.segments = segmentsOf(rings)
 	region.pieces = piecesOf(overlay(figure, nil, m.tolerance.Value, coveredAlone), basis)
 
 	return region, m.diags
+}
+
+// segmentsOf is the straight runs of every assembled ring, in the order the
+// traversals ran through them.
+//
+// The run at an index leaves the corner at that index and arrives at the next
+// one, which is how an assembled ring is held: the edge at an index is the one
+// the traversal left that corner by, and the ring closes back onto its first
+// corner. Reading the pair from the same index rather than from the edge's own
+// written direction is what makes a ring traversed backwards come out running
+// the way the ring does.
+func segmentsOf(rings []*outline) []boundarySegment {
+	var segments []boundarySegment
+
+	for _, one := range rings {
+		if len(one.points) != len(one.edges) {
+			continue
+		}
+
+		for i, edge := range one.edges {
+			segments = append(segments, boundarySegment{
+				edge: edge,
+				from: one.points[i],
+				to:   one.points[(i+1)%len(one.points)],
+			})
+		}
+	}
+
+	return segments
 }
 
 // untolerated reports a region whose tolerance cannot be applied to it, which is
@@ -571,6 +636,7 @@ func (r Region) derive() Region {
 	result := r
 	result.derived = true
 	result.pieces = nil
+	result.segments = nil
 
 	result.budget = Budget{}
 	result.budget.Merge(r.budget)

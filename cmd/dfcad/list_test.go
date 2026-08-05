@@ -70,6 +70,11 @@ const listRegistry = `(project
   (geometry area)
   (description "An enclosed room used for meetings."))
 
+(type Parcel
+  (kind Site)
+  (geometry area)
+  (description "A plot of land with a boundary and a planning regime over it."))
+
 (type OfficeBuilding
   (kind Building)
   (geometry solid)
@@ -90,6 +95,11 @@ const listRegistry = `(project
   (dimension 3)
   (description "The location of a vertex in its frame."))
 
+(predicate setback
+  (unit m)
+  (shape scalar)
+  (description "How far back from the boundary edge it is written on a structure has to sit."))
+
 (tolerance coincident
   (value 0.005 m)
   (description "How far apart two corners may be and still be one point."))
@@ -105,6 +115,8 @@ const listRegistry = `(project
   (namespace geom)
   (file "entities/geometry.dfc")
   (description "Vertices, edges and loops, which declare neither a kind nor a type."))
+
+(route parcels (kind Site) (type Parcel) (file "entities/parcels.dfc"))
 
 (route rooms
   (kind Space)
@@ -230,6 +242,100 @@ const listGeometry = `(vertex geom:V-01
 (edge geom:E-02 (label "Room B, east wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
 
 (edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+; The plot the buildable region is derived over. It says where its corners are
+; and how far back a building sits from each of its edges, and nowhere does it say
+; what may be built on it: that is read out of these every time it is asked for.
+(vertex geom:V-11
+  (label "Plot one, south-west corner")
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+
+(vertex geom:V-12
+  (label "Plot one, south-east corner")
+  (frame frame:building)
+  (position
+    (value (40.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+
+(vertex geom:V-13
+  (label "Plot one, north-east corner")
+  (frame frame:building)
+  (position
+    (value (40.0 12.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+
+(vertex geom:V-14
+  (label "Plot one, north-west corner")
+  (frame frame:building)
+  (position
+    (value (20.0 12.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+
+(edge geom:E-11 (label "Plot one, road frontage") (frame frame:building) (vertices geom:V-11 geom:V-12)
+  (setback
+    (value 5.0 m)
+    (source "Planning consent PC-2026-014, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-12 (label "Plot one, east flank") (frame frame:building) (vertices geom:V-12 geom:V-13)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-014, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-13 (label "Plot one, rear") (frame frame:building) (vertices geom:V-13 geom:V-14)
+  (setback
+    (value 3.0 m)
+    (source "Planning consent PC-2026-014, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-14 (label "Plot one, west flank") (frame frame:building) (vertices geom:V-14 geom:V-11)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-014, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(loop geom:L-11
+  (label "Plot one boundary")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+`
+
+// listParcels is the plot the buildable derivation is run over.
+//
+// It is a file of its own because the registry routes a Site to one: a node
+// written outside the file its rule names is a model somebody has to reconcile
+// by hand later.
+const listParcels = `(node site:P-01
+  (label "Plot one")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-11))
 `
 
 // listBatch is the operation file every walk over the commands applies.
@@ -277,6 +383,7 @@ func model() map[string]string {
 		"registry.dfc":          listRegistry,
 		"entities/site.dfc":     listModel,
 		"entities/geometry.dfc": listGeometry,
+		"entities/parcels.dfc":  listParcels,
 		"batch.json":            listBatch,
 	}
 }
@@ -338,6 +445,7 @@ func TestRunListTypes(t *testing.T) {
 				"Element+Interface line+surface+absent Fitting 0 instances",
 				"Space area MeetingRoom 3 instances",
 				"Building solid OfficeBuilding 1 instance",
+				"Site area Parcel 1 instance",
 			},
 		},
 		{
@@ -383,7 +491,7 @@ func TestRunListTypesOrdersByName(t *testing.T) {
 		ordered = append(ordered, declared.Name)
 	}
 
-	assert.Equal(t, []string{"Campus", "Fitting", "MeetingRoom", "OfficeBuilding"}, ordered)
+	assert.Equal(t, []string{"Campus", "Fitting", "MeetingRoom", "OfficeBuilding", "Parcel"}, ordered)
 	assert.True(t, sortedStrings(ordered))
 }
 
@@ -406,7 +514,7 @@ func TestRunListInstances(t *testing.T) {
 		{
 			name:        "reports every instance when no type is named",
 			args:        []string{"list-instances"},
-			expectedIDs: []string{"site:B-01", "site:C-01", "site:S-101", "site:S-102", "site:S-103"},
+			expectedIDs: []string{"site:B-01", "site:C-01", "site:P-01", "site:S-101", "site:S-102", "site:S-103"},
 		},
 		{
 			name:        "reports the instances of one type",
@@ -426,7 +534,7 @@ func TestRunListInstances(t *testing.T) {
 		{
 			name:        "filters by frame",
 			args:        []string{"list-instances", "--frame", "frame:building"},
-			expectedIDs: []string{"site:S-101", "site:S-102"},
+			expectedIDs: []string{"site:P-01", "site:S-101", "site:S-102"},
 		},
 		{
 			name:        "combines a type with a frame",
@@ -509,7 +617,7 @@ func TestRunListInstancesOnAnEmptyModel(t *testing.T) {
 // name nothing instantiates are different answers, and stdout stays empty
 // because the run produced no result.
 func TestRunListRejectsWhatTheModelDoesNotDeclare(t *testing.T) {
-	declaredTypes := []string{"Campus", "Fitting", "MeetingRoom", "OfficeBuilding"}
+	declaredTypes := []string{"Campus", "Fitting", "MeetingRoom", "OfficeBuilding", "Parcel"}
 	declaredFrames := []string{"frame:building", "frame:site-grid"}
 
 	testCases := []struct {
@@ -790,13 +898,13 @@ func TestRunListHumanOutputNeverChangesStdout(t *testing.T) {
 	// The summary is behind the format flag; the detail behind it is behind the
 	// verbosity flag, because the detail is already the result on stdout.
 	assert.Empty(t, machineReport)
-	assert.Contains(t, humanReport, "4 types, 5 instances")
+	assert.Contains(t, humanReport, "5 types, 6 instances")
 	assert.NotContains(t, humanReport, "MeetingRoom: kind Space")
 	assert.Contains(t, bothReport, "MeetingRoom: kind Space, geometry area, 3 instances")
 	assert.Contains(t, bothReport, "Fitting: kind Element, Interface, geometry line, surface, none at all, 0 instances")
 
 	instances, instancesReport := listing(t, "list-instances", "--format", formatHuman, "-v")
-	assert.Contains(t, instancesReport, "5 instances of 3 types")
+	assert.Contains(t, instancesReport, "6 instances of 4 types")
 	assert.Contains(t, instancesReport, "site:S-101: Meeting Room A, Space MeetingRoom")
 	assert.Contains(t, instancesReport, "site:S-103: (no label), Space MeetingRoom")
 	assert.NotEmpty(t, listed[listInstancesResult](t, instances).Instances)
