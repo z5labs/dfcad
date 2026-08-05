@@ -865,7 +865,7 @@ func (o *AddEdgeOperation) check() error {
 }
 
 func (o *AddEdgeOperation) apply(tx *Tx, _ *Applied) error {
-	ends, err := identifyAll([]string{o.ID, o.Frame, o.Start, o.End})
+	written, err := identifyAll([]string{o.ID, o.Frame, o.Start, o.End})
 	if err != nil {
 		return err
 	}
@@ -876,11 +876,11 @@ func (o *AddEdgeOperation) apply(tx *Tx, _ *Applied) error {
 	}
 
 	spec := EdgeSpec{
-		ID:       ends[0],
+		ID:       written[0],
 		Label:    o.Label,
-		Frame:    ends[1],
-		Start:    ends[2],
-		End:      ends[3],
+		Frame:    written[1],
+		Start:    written[2],
+		End:      written[3],
 		BackedBy: backing,
 	}
 
