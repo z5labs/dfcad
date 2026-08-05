@@ -1,0 +1,46 @@
+; The vocabulary a model whose things carry assertions is judged against.
+;
+; Nothing here declares an assertion. An assertion is written on the thing it
+; constrains, and the only thing this file lends it is the vocabulary its
+; parameters name: the tolerance a closure is measured against and the predicate
+; a required claim is written under.
+(project
+  (label "Assertion fixture")
+  (globalid-namespace "https://example.org/models/assert"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "The clear width between two faces."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type OccupancyZone
+  (kind Zone)
+  (geometry absent)
+  (description "A grouping occupancy is counted over, with no shape of its own."))
+
+(tolerance vertex-coincidence
+  (value 0.001 m)
+  (description "How close two points have to be to be the same point."))

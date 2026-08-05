@@ -1,0 +1,21 @@
+; A check which applies to one kind, written on a node of that kind and on a
+; node of another.
+;
+; The kind is the node's own rather than its type's. A type may permit more than
+; one kind, so what decides whether a check has anything to look at is what this
+; node says it is.
+(node site:W-01
+  (label "Partition, room B to corridor")
+  (kind Element)
+  (type Partition)
+  (geometry surface)
+  (frame frame:building)
+  (assert element-is-backed))
+
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert element-is-backed))

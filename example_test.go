@@ -443,6 +443,66 @@ func ExampleGraph_Invariants() {
 	// bound to the corridor: 0
 }
 
+func ExampleGraph_Assertions() {
+	graph, _ := dfcad.LoadGraph("testdata/assert/valid")
+
+	// An assertion is written on the thing it constrains, so retrieving the
+	// thing retrieves what has to hold of it. The claims say what the room
+	// measures; these say what it may not stop measuring.
+	room, _ := graph.Node("site:S-101")
+	for _, assertion := range room.Assertions() {
+		fmt.Println(assertion)
+	}
+
+	// Bound against the check registry, each one carries what the check it
+	// names constrains — which is readable without running anything, because an
+	// assertion is a name and its parameters and nothing else.
+	for _, binding := range graph.Assertions(room) {
+		fmt.Printf("%s: %s\n", binding.Check.Name, binding.Check.Description)
+	}
+
+	// Output:
+	// within-resolves
+	// required-claim (predicate width)
+	// boundary-loops-close (tolerance boundary-closure)
+	// within-resolves: The node the subject is written within is one the model holds, and the containment hierarchy permits it as a parent of the subject's kind.
+	// required-claim: The subject carries a claim under the named predicate which is still asserted, so the predicate has a resolvable value on it.
+	// boundary-loops-close: Every loop bounding the subject closes: traversing its edges returns to the vertex it started from, within the named tolerance.
+}
+
+func ExampleResolveAssertions() {
+	const path = "entities/level-1.dfc"
+
+	source := `(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert edge-endpoints-differ))
+`
+
+	dir, _ := os.MkdirTemp("", "dfcad")
+	defer os.RemoveAll(dir)
+
+	registry, _ := os.ReadFile("testdata/assert/valid/registry.dfc")
+	_ = os.WriteFile(filepath.Join(dir, "registry.dfc"), registry, 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "model.dfc"), []byte(source), 0o644)
+
+	// A check declares what it can examine, and a check written on something it
+	// cannot is refused when the model loads. It is not a rule which happens
+	// not to fire: a check with nothing on its subject to look at passes on
+	// every run forever.
+	_, diags := dfcad.LoadGraph(dir)
+	for _, diagnostic := range diags {
+		fmt.Println(diagnostic.Message)
+		fmt.Println("hint:", diagnostic.Hint)
+	}
+
+	// Output:
+	// expected an assertion naming a check which applies to a node, found edge-endpoints-differ, which applies to edge
+	// hint: an assertion is written on the thing the check examines, so edge-endpoints-differ is written on edge instead
+}
+
 func ExampleValidateAssertion() {
 	const path = "entities/level-1.dfc"
 

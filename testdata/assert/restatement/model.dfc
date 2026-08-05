@@ -1,0 +1,68 @@
+; One assertion which records rather than constrains, and four which look like
+; it and do not.
+;
+; The room at the top claims a width of 4.2 m and then asserts that its width is
+; 4.2 m. The claim is where that value belongs, with the source, the method and
+; the date it came from; the assertion is a second answer to the same question,
+; and it goes on saying 4.2 the day a better survey supersedes the claim.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (width
+    (id survey:W-0001)
+    (value 4.2 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06"))
+  (assert required-claim (predicate width))
+  (assert claimed-value-is (predicate width) (is 4.2)))
+
+; A bound is a constraint on the same predicate and is not a restatement. The
+; check declares `minimum` as a bound rather than as a value of the subject's,
+; which is the whole of the difference: 0.9 is not what this room measures.
+(node site:S-102
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (width
+    (id survey:W-0002)
+    (value 3.6 m)
+    (source "As-built check AB-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-11"))
+  (assert clearance-at-least (predicate width) (minimum 0.9)))
+
+; Nothing is claimed under width here, so there is no first statement for the
+; assertion to be the second of. It is a constraint on a value which has not
+; been measured yet.
+(node site:S-103
+  (label "Meeting Room D")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert claimed-value-is (predicate width) (is 4.2)))
+
+; A value under a different predicate of the same subject. Two predicates are
+; two quantities, and the rule is about one.
+(node site:S-104
+  (label "Meeting Room E")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (width
+    (id survey:W-0003)
+    (value 4.0 m)
+    (source "As-built check AB-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-14"))
+  (assert claimed-value-is (predicate clearance) (is 0.9)))

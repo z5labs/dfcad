@@ -807,7 +807,7 @@ func (l *registryLoader) resolve() {
 	// anything has run it
 	// ([0011](docs/decisions/0011-assertions-are-named-parameterised-checks.md)).
 	for _, invariant := range l.invariants {
-		l.add(validateAssertion(invariant.form, l.registry)...)
+		l.add(validateAssertion(invariant.form, l.registry, registeredChecks)...)
 		l.applicable(invariant)
 	}
 

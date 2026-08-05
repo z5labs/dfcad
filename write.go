@@ -462,7 +462,7 @@ func (tx *Tx) read() []Diagnostic {
 		parsed = append(parsed, source{path: path, file: file})
 	}
 
-	graph, diags := loadGraph(tx.root, parsed, diags)
+	graph, diags := loadGraph(tx.root, parsed, diags, registeredChecks)
 	tx.graph = graph
 
 	return diags
@@ -848,7 +848,7 @@ func (tx *Tx) prepare() ([]*pending, []Diagnostic) {
 		parsed = append(parsed, source{path: file.path, file: read})
 	}
 
-	_, diags = loadGraph(tx.root, parsed, diags)
+	_, diags = loadGraph(tx.root, parsed, diags, registeredChecks)
 
 	return out, diags
 }

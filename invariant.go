@@ -100,11 +100,15 @@ func (a Argument) clone() Argument {
 	return a
 }
 
-// arguments reads the parameters written on one invariant.
-func arguments(invariant Invariant) []Argument {
-	out := make([]Argument, 0, len(invariant.Parameters))
+// arguments reads the parameters written on one invariant or one assertion.
+//
+// The two are one shape — specification section 7.3 says an invariant is an
+// assert written on a type — so they are read once here rather than twice by
+// the two layers which carry them.
+func arguments(parameters []*Node) []Argument {
+	out := make([]Argument, 0, len(parameters))
 
-	for _, parameter := range invariant.Parameters {
+	for _, parameter := range parameters {
 		name, ok := formTag(parameter)
 		if !ok {
 			// Something written where a parameter belongs which is not a form
@@ -187,17 +191,32 @@ func (b InvariantBinding) String() string {
 // not only about the node — whether the thing a node is written within resolves,
 // whether a claim was ever made under a predicate — and a check which held its
 // own copy of any of that would answer from a model which had moved on.
+// A subject is an [Entity] rather than a [SemanticNode] because an assertion is
+// written on any of the four forms and a check declares which of them it
+// examines: `edge-endpoints-differ` is run against an edge, and a subject shaped
+// for the semantic family alone would have nothing to hand it.
 type CheckSubject struct {
 	graph     *Graph
-	node      *SemanticNode
+	subject   Entity
 	arguments []Argument
 }
 
 // Graph returns the model the subject belongs to.
 func (s CheckSubject) Graph() *Graph { return s.graph }
 
-// Node returns the node under check.
-func (s CheckSubject) Node() *SemanticNode { return s.node }
+// Subject returns the thing under check, whichever family holds it.
+func (s CheckSubject) Subject() Entity { return s.subject }
+
+// Node returns the node under check, and is nil where the subject belongs to
+// the geometric family.
+//
+// A check which declares [SubjectNode] and nothing else is never run against
+// anything else, so it may read this without asking; one which declares more
+// than one form asks [CheckSubject.Subject] and switches on what came back.
+func (s CheckSubject) Node() *SemanticNode {
+	node, _ := s.subject.(*SemanticNode)
+	return node
+}
 
 // Arguments returns every parameter the invariant supplied, in the order they
 // were written.
@@ -271,23 +290,30 @@ type Runner interface {
 	Run(subject CheckSubject) []Failure
 }
 
-// Violation is one instance failing one invariant of its type.
+// Violation is one thing failing one check written about it: an invariant of
+// its type, or an assertion written on it.
 //
 // Every field a reader needs to act on it is here rather than folded into the
 // message: which thing failed, which rule, the parameters that rule was
-// evaluated with, and the registry file and line which declared it — because a
-// rule stated once and applied to a hundred and fifty instances is one whose
-// failure has to lead back to the one place it is written.
+// evaluated with, and the file and line which declared it — because a rule
+// stated once and applied to a hundred and fifty instances is one whose failure
+// has to lead back to the one place it is written.
+//
+// The two kinds of rule share the shape because a reader acts on them the same
+// way, and are told apart by [Violation.Type]: an invariant carries the type
+// which declared it, and an assertion carries none, because it is declared on
+// the thing which failed and [Violation.Declared] already points there.
 //
 // [Violation.Diagnostic] is the human rendering, through the same renderer
 // every diagnostic uses. The machine rendering is this struct, and neither is
 // produced by parsing the other.
 type Violation struct {
-	// Instance is the id of the node which failed.
+	// Instance is the id of the thing which failed.
 	Instance ID `json:"instance"`
 
-	// Type is the name of its type, which is what declared the invariant.
-	Type string `json:"type"`
+	// Type is the name of its type, which is what declared the invariant. It is
+	// empty for an assertion, which is declared on the thing itself.
+	Type string `json:"type,omitempty"`
 
 	// Check is the check name the invariant named.
 	Check string `json:"check"`
@@ -296,8 +322,9 @@ type Violation struct {
 	// it was written.
 	Arguments []string `json:"arguments,omitempty"`
 
-	// Declared is where the invariant was written, which is a position in a
-	// registry file rather than in the file the instance is in.
+	// Declared is where the rule was written. For an invariant that is a
+	// position in a registry file rather than in the file the instance is in;
+	// for an assertion it is the assertion, on the thing which failed.
 	Declared Span `json:"declared"`
 
 	// Subject is where what failed was written: the node, or the part of it the
@@ -324,23 +351,37 @@ func (v Violation) Written() string {
 
 // Diagnostic renders the violation as a diagnostic, pointing at what failed and
 // noting where the rule it failed was declared.
+//
+// An invariant reads as the rule of a type, because that is where a reader has
+// to go to change it and because the one line is stated once for every instance
+// of it. An assertion reads as a rule of the thing itself, and the related
+// location is still written: the assertion may be lines away from the part of
+// the subject the check pointed at.
 func (v Violation) Diagnostic() Diagnostic {
+	message := fmt.Sprintf(
+		"expected %s to satisfy the assertion %s written on it: %s",
+		v.Instance, v.Written(), v.Message,
+	)
+	declared := "the assertion is written here"
+
+	if v.Type != "" {
+		message = fmt.Sprintf(
+			"expected %s to satisfy the invariant %s of its type %s: %s",
+			v.Instance, v.Written(), v.Type, v.Message,
+		)
+		declared = fmt.Sprintf("the type %s declares the invariant here, for every instance of it", v.Type)
+	}
+
 	related := make([]RelatedLocation, 0, len(v.Related)+1)
 	related = append(related, v.Related...)
-	related = append(related, RelatedLocation{
-		Span:    v.Declared,
-		Message: fmt.Sprintf("the type %s declares the invariant here, for every instance of it", v.Type),
-	})
+	related = append(related, RelatedLocation{Span: v.Declared, Message: declared})
 
 	return Diagnostic{
 		Severity: SeverityError,
 		Span:     v.Subject,
-		Message: fmt.Sprintf(
-			"expected %s to satisfy the invariant %s of its type %s: %s",
-			v.Instance, v.Written(), v.Type, v.Message,
-		),
-		Hint:    v.Hint,
-		Related: related,
+		Message:  message,
+		Hint:     v.Hint,
+		Related:  related,
 	}
 }
 
@@ -408,7 +449,7 @@ func (g *Graph) invariants(node *SemanticNode, set *checkSet) []InvariantBinding
 			Type:      declaredType.Name,
 			Check:     check,
 			Declared:  invariant,
-			Arguments: arguments(invariant),
+			Arguments: arguments(invariant.Parameters),
 			runner:    set.runner(invariant.Check),
 		})
 	}
@@ -466,7 +507,7 @@ func (g *Graph) checkInvariants(set *checkSet) []Violation {
 			continue
 		}
 
-		subject := CheckSubject{graph: g, node: binding.Instance, arguments: binding.Arguments}
+		subject := CheckSubject{graph: g, subject: binding.Instance, arguments: binding.Arguments}
 		for _, failure := range binding.runner.Run(subject) {
 			out = append(out, binding.violation(failure))
 		}

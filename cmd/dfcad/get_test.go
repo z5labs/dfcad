@@ -151,7 +151,9 @@ const getModel = `(node site:Z-01
     (value "Booked through the front desk.")
     (source "Facilities handbook, 2026 edition")
     (method method:assumed)
-    (date "2026-02-01")))
+    (date "2026-02-01"))
+  (assert within-resolves)
+  (assert required-claim (predicate area)))
 
 (node site:E-01
   (label "Partition between the room and the corridor")
@@ -268,12 +270,13 @@ func retrieved(t *testing.T, args ...string) getEntity {
 	return result.Entity
 }
 
-// axes is one entity without the two things asserted on elsewhere: where it was
-// written, which moves whenever the fixture does, and the claims, which are a
-// table of their own.
+// axes is one entity without the three things asserted on elsewhere: where it
+// was written, which moves whenever the fixture does, and the claims and the
+// assertions, which are tables of their own.
 func axes(entity getEntity) getEntity {
 	entity.Span = dfcad.Span{}
 	entity.Claims = nil
+	entity.Assertions = nil
 	return entity
 }
 
@@ -413,6 +416,45 @@ func TestRunGetReportsTheClaimsWrittenOnIt(t *testing.T) {
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
 			assert.Equal(t, testCase.expected, predicates(retrieved(t, testCase.args...).Claims))
+		})
+	}
+}
+
+// TestRunGetReportsWhatConstrainsIt is its own function because it is about the
+// rules rather than about the evidence: retrieving a thing says what is known
+// about it and what has to hold of it, and a caller which had to make a second
+// call for the second half would read one and act on it.
+func TestRunGetReportsWhatConstrainsIt(t *testing.T) {
+	testCases := []struct {
+		name     string
+		id       string
+		expected []assertionEntry
+	}{
+		{
+			name: "reports the assertions written on it, in the order they were written",
+			id:   "site:S-101",
+			expected: []assertionEntry{
+				{Check: "within-resolves"},
+				{Check: "required-claim", Parameters: []string{"(predicate area)"}},
+			},
+		},
+		{
+			name:     "reports a thing nothing constrains as no assertions at all",
+			id:       "site:Z-01",
+			expected: []assertionEntry{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := retrieved(t, testCase.id).Assertions
+
+			for i := range written {
+				require.NotZero(t, written[i].Span.Start.Line, "an assertion says where it was written")
+				written[i].Span = dfcad.Span{}
+			}
+
+			assert.Equal(t, testCase.expected, written)
 		})
 	}
 }

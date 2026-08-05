@@ -1,0 +1,20 @@
+; Two assertions naming checks which cannot examine the thing they are written
+; on.
+;
+; Neither is a rule which happens not to fire. A check which cannot look at its
+; subject passes on every run forever, so the mistake is that the rule was never
+; checked — and the only moment that is visible is the one where the check and
+; the thing are both in front of the reader.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert edge-endpoints-differ))
+
+(node site:Z-01
+  (label "Level 1 occupancy")
+  (kind Zone)
+  (type OccupancyZone)
+  (assert boundary-loops-close (tolerance boundary-closure)))

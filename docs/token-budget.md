@@ -92,9 +92,9 @@ Answering: how big is Meeting Room B on level 1, starting from nothing.
 |------|-------|-------|
 | `dfcad list-types` | 376 | 355 |
 | `dfcad list-instances MeetingRoom` | 183 | 182 |
-| `dfcad get site:S-111` | 388 | 378 |
+| `dfcad get site:S-111` | 392 | 382 |
 | `dfcad resolve site:S-111 area` | 196 | 192 |
-| **the whole path** | **1143** | **1107** |
+| **the whole path** | **1147** | **1111** |
 
 Target 500 tokens: **missed**. Regression ceiling 1200 tokens.
 
@@ -108,7 +108,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | Field | Answer | `o200k_base` without it | `cl100k_base` without it |
 |-------|--------|--------|--------|
 | the descriptions in `list-types` | `dfcad list-types` | 285, down from 376 | 264, down from 355 |
-| the spans in `get` | `dfcad get site:S-111` | 207, down from 393 | 202, down from 379 |
+| the spans in `get` | `dfcad get site:S-111` | 211, down from 397 | 206, down from 383 |
 | the spans in `resolve` | `dfcad resolve site:S-111 area` | 137, down from 199 | 134, down from 193 |
 | the whole claim beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 199 | 49, down from 193 |
 
@@ -124,7 +124,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | Path | Against the whole model | Against the one file |
 |------|-------------------------|----------------------|
 | discovery | 36.9×, 38.6× | 6.6×, 6.9× |
-| a dimensional question from a cold start | 18.0×, 18.7× | 3.2×, 3.3× |
+| a dimensional question from a cold start | 18.0×, 18.6× | 3.2×, 3.3× |
 
 One figure per encoding, in the order of the table above.
 

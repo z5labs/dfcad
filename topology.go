@@ -62,6 +62,16 @@ type geometric struct {
 	// be read from, which is a diagnostic of its own.
 	frame ID
 
+	// assertions are the checks written on this node, in the order they were
+	// written and as they were written.
+	//
+	// A geometric node carries them for the same reason a semantic one does, and
+	// they mean the same thing here: what must hold of this corner, this
+	// connection, this cycle. Which of them may be written on which form is the
+	// check's own declaration ([CheckDeclaration.Forms]) rather than anything
+	// this family says.
+	assertions []Assertion
+
 	// span is where the form was written.
 	span Span
 }
@@ -98,6 +108,11 @@ func (v *Vertex) Label() string { return v.label }
 // vertex which wrote none is structurally wrong rather than a vertex with an
 // axis absent.
 func (v *Vertex) Frame() ID { return v.frame }
+
+// Assertions returns the assertions written on the vertex, in the order they
+// were written. [SemanticNode.Assertions] says what they are and what they are
+// not.
+func (v *Vertex) Assertions() []Assertion { return cloneAssertions(v.assertions) }
 
 // Span returns where the vertex form was written, which is what a diagnostic
 // about the vertex as a whole points at.
@@ -189,6 +204,10 @@ func (e *Edge) Vertices() (start, end ID) { return e.start, e.end }
 // error — is held once.
 func (e *Edge) BackedBy() []ID { return slices.Clone(e.backing) }
 
+// Assertions returns the assertions written on the edge, in the order they were
+// written. [SemanticNode.Assertions] says what they are and what they are not.
+func (e *Edge) Assertions() []Assertion { return cloneAssertions(e.assertions) }
+
 // Span returns where the edge form was written.
 func (e *Edge) Span() Span { return e.span }
 
@@ -242,6 +261,10 @@ func (l *Loop) Frame() ID { return l.frame }
 // An id which was not one is not here, because there was no id to keep; that it
 // was written is a diagnostic carrying what was there.
 func (l *Loop) Edges() []ID { return slices.Clone(l.edges) }
+
+// Assertions returns the assertions written on the loop, in the order they were
+// written. [SemanticNode.Assertions] says what they are and what they are not.
+func (l *Loop) Assertions() []Assertion { return cloneAssertions(l.assertions) }
 
 // Span returns where the loop form was written.
 func (l *Loop) Span() Span { return l.span }
@@ -461,14 +484,17 @@ func (t *Topology) definitionOf(id ID) (definition, bool) {
 // Diagnostics come back in the order the pass found them. Collecting them into
 // a [Diagnostics] is what puts them in reporting order.
 func LoadTopology(root string, registry *Registry) (*Topology, []Diagnostic) {
-	return loadTopology(readTree(root), registry)
+	return loadTopology(readTree(root), registry, registeredChecks)
 }
 
-// loadTopology is [LoadTopology] over a tree somebody else read, which is what
-// lets [LoadGraph] read the files once and interpret them four times.
-func loadTopology(sources iter.Seq[source], registry *Registry) (*Topology, []Diagnostic) {
+// loadTopology is [LoadTopology] over a tree somebody else read and against a
+// given set of checks, which is what lets [LoadGraph] read the files once and
+// interpret them four times, and what lets the engine's closed check registry
+// and a set assembled for a test be the same thing exercised the same way.
+func loadTopology(sources iter.Seq[source], registry *Registry, checks *checkSet) (*Topology, []Diagnostic) {
 	l := &topologyLoader{
 		registry: registry,
+		checks:   checks,
 		topology: &Topology{
 			vertexByID: make(map[ID]*Vertex),
 			edgeByID:   make(map[ID]*Edge),
@@ -490,6 +516,10 @@ type topologyLoader struct {
 
 	// registry is what the nodes are judged against. It is not written to.
 	registry *Registry
+
+	// checks is the check registry the assertions the nodes carry are validated
+	// against. It is not written to.
+	checks *checkSet
 
 	// topology is what has been read so far, in the order it was reached. What
 	// each id names and where it was written is kept there rather than here,
@@ -622,6 +652,8 @@ func (l *topologyLoader) read(form *Node) (geometric, Span) {
 	if arg, ok := argumentOf(form, frameTag); ok {
 		g.frame, _ = l.id(arg, "a frame id")
 	}
+
+	g.assertions = l.assertions(form, l.registry, l.checks)
 
 	return g, at
 }
