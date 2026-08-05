@@ -532,6 +532,75 @@ func TestRunListTypes(t *testing.T) {
 	}
 }
 
+// TestRunListTypesDescribesOnlyWhenAsked is its own function because it is
+// about what the first call of every cold start does not carry.
+//
+// The descriptions are prose about the vocabulary rather than about this model,
+// and they grow with the registry rather than with the model, so whoever is
+// only deciding which type to ask about next was paying for them on every run.
+// See docs/decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md.
+func TestRunListTypesDescribesOnlyWhenAsked(t *testing.T) {
+	t.Run("leaves the registry's prose out", func(t *testing.T) {
+		t.Chdir(tree(t, model()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run([]string{"list-types"}, &stdout, &stderr), stderr.String())
+
+		result := listed[listTypesResult](t, stdout.String())
+		for _, declared := range result.Types {
+			assert.Empty(t, declared.Description, declared.Name)
+		}
+
+		// The axes are what the call is for, and they are all still there.
+		assert.NotContains(t, stdout.String(), "An enclosed room used for meetings")
+		assert.Contains(t, stdout.String(), "MeetingRoom")
+	})
+
+	t.Run("reports it when it is asked for", func(t *testing.T) {
+		t.Chdir(tree(t, model()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run([]string{"list-types", "--describe"}, &stdout, &stderr), stderr.String())
+
+		result := listed[listTypesResult](t, stdout.String())
+
+		described := make(map[string]string, len(result.Types))
+		for _, declared := range result.Types {
+			described[declared.Name] = declared.Description
+		}
+
+		assert.Equal(t, "An enclosed room used for meetings.", described["MeetingRoom"])
+		assert.Equal(t, "A building let as offices.", described["OfficeBuilding"])
+	})
+}
+
+// TestRunListTypesWritesAbsentOnlyWhereItHolds is its own function because it
+// is about a field which is written on a minority of entries: a false on every
+// type which requires a geometry is a word per type saying what the type before
+// it also said.
+func TestRunListTypesWritesAbsentOnlyWhereItHolds(t *testing.T) {
+	t.Chdir(tree(t, model()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-types"}, &stdout, &stderr), stderr.String())
+
+	result := listed[listTypesResult](t, stdout.String())
+
+	permits := make(map[string]bool, len(result.Types))
+	for _, declared := range result.Types {
+		permits[declared.Name] = declared.Absent
+	}
+
+	// A zone administered together has no shape, and a fitting may or may not;
+	// a meeting room must have one.
+	assert.True(t, permits["Campus"])
+	assert.True(t, permits["Fitting"])
+	assert.False(t, permits["MeetingRoom"])
+
+	assert.Equal(t, 2, strings.Count(stdout.String(), `"absent"`),
+		"absent is written on the two types which permit it and on no other")
+}
+
 // TestRunListTypesOrdersByName is its own function because it asserts about the
 // order of the whole list rather than about what one entry says.
 func TestRunListTypesOrdersByName(t *testing.T) {

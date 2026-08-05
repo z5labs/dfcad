@@ -42,10 +42,25 @@ the whole model read as text, and, as the harder case, the single file the answe
 to be written in.
 
 **The question asked.** How big is Meeting Room B on level 1, from an agent that has read
-nothing: `list-types`, then `list-instances MeetingRoom`, then `get`, then `resolve`.
-`MeetingRoom` because it is a middling type in this model — six instances against
-`Office`'s sixteen and `OfficeBuilding`'s one — and measuring the smallest would report
-the arrangement at its best.
+nothing: `list-types`, then `list-instances MeetingRoom`, then `resolve`. `MeetingRoom`
+because it is a middling type in this model — six instances against `Office`'s sixteen and
+`OfficeBuilding`'s one — and measuring the smallest would report the arrangement at its
+best.
+
+**Four paths, not two.** The first measurement, for
+[#38](https://github.com/z5labs/dfcad/issues/38), ran `get` between the listing and the
+resolution and called the four calls together "discovery plus a targeted fetch". `get` is
+not a targeted fetch. It retrieves a thing entire — every claim written on it, every
+reference it made, and where each of those was written — which is a different question
+from how big the room is, and it is the one call on the path whose cost grows with how
+much has been said about the subject. So the gate is read off the three calls that answer
+the question, and the four-call path is still measured beside them, unchanged, so that
+#38's figure stays comparable.
+
+The other two paths are there because the costs on this path scale with different things.
+`list-types` grows with the registry and is paid once per cold start; `list-instances` and
+`resolve` grow with neither and are paid per question. A record that only ever reported
+their sum would hide which of the two a larger vocabulary makes worse.
 
 <!-- begin measurements -->
 
@@ -78,11 +93,11 @@ Answering: what kinds of thing are in this model, and which meeting rooms exist.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-types` | 376 | 355 |
+| `dfcad list-types` | 245 | 224 |
 | `dfcad list-instances MeetingRoom` | 183 | 182 |
-| **the whole path** | **559** | **537** |
+| **the whole path** | **428** | **406** |
 
-Target 500 tokens: **missed**. Regression ceiling 600 tokens.
+Target 500 tokens: **met**. Regression ceiling 460 tokens.
 
 ## The cost of a dimensional question from a cold start
 
@@ -90,13 +105,38 @@ Answering: how big is Meeting Room B on level 1, starting from nothing.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-types` | 376 | 355 |
+| `dfcad list-types` | 245 | 224 |
 | `dfcad list-instances MeetingRoom` | 183 | 182 |
-| `dfcad get site:S-111` | 392 | 382 |
-| `dfcad resolve site:S-111 area` | 196 | 192 |
-| **the whole path** | **1147** | **1111** |
+| `dfcad resolve site:S-111 area` | 71 | 68 |
+| **the whole path** | **499** | **474** |
 
-Target 500 tokens: **missed**. Regression ceiling 1200 tokens.
+Target 500 tokens: **met**. Regression ceiling 530 tokens.
+
+## The cost of the same question once the vocabulary is known
+
+Answering: how big is Meeting Room B on level 1, for an agent which has already read list-types.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad list-instances MeetingRoom` | 183 | 182 |
+| `dfcad resolve site:S-111 area` | 71 | 68 |
+| **the whole path** | **254** | **250** |
+
+Target 300 tokens: **met**. Regression ceiling 280 tokens.
+
+## The cost of the same question by way of a whole retrieval
+
+Answering: how big is Meeting Room B on level 1, retrieving the thing itself on the way.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad list-types` | 245 | 224 |
+| `dfcad list-instances MeetingRoom` | 183 | 182 |
+| `dfcad get site:S-111` | 275 | 269 |
+| `dfcad resolve site:S-111 area` | 71 | 68 |
+| **the whole path** | **774** | **743** |
+
+No target: nothing asked this path to cost anything in particular. Regression ceiling 820 tokens.
 
 ## Where the tokens go
 
@@ -107,10 +147,10 @@ from" figure differs by a token or two from the same call in the tables above.
 
 | Field | Answer | `o200k_base` without it | `cl100k_base` without it |
 |-------|--------|--------|--------|
-| the descriptions in `list-types` | `dfcad list-types` | 285, down from 376 | 264, down from 355 |
-| the spans in `get` | `dfcad get site:S-111` | 211, down from 397 | 206, down from 383 |
-| the spans in `resolve` | `dfcad resolve site:S-111 area` | 137, down from 199 | 134, down from 193 |
-| the whole claim beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 199 | 49, down from 193 |
+| the descriptions `--describe` adds | `dfcad list-types --describe` | 245, down from 336 | 224, down from 315 |
+| the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 72, down from 180 | 68, down from 174 |
+| the spans in `get` | `dfcad get site:S-111` | 211, down from 277 | 206, down from 269 |
+| the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 72 | 49, down from 68 |
 
 ## The cost of reading the files instead
 
@@ -123,8 +163,10 @@ from" figure differs by a token or two from the same call in the tables above.
 
 | Path | Against the whole model | Against the one file |
 |------|-------------------------|----------------------|
-| discovery | 36.9×, 38.6× | 6.6×, 6.9× |
-| a dimensional question from a cold start | 18.0×, 18.6× | 3.2×, 3.3× |
+| discovery | 48.1×, 51.0× | 8.6×, 9.1× |
+| a dimensional question from a cold start | 41.3×, 43.7× | 7.4×, 7.8× |
+| the same question once the vocabulary is known | 81.1×, 82.8× | 14.4×, 14.7× |
+| the same question by way of a whole retrieval | 26.6×, 27.9× | 4.7×, 5.0× |
 
 One figure per encoding, in the order of the table above.
 
@@ -132,37 +174,56 @@ One figure per encoding, in the order of the table above.
 
 ## The outcome
 
-**The bet holds. The gate does not.**
+**The bet holds. The gate is met, and it was not met by moving it.**
 
-The bet is the ratio, and it is not close: discovery costs 559 tokens against 20,600 to
-read the model, which is 37 times cheaper, and the whole cold-start question costs 1,143,
-which is 18 times cheaper. Against the single file the answer is written in — the harder
-comparison, because knowing which file to open is itself something discovery had to supply
-— discovery is still 6.6 times cheaper and the full question 3.2 times. Nothing here
-suggests reading the files is the better arrangement.
+The bet is the ratio, and it was never close: discovery costs 428 tokens against 20,600 to
+read the model, which is 48 times cheaper, and the cold-start question costs 499, which is
+41 times cheaper. Against the single file the answer is written in — the harder comparison,
+because knowing which file to open is itself something discovery had to supply — discovery
+is 8.6 times cheaper and the question 7.4 times. Nothing here suggests reading the files is
+the better arrangement.
 
-The gate is the absolute figure, and it missed. [#38](https://github.com/z5labs/dfcad/issues/38)
-asked for discovery plus a targeted fetch to land in the low hundreds of tokens. It lands
-at 1,143. Discovery alone lands at 559 against the "few hundred"
-[#33](https://github.com/z5labs/dfcad/issues/33) claimed for it. Neither is off by an order
-of magnitude, and both are over.
+The gate is the absolute figure, and it now lands inside it.
+[#38](https://github.com/z5labs/dfcad/issues/38) asked discovery plus a targeted fetch to
+cost the low hundreds of tokens; it costs 499 under `o200k_base` and 474 under
+`cl100k_base`, against a target of 500. Discovery alone costs 428 against the "few hundred"
+[#33](https://github.com/z5labs/dfcad/issues/33) claimed for it. Asked a second time by an
+agent that already has the vocabulary, the same question costs 254.
 
-So the gate does what a gate is for.
-[#113](https://github.com/z5labs/dfcad/issues/113) is the partitioning review, opened with
-the specific costs that missed rather than with a verdict. In short, from the breakdown
-above:
+**499 against 500 is one token of margin, and that is worth saying out loud.** The
+`o200k_base` figure would read `missed` if a single field grew by a word. The margin is not
+what makes the arrangement right — the ratio is — and the ceiling in
+`cmd/dfcad/budget_test.go` is what stops the next change spending it without anybody
+noticing.
 
-- **Spans are about half of `get` and a third of `resolve`.** Two positions of four fields
-  each, with the model root repeated in every path, on every claim. An agent asking how
-  big a room is never opens the file.
-- **`resolve` returns the whole winning claim beside the value it already reported.** Take
-  the claim away and 199 tokens become 51: three quarters of that answer is the audit trail
-  rather than the answer.
-- **`list-types` pays for the registry's prose on every cold start.** That cost grows with
-  the vocabulary rather than with the model, and it is paid again every time.
+### What the review changed
 
-Until that review lands, the numbers above are held where they are rather than allowed to
-drift: `TestTheDiscoveryPathDoesNotGetMoreExpensive` asserts a ceiling just above what was
+[#113](https://github.com/z5labs/dfcad/issues/113) was the partitioning review the miss
+triggered. Its finding was not that the partitioning is wrong; it is that the answers were
+carrying the audit trail by default, and that an audit trail costs more than an answer.
+Three changes, each a version-2 change to the machine output contract, and the reasoning
+behind them is
+[0017. The answer is the default and the evidence is asked for](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md):
+
+- **A span is a string.** `entities/level-01.dfc:234:3-239:25` rather than two nested
+  objects of four fields with the path in both. `dfcad get` fell from 392 tokens to 275 on
+  that alone, and nothing about finding the definition changed.
+- **`resolve` answers the question.** The value, its unit, its accuracy and the id of the
+  claim it came from say how good the number is; the source, the method, the rank and the
+  span say who to argue with. The second set moved behind `--evidence`, and the answer fell
+  from 196 tokens to 71.
+- **`list-types` leaves out the prose.** The descriptions moved behind `--describe`, and
+  `absent` is written only where it holds. 376 tokens became 245, on the one call every
+  cold start begins with.
+
+One thing the review considered and did not do: `list-instances MeetingRoom` repeats
+`"type": "MeetingRoom"` on every entry, which is 30 tokens of the 183 it costs. Leaving it
+out when the type was the argument would buy the margin the cold path is short of, and it
+would mean an entry whose shape depends on how the listing was narrowed. That is a worse
+interface for a caller than a tighter number is a better one.
+
+The numbers above are held where they are rather than allowed to drift:
+`TestTheDiscoveryPathDoesNotGetMoreExpensive` asserts a ceiling just above what was
 measured, so a field added to a listing entry arrives as a failing test to be weighed
 against the gate, not as a slightly larger number nobody looked at. The targets in
 `cmd/dfcad/budget_test.go` stay where the stories put them. Raising one to make a test

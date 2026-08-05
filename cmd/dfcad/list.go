@@ -21,10 +21,19 @@ Usage:
 	dfcad list-types [flags]
 
 Every type the registry declares, with the kinds and the geometry forms an
-instance of it may take, the one line the registry gives it, and how many
-instances the model holds. It takes no arguments: the answer is the whole
-registry, which is what makes it the first call to make against a model
-nothing has read before.
+instance of it may take, and how many instances the model holds. It takes no
+arguments: the answer is the whole registry, which is what makes it the first
+call to make against a model nothing has read before.
+
+Flags:
+
+	--describe       include the one line the registry gives each type
+
+The descriptions are left out unless they are asked for. They are prose about
+the vocabulary rather than about this model, they grow with the registry rather
+than with the model, and this is the call every cold start begins with — so
+whoever is deciding which type to ask about next pays for them on every run and
+reads them on almost none. Ask for them and they come back.
 
 Types come back in name order, so two runs over one model produce the same
 list and a diff between them means something.
@@ -37,8 +46,7 @@ a registry file into looks like.
 ` + outputContractHelp + `
 The object list-types writes carries "types": one entry per declared type, in
 name order, each with its name, the kinds and geometry forms it permits,
-whether an instance may omit its geometry, its description and its instance
-count.
+whether an instance may omit its geometry, and its instance count.
 `
 
 const listInstancesUsage = `dfcad list-instances — list the instances of a type.
@@ -178,10 +186,15 @@ type listedType struct {
 	// Absent reports whether an instance may omit its geometry entirely. It is
 	// separate from Geometries because absence is not a geometry form: a node
 	// with no geometry omits the child rather than naming one.
-	Absent bool `json:"absent"`
+	//
+	// It is written only where it holds, the way Retired is on a listed
+	// instance: most types require a geometry, and a false on every one of them
+	// is a word per type saying what the type before it also said.
+	Absent bool `json:"absent,omitempty"`
 
-	// Description is the one line the registry gives the type. Empty when it
-	// was not written.
+	// Description is the one line the registry gives the type. Written under
+	// --describe and absent otherwise, and absent under it too when the
+	// registry wrote none.
 	Description string `json:"description,omitempty"`
 
 	// Instances is how many semantic nodes declare this type.
@@ -233,6 +246,8 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
+	describing := flags.Bool("describe", false, "")
+
 	extra, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
 		return exit
@@ -253,14 +268,18 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		Types: make([]listedType, 0),
 	}
 	for declared := range graph.Registry().Types() {
-		result.Types = append(result.Types, listedType{
-			Name:        declared.Name,
-			Kinds:       permittedKinds(declared),
-			Geometries:  permittedGeometries(declared),
-			Absent:      declared.Absent,
-			Description: declared.Description,
-			Instances:   graph.Summary().OfType(declared.Name),
-		})
+		entry := listedType{
+			Name:       declared.Name,
+			Kinds:      permittedKinds(declared),
+			Geometries: permittedGeometries(declared),
+			Absent:     declared.Absent,
+			Instances:  graph.Summary().OfType(declared.Name),
+		}
+		if *describing {
+			entry.Description = declared.Description
+		}
+
+		result.Types = append(result.Types, entry)
 	}
 
 	reportTypes(result.Types, globals, stderr)

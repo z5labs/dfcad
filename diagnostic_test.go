@@ -332,12 +332,10 @@ func TestDiagnosticJSON(t *testing.T) {
 					},
 				},
 			},
-			expected: `{"severity":"error","span":{"start":{"path":"level-1.dfc","line":6,"column":7,"offset":118},` +
-				`"end":{"path":"level-1.dfc","line":6,"column":17,"offset":128}},` +
+			expected: `{"severity":"error","span":"level-1.dfc:6:7-6:17",` +
 				`"message":"expected an unused id, found site:S-101",` +
 				`"hint":"an id is unique across the whole model",` +
-				`"related":[{"span":{"start":{"path":"level-1.dfc","line":1,"column":7,"offset":6},` +
-				`"end":{"path":"level-1.dfc","line":1,"column":17,"offset":16}},"message":"first defined here"}]}`,
+				`"related":[{"span":"level-1.dfc:1:7-1:17","message":"first defined here"}]}`,
 		},
 		{
 			name: "leaves the optional fields out when they are unset",
@@ -346,8 +344,7 @@ func TestDiagnosticJSON(t *testing.T) {
 				Span:     Position{Path: "level-1.dfc", Line: 9, Column: 3, Offset: 150}.Span(),
 				Message:  "expected a unit after the value, found none",
 			},
-			expected: `{"severity":"warning","span":{"start":{"path":"level-1.dfc","line":9,"column":3,"offset":150},` +
-				`"end":{"path":"level-1.dfc","line":9,"column":3,"offset":150}},` +
+			expected: `{"severity":"warning","span":"level-1.dfc:9:3",` +
 				`"message":"expected a unit after the value, found none"}`,
 		},
 	}
@@ -359,12 +356,38 @@ func TestDiagnosticJSON(t *testing.T) {
 			assert.Equal(t, testCase.expected, string(encoded))
 
 			// The machine form is the same data, not a rendering of it: what it
-			// carries has to read back as the diagnostic it came from.
+			// carries has to read back as the diagnostic it came from — every
+			// part of it a reader is sent to the source with. The byte offsets
+			// are the documented exception, because the span's text form does
+			// not write them; see [Span.MarshalJSON].
 			var decoded Diagnostic
 			require.NoError(t, json.Unmarshal(encoded, &decoded))
-			assert.Equal(t, testCase.diagnostic, decoded)
+			assert.Equal(t, located(testCase.diagnostic), decoded)
 		})
 	}
+}
+
+// located is a diagnostic as it comes back through JSON: the same diagnostic
+// with the byte offsets the text form does not carry cleared, so that what the
+// round trip is asserted against is the encoding's documented behaviour rather
+// than an encoding it does not have.
+func located(diagnostic Diagnostic) Diagnostic {
+	out := diagnostic
+	out.Span = unoffset(diagnostic.Span)
+
+	out.Related = nil
+	for _, related := range diagnostic.Related {
+		related.Span = unoffset(related.Span)
+		out.Related = append(out.Related, related)
+	}
+
+	return out
+}
+
+// unoffset is a span with both byte offsets cleared.
+func unoffset(span Span) Span {
+	span.Start.Offset, span.End.Offset = 0, 0
+	return span
 }
 
 func TestDiagnosticsOrdering(t *testing.T) {

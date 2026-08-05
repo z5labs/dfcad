@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -606,13 +607,50 @@ func TestRunGetReportsAnEmptyValue(t *testing.T) {
 
 // TestRunGetSaysWhereItWasDefined is its own function because it is about the
 // one field which sends a reader back to the file rather than to a search.
+//
+// The span is written as text — path:line:column-line:column — so what is
+// asserted is that the text reads back as a place: the right file, a line and a
+// column at both ends, and an end which is not before the start. The byte
+// offsets are not in the text form and are not what a reader jumps to.
 func TestRunGetSaysWhereItWasDefined(t *testing.T) {
 	entity := retrieved(t, "site:E-01")
 
 	assert.Contains(t, entity.Span.Start.Path, "site.dfc")
+	assert.Equal(t, entity.Span.Start.Path, entity.Span.End.Path)
+
 	assert.Positive(t, entity.Span.Start.Line)
 	assert.Positive(t, entity.Span.Start.Column)
-	assert.Greater(t, entity.Span.End.Offset, entity.Span.Start.Offset)
+	assert.Positive(t, entity.Span.End.Line)
+	assert.Positive(t, entity.Span.End.Column)
+
+	// The end is after the start, which on one line is a column and across
+	// lines is a line. Comparing only the lines would let a form which ended
+	// before it began pass.
+	if entity.Span.End.Line == entity.Span.Start.Line {
+		assert.Greater(t, entity.Span.End.Column, entity.Span.Start.Column)
+	} else {
+		assert.Greater(t, entity.Span.End.Line, entity.Span.Start.Line)
+	}
+}
+
+// TestRunGetWritesASpanAsOneString is what the contract's readers see, which
+// the decoded form above cannot show: the object shape is gone, and with it the
+// path written twice and the two byte offsets nobody was jumping to.
+func TestRunGetWritesASpanAsOneString(t *testing.T) {
+	t.Chdir(tree(t, retrievable()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "site:E-01"}, &stdout, &stderr), stderr.String())
+
+	var written struct {
+		Entity struct {
+			Span string `json:"span"`
+		} `json:"entity"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &written))
+
+	assert.Regexp(t, `^[^"]+\.dfc:\d+:\d+-\d+:\d+$`, written.Entity.Span)
+	assert.NotContains(t, stdout.String(), `"offset"`)
 }
 
 // TestRunGetReferencesAreIDsRatherThanTheThingsTheyName is its own function
