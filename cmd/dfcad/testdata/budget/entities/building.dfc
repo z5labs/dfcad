@@ -1,8 +1,9 @@
 ; The building, its storeys and the zones occupancy is counted over. They are
 ; in one file because they are the frame the two level files hang from, and a
 ; reader who has not read anything yet reads this one first.
-(node   site:B-01
-      (label   "Riverside House")
+(node
+  site:B-01
+  (label "Riverside House")
   (kind Building)
   (type OfficeBuilding)
   (geometry solid)
