@@ -333,3 +333,56 @@
   (frame frame:building)
   (boundary geom:L-41)
   (boundary geom:L-31))
+
+; A run of wall which does not come back to where it started, and which nothing
+; is the boundary of. A traversal which stops is still a traversal, and drawing
+; it has to reach the corner it stopped at rather than the last one it set off
+; from.
+(vertex geom:V-51
+  (label "Screen wall, west end")
+  (frame frame:building)
+  (position
+    (value (50.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-52
+  (label "Screen wall, turn")
+  (frame frame:building)
+  (position
+    (value (54.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-53
+  (label "Screen wall, north end")
+  (frame frame:building)
+  (position
+    (value (54.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-51 (label "Screen wall, straight run") (frame frame:building) (vertices geom:V-51 geom:V-52))
+(edge geom:E-52
+  (label "Screen wall, curved run")
+  (frame frame:building)
+  (vertices geom:V-52 geom:V-53)
+  (arc-centre
+    (value (54.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (56.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(loop geom:L-51
+  (label "Screen wall, which does not close")
+  (frame frame:building)
+  (edges geom:E-51 geom:E-52))

@@ -693,3 +693,31 @@ func TestACurveWhichCrossesTheRestOfTheRingIsADiagnostic(t *testing.T) {
 	rendered := renderBoundaryDiagnostics(t, diags)
 	assert.Equal(t, expectedArcDiagnostics(t, "crossing.txt", rendered), rendered)
 }
+
+// TestTessellateAnOpenTraversal is its own function because a traversal which
+// does not close has an end no step of it begins at, which a closed ring does
+// not: the drawing has to reach that corner rather than stop a whole edge short
+// of it, and none of the assertions above would notice if it did.
+func TestTessellateAnOpenTraversal(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	loop, ok := model.topology.Loop("geom:L-51")
+	require.True(t, ok)
+
+	// The gap is reported by the pass whose job that is, and the segments as far
+	// as the traversal got are still what a caller drawing the failure wants.
+	drawn, diags := model.topology.TessellateLoop(loop, model.survey, chordTolerance)
+	require.NotEmpty(t, diags, "a ring which does not close says so")
+
+	assert.False(t, drawn.Closed())
+
+	points := drawn.Points()
+	require.Len(t, points, 1+16+1, "one corner, the curve, and the corner the traversal stopped at")
+
+	assert.Equal(t, pointOf(t, model.survey.Positions["geom:V-51"]), points[0])
+	assert.Equal(t, pointOf(t, model.survey.Positions["geom:V-52"]), points[1])
+	assert.Equal(t, pointOf(t, model.survey.Positions["geom:V-53"]), points[len(points)-1])
+
+	assert.NotEqual(t, points[len(points)-2], points[len(points)-1],
+		"the last segment has an extent; the end is not the corner before it written twice")
+}

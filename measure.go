@@ -12,21 +12,24 @@ import (
 	"strings"
 )
 
-// Evidence is the claim each vertex's position was read from, keyed by the
-// vertex's id.
+// Evidence is the claim each position a measurement was computed from was read
+// from, keyed by the id of the thing that position belongs to: a vertex's own id
+// for where the corner is, and an edge's for where the centre of the arc it
+// bends along is.
 //
-// It is the other half of [Positions], supplied for the same reason: which
-// predicate carries a position is vocabulary the consuming repository owns and
-// not something the engine knows
+// It is the other half of [Positions] and of [Curvature], supplied for the same
+// reason: which predicate carries a position is vocabulary the consuming
+// repository owns and not something the engine knows
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
 // What it adds is the provenance a computed answer inherits. An area is only as
-// well known as the corners it was computed from, and a budget accumulated from
-// these claims is what lets the answer say so
+// well known as the corners and the centres it was computed from, and a budget
+// accumulated from these claims is what lets the answer say so
 // ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
 //
-// A vertex which is absent contributes nothing to the budget. The geometry is
+// An id which is absent contributes nothing to the budget. The geometry is
 // still computed — a position with no claim behind it is a caller which filled
-// one map and not the other, which [Survey.Place] exists to prevent.
+// one map and not the other, which [Survey.Place] and [Survey.Bend] exist to
+// prevent.
 type Evidence map[ID]*Claim
 
 // Survey is what a measurement is computed against: where the corners are, the
@@ -486,6 +489,19 @@ type outline struct {
 	// an area needs.
 	closed bool
 
+	// last is the corner the traversal ended at, finish where that is and
+	// finished whether there was a position to read it at.
+	//
+	// It is the traversal's own end and not the last edge's, which the two
+	// differ in wherever the ring runs through that edge backwards. A ring which
+	// closes ends at the corner it began at, which is already the first of
+	// points; one which does not ends somewhere no corner of the ring names, and
+	// a tessellation which left that out would stop a whole edge short of where
+	// the traversal got to.
+	last     ID
+	finish   Point
+	finished bool
+
 	// points are where those corners are.
 	points []Point
 
@@ -549,6 +565,11 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 
 	if !m.locate(loop, out) {
 		return nil, false
+	}
+
+	out.last = steps[len(steps)-1].To()
+	if written, ok := m.at(out.last); ok {
+		out.finish, out.finished = asPoint(written), true
 	}
 
 	if !m.curves(out, steps) {

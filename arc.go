@@ -343,11 +343,26 @@ func (t *Topology) TessellateLoop(loop *Loop, survey Survey, chord string) (Tess
 		drawn.deviation = math.Max(drawn.deviation, segment.deviation)
 	}
 
-	if !out.closed {
-		// An open traversal ends where its last step ended, which no later step
-		// is going to write.
-		drawn.points = append(drawn.points, out.points[len(out.points)-1])
+	if out.closed {
+		return drawn, m.diags
 	}
+
+	// An open traversal ends where its last step ended, which is a corner no
+	// step of the ring begins at and so one nothing above has written.
+	if !out.finished {
+		m.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     m.topology.namedAt(loop.id, loop.span),
+			Message: fmt.Sprintf(
+				"expected a position for the corner the traversal of the loop %s ends at, found none for %s",
+				geometricName(loopTag, loop.id), out.last,
+			),
+			Hint: m.positionHint(),
+		})
+		return Tessellation{}, m.diags
+	}
+
+	drawn.points = append(drawn.points, out.finish)
 
 	return drawn, m.diags
 }
