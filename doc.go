@@ -196,6 +196,42 @@
 // one ring is measured by nesting, so a courtyard subtracts without anything in
 // the model having to declare which loop is the outside one.
 //
+// # Offsetting and overlaying
+//
+// How big something is answers one question. Whether it fits answers the other,
+// and that one needs the shapes overlaid rather than measured.
+// [Topology.RegionOf] reads what a node covers out of the loops bounding it as a
+// [Region], and [Region.Buffer], [Region.Union], [Region.Intersect],
+// [Region.Difference] and [Region.Containment] are the operations over it. All
+// of it runs in process: a setback or a clearance is answerable with no kernel,
+// no spatial database and nothing to stand up first.
+//
+// A result is a set of [Piece]s, each a ring with the rings taken out of it,
+// because an operation can leave several pieces which do not touch and can leave
+// one with a hole in it. [Region.Buffer] takes the distance either way round —
+// outwards for a setback, inwards for a clearance — from one construction, so an
+// inward offset which eats the shape returns a region covering nothing rather
+// than the inside-out shape offsetting each edge on its own would give.
+//
+// The same refusals apply as everywhere else in this package, and for the same
+// reasons. A ring which crosses itself or encloses nothing is a diagnostic and
+// no region. Two regions in different frames are refused rather than combined —
+// [Region.In] is the explicit way across, and it carries the accuracy of the
+// transform with it — and so are two which do not lie in one plane, because a
+// room on the storey above is inside this one seen from above and is not inside
+// it. Coincidence and the resolution of a rounded corner are judged against the
+// tolerance the registry declares, never against a number compiled in here (see
+// docs/decisions/0012-tolerances-are-registry-data.md). Every answer carries the
+// [Budget] of the claims behind both operands, so an overlap knows how well the
+// corners which decided it were known.
+//
+// [Region.Containment] is six states rather than a yes and a no, because "not
+// inside" covers a region which is nowhere near, one which straddles the
+// boundary and one which is inside and touching. Two regions sharing a wall are
+// [ContainmentTouching] and never [ContainmentOverlapping]: a party wall has no
+// area, and reporting it as an overlap would turn every pair of adjacent rooms
+// into a conflict.
+//
 // # Reviewing a change
 //
 // Every rule above constrains one revision. Some things are suspicious only as

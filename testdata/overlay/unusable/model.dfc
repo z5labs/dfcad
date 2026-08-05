@@ -1,0 +1,113 @@
+; Two shapes which are not shapes, and which an overlay must refuse rather than
+; answer about.
+;
+; Neither is a loading error: both close, both lie in one plane and both are
+; four edges through four corners. What they are not is a region — one crosses
+; itself and the other encloses nothing — and an offset or an overlap computed
+; over either would come back a number rather than a failure.
+
+; A room whose two long walls were written to the wrong corners.
+(vertex geom:V-011
+  (label "Crossed room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-012
+  (label "Crossed room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-013
+  (label "Crossed room, corner 3")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-014
+  (label "Crossed room, corner 4")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-011 (label "Crossed room, side 1") (frame frame:building) (vertices geom:V-011 geom:V-012))
+(edge geom:E-012 (label "Crossed room, side 2") (frame frame:building) (vertices geom:V-012 geom:V-013))
+(edge geom:E-013 (label "Crossed room, side 3") (frame frame:building) (vertices geom:V-013 geom:V-014))
+(edge geom:E-014 (label "Crossed room, side 4") (frame frame:building) (vertices geom:V-014 geom:V-011))
+(loop geom:L-01
+  (label "Crossed room boundary")
+  (frame frame:building)
+  (edges geom:E-011 geom:E-012 geom:E-013 geom:E-014))
+(node site:S-01
+  (label "Crossed room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+; A room surveyed along one line, which encloses nothing.
+(vertex geom:V-021
+  (label "Collapsed room, corner 1")
+  (frame frame:building)
+  (position
+    (value (10.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-022
+  (label "Collapsed room, corner 2")
+  (frame frame:building)
+  (position
+    (value (12.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-023
+  (label "Collapsed room, corner 3")
+  (frame frame:building)
+  (position
+    (value (14.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-024
+  (label "Collapsed room, corner 4")
+  (frame frame:building)
+  (position
+    (value (16.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-021 (label "Collapsed room, side 1") (frame frame:building) (vertices geom:V-021 geom:V-022))
+(edge geom:E-022 (label "Collapsed room, side 2") (frame frame:building) (vertices geom:V-022 geom:V-023))
+(edge geom:E-023 (label "Collapsed room, side 3") (frame frame:building) (vertices geom:V-023 geom:V-024))
+(edge geom:E-024 (label "Collapsed room, side 4") (frame frame:building) (vertices geom:V-024 geom:V-021))
+(loop geom:L-02
+  (label "Collapsed room boundary")
+  (frame frame:building)
+  (edges geom:E-021 geom:E-022 geom:E-023 geom:E-024))
+(node site:S-02
+  (label "Collapsed room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
