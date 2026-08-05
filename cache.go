@@ -131,13 +131,32 @@ func (d *Digest) UnmarshalText(text []byte) error {
 		return DigestError{Err: err}
 	}
 	if len(sum) != sha256.Size {
-		return DigestError{Err: fmt.Errorf("a digest is %d bytes, this one is %d", sha256.Size, len(sum))}
+		return DigestError{Err: DigestLengthError{Want: sha256.Size, Got: len(sum)}}
 	}
 
 	*d = Digest{known: true}
 	copy(d.sum[:], sum)
 
 	return nil
+}
+
+// DigestLengthError is text which reads as hex but is not as long as a digest,
+// and how long each is.
+//
+// It is its own type rather than a message so that a caller reading a digest out
+// of somewhere it did not write — a manifest, a report, a command line argument
+// — can tell "this is not a digest at all" from "this is a digest of some other
+// width", which is the difference between a typo and a format which moved.
+type DigestLengthError struct {
+	// Want is how many bytes a digest is.
+	Want int
+
+	// Got is how many the text decoded to.
+	Got int
+}
+
+func (e DigestLengthError) Error() string {
+	return fmt.Sprintf("expected a digest of %d bytes, found one of %d", e.Want, e.Got)
 }
 
 // DigestError is a source tree which could not be digested, and the file which
@@ -174,11 +193,10 @@ func (e DigestError) Unwrap() error { return e.Err }
 // the zero one — a model nobody has written yet is a model, and a derivation
 // over it is legitimately cacheable.
 //
-// Reading is streaming, one file at a time, so digesting a tree costs the
-// largest single file rather than the sum of them.
+// Files are read one at a time and hashed as they are read, so digesting a tree
+// costs the largest single file rather than the sum of them.
 func DigestOf(root string) (Digest, error) {
-	sum := sha256.New()
-	digestField(sum, []byte(digestVersion))
+	digest := newTreeDigest(root)
 
 	for path, err := range Walk(root) {
 		if err != nil {
@@ -190,14 +208,65 @@ func DigestOf(root string) (Digest, error) {
 			return Digest{}, DigestError{Path: path, Err: err}
 		}
 
-		digestField(sum, []byte(digestName(root, path)))
-		digestField(sum, content)
+		digest.file(path, content)
+	}
+
+	return digest.digest(), nil
+}
+
+// treeDigest accumulates the digest of a tree from the bytes of its files, in
+// walk order.
+//
+// It exists so that the rule in [Digest] is written once. [DigestOf] reads the
+// tree for itself; a load already has every byte in hand as it reads them, and a
+// digest computed there describes the bytes the graph was actually built from
+// rather than whatever is on disk by the time somebody asks for it. Two
+// implementations of the rule would disagree the first time one of them changed,
+// and a key computed under one and read under the other is either a permanent
+// miss or — much worse — a hit against bytes it was not derived from.
+type treeDigest struct {
+	// root is what paths are named relative to.
+	root string
+
+	// sum is the digest so far.
+	sum hash.Hash
+
+	// complete is whether every file the walk reached was read. A tree with a
+	// file missing from it is not a tree anything may be keyed by, because the
+	// same key would name a different set of inputs on a machine which could
+	// read it.
+	complete bool
+}
+
+// newTreeDigest starts a digest of the tree beneath root.
+func newTreeDigest(root string) *treeDigest {
+	digest := &treeDigest{root: root, sum: sha256.New(), complete: true}
+	digestField(digest.sum, []byte(digestVersion))
+	return digest
+}
+
+// file records one file of the tree: its path relative to the root, then its
+// bytes.
+func (d *treeDigest) file(path string, content []byte) {
+	digestField(d.sum, []byte(digestName(d.root, path)))
+	digestField(d.sum, content)
+}
+
+// unreadable records that a file the walk reached could not be read, which
+// leaves the tree with nothing to key by.
+func (d *treeDigest) unreadable() { d.complete = false }
+
+// digest is what has been accumulated, or the zero [Digest] where any file the
+// walk reached could not be read.
+func (d *treeDigest) digest() Digest {
+	if !d.complete {
+		return Digest{}
 	}
 
 	digest := Digest{known: true}
-	copy(digest.sum[:], sum.Sum(nil))
+	copy(digest.sum[:], d.sum.Sum(nil))
 
-	return digest, nil
+	return digest
 }
 
 // digestField writes one length-prefixed field into a digest.
@@ -1007,35 +1076,31 @@ type Derivation struct {
 	Cache *Cache
 }
 
-// Digest returns the digest of the source tree this graph was read from.
+// Digest returns the digest of the bytes this graph was built from, and whether
+// it has one.
 //
-// It is computed on first use and remembered, because a graph is a reading of a
-// tree at one moment and re-digesting it later would answer about a different
-// moment than the one in hand.
-//
-// A graph which was not read from disk — one interpreted from trees a write
-// substituted, which is what [Tx.Commit] validates against — has no digest and
-// reports the zero one with an error. Digesting the files on disk for it would
-// key a derivation by bytes it was not derived from, which is precisely the too-
-// narrow digest that turns this cache into a stale-answer machine
+// It is accumulated as the load reads the tree, not computed later by reading
+// the tree again. That is the difference between a key which names the model in
+// hand and one which names whatever is on disk by the time somebody asks: a file
+// edited between the load and the question would leave the second describing
+// bytes nothing was derived from, and a derivation stored under it is a stale
+// hit waiting for the tree to be put back
 // ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
-func (g *Graph) Digest() (Digest, error) {
+//
+// It is a digest of content and not of provenance, so a graph interpreted from
+// trees a write substituted — which is what [Tx.Commit] validates against — has
+// the digest of that hypothetical tree, and it is the right one: were those
+// bytes on disk, [DigestOf] would compute it.
+//
+// A graph has no digest when any file the walk reached could not be read at all,
+// because the same key would then name a different set of inputs on a machine
+// which could read it. A graph assembled from trees which were never read from
+// anywhere has none either.
+func (g *Graph) Digest() (Digest, bool) {
 	if g == nil {
-		return Digest{}, DigestError{Err: errors.New("there is no graph")}
+		return Digest{}, false
 	}
-
-	if !g.onDisk {
-		return Digest{}, DigestError{
-			Path: g.root,
-			Err:  errors.New("this graph was interpreted from trees which are not what is on disk"),
-		}
-	}
-
-	g.digested.Do(func() {
-		g.digest, g.digestErr = DigestOf(g.root)
-	})
-
-	return g.digest, g.digestErr
+	return g.digest, g.digest.Known()
 }
 
 // Derive computes the derived geometry of every node of the model which covers
@@ -1071,8 +1136,8 @@ func (g *Graph) Derive(against Derivation) (Footprints, []Diagnostic) {
 		return Footprints{}, nil
 	}
 
-	digest, err := g.Digest()
-	if err != nil {
+	digest, ok := g.Digest()
+	if !ok {
 		against.Cache.record(func(s *CacheStats) { s.Errors++ })
 	}
 

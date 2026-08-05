@@ -272,33 +272,76 @@ func TestDigestText(t *testing.T) {
 		assert.Equal(t, "unknown", read.String())
 	})
 
-	t.Run("refuses a digest which is not one", func(t *testing.T) {
+	t.Run("refuses text which is not hex at all", func(t *testing.T) {
 		var read Digest
 
 		var digestErr DigestError
-		require.ErrorAs(t, read.UnmarshalText([]byte("beef")), &digestErr)
+		require.ErrorAs(t, read.UnmarshalText([]byte("not a digest")), &digestErr)
+	})
+
+	t.Run("refuses a digest of some other width, saying which", func(t *testing.T) {
+		var read Digest
+
+		err := read.UnmarshalText([]byte("beef"))
+
+		var lengthErr DigestLengthError
+		require.ErrorAs(t, err, &lengthErr)
+		assert.Equal(t, sha256.Size, lengthErr.Want)
+		assert.Equal(t, 2, lengthErr.Got)
 	})
 }
 
 func TestGraphDigest(t *testing.T) {
-	t.Run("digests the tree it was read from", func(t *testing.T) {
+	t.Run("digests the bytes it was built from", func(t *testing.T) {
 		graph, diags := LoadGraph(derivedFixture)
 		require.Empty(t, renderBoundaryDiagnostics(t, diags))
 
-		digest, err := graph.Digest()
-		require.NoError(t, err)
+		digest, ok := graph.Digest()
+		require.True(t, ok)
 
 		direct, err := DigestOf(derivedFixture)
 		require.NoError(t, err)
 
-		assert.Equal(t, direct, digest)
-
-		again, err := graph.Digest()
-		require.NoError(t, err)
-		assert.Equal(t, digest, again, "a graph is a reading of a tree at one moment")
+		assert.Equal(t, direct, digest, "one rule, computed in one place")
 	})
 
-	t.Run("refuses to digest a graph which was interpreted from trees the disk does not hold", func(t *testing.T) {
+	t.Run("keeps the digest of what it read when the tree changes underneath it", func(t *testing.T) {
+		root := copyTree(t, derivedFixture)
+
+		graph, diags := LoadGraph(root)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		read, ok := graph.Digest()
+		require.True(t, ok)
+
+		moveOneCorner(t, root)
+
+		after, ok := graph.Digest()
+		require.True(t, ok)
+		assert.Equal(t, read, after, "a digest names the model in hand, not whatever is on disk when it is asked for")
+
+		now, err := DigestOf(root)
+		require.NoError(t, err)
+		assert.NotEqual(t, read, now)
+	})
+
+	t.Run("digests a graph a transaction read the same way", func(t *testing.T) {
+		root := copyTree(t, derivedFixture)
+
+		tx, diags, err := Begin(root)
+		require.NoError(t, err)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+		defer tx.Close()
+
+		digest, ok := tx.Graph().Digest()
+		require.True(t, ok, "a transaction's graph is as much a reading of the tree as any other")
+
+		direct, err := DigestOf(root)
+		require.NoError(t, err)
+		assert.Equal(t, direct, digest)
+	})
+
+	t.Run("has no digest where the bytes were not read from anywhere", func(t *testing.T) {
 		var parsed []source
 		for src := range readTree(derivedFixture) {
 			require.NotNil(t, src.file, "the fixture parses")
@@ -308,11 +351,22 @@ func TestGraphDigest(t *testing.T) {
 		graph, diags := loadGraph(derivedFixture, parsed, nil, registeredChecks)
 		require.Empty(t, renderBoundaryDiagnostics(t, diags))
 
-		digest, err := graph.Digest()
+		digest, ok := graph.Digest()
 
-		var digestErr DigestError
-		require.ErrorAs(t, err, &digestErr)
-		assert.False(t, digest.Known(), "nothing may be keyed by the digest of bytes it was not derived from")
+		assert.False(t, ok, "nothing may be keyed by a digest nobody accumulated")
+		assert.False(t, digest.Known())
+	})
+
+	t.Run("has no digest where a file the walk reached could not be read", func(t *testing.T) {
+		root := copyTree(t, derivedFixture)
+		require.NoError(t, os.Chmod(filepath.Join(root, "model.dfc"), 0o000))
+		t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "model.dfc"), 0o644) })
+
+		graph, diags := LoadGraph(root)
+		require.NotEmpty(t, diags, "the file which could not be read is reported")
+
+		_, ok := graph.Digest()
+		assert.False(t, ok, "one key would name a different set of inputs on a machine which could read it")
 	})
 }
 

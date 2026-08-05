@@ -11,7 +11,6 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 )
 
 // Entity is one thing a model holds under an id: a semantic node, or a vertex,
@@ -81,17 +80,11 @@ type Graph struct {
 	// summary is what the load counted.
 	summary Summary
 
-	// onDisk is whether root is what this graph was read from, byte for byte.
-	// It is false for a graph interpreted from trees a write substituted, which
-	// is a model that exists nowhere on disk and so has nothing to digest
+	// digest is the digest of the bytes this graph was built from, accumulated
+	// by whoever read them. It is the zero [Digest] where they were not read
+	// from anywhere, or where a file the walk reached could not be read at all
 	// ([Graph.Digest]).
-	onDisk bool
-
-	// digest is the digest of the source tree, computed on first use and
-	// remembered because a graph is a reading of a tree at one moment.
-	digested  sync.Once
-	digest    Digest
-	digestErr error
+	digest Digest
 }
 
 // LoadGraph reads the whole model beneath root in one pass.
@@ -147,7 +140,22 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 		parsed []source
 		diags  []Diagnostic
 	)
+
+	// The digest is accumulated here, from the bytes as they are read, and the
+	// bytes are then dropped rather than kept beside the trees they parsed into.
+	// Digesting the tree again later would key a derivation by whatever is on
+	// disk when somebody asks rather than by what this load read
+	// ([Graph.Digest]).
+	digest := newTreeDigest(root)
+
 	for src := range readTree(root) {
+		if src.content == nil {
+			digest.unreadable()
+		} else {
+			digest.file(src.path, src.content)
+			src.content = nil
+		}
+
 		if src.file == nil {
 			diags = append(diags, src.diag)
 			continue
@@ -156,12 +164,7 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 	}
 
 	graph, diags := loadGraph(root, parsed, diags, registeredChecks)
-
-	// This is the one path which read the tree as it stands, so it is the one
-	// which may digest it. Everything derived from this graph can therefore be
-	// keyed by that digest and cached; everything derived from a graph the
-	// loader below assembled cannot.
-	graph.onDisk = true
+	graph.digest = digest.digest()
 
 	return graph, diags
 }
