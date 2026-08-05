@@ -63,6 +63,9 @@ func (r *reads) names() []string {
 	return append([]string(nil), r.paths...)
 }
 
+// TestObservedIn is about the links alone, which are part of the model and are
+// read when it is. Nothing here opens an observation file, and the case names
+// say "names" rather than "reads" for that reason.
 func TestObservedIn(t *testing.T) {
 	graph, diags := loadGraphFixture(t, observedFixture)
 	require.Empty(t, diags, "the fixture loads clean")
@@ -73,12 +76,12 @@ func TestObservedIn(t *testing.T) {
 		expected []string
 	}{
 		{
-			name:     "reads the file a semantic node was measured in",
+			name:     "names the file a semantic node was measured in",
 			id:       "site:S-101",
 			expected: []string{"observations/2026-05-07-interior.obs"},
 		},
 		{
-			name: "reads every file a corner was measured in, in the order they were written",
+			name: "names every file a corner was measured in, in the order they were written",
 			id:   "geom:V-01",
 			expected: []string{
 				"observations/2026-05-06-site-control.obs",
@@ -86,7 +89,7 @@ func TestObservedIn(t *testing.T) {
 			},
 		},
 		{
-			name:     "reads nothing for a thing which links to nothing",
+			name:     "names the one file a corner measured in a single afternoon links to",
 			id:       "geom:V-02",
 			expected: []string{"observations/2026-05-06-site-control.obs"},
 		},

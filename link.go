@@ -165,8 +165,15 @@ type linkProblem struct {
 	hint string
 }
 
-// The three ways a link can be wrong before anything reads it.
+// The four ways a link can be wrong before anything reads it.
 var (
+	linkNotPortable = linkProblem{
+		message: "expected a path written with forward slashes, found %[1]q, which %[2]s links to",
+		hint: "a path is written with forward slashes whatever machine wrote it, so that one model reads the same " +
+			"way in every clone of the repository; a backslash is a legal character in a file name on the systems " +
+			"which do not use it as a separator, so nothing here can guess which was meant",
+	}
+
 	linkOutsideModel = linkProblem{
 		message: "expected a path beneath the model root, found %[1]q, which %[2]s links to",
 		hint: "an observation file is part of the model and is read by a walk of it, so a link which leaves the " +
@@ -190,14 +197,26 @@ var (
 // checkObservationLink is everything which can be said about one path without
 // opening it.
 //
-// The three checks are asked in this order because each later one is only
-// meaningful once the earlier ones hold: whether a file which is not part of
-// the model is on disk says nothing worth reporting.
+// The checks are asked in this order because each later one is only meaningful
+// once the earlier ones hold: a path which is not written the way the format
+// writes paths has no one meaning to ask the rest about, and whether a file
+// which is not part of the model is on disk says nothing worth reporting.
+//
+// The first two are what keep the answer the same on every machine. A backslash
+// separates nothing on the systems most of this runs on and separates
+// everything on one of them, and a volume-qualified path names a disk rather
+// than a place in the model; both are refused everywhere rather than wherever
+// they happen to be dangerous, because a path which one clone of a repository
+// refuses and another follows out of the model root is worse than either
+// behaviour on its own.
 func checkObservationLink(base string, link ObservationLink) []linkProblem {
 	clean := path.Clean(link.Path)
 
 	switch {
-	case link.Path == "", path.IsAbs(link.Path), clean == "..", strings.HasPrefix(clean, "../"):
+	case strings.ContainsRune(link.Path, '\\'):
+		return []linkProblem{linkNotPortable}
+	case link.Path == "", path.IsAbs(link.Path), volumeQualified(link.Path),
+		clean == "..", strings.HasPrefix(clean, "../"):
 		return []linkProblem{linkOutsideModel}
 	case path.Ext(clean) != ObservationExtension:
 		return []linkProblem{linkWrongExtension}
@@ -213,6 +232,23 @@ func checkObservationLink(base string, link ObservationLink) []linkProblem {
 	}
 
 	return nil
+}
+
+// volumeQualified reports whether a path names a Windows volume — `C:/shots.obs`
+// or the drive-relative `C:shots.obs`.
+//
+// It is spelled out rather than taken from [filepath.VolumeName] because that
+// function answers for the machine it is running on: it finds nothing in
+// `C:/shots.obs` on Linux, which is exactly the model whose link would then be
+// followed out of the root on the next person's laptop.
+func volumeQualified(written string) bool {
+	if len(written) < 2 || written[1] != ':' {
+		return false
+	}
+
+	drive := written[0]
+
+	return drive >= 'A' && drive <= 'Z' || drive >= 'a' && drive <= 'z'
 }
 
 // observationLinkDiagnostic is one problem with one link, reported against the

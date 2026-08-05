@@ -23,3 +23,13 @@
   (label "Room A, north-east corner")
   (frame frame:site)
   (observed-in "observations/2026-05-07-interior.obs"))
+
+; The two ways a path stops meaning one thing on every machine. Both are
+; refused wherever the model is read rather than wherever they happen to be
+; dangerous: a link one clone follows out of the model root and another refuses
+; is worse than either behaviour on its own.
+(vertex geom:V-03
+  (label "Room A, south-east corner")
+  (frame frame:site)
+  (observed-in "observations\\2026-05-06-site-control.obs")
+  (observed-in "C:/surveys/2026-05-06-site-control.obs"))

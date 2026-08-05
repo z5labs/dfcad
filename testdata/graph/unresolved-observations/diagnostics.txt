@@ -26,3 +26,17 @@ testdata/graph/unresolved-observations/entities/site.dfc:25:16: error: expected 
 testdata/graph/unresolved-observations/entities/site.dfc:22:9: note: geom:V-02 is written here
 22 | (vertex geom:V-02
    |         ^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:34:16: error: expected a path written with forward slashes, found "observations\\2026-05-06-site-control.obs", which geom:V-03 links to
+34 |   (observed-in "observations\\2026-05-06-site-control.obs")
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a path is written with forward slashes whatever machine wrote it, so that one model reads the same way in every clone of the repository; a backslash is a legal character in a file name on the systems which do not use it as a separator, so nothing here can guess which was meant
+testdata/graph/unresolved-observations/entities/site.dfc:31:9: note: geom:V-03 is written here
+31 | (vertex geom:V-03
+   |         ^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:35:16: error: expected a path beneath the model root, found "C:/surveys/2026-05-06-site-control.obs", which geom:V-03 links to
+35 |   (observed-in "C:/surveys/2026-05-06-site-control.obs"))
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: an observation file is part of the model and is read by a walk of it, so a link which leaves the root names a file no clone of this repository is guaranteed to have; move the file inside the root and link to it from there
+testdata/graph/unresolved-observations/entities/site.dfc:31:9: note: geom:V-03 is written here
+31 | (vertex geom:V-03
+   |         ^^^^^^^^^

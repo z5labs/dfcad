@@ -763,7 +763,8 @@ one of them.
 | Contents | A string holding a path relative to the model root, written with forward slashes, ending in `.obs`. The same rule `route`'s `file` follows ([7.7](#77-route)), and for the same reason: a relative path means the same thing in every clone of the repository. |
 | Arity | `0..n`. A path written twice on one entity is held once — a link is a reference and not a count. |
 | Missing file | A load error naming the entity and the path. |
-| Path outside the root | A load error. A file a walk of the model does not reach is not part of the model. |
+| Path outside the root | A load error. A file a walk of the model does not reach is not part of the model. A volume-qualified path — `C:/shots.obs` — is outside it on every platform, not only on the one that has volumes. |
+| Backslash in the path | A load error. Paths are written with forward slashes so that one model reads the same way in every clone, and a backslash is an ordinary character in a file name on the systems that do not separate with it. |
 | Wrong extension | A load error. Observation files are `.obs` and are read by a walk of their own. |
 
 **The file is not read when the model is loaded.** What a load verifies is that the file is
