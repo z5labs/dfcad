@@ -129,7 +129,7 @@ type writeResult struct {
 }
 
 // runAddNode is the add-node command.
-func runAddNode(cmd command, args []string, stdout, stderr io.Writer) int {
+func runAddNode(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -185,7 +185,7 @@ func runAddNode(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runSetLabel is the set-label command.
-func runSetLabel(cmd command, args []string, stdout, stderr io.Writer) int {
+func runSetLabel(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -217,7 +217,7 @@ func runSetLabel(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runRetire is the retire command.
-func runRetire(cmd command, args []string, stdout, stderr io.Writer) int {
+func runRetire(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

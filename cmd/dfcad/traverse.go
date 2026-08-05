@@ -430,7 +430,7 @@ func (d *traversalDepth) Set(value string) error {
 }
 
 // runTraverse is the traverse command.
-func runTraverse(cmd command, args []string, stdout, stderr io.Writer) int {
+func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

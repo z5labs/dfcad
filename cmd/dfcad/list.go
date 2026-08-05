@@ -229,7 +229,7 @@ type listedInstance struct {
 }
 
 // runListTypes is the list-types command.
-func runListTypes(cmd command, args []string, stdout, stderr io.Writer) int {
+func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -274,7 +274,7 @@ func runListTypes(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runListInstances is the list-instances command.
-func runListInstances(cmd command, args []string, stdout, stderr io.Writer) int {
+func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

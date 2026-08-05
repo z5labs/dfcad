@@ -41,7 +41,13 @@ type command struct {
 	writes bool
 
 	// run does the work and returns the exit code.
-	run func(cmd command, args []string, stdout, stderr io.Writer) int
+	//
+	// The reader is the run's standard input, which one command reads a batch
+	// of operations from and the rest ignore. It is a parameter rather than
+	// [os.Stdin] reached for inside the command, for the reason the two writers
+	// are: a test drives the whole command without a subprocess and without
+	// touching the process's own streams.
+	run func(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int
 }
 
 // commands is every subcommand, in the order the usage lists them.
@@ -99,6 +105,13 @@ var commands = []command{
 		summary: "say which file a new node would be written to",
 		usage:   routeUsage,
 		run:     runRoute,
+	},
+	{
+		name:    "apply",
+		summary: "apply a batch of edits from an operation file",
+		usage:   applyUsage,
+		run:     runApply,
+		writes:  true,
 	},
 	{
 		name:    "add-node",
@@ -289,7 +302,17 @@ func main() {
 // run is the whole of main, minus the process. Keeping it a function of its
 // arguments and its writers is what lets a test drive the command without a
 // subprocess and without touching the real os.Stdout.
+//
+// The input it reads is the process's, which is what a caller piping a batch
+// into `dfcad apply` expects. [runOn] is the same run with the input handed to
+// it, which is what lets a test drive that path without a subprocess either.
 func run(args []string, stdout, stderr io.Writer) int {
+	return runOn(args, os.Stdin, stdout, stderr)
+}
+
+// runOn is run with the standard input it reads given to it rather than taken
+// from the process.
+func runOn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		fmt.Fprint(stderr, usage())
 		return exitUsage
@@ -312,5 +335,5 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	return cmd.run(cmd, args[1:], stdout, stderr)
+	return cmd.run(cmd, args[1:], stdin, stdout, stderr)
 }

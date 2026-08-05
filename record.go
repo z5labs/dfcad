@@ -1013,16 +1013,25 @@ func (tx *Tx) claimWritten(id ID) bool {
 	return false
 }
 
-// subject reports whether the model holds something a claim can be written on.
+// subject reports whether the model holds something a claim can be written on,
+// counting what this same change has already written.
 //
 // A frame answers as well as an entity: a frame is both a registry entry and a
 // node, and it carries claims because the relationship between two frames is a
 // measurement rather than a configuration constant.
+//
+// An entity this same change wrote answers too, for the reason [Tx.unheld]
+// counts one: a node and the claims which reference it are one statement, and
+// the graph is the model as the transaction found it rather than as this change
+// is leaving it.
 func (tx *Tx) subject(id ID) error {
 	if _, ok := tx.graph.Entity(id); ok {
 		return nil
 	}
 	if _, ok := tx.graph.Registry().Frame(id); ok {
+		return nil
+	}
+	if tx.wrote(id) {
 		return nil
 	}
 

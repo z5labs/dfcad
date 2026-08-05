@@ -293,7 +293,7 @@ type toleranceEntry struct {
 }
 
 // runAddVertex is the add-vertex command.
-func runAddVertex(cmd command, args []string, stdout, stderr io.Writer) int {
+func runAddVertex(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -342,7 +342,7 @@ func runAddVertex(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runAddEdge is the add-edge command.
-func runAddEdge(cmd command, args []string, stdout, stderr io.Writer) int {
+func runAddEdge(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -407,7 +407,7 @@ func runAddEdge(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runAddLoop is the add-loop command.
-func runAddLoop(cmd command, args []string, stdout, stderr io.Writer) int {
+func runAddLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -454,7 +454,7 @@ func runAddLoop(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runScaffoldLoop is the scaffold-loop command.
-func runScaffoldLoop(cmd command, args []string, stdout, stderr io.Writer) int {
+func runScaffoldLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -489,7 +489,7 @@ func runScaffoldLoop(cmd command, args []string, stdout, stderr io.Writer) int {
 		return usageError(cmd, err, stderr, false)
 	}
 
-	reportSnaps(cmd, built, stderr)
+	reportSnaps(cmd, built.Snaps, built.Tolerance, stderr)
 
 	out, exit, ok := apply(cmd, tx, globals, stderr)
 	if !ok {
@@ -598,28 +598,7 @@ func (axes scaffoldAxes) spec(registry *dfcad.Registry) (dfcad.ScaffoldSpec, err
 // corners: one --value for a list of forty corners would have to mean one of
 // them, and there is no reading of that which is not a guess.
 func (axes claimAxes) provenance(predicate string) (dfcad.ClaimSpec, error) {
-	spec := dfcad.ClaimSpec{Predicate: predicate, Source: *axes.source}
-
-	var err error
-	if spec.Date, err = on(*axes.date); err != nil {
-		return spec, err
-	}
-
-	if *axes.method != "" {
-		if spec.Method, err = dfcad.ParseID(*axes.method); err != nil {
-			return spec, err
-		}
-	}
-
-	for _, term := range *axes.accuracy {
-		read, err := dfcad.ParseAccuracyTerm(term)
-		if err != nil {
-			return spec, err
-		}
-		spec.Accuracy = append(spec.Accuracy, read)
-	}
-
-	return spec, nil
+	return axes.written().Provenance(predicate)
 }
 
 // identified reads a list of ids written on a command line.
@@ -703,12 +682,12 @@ func reportRouted(cmd command, globals *globals, stderr io.Writer, id dfcad.ID, 
 // scaffold which is surprising when it happens and worse when it does not, and a
 // duplicate written with snapping switched off is a warning whether or not
 // anybody asked to see the result.
-func reportSnaps(cmd command, built dfcad.Scaffolding, stderr io.Writer) {
-	for _, snap := range built.Snaps {
+func reportSnaps(cmd command, snaps []dfcad.Snap, tolerance dfcad.Tolerance, stderr io.Writer) {
+	for _, snap := range snaps {
 		if snap.Reused {
 			fmt.Fprintf(stderr,
 				"dfcad %s: corner %d reuses %s, %g %s away, which is within the tolerance %s\n",
-				cmd.name, snap.Corner, snap.Vertex, snap.Distance, snap.Unit, built.Tolerance.Name,
+				cmd.name, snap.Corner, snap.Vertex, snap.Distance, snap.Unit, tolerance.Name,
 			)
 			continue
 		}
@@ -716,7 +695,7 @@ func reportSnaps(cmd command, built dfcad.Scaffolding, stderr io.Writer) {
 		fmt.Fprintf(stderr,
 			"dfcad %s: warning: corner %d is %g %s from %s, within the tolerance %s, "+
 				"and snapping is off: a second vertex is written at that point\n",
-			cmd.name, snap.Corner, snap.Distance, snap.Unit, snap.Vertex, built.Tolerance.Name,
+			cmd.name, snap.Corner, snap.Distance, snap.Unit, snap.Vertex, tolerance.Name,
 		)
 	}
 }
