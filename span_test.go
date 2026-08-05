@@ -130,6 +130,14 @@ func TestSpanRejectsTextItDidNotWrite(t *testing.T) {
 		{name: "a line before the first", text: "entities/site.dfc:0:1"},
 		{name: "a column before the first", text: "entities/site.dfc:13:0"},
 		{name: "a position with no path", text: ":13:1"},
+
+		// An extent is written only where there is one. These read as places
+		// and are still refused, because each is a second spelling of a span
+		// the writer spells one way, and a text which read back as a span that
+		// wrote itself differently is not a canonical encoding.
+		{name: "an empty extent written the long way", text: "entities/site.dfc:13:1-13:1"},
+		{name: "an extent whose end is before its start", text: "entities/site.dfc:13:5-13:1"},
+		{name: "an extent which ends on an earlier line", text: "entities/site.dfc:52:1-13:1"},
 	}
 
 	for _, testCase := range testCases {

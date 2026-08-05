@@ -617,9 +617,20 @@ func TestRunGetSaysWhereItWasDefined(t *testing.T) {
 
 	assert.Contains(t, entity.Span.Start.Path, "site.dfc")
 	assert.Equal(t, entity.Span.Start.Path, entity.Span.End.Path)
+
 	assert.Positive(t, entity.Span.Start.Line)
 	assert.Positive(t, entity.Span.Start.Column)
-	assert.GreaterOrEqual(t, entity.Span.End.Line, entity.Span.Start.Line)
+	assert.Positive(t, entity.Span.End.Line)
+	assert.Positive(t, entity.Span.End.Column)
+
+	// The end is after the start, which on one line is a column and across
+	// lines is a line. Comparing only the lines would let a form which ended
+	// before it began pass.
+	if entity.Span.End.Line == entity.Span.Start.Line {
+		assert.Greater(t, entity.Span.End.Column, entity.Span.Start.Column)
+	} else {
+		assert.Greater(t, entity.Span.End.Line, entity.Span.Start.Line)
+	}
 }
 
 // TestRunGetWritesASpanAsOneString is what the contract's readers see, which

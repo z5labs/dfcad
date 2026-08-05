@@ -104,6 +104,14 @@ func (s Span) MarshalJSON() ([]byte, error) {
 
 // SpanTextError is a JSON span which is not in the form [Span.MarshalJSON]
 // writes.
+//
+// That is the whole of what is accepted, and it is deliberately narrower than
+// what could be parsed. A written extent whose end is not strictly after its
+// start is refused rather than read: `a.dfc:1:1-1:1` is an empty span written
+// the long way and would come back out as `a.dfc:1:1`, and `a.dfc:2:5-1:1` is
+// not a span at all. Accepting either would mean a text this package read and
+// wrote again was not the text it was given, which is the one property a
+// canonical encoding has.
 type SpanTextError struct {
 	// Text is the string that could not be read as a span.
 	Text string
@@ -112,7 +120,8 @@ type SpanTextError struct {
 // Error implements [error].
 func (e SpanTextError) Error() string {
 	return fmt.Sprintf(
-		"expected a span written as path:line:column or path:line:column-line:column, found %q",
+		"expected a span written as path:line:column, or as path:line:column-line:column "+
+			"whose end is after its start, found %q",
 		e.Text,
 	)
 }
@@ -154,12 +163,16 @@ type lineColumn struct {
 // It reads from the right rather than from the left, because a path holds
 // colons on Windows and dashes everywhere, and only the numbers at the end are
 // unambiguous.
+//
+// A written extent has to be strictly after the start, so that the only text
+// which reads as a given span is the text [Span.String] writes for it.
 func parseSpanText(text string) (path string, start, end lineColumn, ok bool) {
 	rest := text
 
+	var written bool
 	if head, tail, found := cutLast(rest, "-"); found {
 		if line, column, valid := splitLineColumn(tail); valid {
-			end, rest = lineColumn{line: line, column: column}, head
+			end, rest, written = lineColumn{line: line, column: column}, head, true
 		}
 	}
 
@@ -182,11 +195,22 @@ func parseSpanText(text string) (path string, start, end lineColumn, ok bool) {
 	}
 
 	start = lineColumn{line: line, column: column}
-	if end == (lineColumn{}) {
-		end = start
+	if !written {
+		return path, start, start, true
+	}
+	if !after(start, end) {
+		return "", start, end, false
 	}
 
 	return path, start, end, true
+}
+
+// after reports whether one end of a span comes strictly after the other.
+func after(start, end lineColumn) bool {
+	if end.line != start.line {
+		return end.line > start.line
+	}
+	return end.column > start.column
 }
 
 // splitLineColumn reads a bare line:column pair.
