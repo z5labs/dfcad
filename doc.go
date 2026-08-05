@@ -84,6 +84,31 @@
 // docs/decisions/0002-immutable-id-mutable-label.md for why a label is free to
 // change and an id is not.
 //
+// # Checks
+//
+// An assertion names a check and supplies its parameters, and contains nothing
+// else: no operators, no traversal and no user-defined logic. The checks it may
+// name are a closed registry compiled into the engine, which [Checks] lists and
+// [LookupCheck] reads one entry of. Each declares what it constrains, the
+// parameters it takes and the sort of datum each parameter is, so what an
+// assertion constrains can be answered by reading it rather than by evaluating
+// it against a model.
+//
+// [ValidateAssertion] is that reading. It resolves the check name and every
+// parameter — including the ones naming a type, a predicate, a frame or a
+// tolerance, which are resolved against the model's own registry — at load,
+// which is where a misspelled check name and a parameter of the wrong sort are
+// reported. A tolerance is always a name from the registry: a numeric literal
+// written where one belongs is refused, so how close is close enough stays one
+// decision in one place.
+//
+// Adding a check is a change to the engine — a type implementing [Check] and a
+// line in the registered set — rather than something a model file can do. See
+// docs/decisions/0011-assertions-are-named-parameterised-checks.md for why the
+// registry is closed, and
+// docs/decisions/0012-tolerances-are-registry-data.md for why no check carries a
+// number.
+//
 // # Accuracy
 //
 // This is the convention every accuracy in the engine is stated under, and it

@@ -99,6 +99,10 @@ func TestLoadRegistry(t *testing.T) {
 			name:    "names the target a routing rule may not file into, and the criteria nothing declares",
 			fixture: "routes",
 		},
+		{
+			name:    "resolves an invariant's check name and its parameters when the registry loads",
+			fixture: "checks",
+		},
 	}
 
 	for _, testCase := range testCases {

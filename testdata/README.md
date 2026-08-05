@@ -96,6 +96,7 @@ is where the tests of that layer read them from.
 | 7.5           | A second root frame, and half of a non-root one      | `registry/roots/`                           |
 | 7.1           | A model declaring no project at all                  | `registry/empty/`                           |
 | 7.7           | A routing rule filing into a path no walk of the model reaches, and one whose criteria name a kind, a namespace or a type nothing declares | `registry/routes/` |
+| 6.8, 7.3      | An invariant naming a check nothing registers, one missing a parameter the check requires, one writing a parameter it does not take, one writing a numeric literal tolerance, and one naming a predicate nothing declares | `registry/checks/` |
 | 1, 6.1        | A node kind or geometry form which is not one, and `absent` named on a node | `node/unknown-value/`         |
 | 6.1, 7.3      | A node naming a type no registry file declares       | `node/undeclared-type/`                     |
 | 6.1, 7.3      | A node whose type permits a different kind or geometry form, and one whose type does not permit absence | `node/not-permitted/` |

@@ -103,6 +103,17 @@ type registryLoader struct {
 	// routes are the accepted routing rules in the order they were read, with
 	// the spans of the names they borrow from the other registries.
 	routes []*routeDeclaration
+
+	// invariants are the invariant forms of the accepted type declarations, in
+	// the order they were read.
+	//
+	// They are checked against the check registry once every file has been
+	// read, for the reason a frame's parent is: an invariant naming a tolerance
+	// declared in the last file the walk reaches is as declared as one naming a
+	// tolerance in the first, and a loader which resolved as it read would
+	// report it undeclared for no reason but the order the directory happened
+	// to be listed in.
+	invariants []*Node
 }
 
 // frameDeclaration is one accepted frame together with where the parts a later
@@ -331,6 +342,7 @@ func (l *registryLoader) declareType(node *Node) {
 		declared.Description, _ = l.text(arg, "a string")
 	}
 
+	var invariants []*Node
 	for _, child := range childForms(node, "invariant") {
 		check, _, ok := l.name(child, "a check name")
 		if !ok {
@@ -343,6 +355,8 @@ func (l *registryLoader) declareType(node *Node) {
 			Parameters: parameters,
 			Span:       child.Span,
 		})
+
+		invariants = append(invariants, child)
 	}
 
 	if existing, ok := l.registry.types[name]; ok {
@@ -351,6 +365,7 @@ func (l *registryLoader) declareType(node *Node) {
 	}
 
 	l.registry.types[name] = declared
+	l.invariants = append(l.invariants, invariants...)
 }
 
 // declarePredicate reads specification section 7.4.
@@ -765,6 +780,16 @@ func (l *registryLoader) resolve() {
 		if declared := declaration.route.Type; declared != "" && !l.registry.Declares(SortType, declared) {
 			l.add(l.registry.Undeclared(SortType, declared, declaration.declaredType))
 		}
+	}
+
+	// An invariant is a check name and its parameters, and both are vocabulary:
+	// the name belongs to the engine's closed check registry and a parameter
+	// naming a tolerance, a type or a predicate belongs to this one. Resolving
+	// them here is what makes an invariant a thing the engine could run before
+	// anything has run it
+	// ([0011](docs/decisions/0011-assertions-are-named-parameterised-checks.md)).
+	for _, invariant := range l.invariants {
+		l.add(validateAssertion(invariant, l.registry)...)
 	}
 
 	l.cycles()

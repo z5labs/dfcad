@@ -395,6 +395,62 @@ func ExampleRegistry_Undeclared() {
 	//   = hint: no type is declared; a registry file declares one with (type ...)
 }
 
+func ExampleChecks() {
+	// The check registry is closed and compiled into the engine, so this is the
+	// whole set for every model: a command listing what an assertion may name
+	// reads it here rather than out of a file.
+	for _, check := range dfcad.Checks() {
+		written := []string{check.Name}
+		for _, parameter := range check.Parameters {
+			written = append(written, fmt.Sprintf("(%s <%s>)", parameter.Name, parameter.Type))
+		}
+		fmt.Println(strings.Join(written, " "))
+	}
+
+	// Output:
+	// boundary-loops-close (tolerance <tolerance>)
+	// edge-endpoints-differ
+	// required-claim (predicate <predicate>)
+	// within-resolves
+	// zone-members-resolve
+}
+
+func ExampleValidateAssertion() {
+	const path = "entities/level-1.dfc"
+
+	source := `(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (assert boundary-loops-close (tolerance 0.005)))
+`
+
+	file, err := dfcad.Parse(path, strings.NewReader(source))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	registry, _ := dfcad.LoadRegistry("testdata/registry/valid")
+
+	// An assertion is validated against the check registry before anything runs
+	// it: the check name is one the engine registers, and every parameter is
+	// the sort of datum that check declares it takes.
+	written := file.Nodes[0].Children[4]
+
+	var diagnostics dfcad.Diagnostics
+	diagnostics.Add(dfcad.ValidateAssertion(written, registry)...)
+
+	if err := diagnostics.Render(os.Stdout, dfcad.Sources{path: []byte(source)}); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// entities/level-1.dfc:4:43: error: expected a declared tolerance name after the tolerance tag, found the number 0.005
+	// 4 |   (assert boundary-loops-close (tolerance 0.005)))
+	//   |                                           ^^^^^
+	//   = hint: a tolerance is registry data rather than a number written where it is used: declare it with (tolerance <name> (value <magnitude> <unit>)) and name it here, so that how close is close enough is one decision in one place
+}
+
 func ExampleValidate() {
 	const path = "registry/registry.dfc"
 
