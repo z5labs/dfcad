@@ -289,7 +289,7 @@ obs shot:2026-05-06-0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 
 obs shot:2026-05-06-0002 2026-05-06T09:16:03Z frame:site 412318.905 5318220.512 34.198 method:gnss-rtk fix:rtk-fixed 0.011 0.019 2.000 session:2026-05-06-am
 obs shot:2026-05-06-0003 2026-05-06T09:18:47Z frame:site 412318.880 5318241.330 34.402 method:gnss-rtk fix:rtk-float 0.240 0.510 2.000 session:2026-05-06-am
 obs shot:2026-05-06-0004 2026-05-06T09:21:10Z frame:site 412318.902 5318241.318 34.395 method:gnss-rtk fix:rtk-fixed 0.013 0.022 2.000 session:2026-05-06-am
-retire retire:2026-05-06-0001 2026-05-06T16:02:00Z shot:2026-05-06-0003 "float solution beside a fixed reshot of the same corner"
+retire retirement:2026-05-06-0001 2026-05-06T16:02:00Z shot:2026-05-06-0003 "float solution beside a fixed reshot of the same corner"
 ```
 
 Four shots and one retirement. What the log resolves to is shots 1, 2 and 4; shot 3 is still

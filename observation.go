@@ -265,7 +265,7 @@ func newObservationLog() *ObservationLog {
 	}
 }
 
-// add files one record, in log order.
+// add appends one record, in log order.
 func (l *ObservationLog) add(record observationRecord) {
 	l.records = append(l.records, record)
 
@@ -668,14 +668,14 @@ func parseObservationFile(path string, src []byte, log *ObservationLog) []Diagno
 	return p.diags
 }
 
-// at files a diagnostic at a position, which is what something with no text of
-// its own points at.
+// at appends a diagnostic at a position, which is what something with no text
+// of its own points at.
 func (p *observationParser) at(position Position, diagnostic Diagnostic) {
 	diagnostic.Span = position.Span()
 	p.diags = append(p.diags, diagnostic)
 }
 
-// add files a diagnostic which already carries its span.
+// add appends a diagnostic which already carries its span.
 func (p *observationParser) add(diagnostic Diagnostic) {
 	p.diags = append(p.diags, diagnostic)
 }
