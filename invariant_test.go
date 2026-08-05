@@ -8,7 +8,6 @@ package dfcad
 import (
 	"fmt"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -37,7 +36,11 @@ func (runnableRequiredClaim) Run(subject CheckSubject) []Failure {
 		return nil
 	}
 
-	for range subject.Graph().Claims().Under(subject.Node().ID(), predicate) {
+	// The subject rather than the node, because required-claim declares all four
+	// forms and an assertion writes it on any of them: a vertex has no node to
+	// ask, and a check reading one would be answering about the wrong thing on
+	// the three quarters of its declared subjects which are not nodes.
+	for range subject.Graph().Claims().Under(subject.Subject().ID(), predicate) {
 		return nil
 	}
 
@@ -469,25 +472,4 @@ func TestGraphInvariantsOfNothing(t *testing.T) {
 		t.Error("a graph which does not exist binds nothing")
 	}
 	assert.Empty(t, absent.CheckInvariants())
-}
-
-// TestViolationRendersWhereItFailed covers a check which points at part of a
-// subject rather than at the whole of it, which is what a spatial check
-// reporting one loop of several does.
-func TestViolationRendersWhereItFailed(t *testing.T) {
-	graph := loadInvariantFixture(t, "valid")
-	node := instanceOf(t, graph, "site:S-101")
-
-	bindings := graph.Invariants(node)
-	require.Len(t, bindings, 1)
-
-	at := Position{Path: "entities/site.dfc", Line: 12, Column: 3}.Span()
-	violation := bindings[0].violation(Failure{Message: "expected a claim, found none", Span: at})
-
-	assert.Equal(t, at, violation.Subject)
-	assert.True(t, strings.HasPrefix(violation.String(), "entities/site.dfc:12:3: error: "))
-
-	// A failure which says nothing about where it is is about the whole node.
-	whole := bindings[0].violation(Failure{Message: "expected a claim, found none"})
-	assert.Equal(t, node.Span(), whole.Subject)
 }

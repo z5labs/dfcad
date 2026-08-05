@@ -499,52 +499,12 @@ func (g *Graph) CheckInvariants() []Violation {
 }
 
 // checkInvariants is [Graph.CheckInvariants] against a given set of checks.
+//
+// It is the invariants of [Graph.rules] run, rather than a run of its own, so
+// that what a violation carries and the order violations come back in are
+// decided in one place for both kinds of rule.
 func (g *Graph) checkInvariants(set *checkSet) []Violation {
-	var out []Violation
-
-	for binding := range g.allInvariants(set) {
-		if binding.runner == nil {
-			continue
-		}
-
-		subject := CheckSubject{graph: g, subject: binding.Instance, arguments: binding.Arguments}
-		for _, failure := range binding.runner.Run(subject) {
-			out = append(out, binding.violation(failure))
-		}
-	}
-
-	return out
-}
-
-// violation attaches the binding — what failed, which rule and where that rule
-// is written — to what the check found.
-func (b InvariantBinding) violation(failure Failure) Violation {
-	subject := failure.Span
-	if subject == (Span{}) && b.Instance != nil {
-		subject = b.Instance.Span()
-	}
-
-	written := make([]string, 0, len(b.Arguments))
-	for _, argument := range b.Arguments {
-		written = append(written, argument.String())
-	}
-
-	var instance ID
-	if b.Instance != nil {
-		instance = b.Instance.ID()
-	}
-
-	return Violation{
-		Instance:  instance,
-		Type:      b.Type,
-		Check:     b.Declared.Check,
-		Arguments: written,
-		Declared:  b.Declared.Span,
-		Subject:   subject,
-		Message:   failure.Message,
-		Hint:      failure.Hint,
-		Related:   failure.Related,
-	}
+	return g.rules(set).invariants().Run().Violations
 }
 
 // examines reports whether a check can examine one instance.

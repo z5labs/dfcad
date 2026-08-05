@@ -152,6 +152,23 @@
 // exactly as one that does and runs nothing, which [InvariantBinding.Runnable]
 // is how to tell apart.
 //
+// # Running them together
+//
+// A gate does not ask the two questions separately. [Graph.Rules] is every rule
+// the model states as one list — each type's invariants bound to its instances,
+// then each assertion bound to the thing it is written on — and [Rules.Run] runs
+// them and returns a [CheckRun]: how many rules there were, how many ran, how
+// many passed and failed, and a [Violation] for each way one was not satisfied.
+// [RuleFilter] narrows that to one thing, one type or one check, which is what a
+// gate somebody is iterating against runs.
+//
+// The order is deterministic and is the order the model was read in, so a
+// listing of what would run and a report of what did both diff against the last
+// run's. A rule whose check declares itself and has no implementation is bound,
+// listed and counted apart from the ones that ran, because "this rule holds" and
+// "nothing has been written to decide whether it holds" are different answers;
+// [Rule.Runs] is how to tell them apart.
+//
 // # Accuracy
 //
 // This is the convention every accuracy in the engine is stated under, and it

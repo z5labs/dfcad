@@ -107,6 +107,12 @@ var commands = []command{
 		run:     runRoute,
 	},
 	{
+		name:    "check",
+		summary: "run every rule the model states and say whether it holds",
+		usage:   checkUsage,
+		run:     runCheck,
+	},
+	{
 		name:    "apply",
 		summary: "apply a batch of edits from an operation file",
 		usage:   applyUsage,

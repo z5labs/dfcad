@@ -1,0 +1,52 @@
+; The vocabulary of a model which carries rules of both kinds.
+;
+; Two of its types declare an invariant and one declares none, so that a run
+; over the model has rules bound to some of its instances and not to others —
+; which is what says whether a count of how many checks there were is a count of
+; rules rather than of things.
+(project
+  (label "Rule fixture")
+  (globalid-namespace "https://example.org/models/rules"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "The clear width between two faces."))
+
+; Every meeting room carries a width, said once here for every instance.
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (invariant required-claim (predicate width)))
+
+; A type with no invariant. Nothing binds to its instances, so a run says
+; nothing about them at all.
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms."))
+
+(type OccupancyZone
+  (kind Zone)
+  (geometry absent)
+  (description "A grouping occupancy is counted over, with no shape of its own.")
+  (invariant within-resolves))

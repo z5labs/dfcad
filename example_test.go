@@ -443,6 +443,61 @@ func ExampleGraph_Invariants() {
 	// bound to the corridor: 0
 }
 
+func ExampleGraph_Rules() {
+	graph, _ := dfcad.LoadGraph("testdata/rules/valid")
+
+	// A gate does not ask the two questions separately. Every rule the model
+	// states comes back as one list, in the order it will run in: every
+	// invariant, node by node in the order the model was read, and then every
+	// assertion, thing by thing.
+	for _, rule := range graph.Rules() {
+		written := "assertion, written on it"
+		if rule.Invariant() {
+			written = "invariant of " + rule.Type
+		}
+		fmt.Printf("%s — %s\n", rule, written)
+	}
+
+	// Output:
+	// site:Z-01 within-resolves — invariant of OccupancyZone
+	// site:S-101 required-claim (predicate width) — invariant of MeetingRoom
+	// site:S-102 required-claim (predicate width) — invariant of MeetingRoom
+	// site:Z-01 required-claim (predicate width) — assertion, written on it
+	// site:S-101 boundary-loops-close (tolerance boundary-closure) — assertion, written on it
+	// geom:V-01 required-claim (predicate position) — assertion, written on it
+	// geom:E-01 required-claim (predicate position) — assertion, written on it
+}
+
+func ExampleRules_Run() {
+	graph, _ := dfcad.LoadGraph("testdata/rules/valid")
+
+	// A gate somebody is iterating against runs one thing, one type or one
+	// check rather than the model. Each filter can only take rules away, so the
+	// answers compose the way a reader expects.
+	rules := graph.Rules().Select(dfcad.RuleFilter{Types: []string{"MeetingRoom"}})
+	for _, rule := range rules {
+		fmt.Println(rule)
+	}
+
+	run := rules.Run()
+
+	// Every check the engine registers declares what it constrains and takes;
+	// what implements them is the initial check set. So these rules are bound,
+	// listed and counted, and until then they decide nothing — which is not the
+	// same answer as a model whose rules all hold.
+	fmt.Println("rules:", run.Rules)
+	fmt.Println("undecided:", run.Rules-run.Ran)
+	fmt.Println("failed:", run.Failed)
+
+	// Output:
+	// site:S-101 required-claim (predicate width)
+	// site:S-102 required-claim (predicate width)
+	// site:S-101 boundary-loops-close (tolerance boundary-closure)
+	// rules: 3
+	// undecided: 3
+	// failed: 0
+}
+
 func ExampleGraph_Assertions() {
 	graph, _ := dfcad.LoadGraph("testdata/assert/valid")
 

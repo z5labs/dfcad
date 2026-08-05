@@ -27,6 +27,7 @@ the goldens beside the fixtures are invisible to it.
 | `graph`                    | The whole-graph loader's own fixtures. One *directory* per case, each a whole model — registry, both families and the claims on them — with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `invariant`                | The fixtures of the pass which binds a type's invariants to its instances. One *directory* per case, each a whole model whose types carry invariants, and each expected to load clean — what these assert is what binds and what a run of it reports, not a diagnostic. |
 | `assert`                   | The fixtures of the pass which reads the assertions written on things against the model they were written in. One *directory* per case, each a whole model whose things carry assertions. `valid` loads clean; the rest each hold one shape of refusal, and three of them name checks the engine has not written yet and are read against a check set the test assembles. |
+| `rules`                    | The fixtures of the pass which runs a model's rules of both kinds together. One *directory* per case, each a whole model whose types carry invariants and whose things carry assertions, and each expected to load clean — what these assert is what binds, what a run of it reports and what a filter narrows it to, not a diagnostic. |
 | `model`                    | A two-file model the runnable examples load.                                                |
 
 `corpus/valid` is not a second copy of `print`. The printer's fixtures are one

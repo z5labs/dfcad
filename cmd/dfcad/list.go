@@ -455,12 +455,23 @@ func permittedGeometries(declared dfcad.Type) []string {
 // a call that refuses to describe a tree until the tree is finished is a call
 // nobody reaches for.
 func loadModel(cmd command, globals *globals, stderr io.Writer) *dfcad.Graph {
+	graph, _ := loadGate(cmd, globals, stderr)
+	return graph
+}
+
+// loadGate is [loadModel] with what the diagnostics said about the model kept,
+// which is what a gate needs and a listing does not.
+//
+// It reports whether the load refused the model — whether any diagnostic is an
+// error rather than a warning — and is the one place which decides that, so
+// that a read which ignores it and a gate which acts on it are reading the same
+// answer.
+func loadGate(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, bool) {
 	reportLoading(cmd, globals, stderr)
 
 	graph, found := dfcad.LoadGraph(globals.Root)
-	render(found, stderr)
 
-	return graph
+	return graph, render(found, stderr)
 }
 
 // usageError reports an invocation which named something that does not exist.
