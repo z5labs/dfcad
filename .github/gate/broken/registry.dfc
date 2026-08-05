@@ -1,0 +1,16 @@
+; The vocabulary of the deliberately broken model.
+;
+; This file is correct and canonical on purpose. What is wrong with this model
+; is in the two files beside it, so that the self-test can say which stage of
+; the gate caught which fault rather than watching one mistake fail everything.
+(project
+  (label "Gate self-test")
+  (globalid-namespace "https://example.org/models/gate-self-test"))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type
+  MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+(frame frame:building (label "Building local grid") (unit m))

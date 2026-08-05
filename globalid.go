@@ -8,7 +8,6 @@ package dfcad
 import (
 	"crypto/sha1"
 	"fmt"
-	"io"
 )
 
 // GlobalID is IFC's identifier for one rooted object: a 128-bit value written
@@ -160,9 +159,12 @@ type uuid [16]byte
 // cryptographic merit. It cannot be swapped for something modern without
 // changing every value ever exported.
 func uuidV5(namespace uuid, name string) uuid {
+	// Neither write is examined, and both are spelled the same way so that the
+	// reason reads once: [hash.Hash] documents Write as never returning an
+	// error, so there is nothing here a caller could be told.
 	sum := sha1.New()
 	sum.Write(namespace[:])
-	io.WriteString(sum, name)
+	sum.Write([]byte(name))
 
 	var derived uuid
 	copy(derived[:], sum.Sum(nil))

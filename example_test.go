@@ -526,8 +526,6 @@ func ExampleGraph_Assertions() {
 }
 
 func ExampleResolveAssertions() {
-	const path = "entities/level-1.dfc"
-
 	source := `(node site:S-101
   (kind Space)
   (type MeetingRoom)

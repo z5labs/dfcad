@@ -1,0 +1,9 @@
+; A node which says something true, written in a form the printer does not
+; produce. Nothing here is invalid: it loads, and it is what `dfcad fmt --check`
+; is for — the gate's first stage, and the one a model acquires by being edited
+; by hand.
+(node    site:S-001
+        (label   "Meeting Room A")
+    (kind Space) (type MeetingRoom)
+  (geometry area)
+      (frame frame:building))

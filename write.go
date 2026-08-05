@@ -739,7 +739,13 @@ func (tx *Tx) Commit() (Commit, []Diagnostic, error) {
 	if tx.finished {
 		return Commit{}, nil, ErrFinished
 	}
-	defer tx.finish()
+	// finish's error is a lock file which would not come off. It is dropped
+	// here rather than returned, because by the time this runs the change has
+	// either landed or been refused, and reporting a stuck lock as Commit's
+	// error would say the change did not land when it did. The lock is still
+	// visible: the next [Begin] against this root fails with [ErrLocked]
+	// naming the file, which is where a caller can act on it.
+	defer func() { _ = tx.finish() }()
 
 	pending, diags := tx.prepare()
 	if refused(diags) {
