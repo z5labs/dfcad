@@ -2608,3 +2608,104 @@ func ExampleSurvey_Bend() {
 	// site:S-01: 22.283185 m², bounded by 18.283185 m of wall
 	// geom:E-02 drawn as 16 segments, within 0.009631 m of the curve, to chord-deviation
 }
+
+// ExampleGraph_Derive computes the derived geometry of a whole model — what each
+// thing covers, how big that is, where it is centred, how far it reaches and
+// which regions it lies inside — and keeps the answer in a build output
+// directory.
+//
+// None of it is ever written back into an entity file. The cache is keyed by the
+// digest of the source tree the geometry was derived from, so a model which
+// changed anywhere is a different key and a miss; there is no invalidation step
+// to get wrong, because the key is the invalidation.
+func ExampleGraph_Derive() {
+	root := "testdata/derived/model"
+
+	build, err := os.MkdirTemp("", "dfcad-build-")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(build)
+
+	cache, err := dfcad.OpenCache(build)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	against := dfcad.Derivation{
+		Tolerance: "boundary-closure",
+		Position:  "position",
+		Cache:     cache,
+	}
+
+	prints, _ := graph.Derive(against)
+	for print := range prints.All() {
+		fmt.Println(print)
+	}
+
+	// The second run is the same answer, read rather than computed. Deleting the
+	// whole of the build output directory would change what comes back by
+	// nothing at all — only how long it took.
+	again, _ := graph.Derive(against)
+
+	fmt.Println(prints.Digest() == again.Digest(), cache.Stats().Hits, cache.Stats().Misses)
+
+	// Output:
+	// site:S-01: area 192.0 m², perimeter 72.0 m, centroid (10.0 5.0 0.0), 1 piece, 1 hole
+	// site:S-02: area 8.0 m², perimeter 12.0 m, centroid (10.0 5.0 0.0), 1 piece
+	// site:S-03: area 16.0 m², perimeter 16.0 m, centroid (4.0 4.0 0.0), 1 piece, within site:S-01
+	// site:S-04: area 1.0 m², perimeter 4.0 m, centroid (3.5 3.5 0.0), 1 piece, within site:S-01, site:S-03
+	// site:S-05: area 12.0 m², perimeter 14.0 m, centroid (2.0 1.5 0.0), 1 piece
+	// true 1 1
+}
+
+// ExampleDigestOf shows what makes a stale cache hit unrepresentable: the key is
+// a digest over the bytes of the source tree, so an edit anywhere in it — one
+// coordinate, one new file — is a different key.
+//
+// It also shows what is deliberately not in it. A build output written beside
+// the model is not an input to anything derived from the model, and a
+// recomputation every time somebody's editor wrote a swap file would be a cache
+// which never paid for itself.
+func ExampleDigestOf() {
+	root, err := os.MkdirTemp("", "dfcad-model-")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	entities := filepath.Join(root, "model.dfc")
+	if err := os.WriteFile(entities, []byte("(node site:S-101 (label \"Meeting Room B\") (kind Space))\n"), 0o644); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	before, _ := dfcad.DigestOf(root)
+
+	// Anything a walk does not read is not an input to a derivation.
+	notes := filepath.Join(root, "README.md")
+	if err := os.WriteFile(notes, []byte("nothing derives from this\n"), 0o644); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	unchanged, _ := dfcad.DigestOf(root)
+
+	// One byte of an entity file is a different tree.
+	if err := os.WriteFile(entities, []byte("(node site:S-101 (label \"Meeting Room C\") (kind Space))\n"), 0o644); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	after, _ := dfcad.DigestOf(root)
+
+	fmt.Println(before == unchanged, before == after)
+
+	// Output:
+	// true false
+}

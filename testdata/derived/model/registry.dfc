@@ -1,0 +1,75 @@
+; The vocabulary the model beside this file is derived against.
+;
+; The tolerance and the position predicate are the two things a derivation needs
+; which are not in the geometry, and they are both part of the key the derived
+; geometry is cached under: a footprint judged against a different tolerance is
+; a different answer to a different question, and serving one for the other is
+; the stale hit the digest exists to make unrepresentable.
+;
+; The annex is a second frame so that a pair of regions which no operation could
+; be run over is in the fixture. Membership between them is not refused and not
+; reported — it is not a question, because a coordinate means nothing without the
+; frame it was written in.
+(project
+  (label "Derived geometry fixture")
+  (globalid-namespace "https://example.org/models/derived"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:building)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 40.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-20")))
+
+(type FloorPlate
+  (kind Space)
+  (geometry area)
+  (description "The whole floor of a storey, with the voids cut out of it."))
+
+(type Courtyard
+  (kind Space)
+  (geometry area)
+  (description "An open space within a floor plate."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Workspace
+  (kind Space)
+  (geometry area)
+  (description "An area of a room given over to desks."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

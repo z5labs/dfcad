@@ -11,6 +11,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 )
 
 // Entity is one thing a model holds under an id: a semantic node, or a vertex,
@@ -49,6 +50,9 @@ type Entity interface {
 // caches a derived answer: the conflict register, a loop's closure and an
 // edge's classification are computed from the model every time they are asked
 // for ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+// The one derived thing which may be kept is kept outside the graph, in a build
+// output directory a caller hands in, keyed by the digest of the tree it was
+// derived from — see [Graph.Derive] and [Cache].
 type Graph struct {
 	// root is what the load was asked for, which is where a diagnostic about
 	// the model as a whole rather than about any one file points.
@@ -76,6 +80,18 @@ type Graph struct {
 
 	// summary is what the load counted.
 	summary Summary
+
+	// onDisk is whether root is what this graph was read from, byte for byte.
+	// It is false for a graph interpreted from trees a write substituted, which
+	// is a model that exists nowhere on disk and so has nothing to digest
+	// ([Graph.Digest]).
+	onDisk bool
+
+	// digest is the digest of the source tree, computed on first use and
+	// remembered because a graph is a reading of a tree at one moment.
+	digested  sync.Once
+	digest    Digest
+	digestErr error
 }
 
 // LoadGraph reads the whole model beneath root in one pass.
@@ -139,7 +155,15 @@ func LoadGraph(root string) (*Graph, []Diagnostic) {
 		parsed = append(parsed, src)
 	}
 
-	return loadGraph(root, parsed, diags, registeredChecks)
+	graph, diags := loadGraph(root, parsed, diags, registeredChecks)
+
+	// This is the one path which read the tree as it stands, so it is the one
+	// which may digest it. Everything derived from this graph can therefore be
+	// keyed by that digest and cached; everything derived from a graph the
+	// loader below assembled cannot.
+	graph.onDisk = true
+
+	return graph, diags
 }
 
 // loadGraph is [LoadGraph] over trees which have already been read, carrying
