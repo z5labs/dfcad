@@ -32,6 +32,13 @@ type Entity interface {
 	// Span returns where it was written, which is what a diagnostic about it
 	// points at.
 	Span() Span
+
+	// ObservedIn returns the observation files it links to, as paths and never
+	// as records. It is on the interface because the link is the one thing every
+	// family carries for the same reason: all four are things somebody measured,
+	// and a caller asking what the evidence behind an id is should not have to
+	// know which family answered.
+	ObservedIn() []ObservationLink
 }
 
 // Graph is one whole model, loaded: the vocabulary it declares, both families
@@ -76,6 +83,16 @@ type Graph struct {
 	// times.
 	byKind map[Kind][]*SemanticNode
 	byType map[string][]*SemanticNode
+
+	// observations reads the observation files the entities link to, once each
+	// and only when something asks for them.
+	//
+	// It is the one part of a graph which is not populated by the load. The load
+	// checks that every linked file is there and reads none of them, because a
+	// season of field work is orders of magnitude larger than the model which
+	// cites it and almost no pass over a model looks at a single shot
+	// ([Graph.Observations]).
+	observations *observationStore
 
 	// summary is what the load counted.
 	summary Summary
@@ -216,9 +233,18 @@ func loadGraph(root string, parsed []source, diags []Diagnostic, checks *checkSe
 		byKind:     make(map[Kind][]*SemanticNode),
 		byType:     make(map[string][]*SemanticNode),
 	}
+	g.observations = newObservationStore(root, registry)
 
 	diags = append(diags, g.unique()...)
 	g.index()
+
+	// The links to the observation files are checked here rather than by either
+	// family's loader, for the reason the uniqueness check is: both families
+	// write them, and a pass which had read one family would report on half the
+	// model. Nothing is opened — what is checked is that the file a link names
+	// is there, which is what makes a load cost the entity files however much
+	// surveying is behind them.
+	diags = append(diags, resolveObservationLinks(g)...)
 
 	// The assertions are read last because they are the one thing which is
 	// about the whole model rather than about a family of it: an assertion may

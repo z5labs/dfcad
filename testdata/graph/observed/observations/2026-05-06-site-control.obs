@@ -1,0 +1,7 @@
+# The morning of site control, and one float shot retired by a later record.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:2026-05-06-0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 34.210 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-06-am
+obs shot:2026-05-06-0002 2026-05-06T09:16:03Z frame:site 412318.905 5318220.512 34.198 method:gnss-rtk fix:rtk-fixed 0.011 0.019 2.000 session:2026-05-06-am
+obs shot:2026-05-06-0003 2026-05-06T09:18:47Z frame:site 412318.880 5318241.330 34.402 method:gnss-rtk fix:rtk-float 0.240 0.510 2.000 session:2026-05-06-am
+retire retirement:2026-05-06-0001 2026-05-06T16:02:00Z shot:2026-05-06-0003 "float solution beside a fixed reshot of the same corner"

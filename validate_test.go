@@ -240,8 +240,8 @@ func TestValidateEmptyInput(t *testing.T) {
 func TestReservedTags(t *testing.T) {
 	want := []string{
 		"assert", "backed-by", "boundary", "edges", "frame", "geometry", "kind",
-		"label", "member-of", "parent", "retired", "transform", "type", "unit",
-		"vertices", "within",
+		"label", "member-of", "observed-in", "parent", "retired", "transform",
+		"type", "unit", "vertices", "within",
 	}
 
 	got := slices.Sorted(maps.Keys(forms().reserved))

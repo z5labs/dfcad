@@ -1,0 +1,5 @@
+# The interior levelling of the following afternoon.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:2026-05-07-0001 2026-05-07T13:44:51Z frame:site 412300.108 5318241.344 34.407 method:total-station fix:observed 0.004 0.006 1.520 session:2026-05-07-pm
+obs shot:2026-05-07-0002 2026-05-07T13:51:02Z frame:site 412318.902 5318241.318 34.395 method:total-station fix:observed 0.004 0.006 1.520 session:2026-05-07-pm

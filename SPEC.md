@@ -191,8 +191,8 @@ carries claims — `node`, `vertex`, `edge`, `loop` and `frame` — because the 
 same position. The reserved set is exactly:
 
 ```
-label  kind  type  geometry  frame  within  member-of  boundary  retired  assert
-vertices  edges  backed-by  unit  parent  transform
+label  kind  type  geometry  frame  within  member-of  boundary  observed-in  retired
+assert  vertices  edges  backed-by  unit  parent  transform
 ```
 
 Declaring a predicate with one of these names is a registry error naming the collision.
@@ -296,24 +296,26 @@ known tag when one is close.
   (within <node-id>)
   (member-of <zone-id>)
   (boundary <loop-id>)
+  (observed-in "<path>")
   (retired …)
   <claim> …
   (assert …) …)
 ```
 
-| Child       | Arity  | Contents                                                                          |
-|-------------|--------|-----------------------------------------------------------------------------------|
-| `label`     | `0..1` | A string. Display text; changing it changes nothing else.                          |
-| `kind`      | `1`    | One of the seven members of `kind`.                                                |
-| `type`      | `1`    | A type name declared in the type registry.                                         |
-| `geometry`  | `0..1` | One of `point`, `line`, `area`, `surface`, `solid`. Omitted means the node has no geometry, which is a distinct and ordinary state. |
-| `frame`     | `0..1` | A frame id. A node declared in two frames is unrepresentable, which is the point.  |
-| `within`    | `0..1` | The id of the node that strictly contains this one.                                |
-| `member-of` | `0..n` | A zone node id. Membership is many-to-many and never implies containment.          |
-| `boundary`  | `0..n` | A loop id. A semantic node references a loop; it never carries coordinates.        |
-| `retired`   | `0..1` | See [6.7](#67-retired).                                                            |
-| *claim*     | `0..n` | A claim form, tagged with a registered predicate. See [6.5](#65-claims).            |
-| `assert`    | `0..n` | See [6.8](#68-assert).                                                             |
+| Child         | Arity  | Contents                                                                        |
+|---------------|--------|----------------------------------------------------------------------------------|
+| `label`       | `0..1` | A string. Display text; changing it changes nothing else.                        |
+| `kind`        | `1`    | One of the seven members of `kind`.                                              |
+| `type`        | `1`    | A type name declared in the type registry.                                       |
+| `geometry`    | `0..1` | One of `point`, `line`, `area`, `surface`, `solid`. Omitted means the node has no geometry, which is a distinct and ordinary state. |
+| `frame`       | `0..1` | A frame id. A node declared in two frames is unrepresentable, which is the point. |
+| `within`      | `0..1` | The id of the node that strictly contains this one.                              |
+| `member-of`   | `0..n` | A zone node id. Membership is many-to-many and never implies containment.        |
+| `boundary`    | `0..n` | A loop id. A semantic node references a loop; it never carries coordinates.      |
+| `observed-in` | `0..n` | A string: the path of an observation file. See [6.10](#610-observed-in).         |
+| `retired`     | `0..1` | See [6.7](#67-retired).                                                          |
+| *claim*       | `0..n` | A claim form, tagged with a registered predicate. See [6.5](#65-claims).          |
+| `assert`      | `0..n` | See [6.8](#68-assert).                                                           |
 
 The semantic family has one tag and carries its `kind` as a value, while the geometric
 family has a tag per member. That asymmetry is deliberate: every semantic node has the same
@@ -330,16 +332,18 @@ A `node` never carries `vertices`, `edges` or `backed-by`. A geometric node neve
 (vertex <id>
   (label "<text>")
   (frame <frame-id>)
+  (observed-in "<path>")
   <claim> …
   (assert …) …)
 ```
 
-| Child    | Arity  | Contents                                              |
-|----------|--------|-------------------------------------------------------|
-| `label`  | `0..1` | A string.                                             |
-| `frame`  | `1`    | A frame id. A vertex is always in exactly one frame.  |
-| *claim*  | `0..n` | Claims. A vertex's position is one of them.           |
-| `assert` | `0..n` | See [6.8](#68-assert).                                |
+| Child         | Arity  | Contents                                                       |
+|---------------|--------|-----------------------------------------------------------------|
+| `label`       | `0..1` | A string.                                                      |
+| `frame`       | `1`    | A frame id. A vertex is always in exactly one frame.           |
+| `observed-in` | `0..n` | A string: the path of an observation file. See [6.10](#610-observed-in). |
+| *claim*       | `0..n` | Claims. A vertex's position is one of them.                    |
+| `assert`      | `0..n` | See [6.8](#68-assert).                                         |
 
 **A vertex's position is a claim like any other**, with the same predicate validation,
 resolution and accuracy rules. Two surveys of the same corner are two claims on one vertex,
@@ -353,18 +357,20 @@ and the disagreement between them is exactly what the conflict register is for.
   (frame <frame-id>)
   (vertices <vertex-id> <vertex-id>)
   (backed-by <element-id>)
+  (observed-in "<path>")
   <claim> …
   (assert …) …)
 ```
 
-| Child       | Arity  | Contents                                                                     |
-|-------------|--------|------------------------------------------------------------------------------|
-| `label`     | `0..1` | A string.                                                                    |
-| `frame`     | `1`    | A frame id.                                                                  |
-| `vertices`  | `1`    | Exactly two vertex ids, **ordered**: start then end.                          |
-| `backed-by` | `0..n` | The id of a semantic node of kind `Element` that physically realises the edge. |
-| *claim*     | `0..n` | Claims.                                                                      |
-| `assert`    | `0..n` | See [6.8](#68-assert).                                                       |
+| Child         | Arity  | Contents                                                                   |
+|---------------|--------|-----------------------------------------------------------------------------|
+| `label`       | `0..1` | A string.                                                                  |
+| `frame`       | `1`    | A frame id.                                                                |
+| `vertices`    | `1`    | Exactly two vertex ids, **ordered**: start then end.                        |
+| `backed-by`   | `0..n` | The id of a semantic node of kind `Element` that physically realises the edge. |
+| `observed-in` | `0..n` | A string: the path of an observation file. See [6.10](#610-observed-in).    |
+| *claim*       | `0..n` | Claims.                                                                    |
+| `assert`      | `0..n` | See [6.8](#68-assert).                                                     |
 
 - The two ids in `vertices` must name `vertex` nodes; anything else is a load error. The two
   must differ; a self-loop is a load error.
@@ -394,17 +400,19 @@ which takes a declared chord tolerance, and it never happens on the way to an an
   (label "<text>")
   (frame <frame-id>)
   (edges <edge-id> …)
+  (observed-in "<path>")
   <claim> …
   (assert …) …)
 ```
 
-| Child    | Arity  | Contents                                    |
-|----------|--------|---------------------------------------------|
-| `label`  | `0..1` | A string.                                   |
-| `frame`  | `1`    | A frame id.                                 |
-| `edges`  | `1`    | One or more edge ids, **ordered**.          |
-| *claim*  | `0..n` | Claims.                                     |
-| `assert` | `0..n` | See [6.8](#68-assert).                      |
+| Child         | Arity  | Contents                                                                |
+|---------------|--------|--------------------------------------------------------------------------|
+| `label`       | `0..1` | A string.                                                               |
+| `frame`       | `1`    | A frame id.                                                             |
+| `edges`       | `1`    | One or more edge ids, **ordered**.                                      |
+| `observed-in` | `0..n` | A string: the path of an observation file. See [6.10](#610-observed-in). |
+| *claim*       | `0..n` | Claims.                                                                 |
+| `assert`      | `0..n` | See [6.8](#68-assert).                                                  |
 
 The order of `edges` is significant, is preserved exactly as authored, and is never sorted.
 It is the order in which the loop is traversed.
@@ -677,8 +685,9 @@ Not caught, and deliberately:
 
 ### 6.9 References
 
-Every reference in the format is an id, and every one of them must resolve. Dangling,
-duplicate and cyclic references are reported distinctly.
+Every reference in the format is an id — with the one exception of `observed-in`
+([6.10](#610-observed-in)), which names a file — and every one of them must resolve.
+Dangling, duplicate and cyclic references are reported distinctly.
 
 | Reference                | Written as                | Must name                                    |
 |--------------------------|---------------------------|----------------------------------------------|
@@ -694,6 +703,7 @@ duplicate and cyclic references are reported distinctly.
 | Claim supersession       | `(superseded-by <id>)`    | A claim, by claim id. No self-reference, no cycles. |
 | Node supersession        | `(superseded-by <id>)`    | A node, inside `retired`.                    |
 | Systematic term source   | third argument of `systematic` | Nothing — the id's namespace is checked, the id itself need not resolve. |
+| Observation file         | `(observed-in "<path>")`  | A file, by path rather than by id. See [6.10](#610-observed-in). |
 
 **An id is unique across the whole model.** A duplicate is a load error naming both
 definitions with their positions. Claim ids share the same space as node ids, so a claim id
@@ -735,6 +745,47 @@ Registry names are resolved by the same rule and are not in the table because th
 ids: a `type`, a claim's predicate tag, a tolerance name in an assertion parameter, and a
 check name in `assert` or `invariant` must each be declared in the registry of its layer, and
 an undeclared one is a load error naming what was written and where.
+
+### 6.10 `observed-in`
+
+```
+(observed-in "<path>")
+```
+
+**An entity links to the observation files that hold the measurements behind it.** The link
+is written on the thing that was measured — most often a `vertex`, because a corner is what
+somebody occupied, and legitimately on any of the four entity forms — and it is repeatable: a
+corner reoccupied on a second afternoon is two files, and nothing about the format prefers
+one of them.
+
+| Rule | Statement |
+|------|-----------|
+| Contents | A string holding a path relative to the model root, written with forward slashes, ending in `.obs`. The same rule `route`'s `file` follows ([7.7](#77-route)), and for the same reason: a relative path means the same thing in every clone of the repository. |
+| Arity | `0..n`. A path written twice on one entity is held once — a link is a reference and not a count. |
+| Missing file | A load error naming the entity and the path. |
+| Path outside the root | A load error. A file a walk of the model does not reach is not part of the model. |
+| Wrong extension | A load error. Observation files are `.obs` and are read by a walk of their own. |
+
+**The file is not read when the model is loaded.** What a load verifies is that the file is
+there; nothing opens it, and nothing about a load's cost or memory depends on how many
+records it holds. Reading happens when a caller asks a question the records are the answer to,
+once per file per invocation. This is the whole reason observations are a separate format
+kept in separate files ([`docs/observation-file.md` 1](./docs/observation-file.md#1-why-it-is-separate)):
+an afternoon with a rover produces thousands of shots, and retrieving one room must not cost
+a season of field work.
+
+**A link is to a file and never into one.** It says "the evidence about this thing is in
+here", not "this claim comes from record `shot:2026-05-06-0004`". The second is a claim's
+provenance, in [6.5](#65-claims), and is deliberately a different mechanism: provenance is
+what the model asserts about one value, and a link is where a reader goes to see the shots
+for themselves. A record names no entity in either direction
+([`docs/observation-file.md` 10](./docs/observation-file.md#10-not-in-this-version)).
+
+**Nothing is inferred from a link.** An entity's position is not derived from the file it
+links to, and no claim is synthesised from a record: a claim is written by an author, with
+its own source, method and accuracy, and a value that appeared because a file was linked would
+be a derived value written back into the model
+([0009](./docs/decisions/0009-derived-values-are-never-written-back.md)).
 
 ## 7. Registry forms
 
@@ -1063,9 +1114,9 @@ coarse organisation that actually helps, and comments move with what they annota
    on its UTF-8 encoding.
 
 2. **Structural children** are printed in the order their form's table lists them. Where a
-   structural child repeats — `member-of`, `boundary`, `backed-by`, `kind` and `geometry` in a
-   type entry, `invariant`, and the terms inside an `accuracy` — the repeats are sorted within
-   their own group.
+   structural child repeats — `member-of`, `boundary`, `observed-in`, `backed-by`, `kind` and
+   `geometry` in a type entry, `invariant`, and the terms inside an `accuracy` — the repeats
+   are sorted within their own group.
 
 3. **Claim forms** follow every structural child, sorted. **Assertion forms** follow the
    claims, sorted.
@@ -1414,11 +1465,12 @@ from the engine, where the CLI's machine output contract already carries one
 
 Named so that their absence reads as a decision rather than an oversight.
 
-- **The observation file format.** Observations link to entities but are their own format
-  with their own specification, which is
-  [`docs/observation-file.md`](./docs/observation-file.md): line-delimited, append-only, and
-  outside the entity files because an afternoon with a rover produces thousands of records
-  and editing one in place destroys the thing that made it evidence.
+- **The observation file format.** An entity links to an observation file
+  ([6.10](#610-observed-in)), but the file itself is its own format with its own
+  specification, which is [`docs/observation-file.md`](./docs/observation-file.md):
+  line-delimited, append-only, and outside the entity files because an afternoon with a rover
+  produces thousands of records and editing one in place destroys the thing that made it
+  evidence.
 - **Non-straight edges as a form.** Representable already, as a claim under a registered
   predicate — see [6.3](#63-edge). No form here changes, and none is added: an arc which
   bends an edge is registry data the engine reads, not a shape this specification writes down.

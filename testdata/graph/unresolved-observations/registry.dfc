@@ -1,0 +1,35 @@
+; The vocabulary of a model whose corners cite the afternoons they were shot in.
+;
+; An observation file names four vocabularies and declares none of them — the
+; frame, the method, the fix quality and the session — so all four arrive from
+; here, exactly as they do for a model with no entity files at all.
+(project
+  (label "Observation linkage fixture")
+  (globalid-namespace "https://example.org/models/observed"))
+
+(namespace fix (description "Fix qualities an instrument reports."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "How a value was obtained."))
+(namespace retirement (description "Retirement records issued by the field crew."))
+(namespace session (description "Field occupations: one setup, one crew, one afternoon."))
+(namespace shot (description "Observation records issued by the field crew."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids and control points issued by Acme Surveys."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(route everything
+  (file "entities/site.dfc")
+  (description "One file, which is all a fixture this size needs."))

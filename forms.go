@@ -275,6 +275,7 @@ var (
 			},
 			{tag: "member-of", arity: repeated, form: args(exactly(1), "a zone node id")},
 			{tag: "boundary", arity: repeated, form: args(exactly(1), "a loop id")},
+			{tag: observedInChild, arity: repeated, form: observedInForm},
 			{tag: "retired", arity: atMost(1), form: retiredForm},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
@@ -288,6 +289,7 @@ var (
 		children: []child{
 			{tag: "label", arity: atMost(1), form: args(exactly(1), "a string")},
 			{tag: "frame", arity: exactly(1), form: args(exactly(1), "a frame id")},
+			{tag: observedInChild, arity: repeated, form: observedInForm},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
 		claims:  claimForm,
@@ -303,6 +305,7 @@ var (
 			{tag: "frame", arity: exactly(1), form: args(exactly(1), "a frame id")},
 			{tag: "vertices", arity: exactly(1), form: args(exactly(2), "two vertex ids")},
 			{tag: "backed-by", arity: repeated, form: args(exactly(1), "a node id")},
+			{tag: observedInChild, arity: repeated, form: observedInForm},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
 		claims:  claimForm,
@@ -317,11 +320,23 @@ var (
 			{tag: "label", arity: atMost(1), form: args(exactly(1), "a string")},
 			{tag: "frame", arity: exactly(1), form: args(exactly(1), "a frame id")},
 			{tag: "edges", arity: exactly(1), form: args(atLeast(1), "one or more edge ids")},
+			{tag: observedInChild, arity: repeated, form: observedInForm},
 			{tag: "assert", arity: repeated, form: assertForm},
 		},
 		claims:  claimForm,
 		rejects: geometricRejects,
 	}
+
+	// observedInForm is section 6.10, and is the one reference of the format
+	// which is not an id: an entity names a whole observation file rather than
+	// a record in one.
+	//
+	// It is written on all four entity forms because all four are things
+	// somebody stood in front of with an instrument. A corner is the obvious
+	// one and is not the only one: the shots behind a wall's line and behind a
+	// room's floor level are the same sort of evidence, held in the same sort
+	// of file.
+	observedInForm = args(exactly(1), "a string holding a path to an observation file")
 
 	// claimForm is section 6.5. A claim's tag is its predicate, so the table
 	// names none.

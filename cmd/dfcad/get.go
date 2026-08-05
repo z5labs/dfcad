@@ -40,10 +40,19 @@ Flags:
 	                 which is the current claim under each predicate
 	                 (default "full")
 	--deprecated     include the claims which have been deprecated
+	--observations   read the observation files it links to and inline the
+	                 records
 
 References come back as ids and are never inlined, so the answer is the size of
 the thing asked for rather than of the model behind it. Following one is another
 call.
+
+The observation files a thing links to are always named, as paths, and are read
+only under --observations. That is the whole reason the records live outside the
+entity files: retrieving a room costs the entity files whatever the size of the
+survey behind it, and an afternoon with a rover is thousands of shots. Ask for
+them and they are read, once per file, and anything wrong with what they hold is
+reported on stderr like any other diagnostic.
 
 Deprecated claims are left out unless they are asked for. A deprecated claim is
 retracted rather than out-ranked, and resolution never considers one — which is
@@ -232,6 +241,25 @@ type getEntity struct {
 	// wrote them.
 	Edges []string `json:"edges,omitempty"`
 
+	// Observations are the observation files it links to, as paths relative to
+	// the model root and in the order it wrote them. Absent when it links to
+	// none, which is the ordinary case.
+	//
+	// They are paths and never records. Reporting them costs nothing — the
+	// links were read when the model was — and it is what tells a caller that
+	// there is field work behind this thing at all, which is the question that
+	// precedes wanting to see it.
+	Observations []string `json:"observations,omitempty"`
+
+	// Records are the observations those files hold, under --observations and
+	// never otherwise.
+	//
+	// It is a pointer so that a thing asked about with the flag and holding no
+	// records is an empty list rather than a missing field: "nobody has
+	// surveyed this" and "you did not ask" are different answers, and a caller
+	// which cannot tell them apart asks again forever.
+	Records *[]observationEntry `json:"observation-records,omitempty"`
+
 	// Retired is how a semantic node stopped existing. Absent for one which did
 	// not, which is the ordinary case.
 	//
@@ -277,6 +305,75 @@ type assertionEntry struct {
 
 	// Span is where the assertion was written, which is inside the form of the
 	// thing it constrains.
+	Span dfcad.Span `json:"span"`
+}
+
+// observationEntry is one shot as get reports it, under --observations.
+//
+// Every length on it — the coordinate, both precisions and the antenna height —
+// is in the linear unit of the frame it names, which is the one unit that frame
+// has. No unit is written on a record and nothing here converts one.
+type observationEntry struct {
+	// ID is the record's identity, which is what a claim's provenance points at
+	// and what a retirement names.
+	ID string `json:"id"`
+
+	// At is the instant it was taken, exactly as it was written: the offset the
+	// author was working in is evidence about where somebody was standing, and
+	// normalising it away loses that.
+	At string `json:"at"`
+
+	// Frame is the frame the coordinate is expressed in.
+	Frame string `json:"frame"`
+
+	// Coordinate is the position, component by component, in the frame's axis
+	// order. The order is significant and is never sorted.
+	Coordinate []float64 `json:"coordinate"`
+
+	// Method is how the shot was taken, and Fix is the solution the instrument
+	// reported at the moment of it.
+	Method string `json:"method"`
+	Fix    string `json:"fix"`
+
+	// HorizontalPrecision and VerticalPrecision are the standard uncertainties
+	// of the shot in the plane and along the vertical, one sigma.
+	HorizontalPrecision float64 `json:"horizontal-precision"`
+	VerticalPrecision   float64 `json:"vertical-precision"`
+
+	// AntennaHeight is the offset from the mark to the phase centre or prism
+	// which the coordinate has already been reduced by.
+	AntennaHeight float64 `json:"antenna-height"`
+
+	// Session is the occupation the record belongs to, which is how a
+	// systematic error is attributed to the setup that caused it.
+	Session string `json:"session"`
+
+	// Retired is the later record which retired this one. Absent for a record
+	// nothing retired, which is nearly all of them.
+	//
+	// The retired record is reported rather than dropped, because it is still
+	// in the file and still says what the instrument said: what a retirement
+	// removes is trust in the number, never the number itself.
+	Retired *retiredObservation `json:"retired,omitempty"`
+
+	// Span is the line of the file the record was written on.
+	Span dfcad.Span `json:"span"`
+}
+
+// retiredObservation is the record which retired another, as get reports it.
+type retiredObservation struct {
+	// ID is the retiring record's own identity.
+	ID string `json:"id"`
+
+	// At is when the decision to retire was taken, which is not when the
+	// retired shot was measured.
+	At string `json:"at"`
+
+	// Reason is why, in the words of whoever decided. It is never empty: a
+	// retirement with no reason is not evidence of anything.
+	Reason string `json:"reason"`
+
+	// Span is the line the retirement was written on.
 	Span dfcad.Span `json:"span"`
 }
 
@@ -410,6 +507,7 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 
 	selection := flags.String("claims", claimsFull, "")
 	deprecated := flags.Bool("deprecated", false, "")
+	observations := flags.Bool("observations", false, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -449,6 +547,15 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 		Entity:   describe(graph, entity, *selection, *deprecated),
 	}
 
+	// The files are opened here and nowhere else in this command: everything
+	// above answered from what the load read. A run without the flag reads no
+	// observation file at all, whatever the thing it retrieved links to.
+	if *observations {
+		records, diags := observationsOf(graph, entity)
+		result.Entity.Records = &records
+		render(diags, stderr)
+	}
+
 	reportEntity(result.Entity, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
@@ -476,10 +583,11 @@ func checkClaims(selection string, deprecated bool) error {
 // describe is one entity as the answer reports it, whichever family holds it.
 func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, deprecated bool) getEntity {
 	out := getEntity{
-		ID:         string(entity.ID()),
-		Span:       entity.Span(),
-		Claims:     claimsOf(graph, entity.ID(), selection, deprecated),
-		Assertions: assertionsOf(entity),
+		ID:           string(entity.ID()),
+		Span:         entity.Span(),
+		Observations: observationPaths(entity),
+		Claims:       claimsOf(graph, entity.ID(), selection, deprecated),
+		Assertions:   assertionsOf(entity),
 	}
 
 	switch found := entity.(type) {
@@ -532,6 +640,64 @@ func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, depreca
 	}
 
 	return out
+}
+
+// observationPaths is the observation files one thing links to, as the answer
+// reports them.
+//
+// Nothing is read to produce it: the links were read when the model was, and
+// what this does is spell them.
+func observationPaths(entity dfcad.Entity) []string {
+	var out []string
+	for _, link := range entity.ObservedIn() {
+		out = append(out, link.Path)
+	}
+	return out
+}
+
+// observationsOf is the records behind one thing, read from the files it links
+// to, with whatever is wrong with them.
+//
+// A record which a later record retired is reported with its retirement rather
+// than dropped. Retirement removes trust in a number and never the number
+// itself: the shot is still in the file, and an answer which quietly left it out
+// would be a rewriting of the evidence by the tool which was asked to show it.
+//
+// The list is made rather than declared so that a thing whose files hold no
+// record at all comes back as an empty list, which is what tells it apart from
+// a run which did not ask.
+func observationsOf(graph *dfcad.Graph, entity dfcad.Entity) ([]observationEntry, []dfcad.Diagnostic) {
+	log, diags := graph.Observations(entity)
+
+	out := make([]observationEntry, 0)
+	for observation := range log.Observations() {
+		entry := observationEntry{
+			ID:                  string(observation.ID),
+			At:                  observation.AtWritten,
+			Frame:               string(observation.Frame),
+			Coordinate:          observation.Coordinate[:],
+			Method:              string(observation.Method),
+			Fix:                 string(observation.Fix),
+			HorizontalPrecision: observation.HorizontalPrecision,
+			VerticalPrecision:   observation.VerticalPrecision,
+			AntennaHeight:       observation.AntennaHeight,
+			Session:             string(observation.Session),
+			Span:                observation.Span,
+		}
+
+		if retirement, ok := log.RetirementOf(observation.ID); ok {
+			entry.Retired = &retiredObservation{
+				ID:     string(retirement.ID),
+				At:     retirement.AtWritten,
+				Reason: retirement.Reason,
+				Span:   retirement.Span,
+			}
+		}
+
+		out = append(out, entry)
+	}
+
+	return out, diags
 }
 
 // assertionsOf is the assertions written on one thing, as the answer reports
@@ -748,9 +914,27 @@ func reportEntity(entity getEntity, globals *globals, stderr io.Writer) {
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s %s at %s: %s, %s, %s\n",
-		entity.Family, entity.ID, entity.Span.Start, spellAxes(entity),
-		plural(len(entity.Claims), "claim"), plural(len(entity.Assertions), "assertion"))
+	for _, path := range entity.Observations {
+		if globals.Verbosity >= verbosityProgress {
+			fmt.Fprintf(stderr, "observed-in: %s\n", path)
+		}
+	}
+
+	// The files are counted whether or not they were read, and the records only
+	// when they were: a line saying "0 records" about files nobody opened would
+	// read as a thing nobody has surveyed.
+	counts := []string{
+		spellAxes(entity),
+		plural(len(entity.Claims), "claim"),
+		plural(len(entity.Assertions), "assertion"),
+		plural(len(entity.Observations), "observation file"),
+	}
+	if entity.Records != nil {
+		counts = append(counts, plural(len(*entity.Records), "record"))
+	}
+
+	fmt.Fprintf(stderr, "%s %s at %s: %s\n",
+		entity.Family, entity.ID, entity.Span.Start, strings.Join(counts, ", "))
 }
 
 // spellAxes is what the thing is, for a person: its label, and the axes the

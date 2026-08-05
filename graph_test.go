@@ -82,6 +82,10 @@ func TestLoadGraph(t *testing.T) {
 			name:    "names every member of a ring of references, in each relation which can hold one",
 			fixture: "cyclic",
 		},
+		{
+			name:    "names the entity and the path of every observation file a link does not reach",
+			fixture: "unresolved-observations",
+		},
 	}
 
 	for _, testCase := range testCases {

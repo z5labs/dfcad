@@ -116,6 +116,16 @@ type SemanticNode struct {
 	// drift.
 	boundaries []ID
 
+	// observations are the observation files this node links to, in the order
+	// they were written and with a repeated path held once.
+	//
+	// They are paths and not records. What is held is the link, and reading the
+	// file behind it is [Graph.Observations] and happens when somebody asks:
+	// the whole reason observations live outside the entity files is that a node
+	// which carried its field work would make every pass over the model pay for
+	// data almost none of them look at.
+	observations []ObservationLink
+
 	// assertions are the checks written on this node, in the order they were
 	// written and as they were written.
 	//
@@ -228,6 +238,19 @@ func (n *SemanticNode) MemberOf() []ID { return slices.Clone(n.zones) }
 // Resolving them is a question about both families at once, and this pass has
 // read one, which is why the answer is not here.
 func (n *SemanticNode) Boundaries() []ID { return slices.Clone(n.boundaries) }
+
+// ObservedIn returns the observation files the node links to, in the order they
+// were written, per specification section 6.10.
+//
+// These are the links and never the records. Nothing is read to answer this,
+// which is what makes retrieving a node cost the entity files and not the field
+// work behind them; [Graph.Observations] is what opens the files, and it does so
+// because somebody asked a question the records answer.
+//
+// A node linking to no observation file is the ordinary case: most of a model
+// is not surveyed directly, and the shots behind the corners of a room are
+// linked from the corners.
+func (n *SemanticNode) ObservedIn() []ObservationLink { return cloneLinks(n.observations) }
 
 // Assertions returns the assertions written on the node, in the order they were
 // written.
@@ -539,6 +562,8 @@ func (l *nodeLoader) declare(form *Node) {
 	if arg, ok := argumentOf(form, "frame"); ok {
 		d.node.frame, d.node.hasFrame = l.id(arg, "a frame id")
 	}
+
+	d.node.observations = l.observedIn(form)
 
 	d.node.assertions = l.assertions(form, l.registry, l.checks)
 

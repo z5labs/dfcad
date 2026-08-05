@@ -1,0 +1,8 @@
+# One record whose second field is not a timestamp anything can read.
+#
+# The file is here so that a test can tell a file which was read from one which
+# was not: the model links to it and loads clean, which is only true because
+# nothing opened it. Ask for the records and the malformed line is reported.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:2026-05-08-0001 the-eighth-of-may frame:site 412300.108 5318241.344 34.407 method:total-station fix:observed 0.004 0.006 1.520 session:2026-05-08-am

@@ -283,13 +283,14 @@ list either.
 
 ### `get`
 
-One thing, by its id, with the claims written on it. It takes one id argument and two
+One thing, by its id, with the claims written on it. It takes one id argument and three
 flags.
 
 | Flag | Meaning |
 |------|---------|
 | `--claims <how>` | `full` (default), every claim written on it, or `resolved`, the current claim under each predicate. |
 | `--deprecated` | Include the claims that have been deprecated. Refused beside `--claims resolved`. |
+| `--observations` | Read the observation files it links to and inline the records. Without it, the files are named and not opened. |
 
 An id is unique across the whole model, so this is one command for both families. A vertex,
 an edge and a loop are retrieved by the same call a semantic node is, and `family` says
@@ -310,6 +311,7 @@ which came back and so which of the fields to expect.
     "within": "site:L-01",
     "member-of": ["site:Z-01"],
     "boundaries": ["geom:L-01"],
+    "observations": ["observations/2026-05-07-interior.obs"],
     "span": {
       "start": {"path": "entities/site.dfc", "line": 13, "column": 1, "offset": 142},
       "end": {"path": "entities/site.dfc", "line": 52, "column": 43, "offset": 1284}
@@ -350,6 +352,8 @@ which came back and so which of the fields to expect.
 | `entity.start`, `entity.end` | string, optional | The ids of the vertices an edge runs between. |
 | `entity.backed-by` | array, optional | The ids of the elements that physically realise an edge. |
 | `entity.edges` | array, optional | The ids of the edges a loop is assembled from, in the order it wrote them. |
+| `entity.observations` | array, optional | The observation files it links to, as paths relative to the model root, in the order it wrote them. Absent when it links to none. Producing this reads nothing. |
+| `entity.observation-records` | array, optional | The records those files hold, written under `--observations` and absent otherwise. Empty rather than absent when the flag was given and the files hold no record, because "nobody has surveyed this" and "you did not ask" are different answers. |
 | `entity.retired` | object, optional | How a semantic node stopped existing: `date`, `reason`, and `superseded-by` where something stands in its place. Absent for a node that was not retired. |
 | `entity.span` | object | Where it was written: file, line, column and byte offset, at both ends of the form. |
 | `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
@@ -370,6 +374,34 @@ number the format exists to stop:
 | `claims[].superseded-by` | string, optional | The id of the claim that replaced this one. |
 | `claims[].resolution` | string, optional | What the rule left this claim as: `current`, `tied` or `unranked`. Written under `--claims resolved` and absent otherwise, because under `--claims full` nothing has been resolved. |
 | `claims[].span` | object | Where the claim was written. |
+
+Each record of `entity.observation-records` is one shot, in log order across every file the
+thing links to:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `observation-records[].id` | string | The record's identity, which is what a claim's provenance points at and what a retirement names. |
+| `observation-records[].at` | string | When it was taken, exactly as it was written: the offset the author was working in is evidence about where somebody was standing. |
+| `observation-records[].frame` | string | The frame the coordinate is expressed in. Every length on the record is in that frame's linear unit, and nothing here converts one. |
+| `observation-records[].coordinate` | array | The position, component by component, in the frame's axis order. Ordered, and never sorted. |
+| `observation-records[].method` | string | How the shot was taken. |
+| `observation-records[].fix` | string | The solution the instrument reported at the moment of it. |
+| `observation-records[].horizontal-precision`, `observation-records[].vertical-precision` | number | The standard uncertainties in the plane and along the vertical, one sigma. |
+| `observation-records[].antenna-height` | number | The offset from the mark to the phase centre or prism the coordinate has already been reduced by. |
+| `observation-records[].session` | string | The occupation the record belongs to, which is how a systematic error is attributed to the setup that caused it. |
+| `observation-records[].retired` | object, optional | The later record that retired this one: `id`, `at`, `reason` and `span`. Absent for a record nothing retired. |
+| `observation-records[].span` | object | The line of the file the record was written on. |
+
+A retired record is reported rather than dropped. Retirement removes trust in a number and
+never the number itself, and an answer that quietly left it out would be the tool rewriting
+the evidence it was asked to show.
+
+**Without `--observations`, no observation file is opened.** The links come from the model,
+which was loaded either way; the records come from files that are three orders of magnitude
+larger and are read only when something asks for them. Anything wrong with what they hold —
+a malformed line, a duplicate identity, a retirement naming a record that is not there — is
+reported on stderr like any other diagnostic and does not change the exit code, because the
+retrieval succeeded and it is the survey log that is wrong.
 
 Under `--claims resolved` a predicate appears once, as the claim that won. Where nothing
 won it appears as every claim that could still be the answer — `tied` where more than one
