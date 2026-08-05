@@ -51,10 +51,10 @@ Flags:
 	                         itself and the envelope's boundary, in the linear
 	                         unit of the envelope's frame (default 0)
 
-Neither predicate nor the tolerance has a default and neither ever will. Which
-predicate carries a position and how close two corners are one corner are
-things the project wrote down, and a value compiled in here would be the engine
-deciding one of them on a project's behalf.
+Neither the predicate nor the tolerance has a default and neither ever will.
+Which predicate carries a position, and how close two corners have to be to be
+one corner, are things the project wrote down, and a value compiled in here
+would be the engine deciding one of them on a project's behalf.
 
 The verdict distinguishes fitting from possibly fitting, and it is the reason
 the clearance is never reported on its own:

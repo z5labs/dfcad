@@ -39,9 +39,9 @@ Flags:
 	                         (required)
 
 None of the three has a default and none of them ever will. Which predicate
-carries a setback, which carries a position and how close two corners are one
-corner are things the project wrote down, and a value compiled in here would be
-the engine deciding one of them on a project's behalf.
+carries a setback, which carries a position, and how close two corners have to
+be to be one corner, are things the project wrote down, and a value compiled in
+here would be the engine deciding one of them on a project's behalf.
 
 Different setbacks per edge are the ordinary case: six metres at the road, four
 at the rear, three at each flank. Which edge is which is not modelled — a
