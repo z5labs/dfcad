@@ -160,6 +160,7 @@ func TestRunBuildableRefusesWhatItCannotRead(t *testing.T) {
 			result, stderr := derived(t, exitCheck, files, "site:P-01")
 
 			assert.False(t, result.Derived)
+			assert.Equal(t, "site:P-01", result.Subject, "a refusal still says which question it answers")
 			assert.Nil(t, result.Region, "a derivation which was not made carries no region")
 			assert.Empty(t, result.Setbacks)
 

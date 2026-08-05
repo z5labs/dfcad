@@ -112,7 +112,9 @@ func (e MissingVocabularyError) Error() string {
 type buildableResult struct {
 	envelope
 
-	// Subject is the id the derivation was asked about.
+	// Subject is the id the derivation was asked about, which is written
+	// whether or not there was an answer: a refusal a caller cannot attribute
+	// to a question is one it has to correlate by position.
 	Subject string `json:"subject"`
 
 	// Derived reports whether there is a region below. It is written whatever
@@ -262,7 +264,7 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportBuildable(cmd, derived, !refused)
+	result := reportBuildable(cmd, subject, derived, !refused)
 
 	reportBuildableFor(result, derived, globals, stderr)
 
@@ -304,10 +306,15 @@ func vocabularyOf(setback, position, tolerance string) error {
 }
 
 // reportBuildable is the derivation as the machine contract writes it.
-func reportBuildable(cmd command, derived dfcad.Buildable, ok bool) buildableResult {
+//
+// The subject is the id the run was asked about rather than the one the answer
+// carries, because a refused derivation carries none: a caller collecting
+// results has to be able to say which question this object answers, and a
+// refusal is exactly the object it most needs that of.
+func reportBuildable(cmd command, subject dfcad.ID, derived dfcad.Buildable, ok bool) buildableResult {
 	result := buildableResult{
 		envelope: newEnvelope(cmd.name),
-		Subject:  string(derived.Subject()),
+		Subject:  string(subject),
 		Derived:  ok,
 	}
 
