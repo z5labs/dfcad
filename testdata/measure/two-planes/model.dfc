@@ -1,0 +1,105 @@
+; Two floor plates, one three metres above the other, written as the boundary
+; of one region.
+;
+; Both face the same way, so an orientation is all they have in common. Seen
+; from above the upper one is inside the lower, and nesting them would take a
+; storey out of the building — which is why the rings are measured against a
+; plane and not against an axis.
+(vertex geom:V-01
+  (label "Ground floor plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Ground floor plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (10.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Ground floor plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (10.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Ground floor plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Ground floor plate, side 1") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Ground floor plate, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Ground floor plate, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Ground floor plate, side 4") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Ground floor plate boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(vertex geom:V-11
+  (label "First floor plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (3.0 3.0 3.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-12
+  (label "First floor plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (7.0 3.0 3.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-13
+  (label "First floor plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (7.0 7.0 3.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-14
+  (label "First floor plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (3.0 7.0 3.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-11 (label "First floor plate, side 1") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12 (label "First floor plate, side 2") (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (label "First floor plate, side 3") (frame frame:building) (vertices geom:V-13 geom:V-14))
+(edge geom:E-14 (label "First floor plate, side 4") (frame frame:building) (vertices geom:V-14 geom:V-11))
+(loop geom:L-11
+  (label "First floor plate boundary")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+
+(node site:S-01
+  (label "Two plates, written as one region")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-11))

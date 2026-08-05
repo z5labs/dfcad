@@ -1,0 +1,4 @@
+testdata/measure/self-intersecting/model.dfc:45:7: error: expected the loop geom:L-01 not to cross itself, found the segment geom:V-02 to geom:V-03 crossing geom:V-04 to geom:V-01 at (2.0 1.5 0.0) m
+45 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a ring which crosses itself encloses no one region; the signed sum over it counts the parts either side of the crossing against each other, which is a number and is not an area

@@ -1,0 +1,12 @@
+testdata/measure/unmeasurable/model.dfc:37:7: error: expected a position for both ends of the edge geom:E-02, found none for geom:V-03
+37 | (edge geom:E-02 (label "Half-surveyed room, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+   |       ^^^^^^^^^
+   = hint: a position is read in the unit of its frame and nothing is converted; this frame is in m, so a position written in another unit is not read at all
+testdata/measure/unmeasurable/model.dfc:38:7: error: expected a position for both ends of the edge geom:E-03, found none for geom:V-03
+38 | (edge geom:E-03 (label "Half-surveyed room, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+   |       ^^^^^^^^^
+   = hint: a position is read in the unit of its frame and nothing is converted; this frame is in m, so a position written in another unit is not read at all
+testdata/measure/unmeasurable/model.dfc:40:7: error: expected a position for every corner of the loop geom:L-01, found none for geom:V-03
+40 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a position is read in the unit of its frame and nothing is converted; this frame is in m, so a position written in another unit is not read at all

@@ -29,6 +29,7 @@ the goldens beside the fixtures are invisible to it.
 | `assert`                   | The fixtures of the pass which reads the assertions written on things against the model they were written in. One *directory* per case, each a whole model whose things carry assertions. `valid` loads clean; the rest each hold one shape of refusal, and three of them name checks the engine has not written yet and are read against a check set the test assembles. |
 | `rules`                    | The fixtures of the pass which runs a model's rules of both kinds together. One *directory* per case, each a whole model whose types carry invariants and whose things carry assertions, and each expected to load clean — what these assert is what binds, what a run of it reports and what a filter narrows it to, not a diagnostic. |
 | `review`                   | One model at two revisions — `base` is the merge base and `head` is the change under review — which the runnable examples of the diff-aware checks compare. Both load clean: what these fixtures are about is the difference between them, and a revision which did not load would be a different question. |
+| `measure`                  | The fixtures of the pass which computes how big things are. One *directory* per case, each a registry and the geometry measured against it. `shapes`, `courtyard` and `far-from-the-origin` load and measure clean — what those assert is the figure, worked out by hand in the test beside them — and the rest each hold one shape which cannot be measured, with its rendered diagnostics inside it as `diagnostics.txt`. |
 | `model`                    | A two-file model the runnable examples load.                                                |
 
 `corpus/valid` is not a second copy of `print`. The printer's fixtures are one
@@ -132,6 +133,11 @@ is where the tests of that layer read them from.
 | 6.4, 7.6      | A loop which does not close, beside one which closes within the declared tolerance | `boundary/closure/`         |
 | 6.4           | A loop whose edges form one ring written in the order it is not traversed | `boundary/out-of-order/`     |
 | 6.4           | A loop with a branch, one which traverses an edge twice, and one whose edges form two rings | `boundary/not-a-simple-cycle/` |
+| 6.4           | A ring whose corners all lie on one line, one whose edges never close, one which passes through a corner written as two coincident vertices, and an edge whose two ends were surveyed to one coordinate | `measure/degenerate/` |
+| 6.4           | A ring whose two long sides cross in the middle of it | `measure/self-intersecting/`                |
+| 6.4, 7.6      | A ring with a corner out of the plane of the others by more than the declared tolerance | `measure/not-planar/`     |
+| 6.4, 6.6      | A ring with a corner no position resolves for         | `measure/unmeasurable/`                     |
+| 6.4, 6.9, 7.6 | A region bounded by two rings which face the same way in different planes | `measure/two-planes/`   |
 | 4.5, 7.5      | A frame declaring a unit which is no linear unit      | `registry/unknown-unit/`                    |
 | 6.3, 6.4, 7.5 | An edge running to a vertex in another frame, and a loop traversing an edge in one | `topology/two-frames/`   |
 | 6.1, 6.9, 7.5 | A node bounded by a loop declared in another frame     | `boundary/two-frames/`                      |

@@ -1,0 +1,12 @@
+testdata/measure/two-planes/model.dfc:98:1: error: expected every loop bounding site:S-01 to lie in the plane of geom:L-01, within the tolerance boundary-closure, which is 0.005 m, found geom:L-11, which is 3.0 m out of its plane
+ 98 | (node site:S-01
+    | ^^^^^^^^^^^^^^^
+ 99 |   (label "Two plates, written as one region")
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ... 5 lines omitted
+105 |   (boundary geom:L-11))
+    | ^^^^^^^^^^^^^^^^^^^^^^^
+    = hint: a region bounded by more than one ring is measured by nesting, and a ring inside another is only a hole in it where the two share a plane; two rings which face the same way on different storeys are two regions
+testdata/measure/two-planes/registry.dfc:30:12: note: the tolerance is declared here
+30 | (tolerance boundary-closure
+   |            ^^^^^^^^^^^^^^^^

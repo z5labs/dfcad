@@ -1,0 +1,35 @@
+testdata/measure/degenerate/model.dfc:35:7: error: expected the loop geom:L-01 to enclose an area, found one of zero: its corners all lie on one line
+35 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: an area of zero here is the arithmetic being right about a shape which is wrong; a ring needs three corners which are not collinear before it encloses anything
+testdata/measure/degenerate/model.dfc:100:10: error: expected the loop geom:L-11 to close, found a gap of 4.0 m between geom:V-15 and geom:V-11
+100 |   (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+    |          ^^^^^^^^^
+    = hint: a loop is a ring: each edge begins at the corner the last one ended at, and the last ends where the first began; two corners no further apart than the tolerance boundary-closure, which is 0.005 m, count as one
+testdata/measure/degenerate/model.dfc:84:9: note: the corner the traversal had reached
+84 | (vertex geom:V-15
+   |         ^^^^^^^^^
+testdata/measure/degenerate/model.dfc:48:9: note: the corner the next edge begins at
+48 | (vertex geom:V-11
+   |         ^^^^^^^^^
+testdata/measure/degenerate/model.dfc:130:7: error: expected the edge geom:E-21 to have an extent, found geom:V-21 and geom:V-22 at the same point, (20.0 0.0 0.0) m
+130 | (edge geom:E-21 (label "Collapsed wall") (frame frame:building) (vertices geom:V-21 geom:V-22))
+    |       ^^^^^^^^^
+    = hint: an edge with no extent gives a loop through it no direction; two corners surveyed to one coordinate are one corner
+testdata/measure/degenerate/model.dfc:191:7: error: expected the edge geom:E-33 to have an extent, found geom:V-33 and geom:V-34 at the same point, (32.0 2.0 0.0) m
+191 | (edge geom:E-33 (label "Pinched room, side 3") (frame frame:building) (vertices geom:V-33 geom:V-34))
+    |       ^^^^^^^^^
+    = hint: an edge with no extent gives a loop through it no direction; two corners surveyed to one coordinate are one corner
+testdata/measure/degenerate/model.dfc:195:7: error: expected every corner of the loop geom:L-31 to meet two of its edges, found geom:V-33 and geom:V-34, where 4 meet
+195 | (loop geom:L-31
+    |       ^^^^^^^^^
+    = hint: a loop is a simple cycle: each corner joins the edge the traversal arrives by and the one it leaves by, so a corner joining a third is a branch and not a ring
+testdata/measure/degenerate/model.dfc:198:20: note: geom:E-32 meets it here
+198 |   (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34 geom:E-35 geom:E-36))
+    |                    ^^^^^^^^^
+testdata/measure/degenerate/model.dfc:198:30: note: geom:E-33 meets it here
+198 |   (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34 geom:E-35 geom:E-36))
+    |                              ^^^^^^^^^
+testdata/measure/degenerate/model.dfc:198:40: note: geom:E-34 meets it here
+198 |   (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34 geom:E-35 geom:E-36))
+    |                                        ^^^^^^^^^
