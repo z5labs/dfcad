@@ -174,7 +174,7 @@ func TestRunAddNode(t *testing.T) {
 			result, root := wrote(t, testCase.args...)
 
 			assert.False(t, result.DryRun)
-			assert.Equal(t, []string{testCase.expectedPath}, files(t, root, result))
+			assert.Equal(t, []string{testCase.expectedPath}, files(t, root, result.Commit))
 			assert.Equal(t, testCase.expectedEffects, effects(result))
 
 			written, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(testCase.expectedPath)))
@@ -283,7 +283,7 @@ func TestRunSetLabel(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			result, root := wrote(t, testCase.args...)
 
-			assert.Equal(t, []string{"entities/site.dfc"}, files(t, root, result))
+			assert.Equal(t, []string{"entities/site.dfc"}, files(t, root, result.Commit))
 			assert.Equal(t, []string{"modified node site:S-101"}, effects(result))
 
 			renamed := node(t, root, "site:S-101")
@@ -339,7 +339,7 @@ func TestRunSetLabelRefusesWhatItCannotRename(t *testing.T) {
 func TestRunRetire(t *testing.T) {
 	result, root := wrote(t, "retire", "--reason", "Never built.", "--date", "2026-06-01", "site:C-01")
 
-	assert.Equal(t, []string{"entities/site.dfc"}, files(t, root, result))
+	assert.Equal(t, []string{"entities/site.dfc"}, files(t, root, result.Commit))
 	assert.Equal(t, []string{"modified node site:C-01"}, effects(result))
 
 	retirement, ok := node(t, root, "site:C-01").Retirement()
@@ -553,7 +553,7 @@ func TestWriteReportsForAPerson(t *testing.T) {
 
 // files names each file of a result and nothing else, so that an expectation
 // does not hold a temporary directory nobody can predict.
-func files(t *testing.T, root string, result writeResult) []string {
+func files(t *testing.T, root string, result dfcad.Commit) []string {
 	t.Helper()
 
 	out := make([]string, 0, len(result.Files))

@@ -29,6 +29,7 @@ const listRegistry = `(project
   (globalid-namespace "https://example.org/models/list"))
 
 (namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
 (namespace method (description "Measurement methods used on this project."))
 (namespace site (description "Semantic nodes minted by this model."))
 
@@ -83,12 +84,27 @@ const listRegistry = `(project
   (shape transform)
   (description "The rigid transform from a frame to its parent."))
 
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(tolerance coincident
+  (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))
+
 (route buildings
   (kind Building)
   (type OfficeBuilding)
   (file "entities/buildings.dfc"))
 
 (route campuses (kind Zone) (type Campus) (file "entities/campuses.dfc"))
+
+(route geometry
+  (namespace geom)
+  (file "entities/geometry.dfc")
+  (description "Vertices, edges and loops, which declare neither a kind nor a type."))
 
 (route rooms
   (kind Space)
@@ -162,9 +178,67 @@ const listModel = `(node site:S-102
   (type Campus))
 `
 
+// listGeometry is the geometry the fixture holds: three corners joined into a
+// ring, and a fourth corner nothing yet reaches.
+//
+// It is here rather than only in the tests which write geometry because the
+// walks over every command reach the commands which do: an edge is written
+// between two vertices which already exist, a loop is written over edges which
+// already exist, and a scaffold has something to snap onto.
+const listGeometry = `(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-02
+  (label "Room B, north-east corner")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-03
+  (label "Room B, south-east corner")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-04
+  (label "Room B, south-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-01 (label "Room B, north wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+(edge geom:E-02 (label "Room B, east wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
+
+(edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+`
+
 // model is the fixture tree both commands are run against.
 func model() map[string]string {
-	return map[string]string{"registry.dfc": listRegistry, "entities/site.dfc": listModel}
+	return map[string]string{
+		"registry.dfc":          listRegistry,
+		"entities/site.dfc":     listModel,
+		"entities/geometry.dfc": listGeometry,
+	}
 }
 
 // listed decodes the one JSON object on stdout into T.

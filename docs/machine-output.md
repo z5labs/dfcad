@@ -955,6 +955,183 @@ free, and an id is never issued twice
 }
 ```
 
+### `add-vertex`
+
+A new corner. It takes the id it will be written with, the frame it is in, and — where the
+position is already known — the claim saying where it is.
+
+| Flag | Meaning |
+|------|---------|
+| `--frame <id>` | The coordinate frame it is expressed in. Required: a geometric node is always in exactly one. |
+| `--label "<text>"` | Its display text, which nothing resolves through. |
+| `--predicate <name>` | The predicate its position is claimed under. The claim flags below are read only when it is given. |
+| `--file <path>` | Write it here instead, overriding the routing rules. |
+
+A vertex carries no coordinate of its own. **Where it is, is a claim like any other**, held
+to the same predicate validation, the same accuracy rules and the same resolution — so the
+claim flags of `add-claim` are the claim flags here, and two surveys of one corner are two
+claims rather than a number somebody overwrote. Leave `--predicate` out for a corner that
+has been named and not yet surveyed: its position is then unknown rather than zero.
+
+A geometric node declares neither a kind nor a type, so the one criterion a routing rule can
+match it on is the namespace of its id. A rule written with a kind or a type never places
+one, which is what keeps the rules that file semantic nodes from filing geometry as a side
+effect.
+
+The payload is the write payload above and nothing more.
+
+### `add-edge`
+
+A connection between two corners. It takes the id it will be written with and the two
+vertices it runs between.
+
+| Flag | Meaning |
+|------|---------|
+| `--frame <id>` | The coordinate frame it is expressed in. Required. |
+| `--start <vertex-id>` | The vertex it runs from. Required. |
+| `--end <vertex-id>` | The vertex it runs to. Required. |
+| `--backed-by <id>` | A semantic node that physically realises it. Repeatable. |
+| `--label "<text>"` | Its display text. |
+| `--file <path>` | Write it here instead, overriding the routing rules. |
+
+Both endpoints are resolved before anything is written, against the model and against what
+the same change has already added. An id naming nothing, an id naming something that is not
+a vertex, and one vertex written at both ends are each a **usage error** naming what was
+reached.
+
+Naming the ends by id rather than by coordinate is what makes the **shared-edge case**
+ordinary: two regions either side of a partition name one edge, so the second of them is
+written by naming the vertices the first already has. The order of the pair is significant
+and is never sorted — an edge is directed, and the region on the other side traverses it the
+other way.
+
+Whether an edge is a physical boundary or a virtual one is **computed** from `--backed-by`
+rather than written, so adding the wall later flips the answer with no other edit
+([0009](./decisions/0009-derived-values-are-never-written-back.md)).
+
+The payload is the write payload above and nothing more.
+
+### `add-loop`
+
+An ordered ring of edges. It takes the id it will be written with and the edges, in the
+order the ring is walked.
+
+| Flag | Meaning |
+|------|---------|
+| `--frame <id>` | The coordinate frame it is expressed in. Required. |
+| `--edge <edge-id>` | An edge of the ring. Repeat once per edge, in traversal order. |
+| `--label "<text>"` | Its display text. |
+| `--file <path>` | Write it here instead, overriding the routing rules. |
+
+The order is the data: it is preserved exactly as written and is never sorted. Every edge id
+is resolved before anything is written; whether the ring closes is judged when the model the
+change produces is loaded, and a change that would produce a model that does not load is
+refused.
+
+The payload is the write payload above and nothing more.
+
+### `scaffold-loop`
+
+A room's corners, walls and outline, from an ordered coordinate list, in one change.
+
+| Flag | Meaning |
+|------|---------|
+| `--corner "<x> <y> …"` | One corner, in the shape the position predicate declares. Repeat once per corner, in order, naming the first corner again at the end. |
+| `--namespace <name>` | The declared id namespace the new nodes are minted in. Required. |
+| `--predicate <name>` | The predicate a corner's position is claimed under. Required. |
+| `--tolerance <name>` | The declared tolerance two corners are judged to be one point by, which is also what says the list closed. Required. |
+| `--frame <id>` | The coordinate frame the corners are expressed in. Required. |
+| `--no-snap` | Write a new vertex at every corner, even where one is already there. |
+| `--label "<text>"` | The loop's display text. |
+| `--file <path>` | Write everything here instead, overriding the routing rules. |
+
+The claim flags of `add-claim` supply the evidence every position claim carries — `--source`,
+`--method`, `--accuracy`, `--date` and `--unit`. `--value` is not read: a corner's value is
+the corner.
+
+Ids are minted as `<namespace>:<form>-<n>` — the namespace, the tag of the form being
+written, and the lowest ordinal nothing in the model already holds. It is a name and not a
+schema, and nothing is inferred back out of one
+([0002](./decisions/0002-immutable-id-mutable-label.md)).
+
+**The list is authored closed.** Its last corner names its first again, and a list that does
+not return to where it started is a **usage error** naming the gap and its size. Closing one
+silently would leave the tool unable to tell an outline somebody finished from one they
+stopped typing halfway through, and the wall it invented would appear in no diagnostic
+anywhere.
+
+**A corner within the tolerance of a vertex the model already holds reuses that vertex**, and
+the edge between two reused corners is reused too. That is what makes a partition one node
+named by both rooms rather than two that can drift apart, and a duplicate vertex a millimetre
+away is exactly the sliver a shared topology exists to prevent. `--no-snap` writes the
+duplicate anyway and still reports the coincidence.
+
+Two corners of one list at the same point are refused: either a coordinate was typed twice
+or the outline doubles back, and a ring visits each of its corners once.
+
+```json
+{
+  "version": 1,
+  "command": "scaffold-loop",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/geometry.dfc",
+      "status": "rewritten",
+      "effects": [
+        {"op": "created", "tag": "vertex", "id": "geom:vertex-1"},
+        {"op": "created", "tag": "vertex", "id": "geom:vertex-2"},
+        {"op": "created", "tag": "edge", "id": "geom:edge-1"},
+        {"op": "created", "tag": "edge", "id": "geom:edge-2"},
+        {"op": "created", "tag": "edge", "id": "geom:edge-3"},
+        {"op": "created", "tag": "loop", "id": "geom:loop-1"}
+      ],
+      "diff": "--- entities/geometry.dfc.orig\n+++ entities/geometry.dfc\n@@ -68,3 +68,40 @@\n..."
+    }
+  ],
+  "loop": "geom:loop-1",
+  "vertices": ["geom:V-04", "geom:V-03", "geom:vertex-1", "geom:vertex-2"],
+  "created": ["geom:vertex-1", "geom:vertex-2"],
+  "edges": ["geom:E-03", "geom:edge-1", "geom:edge-2", "geom:edge-3"],
+  "reused": ["geom:E-03"],
+  "snaps": [
+    {"corner": 1, "vertex": "geom:V-04", "distance": 0.0, "unit": "m", "reused": true},
+    {"corner": 2, "vertex": "geom:V-03", "distance": 0.0, "unit": "m", "reused": true}
+  ],
+  "tolerance": {"name": "boundary-closure", "value": 0.005, "unit": "m"},
+  "notices": []
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `loop` | string | The loop that was written. |
+| `vertices` | array | The vertex each corner is at, in corner order, with the closing corner left out — it is the first corner written again. |
+| `created` | array | The vertices that were minted, in the order they were. A corner that reused one is not here and is in `snaps` instead. |
+| `edges` | array | The ring, in traversal order. |
+| `reused` | array | The edges of that ring the model already held, in the order the traversal reaches them. Empty rather than null when none was. |
+| `snaps` | array | Every corner that landed on a vertex the model already held, in corner order. Empty rather than null when none did. |
+| `snaps[].corner` | number | The corner's place in the list, counted from one. |
+| `snaps[].vertex` | string | The vertex it landed on. |
+| `snaps[].distance` | number | How far it was from that vertex. |
+| `snaps[].unit` | string | The unit that distance is in, which is the frame's. |
+| `snaps[].reused` | boolean | Whether the vertex was used rather than a second one written at the same point. False exactly when snapping was switched off, which is the case worth looking at. |
+| `tolerance` | object | The declared tolerance coincidence and closure were judged against, with its name, its magnitude and its unit. |
+| `notices` | array | What the change had to say about the model it produced, in the shape the claim commands report a notice in. |
+
+The tolerance travels with the answer because the answer depends on it: "these two corners
+are one point" is a fact about a stated tolerance and not about the corners alone
+([0012](./decisions/0012-tolerances-are-registry-data.md)).
+
+Every snap is also written to stderr, on every run and in every format — a reuse is the one
+thing about a scaffold that is surprising when it happens and worse when it does not, and a
+duplicate written under `--no-snap` is a warning whether or not anybody asked to see the
+result.
+
+Under `--dry-run` every field above is what it would have been, which is the whole point of
+running one first: the ids, the reuses and the tolerance that decided them are what an author
+is checking before committing to them.
+
 ### `set-label`
 
 The display text of one thing, and nothing else. It takes an id and a label.
