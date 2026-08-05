@@ -375,14 +375,15 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 	if declared.Unit != shape.unit {
 		return []Failure{{
 			Message: fmt.Sprintf(
-				"expected the tolerance %s in %s, the unit the shape of %s is measured in, found %s %s",
+				"expected the discrepancy %s in %s, the unit the shape of %s is measured in, found %s %s",
 				declared.Name, shape.unit, nodeName(node), decimal(declared.Value), declared.Unit,
 			),
 			Hint: "how far a claim and a shape may differ is a figure of what they are figures of: an area for a " +
 				"subject bounded by loops and a length for one drawn as a line, and nothing here converts between " +
-				"the two",
+				"the two. It is the (discrepancy ...) parameter rather than the (tolerance ...) one, which is a " +
+				"distance and is what corners are judged coincident against",
 			Span:    graph.Nodes().named(node),
-			Related: []RelatedLocation{{Span: declared.Span, Message: "the tolerance is declared here"}},
+			Related: []RelatedLocation{{Span: declared.Span, Message: "the discrepancy is declared here"}},
 		}}
 	}
 
