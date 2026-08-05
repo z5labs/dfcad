@@ -900,10 +900,19 @@ closes the wrong way are two ways of failing one check, and a summary counting t
 failures would say the model breaks two rules.
 
 `--list` adds `checks` beside an empty `violations` — nothing ran, so nothing failed. It is
-one entry per rule the filters selected, in the order it would run in, each carrying `subject`, `form` — `node`, `vertex`, `edge` or `loop` — `rule`, which is
-`invariant` or `assertion`, the `type` that declared it where one did, the `check` name, its
-`arguments`, its `declared` span, and `runs`, which says whether running it would decide
-anything.
+one entry per rule the filters selected, in the order it would run in, each carrying
+`subject`, `form` — `node`, `vertex`, `edge` or `loop` — `rule`, which is `invariant` or
+`assertion`, the `type` that declared it where one did, the `check` name, its `arguments`,
+its `declared` span, and two booleans: `runs`, which says whether running it would decide
+anything, and `applicable`, which says whether the check can examine the thing it is bound
+to.
+
+`runs` is false for two different reasons and `applicable` is which of them. A check that
+declares itself and has no implementation is the engine's to write; a check that cannot
+examine the thing it was written on is a line in the model. The second appears only in a
+model the load already refused, because such an assertion is a load error rather than a rule
+that quietly never fires — and reporting it as unimplemented would send its author to the
+wrong repository.
 
 A check that declares itself and has no implementation is bound, listed and counted apart
 from the ones that ran. "This rule holds" and "nothing has been written to decide whether it

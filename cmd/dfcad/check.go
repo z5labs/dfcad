@@ -159,9 +159,22 @@ type listedCheck struct {
 	// written.
 	Arguments []string `json:"arguments,omitempty"`
 
-	// Runs reports whether running it would decide anything. It is false for a
-	// check which declares itself and has no implementation.
+	// Runs reports whether running it would decide anything. It is false both
+	// for a check which declares itself and has no implementation and for one
+	// which cannot examine the thing it is bound to, which is why Applicable is
+	// written beside it rather than left to be inferred from this.
 	Runs bool `json:"runs"`
+
+	// Applicable reports whether the check can examine the thing the rule is
+	// bound to.
+	//
+	// It is false only for an assertion, and only in a model the load refused:
+	// a check written on something it cannot look at is a load error rather
+	// than a rule which quietly never fires, and an invariant which could not
+	// examine an instance was never bound to it. It is reported so that a rule
+	// which decides nothing says which of the two reasons it is, in a model
+	// which is being fixed and therefore has both.
+	Applicable bool `json:"applicable"`
 
 	// Declared is where the rule is written: a registry file for an invariant,
 	// and the thing itself for an assertion.
@@ -347,13 +360,14 @@ func listChecks(rules dfcad.Rules) []listedCheck {
 		}
 
 		entry := listedCheck{
-			Form:      string(rule.Form),
-			Rule:      kind,
-			Type:      rule.Type,
-			Check:     rule.Check.Name,
-			Arguments: arguments,
-			Runs:      rule.Runs(),
-			Declared:  rule.Declared,
+			Form:       string(rule.Form),
+			Rule:       kind,
+			Type:       rule.Type,
+			Check:      rule.Check.Name,
+			Arguments:  arguments,
+			Runs:       rule.Runs(),
+			Applicable: rule.Applicable(),
+			Declared:   rule.Declared,
 		}
 		if rule.Subject != nil {
 			entry.Subject = string(rule.Subject.ID())
@@ -425,13 +439,23 @@ func writtenRule(entry listedCheck) string {
 	return strings.Join(append([]string{entry.Subject, entry.Check}, entry.Arguments...), " ")
 }
 
-// outcome says what --list has to say about one rule, which is whether running
-// it would decide anything.
+// outcome says what --list has to say about one rule: whether running it would
+// decide anything, and where it would not, which of the two reasons it is.
+//
+// The two are told apart rather than reported as one absence, because they are
+// fixed in different places. A check nothing implements is the engine's to
+// write; a check which cannot examine the thing it was written on is a line in
+// the model, and reporting it as unimplemented would send its author to the
+// wrong repository.
 func outcome(entry listedCheck) string {
-	if entry.Runs {
+	switch {
+	case entry.Runs:
 		return "would run"
+	case !entry.Applicable:
+		return "does not apply to what it is written on"
+	default:
+		return "declared, not implemented"
 	}
-	return "declared, not implemented"
 }
 
 // duration renders how long something took for a person, to the microsecond,

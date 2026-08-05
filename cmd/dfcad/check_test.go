@@ -305,6 +305,58 @@ func TestRunCheckListsWhatWouldRun(t *testing.T) {
 	})
 }
 
+// TestRunCheckListsWhyARuleDecidesNothing is its own function because it is
+// about the two reasons a rule does not run rather than about the listing: they
+// are fixed in different places, so a report which folded them together would
+// send the author of a model to the engine to fix a line of their own.
+func TestRunCheckListsWhyARuleDecidesNothing(t *testing.T) {
+	// An assertion naming a check which cannot examine the thing it is written
+	// on is a load error, so this is a model somebody is part way through
+	// fixing — which is the only model in which the two reasons are both here.
+	written := checkModel + `
+(node site:S-103
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert edge-endpoints-differ))
+`
+
+	result, code, stderr := checked(t, map[string]string{
+		"registry.dfc":      checkRegistry,
+		"entities/site.dfc": written,
+	}, "--list")
+
+	// The model was refused, and the listing still says what bears on it.
+	require.Equal(t, exitLoad, code)
+	assert.Contains(t, stderr, "edge-endpoints-differ")
+
+	inapplicable, ok := listedFor(result, "site:S-103", "edge-endpoints-differ")
+	require.True(t, ok)
+	assert.False(t, inapplicable.Runs)
+	assert.False(t, inapplicable.Applicable)
+	assert.Equal(t, "does not apply to what it is written on", outcome(inapplicable))
+
+	// The rule beside it is one the engine has not implemented, which is a
+	// different answer and is fixed somewhere else.
+	unimplemented, ok := listedFor(result, "site:S-101", "required-claim")
+	require.True(t, ok)
+	assert.False(t, unimplemented.Runs)
+	assert.True(t, unimplemented.Applicable)
+	assert.Equal(t, "declared, not implemented", outcome(unimplemented))
+}
+
+// listedFor is the listed rule which binds one check to one thing.
+func listedFor(result checkResult, subject, check string) (listedCheck, bool) {
+	for _, entry := range result.Checks {
+		if entry.Subject == subject && entry.Check == check {
+			return entry, true
+		}
+	}
+	return listedCheck{}, false
+}
+
 // TestRunCheckIsDeterministic is its own function because it is a property of
 // two runs rather than of one: a gate whose output moved between runs over one
 // model would make every diff of its reports noise.
