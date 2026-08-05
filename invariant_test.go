@@ -61,7 +61,7 @@ func (runnableWithinResolves) Run(CheckSubject) []Failure { return nil }
 // runnableChecks is the check set the run tests use: two checks which can be
 // run and one which declares itself and cannot.
 func runnableChecks() *checkSet {
-	return newCheckSet(runnableRequiredClaim{}, runnableWithinResolves{}, boundaryLoopsClose{})
+	return newCheckSet(runnableRequiredClaim{}, runnableWithinResolves{}, declaredOnly{boundaryLoopsClose{}})
 }
 
 // invariantFixture is the root of one fixture model whose types carry
@@ -256,8 +256,9 @@ func TestGraphCheckInvariantsRunsNothingUnimplemented(t *testing.T) {
 	zone := instanceOf(t, graph, "site:Z-02")
 	bindings := graph.invariants(zone, set)
 
-	// boundary-loops-close is bound to the zone and declares itself only, so
-	// nothing runs it and the run says nothing about the zone at all.
+	// boundary-loops-close is bound to the zone and is registered here with no
+	// implementation, so nothing runs it and the run says nothing about the zone
+	// at all.
 	require.Len(t, bindings, 1)
 	assert.False(t, bindings[0].Runnable())
 

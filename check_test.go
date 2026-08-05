@@ -25,6 +25,22 @@ type fixtureCheck struct {
 // Declare implements [Check].
 func (c fixtureCheck) Declare() CheckDeclaration { return c.declaration }
 
+// declaredOnly is a registered check with its implementation taken off: it
+// declares exactly what the engine's does and nothing runs it.
+//
+// Every layer above the registry — validating an assertion at load, listing what
+// a model may write, binding a rule to the instances it applies to — reads the
+// declaration and runs nothing, and a check which is declared and not yet
+// implemented is what those layers have to keep working against. The engine
+// implements more of its set with every story, so a test which needs that state
+// makes it rather than borrowing whichever check happens not to be implemented
+// this month.
+//
+// The embedded field is a [Check] rather than the concrete type, which is the
+// whole trick: only Declare is promoted through it, so a Run on the check inside
+// is not a Run on this.
+type declaredOnly struct{ Check }
+
 // parsedForm parses one written form, which is what an assertion is validated
 // from.
 func parsedForm(t *testing.T, written string) *Node {
@@ -198,7 +214,9 @@ func TestValidateAssertionHints(t *testing.T) {
 			name:    "lists the registered checks when nothing written is close to one",
 			written: "(assert everything-is-fine)",
 			expected: "the check registry is closed and compiled into the engine; the registered checks are " +
-				"boundary-loops-close, edge-endpoints-differ, required-claim, within-resolves and zone-members-resolve",
+				"boundary-loops-close, contained-areas-do-not-overlap, contained-areas-sum, cross-frame-budget-holds, " +
+				"edge-backing-resolves, edge-endpoints-differ, required-claim, stays-clear-of-zone, within-resolves " +
+				"and zone-members-resolve",
 		},
 		{
 			name:     "offers the nearest parameter the check does take",
@@ -381,8 +399,13 @@ func TestChecks(t *testing.T) {
 
 		assert.Equal(t, []string{
 			"boundary-loops-close",
+			"contained-areas-do-not-overlap",
+			"contained-areas-sum",
+			"cross-frame-budget-holds",
+			"edge-backing-resolves",
 			"edge-endpoints-differ",
 			"required-claim",
+			"stays-clear-of-zone",
 			"within-resolves",
 			"zone-members-resolve",
 		}, names)
@@ -393,7 +416,7 @@ func TestChecks(t *testing.T) {
 		declared, ok := LookupCheck("boundary-loops-close")
 
 		require.True(t, ok)
-		require.Len(t, declared.Parameters, 1)
+		require.Len(t, declared.Parameters, 2)
 		assert.Equal(t, "tolerance", declared.Parameters[0].Name)
 		assert.Equal(t, ParameterTolerance, declared.Parameters[0].Type)
 		assert.True(t, declared.Parameters[0].Required)

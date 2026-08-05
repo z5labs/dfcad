@@ -1,0 +1,38 @@
+; An edge which says three things realise it and reaches one of them.
+;
+; This fixture does not load clean, and that is what it is for. A backing
+; reference which reaches nothing is a load error — an edge saying something
+; backs it and naming nothing the model holds is not quietly virtual
+; (specification section 6.3) — so the load reports each of them where it was
+; written. The rule says the same thing from the other side, on the edge and in
+; the vocabulary of the gate, which is what a run of the model's own rules
+; reports rather than what reading the files reports.
+(vertex geom:V-01 (label "Partition, south end") (frame frame:building)
+  (position (value (3.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Partition, north end") (frame frame:building)
+  (position (value (3.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01
+  (label "Partition between the rooms")
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02)
+  (backed-by site:W-01)
+  (backed-by site:S-101)
+  (backed-by site:W-99)
+  (assert edge-backing-resolves))
+
+(node site:W-01
+  (label "Partition between the rooms")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building))
+
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))

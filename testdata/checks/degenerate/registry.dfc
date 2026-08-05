@@ -1,0 +1,89 @@
+; The vocabulary the model beside it is checked against, which is the satisfied
+; fixture's: what the model next to it exercises is the shapes a check is given
+; rather than anything the registry says.
+;
+; Three tolerances rather than one, because the checks judge three different
+; quantities: how close two corners are one corner is a distance, how far two
+; areas may differ is an area, and how uncertain a cross-frame answer may be is
+; a distance of a different sort. One number could not be all three, and a check
+; which reused one would be comparing a width against an area.
+(project
+  (label "Check fixture")
+  (globalid-namespace "https://example.org/models/checks"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+; The annex is fitted to the building through one control point, and the fit is
+; known to 0.01 m: 0.006 m of its own and 0.008 m shared with the control, which
+; combine to exactly that. The limit below is wider than the fit, so an answer
+; read across the two frames is one somebody can act on.
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:building)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 30.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-20")))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, and how close two corners are one corner."))
+
+(tolerance area-sum
+  (value 0.05 m2)
+  (description "How far the parts of a whole may fail to add up to it."))
+
+(tolerance frame-budget
+  (value 0.02 m)
+  (description "How uncertain an answer expressed in another frame may be and still be acted on."))
+
+(type Level
+  (kind Storey)
+  (geometry area)
+  (description "One storey of a building, with the outline of its floor plate."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Setback
+  (kind Zone)
+  (geometry area)
+  (description "A strip along a boundary which nothing may be built into."))
+
+(type Fixture
+  (kind Element)
+  (geometry absent)
+  (description "A piece of equipment recorded in the frame it was set out in."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A wall between two spaces."))

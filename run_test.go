@@ -96,8 +96,8 @@ func TestGraphRules(t *testing.T) {
 		assert.True(t, rules[1].Runs())
 		assert.True(t, rules[1].Runnable())
 
-		// boundary-loops-close applies to the room and nothing implements it, so
-		// it is bound, listed, and decides nothing.
+		// boundary-loops-close applies to the room and is registered here with
+		// no implementation, so it is bound, listed, and decides nothing.
 		assert.False(t, rules[4].Runs())
 		assert.False(t, rules[4].Runnable())
 		assert.True(t, rules[4].Applicable())
@@ -172,7 +172,7 @@ func TestRulesRunOfNothing(t *testing.T) {
 
 	// A set in which nothing is implemented binds every rule and runs none, so
 	// the model is neither reported sound nor reported broken.
-	declared := graph.rules(newCheckSet(requiredClaim{}, withinResolves{}, boundaryLoopsClose{})).Run()
+	declared := graph.rules(newCheckSet(requiredClaim{}, withinResolves{}, declaredOnly{boundaryLoopsClose{}})).Run()
 	assert.Equal(t, 7, declared.Rules)
 	assert.Zero(t, declared.Ran)
 	assert.Zero(t, declared.Passed)

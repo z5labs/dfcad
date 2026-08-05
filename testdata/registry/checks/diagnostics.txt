@@ -13,7 +13,7 @@ testdata/registry/checks/registry.dfc:29:3: error: expected a (tolerance ...) pa
 testdata/registry/checks/registry.dfc:29:36: error: expected a parameter of the check boundary-loops-close, found (slack ...), which is not one of them
 29 |   (invariant boundary-loops-close (slack boundary-closure))
    |                                    ^^^^^
-   = hint: boundary-loops-close takes (tolerance ...)
+   = hint: boundary-loops-close takes (tolerance ...) and (position ...)
 testdata/registry/checks/registry.dfc:30:3: error: expected a (tolerance ...) parameter of the check boundary-loops-close, found none
 30 |   (invariant boundary-loops-close)
    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -669,8 +669,12 @@ func TestCheckReportsWhatItFoundForAPerson(t *testing.T) {
 	assert.Empty(t, quiet)
 
 	// Asked to report itself, it says how the rules went and how long it took.
-	assert.Contains(t, human, "7 checks: 0 ran")
-	assert.Contains(t, human, "7 decided nothing")
+	// One of the seven is a check the engine implements bound to a node with no
+	// outline, which passes; the other six name checks which declare themselves
+	// and decide nothing.
+	assert.Contains(t, human, "7 checks: 1 ran")
+	assert.Contains(t, human, "1 passed")
+	assert.Contains(t, human, "6 decided nothing")
 
 	// Verbosity is progress rather than result, so it says how long the run
 	// took without saying what the run found.

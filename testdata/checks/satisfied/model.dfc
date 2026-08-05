@@ -1,0 +1,170 @@
+; The same model drawn right: every rule the fixture beside it breaks is stated
+; here of geometry which holds it.
+;
+; It is a fixture in its own right rather than a footnote to that one. A check
+; which reports a violation of everything put to it passes the test which says
+; it catches the mistake, and the only thing which finds that out is a model
+; with nothing wrong.
+
+; The floor plate, six by four, and the partition at three metres which divides
+; it into two rooms of twelve square metres each.
+(vertex geom:V-01 (label "Level, south-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Level, south-east corner") (frame frame:building)
+  (position (value (6.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "Level, north-east corner") (frame frame:building)
+  (position (value (6.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "Level, north-west corner") (frame frame:building)
+  (position (value (0.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-05 (label "Partition, south end") (frame frame:building)
+  (position (value (3.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-06 (label "Partition, north end") (frame frame:building)
+  (position (value (3.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+; The store, four corners and four edges which return to the one they started
+; from.
+(vertex geom:V-09 (label "Store, corner 1") (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-10 (label "Store, corner 2") (frame frame:building)
+  (position (value (12.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-11 (label "Store, corner 3") (frame frame:building)
+  (position (value (12.0 2.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-12 (label "Store, corner 4") (frame frame:building)
+  (position (value (10.0 2.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+; The setback strip, from eight metres to ten, which nothing here is drawn into.
+(vertex geom:V-14 (label "Setback, corner 1") (frame frame:building)
+  (position (value (8.0 0.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-15 (label "Setback, corner 2") (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-16 (label "Setback, corner 3") (frame frame:building)
+  (position (value (10.0 4.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-17 (label "Setback, corner 4") (frame frame:building)
+  (position (value (8.0 4.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+
+(edge geom:E-01 (label "Level, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Level, east wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Level, north wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Level, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-10 (label "Level outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; The partition is one edge traversed by both rooms, in opposite directions, and
+; it is backed by the wall which realises it — which is what makes the boundary
+; between them physical rather than an open line.
+(edge geom:E-05 (label "Room A, south wall") (frame frame:building) (vertices geom:V-01 geom:V-05))
+(edge geom:E-06
+  (label "Partition between the rooms")
+  (frame frame:building)
+  (vertices geom:V-05 geom:V-06)
+  (backed-by site:W-01)
+  (assert edge-backing-resolves))
+(edge geom:E-07 (label "Room A, north wall") (frame frame:building) (vertices geom:V-06 geom:V-04))
+(loop geom:L-11 (label "Room A outline") (frame frame:building)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-04))
+
+(edge geom:E-09 (label "Room B, south wall") (frame frame:building) (vertices geom:V-05 geom:V-02))
+(edge geom:E-11 (label "Room B, north wall") (frame frame:building) (vertices geom:V-03 geom:V-06))
+(loop geom:L-12 (label "Room B outline") (frame frame:building)
+  (edges geom:E-09 geom:E-02 geom:E-11 geom:E-06))
+
+(edge geom:E-13 (label "Store, side 1") (frame frame:building) (vertices geom:V-09 geom:V-10))
+(edge geom:E-14 (label "Store, side 2") (frame frame:building) (vertices geom:V-10 geom:V-11))
+(edge geom:E-15 (label "Store, side 3") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-16 (label "Store, side 4") (frame frame:building) (vertices geom:V-12 geom:V-09))
+
+; The rule about closing is stated on the loop itself here, which is the other
+; form the check applies to: a loop is a thing with an id, and what has to hold
+; of it can be written on it.
+(loop geom:L-13
+  (label "Store outline")
+  (frame frame:building)
+  (edges geom:E-13 geom:E-14 geom:E-15 geom:E-16)
+  (assert boundary-loops-close (tolerance boundary-closure) (position position)))
+
+(edge geom:E-17 (label "Setback, side 1") (frame frame:building) (vertices geom:V-14 geom:V-15))
+(edge geom:E-18 (label "Setback, side 2") (frame frame:building) (vertices geom:V-15 geom:V-16))
+(edge geom:E-19 (label "Setback, side 3") (frame frame:building) (vertices geom:V-16 geom:V-17))
+(edge geom:E-20 (label "Setback, side 4") (frame frame:building) (vertices geom:V-17 geom:V-14))
+(loop geom:L-14 (label "Setback outline") (frame frame:building)
+  (edges geom:E-17 geom:E-18 geom:E-19 geom:E-20))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-10)
+  (assert contained-areas-do-not-overlap (tolerance boundary-closure) (position position))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+; The two rooms meet along the partition and nowhere else. Two shapes which
+; share a boundary and no ground overlap in nothing, which is what keeps every
+; pair of adjacent rooms from failing the rule above.
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-11))
+
+(node site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-12)
+  (assert stays-clear-of-zone (zone site:Z-90) (tolerance boundary-closure) (position position)))
+
+(node site:S-901
+  (label "Store")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-13))
+
+(node site:W-01
+  (label "Partition between the rooms")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01))
+
+(node site:Z-90
+  (label "Northern setback")
+  (kind Zone)
+  (type Setback)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-14))
+
+(node site:A-01
+  (label "Annex pump")
+  (kind Element)
+  (type Fixture)
+  (frame frame:annex)
+  (assert cross-frame-budget-holds (frame frame:building) (limit frame-budget)))

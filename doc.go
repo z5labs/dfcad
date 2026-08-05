@@ -109,6 +109,18 @@
 // docs/decisions/0012-tolerances-are-registry-data.md for why no check carries a
 // number.
 //
+// What the set covers is the structural invariants a model has to hold from its
+// first file: that the loops bounding a thing close, that what a node contains
+// covers no ground twice and adds up to the whole, that what an edge says
+// physically realises it is a node the model holds, that expressing something in
+// another frame stays inside a stated error budget, and that a shape stays out
+// of a zone it is to keep clear of. Each takes its tolerance by name from the
+// registry, and each which measures is told which predicate carries a position,
+// because neither of those is the engine's to assume. A check the registry
+// declares and nothing implements binds, lists and validates exactly as one
+// which does and decides nothing, which [Rule.Runs] is how to tell apart — and
+// "nothing decided this" is a different answer from "this holds".
+//
 // # Assertions
 //
 // An assertion is a check written on one thing — a node, a vertex, an edge or a
