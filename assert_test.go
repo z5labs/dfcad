@@ -436,7 +436,7 @@ func TestAssertionOnASubjectTheCheckCannotExamine(t *testing.T) {
 		diags[0].Message)
 	assert.Contains(t, diags[0].Hint, "written on edge")
 	require.Len(t, diags[0].Related, 1)
-	assert.Contains(t, diags[0].Related[0].Message, "site:S-101")
+	assert.Equal(t, "site:S-101 is written here", diags[0].Related[0].Message)
 
 	assert.Equal(t,
 		"expected an assertion naming a check which applies to the geometry site:Z-01 has, found "+
@@ -444,6 +444,40 @@ func TestAssertionOnASubjectTheCheckCannotExamine(t *testing.T) {
 		diags[1].Message)
 	assert.Contains(t, diags[1].Hint, "no geometry at all")
 	assert.Contains(t, diags[1].Hint, "passes on every run forever")
+}
+
+// TestAssertionOnAThingWithNoReadableID covers the diagnostic for a thing whose
+// id could not be read, which is a thing the model holds and which carries its
+// assertions like any other.
+//
+// A message built from the id alone would read with a hole in it at exactly the
+// moment somebody is reading two diagnostics about one form.
+func TestAssertionOnAThingWithNoReadableID(t *testing.T) {
+	_, diags := loadAsserted(t, `
+(node 42
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (assert edge-endpoints-differ))
+`)
+
+	rendered := messages(diags)
+	require.Contains(t, rendered,
+		"expected an assertion naming a check which applies to a node, found edge-endpoints-differ, which applies to edge")
+
+	for _, diagnostic := range diags {
+		for _, related := range diagnostic.Related {
+			assert.NotEqual(t, " is written here", related.Message, "no message is built around an id nobody could read")
+		}
+	}
+
+	for _, diagnostic := range diags {
+		if strings.Contains(diagnostic.Message, "edge-endpoints-differ") {
+			require.Len(t, diagnostic.Related, 1)
+			assert.Equal(t, "the node is written here", diagnostic.Related[0].Message)
+		}
+	}
 }
 
 // TestAssertionOnAKindTheCheckCannotExamine covers the middle axis, which the
@@ -472,7 +506,7 @@ func TestAssertionReferencesAreResolvedAtLoad(t *testing.T) {
 		diags[0].Message)
 	assert.Equal(t, "did you mean site:S-101?", diags[0].Hint)
 	require.Len(t, diags[0].Related, 1)
-	assert.Equal(t, "the assertion is written on site:S-102, here", diags[0].Related[0].Message)
+	assert.Equal(t, "site:S-102 is written here", diags[0].Related[0].Message)
 
 	assert.Equal(t,
 		"expected the (beside ...) parameter of the assertion on site:S-103 to name something the model holds, "+

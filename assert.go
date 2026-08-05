@@ -495,9 +495,23 @@ func (r *assertionResolver) applicable(binding AssertionBinding) {
 		Hint:     hint,
 		Related: []RelatedLocation{{
 			Span:    binding.Subject.Span(),
-			Message: fmt.Sprintf("it is written on %s, here", binding.Subject.ID()),
+			Message: fmt.Sprintf("%s is written here", subjectName(binding)),
 		}},
 	})
+}
+
+// subjectName is the thing an assertion was written on as a diagnostic names it.
+//
+// It is the id, and the form it was written on where there is no id to use. A
+// thing whose id could not be read is a thing the model holds with a diagnostic
+// against it, and it carries assertions like any other, so a message built from
+// its id alone reads with a hole in it — "the assertion on  names" — at exactly
+// the moment somebody is reading two diagnostics about one form.
+func subjectName(binding AssertionBinding) string {
+	if id := binding.Subject.ID(); id != "" {
+		return string(id)
+	}
+	return "the " + string(binding.Form)
 }
 
 // unexaminable says why a check cannot examine the thing an assertion was
@@ -628,12 +642,12 @@ func (r *assertionResolver) dangling(binding AssertionBinding, declared CheckPar
 		Message: fmt.Sprintf(
 			"expected the (%s ...) parameter of the assertion on %s to name something the model holds, found %s, "+
 				"which nothing answers to",
-			declared.Name, binding.Subject.ID(), id,
+			declared.Name, subjectName(binding), id,
 		),
 		Hint: hint,
 		Related: []RelatedLocation{{
 			Span:    binding.Subject.Span(),
-			Message: fmt.Sprintf("the assertion is written on %s, here", binding.Subject.ID()),
+			Message: fmt.Sprintf("%s is written here", subjectName(binding)),
 		}},
 	}
 }
@@ -676,7 +690,7 @@ func (r *assertionResolver) restatement(binding AssertionBinding) {
 			Span:     restated.Span,
 			Message: fmt.Sprintf(
 				"expected an assertion which constrains %s, found one which restates the %s it already claims",
-				binding.Subject.ID(), name,
+				subjectName(binding), name,
 			),
 			Hint: fmt.Sprintf(
 				"an assertion constrains; it does not record. The claim is where %s is written, with the source, "+
