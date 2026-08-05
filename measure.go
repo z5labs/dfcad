@@ -367,11 +367,13 @@ func (t *Topology) MeasureRegion(region *SemanticNode, boundaries *Boundaries, s
 	}
 
 	if len(rings) != len(loops) {
-		// A region is measured from all of its rings or from none of them.
-		// Summing the ones which worked would report a courtyard building as
-		// solid, with no figure saying which part of it was left out.
-		m.lengthOf(rings)
-		m.boundsOf(rings)
+		// A region is measured from all of its rings or from none of them, and
+		// that holds for every figure and not only for the area. A length summed
+		// over the rings which happened to assemble is a boundary with a piece
+		// missing and no figure saying which piece; a box drawn round them is a
+		// region which reaches further than it says it does. Both are wrong in
+		// the direction which reads as an answer, so neither is reported. Why is
+		// already on the diagnostics from the ring which did not assemble.
 		return m.result, m.diags
 	}
 
@@ -890,33 +892,85 @@ func (m *measurer) boundsOf(rings []*outline) {
 	m.result.bounds, m.result.hasBounds = bounds, true
 }
 
-// coplanar reports whether every ring of a region lies in the same plane of the
-// frame, naming the first which does not.
+// coplanar reports whether every ring of a region lies in one and the same
+// plane, naming the first which does not and how far out of it that puts it.
 //
 // Nesting is only meaningful between rings which share a plane. A courtyard is a
-// hole in a floor plate because it is drawn in the plate; a ring on another storey
-// is a different shape which happens to be inside this one seen from above, and
-// subtracting it would report a building with a floor missing.
+// hole in a floor plate because it is drawn in the plate; a ring on the storey
+// above is a different shape which merely happens to be inside this one seen
+// from above, and subtracting it would report a building with a floor missing.
+//
+// Sharing an orientation is not sharing a plane, and this is the case where the
+// difference bites: every floor plate of every storey has a normal along the
+// same axis, so a test which compared only that would call two storeys coplanar
+// and quietly nest one in the other. So the orientation is checked because the
+// projection nesting is computed in needs it, and then every corner of every
+// other ring is measured against the first ring's plane — one distance, in the
+// frame's own unit, which catches a ring tilted away and a ring three metres
+// above alike.
+//
+// The plane itself is judged only where the declared tolerance can be applied,
+// for the reason [measurer.planar] is: there is no default and no fallback
+// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
 func (m *measurer) coplanar(region *SemanticNode, rings []*outline) bool {
 	for _, one := range rings[1:] {
-		if one.axis == rings[0].axis {
+		if one.axis != rings[0].axis {
+			m.add(m.twoPlanes(region, rings[0], one, "which faces another way", ""))
+			return false
+		}
+	}
+
+	if !m.applicable() || rings[0].magnitude == 0 {
+		return true
+	}
+
+	unit := pointScale(rings[0].normal, 1/rings[0].magnitude)
+	anchor := rings[0].points[0]
+
+	for _, one := range rings[1:] {
+		worst := 0.0
+		for _, point := range one.points {
+			// The difference is taken before the dot product, so a plate on a
+			// projected grid is measured through a three and not through the
+			// last digits of two seven-figure numbers.
+			if out := math.Abs(pointDot(pointSub(point, anchor), unit)); out > worst {
+				worst = out
+			}
+		}
+
+		if worst <= m.tolerance.Value {
 			continue
 		}
 
-		m.add(Diagnostic{
-			Severity: SeverityError,
-			Span:     m.span,
-			Message: fmt.Sprintf(
-				"expected every loop bounding %s to lie in one plane, found %s in another than %s",
-				nodeName(region), geometricName(loopTag, one.loop.id), geometricName(loopTag, rings[0].loop.id),
-			),
-			Hint: "a region bounded by more than one ring is measured by nesting, and a ring inside another is only a " +
-				"hole in it where the two share a plane",
-		})
+		m.add(m.twoPlanes(region, rings[0], one,
+			fmt.Sprintf("which is %s %s out of its plane", decimal(worst), m.unit),
+			fmt.Sprintf(", within the tolerance %s, which is %s %s",
+				m.tolerance.Name, decimal(m.tolerance.Value), m.tolerance.Unit)))
 		return false
 	}
 
 	return true
+}
+
+// twoPlanes reports one ring of a region which is not in the plane of the first.
+func (m *measurer) twoPlanes(region *SemanticNode, first, other *outline, found, judged string) Diagnostic {
+	var related []RelatedLocation
+	if judged != "" {
+		related = append(related, RelatedLocation{Span: m.tolerance.Span, Message: "the tolerance is declared here"})
+	}
+
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     m.span,
+		Message: fmt.Sprintf(
+			"expected every loop bounding %s to lie in the plane of %s%s, found %s, %s",
+			nodeName(region), geometricName(loopTag, first.loop.id), judged,
+			geometricName(loopTag, other.loop.id), found,
+		),
+		Hint: "a region bounded by more than one ring is measured by nesting, and a ring inside another is only a hole " +
+			"in it where the two share a plane; two rings which face the same way on different storeys are two regions",
+		Related: related,
+	}
 }
 
 // nesting counts how many of a region's other rings hold the one at index.

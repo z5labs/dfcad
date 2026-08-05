@@ -137,6 +137,7 @@ is where the tests of that layer read them from.
 | 6.4           | A ring whose two long sides cross in the middle of it | `measure/self-intersecting/`                |
 | 6.4, 7.6      | A ring with a corner out of the plane of the others by more than the declared tolerance | `measure/not-planar/`     |
 | 6.4, 6.6      | A ring with a corner no position resolves for         | `measure/unmeasurable/`                     |
+| 6.4, 6.9, 7.6 | A region bounded by two rings which face the same way in different planes | `measure/two-planes/`   |
 | 4.5, 7.5      | A frame declaring a unit which is no linear unit      | `registry/unknown-unit/`                    |
 | 6.3, 6.4, 7.5 | An edge running to a vertex in another frame, and a loop traversing an edge in one | `topology/two-frames/`   |
 | 6.1, 6.9, 7.5 | A node bounded by a loop declared in another frame     | `boundary/two-frames/`                      |

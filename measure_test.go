@@ -110,6 +110,27 @@ func measureAll(t *testing.T, name string) string {
 	return renderBoundaryDiagnostics(t, diags)
 }
 
+// measureRegions measures every semantic node of a fixture, in the order the
+// walk read them, and renders what the measurements had to say.
+//
+// It is separate from [measureAll] rather than folded into it because a region
+// is measured through its loops: a helper which did both would report every
+// loop's diagnostic twice, once in its own right and once through the region
+// which references it.
+func measureRegions(t *testing.T, name string) string {
+	t.Helper()
+
+	model := loadMeasuredModel(t, name)
+
+	var diags []Diagnostic
+	for node := range model.nodes.All() {
+		_, found := model.topology.MeasureRegion(node, model.boundaries, model.survey)
+		diags = append(diags, found...)
+	}
+
+	return renderBoundaryDiagnostics(t, diags)
+}
+
 // expectedMeasureDiagnostics returns the rendering held beside the fixture,
 // having first rewritten it from got when -update was passed.
 func expectedMeasureDiagnostics(t *testing.T, name string, got string) string {
@@ -427,6 +448,28 @@ func TestMeasureWithoutAnAreaSaysSoRatherThanSayingZero(t *testing.T) {
 			assert.Equal(t, testCase.hasBounds, ok)
 		})
 	}
+}
+
+// TestMeasureRefusesRingsWhichShareAnOrientationAndNotAPlane is its own function
+// because it is measured at the region rather than at the loop: two rings are
+// only nested where they lie in one plane, and the case which makes that worth
+// checking — two storeys, whose plates face the same way — is one no single loop
+// can see.
+func TestMeasureRefusesRingsWhichShareAnOrientationAndNotAPlane(t *testing.T) {
+	got := measureRegions(t, "two-planes")
+	assert.Equal(t, expectedMeasureDiagnostics(t, "two-planes", got), got)
+
+	model := loadMeasuredModel(t, "two-planes")
+
+	measurement, _ := model.measure(t, "site:S-01")
+
+	// Seen from above the upper plate is inside the lower one. Nesting them
+	// would report a hundred square metres less sixteen, and the sixteen are on
+	// another storey.
+	_, ok := measurement.Area()
+	assert.False(t, ok)
+	_, ok = measurement.Centroid()
+	assert.False(t, ok)
 }
 
 func TestMeasureEdge(t *testing.T) {
