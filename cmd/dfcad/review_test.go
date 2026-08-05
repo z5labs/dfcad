@@ -280,6 +280,7 @@ func TestRunReviewAgainstADirectory(t *testing.T) {
 		"registry.dfc":          listRegistry,
 		"entities/site.dfc":     withoutTheCampus(t),
 		"entities/geometry.dfc": listGeometry,
+		"entities/parcels.dfc":  listParcels,
 	})
 
 	var stdout, stderr bytes.Buffer

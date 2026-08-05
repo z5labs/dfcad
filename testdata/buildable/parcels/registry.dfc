@@ -1,0 +1,48 @@
+; The vocabulary the parcels beside this file are derived against.
+;
+; Nothing here says which edge of a parcel is the front one and which is a side.
+; That is the whole arrangement: a setback is a claim written on the edge it
+; applies to, so an authority requiring six metres at the front and three at the
+; sides is expressed by writing those numbers on those edges, and the engine
+; applies each where it was written rather than knowing what a front is.
+;
+; setback-mm is declared so that a setback written in a unit the frame is not in
+; is a case the corpus holds. Nothing converts between the two: a distance taken
+; off a boundary has to be in the unit the boundary is written in.
+(project
+  (label "Buildable fixture")
+  (globalid-namespace "https://example.org/models/buildable"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace plan (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate setback
+  (unit m)
+  (shape scalar)
+  (description "How far back from the boundary edge it is written on a structure has to sit."))
+
+(predicate setback-mm
+  (unit mm)
+  (shape scalar)
+  (description "The same distance, written by a project which works in millimetres."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(type Parcel
+  (kind Site)
+  (geometry area)
+  (description "A plot of land with a boundary and a planning regime over it."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

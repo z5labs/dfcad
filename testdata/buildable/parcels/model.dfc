@@ -1,0 +1,633 @@
+; The parcels the buildable region is derived over, none of which says anywhere
+; what is buildable on it: a plot is four corners, four edges, a loop and a setback
+; claimed on each edge, and what may be built is read back out of those every time
+; the question is asked.
+
+; A rectangular plot with a different setback on every side of it: six metres at
+; the road, four at the rear and three at each flank. Nothing here says which is
+; which — each number is written on the edge it governs.
+(vertex geom:V-101
+  (label "Corner plot, south-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-102
+  (label "Corner plot, south-east corner")
+  (frame frame:site)
+  (position
+    (value (30.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-103
+  (label "Corner plot, north-east corner")
+  (frame frame:site)
+  (position
+    (value (30.0 20.0 0.0) m)
+    (source "Boundary survey BS-2026-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-104
+  (label "Corner plot, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 20.0 0.0) m)
+    (source "Boundary survey BS-2026-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-101 (label "Corner plot, road frontage") (frame frame:site) (vertices geom:V-101 geom:V-102)
+  (setback
+    (value 6.0 m)
+    (source "Planning consent PC-2026-01, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-102 (label "Corner plot, east flank") (frame frame:site) (vertices geom:V-102 geom:V-103)
+  (setback
+    (value 3.0 m)
+    (source "Planning consent PC-2026-01, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-103 (label "Corner plot, rear") (frame frame:site) (vertices geom:V-103 geom:V-104)
+  (setback
+    (value 4.0 m)
+    (source "Planning consent PC-2026-01, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-104 (label "Corner plot, west flank") (frame frame:site) (vertices geom:V-104 geom:V-101)
+  (setback
+    (value 3.0 m)
+    (source "Planning consent PC-2026-01, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-101
+  (label "Corner plot boundary")
+  (frame frame:site)
+  (edges geom:E-101 geom:E-102 geom:E-103 geom:E-104))
+(node plan:P-01
+  (label "Corner plot")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-101))
+
+; A plot the regime consumes: eight metres deep, set back five from every edge.
+; There is nowhere on it a building may go, which is the answer to the question
+; rather than a failure to answer it.
+(vertex geom:V-201
+  (label "Infill plot, south-west corner")
+  (frame frame:site)
+  (position
+    (value (100.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-202
+  (label "Infill plot, south-east corner")
+  (frame frame:site)
+  (position
+    (value (108.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-203
+  (label "Infill plot, north-east corner")
+  (frame frame:site)
+  (position
+    (value (108.0 8.0 0.0) m)
+    (source "Boundary survey BS-2026-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-204
+  (label "Infill plot, north-west corner")
+  (frame frame:site)
+  (position
+    (value (100.0 8.0 0.0) m)
+    (source "Boundary survey BS-2026-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-201 (label "Infill plot, road frontage") (frame frame:site) (vertices geom:V-201 geom:V-202)
+  (setback
+    (value 5.0 m)
+    (source "Planning consent PC-2026-02, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-202 (label "Infill plot, east flank") (frame frame:site) (vertices geom:V-202 geom:V-203)
+  (setback
+    (value 5.0 m)
+    (source "Planning consent PC-2026-02, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-203 (label "Infill plot, rear") (frame frame:site) (vertices geom:V-203 geom:V-204)
+  (setback
+    (value 5.0 m)
+    (source "Planning consent PC-2026-02, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-204 (label "Infill plot, west flank") (frame frame:site) (vertices geom:V-204 geom:V-201)
+  (setback
+    (value 5.0 m)
+    (source "Planning consent PC-2026-02, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-201
+  (label "Infill plot boundary")
+  (frame frame:site)
+  (edges geom:E-201 geom:E-202 geom:E-203 geom:E-204))
+(node plan:P-02
+  (label "Infill plot")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-201))
+
+; Three of its edges say how far back a building sits and the fourth says nothing.
+; The silence is not nought: it is an edge nobody has written the rule for.
+(vertex geom:V-301
+  (label "Plot with an unstated rear setback, south-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 100.0 0.0) m)
+    (source "Boundary survey BS-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-302
+  (label "Plot with an unstated rear setback, south-east corner")
+  (frame frame:site)
+  (position
+    (value (12.0 100.0 0.0) m)
+    (source "Boundary survey BS-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-303
+  (label "Plot with an unstated rear setback, north-east corner")
+  (frame frame:site)
+  (position
+    (value (12.0 110.0 0.0) m)
+    (source "Boundary survey BS-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-304
+  (label "Plot with an unstated rear setback, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 110.0 0.0) m)
+    (source "Boundary survey BS-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-301 (label "Plot with an unstated rear setback, road frontage") (frame frame:site) (vertices geom:V-301 geom:V-302)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-03, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-302 (label "Plot with an unstated rear setback, east flank") (frame frame:site) (vertices geom:V-302 geom:V-303)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-03, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-303 (label "Plot with an unstated rear setback, rear") (frame frame:site) (vertices geom:V-303 geom:V-304))
+(edge geom:E-304 (label "Plot with an unstated rear setback, west flank") (frame frame:site) (vertices geom:V-304 geom:V-301)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-03, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-301
+  (label "Plot with an unstated rear setback boundary")
+  (frame frame:site)
+  (edges geom:E-301 geom:E-302 geom:E-303 geom:E-304))
+(node plan:P-03
+  (label "Plot with an unstated rear setback")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-301))
+
+; Its west flank carries two claims nothing separates: the same accuracy, the same
+; day, two different distances. Which of them is the rule is a question the model
+; does not answer, so neither does the derivation.
+(vertex geom:V-401
+  (label "Plot with two current flank setbacks, south-west corner")
+  (frame frame:site)
+  (position
+    (value (50.0 100.0 0.0) m)
+    (source "Boundary survey BS-2026-04, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-402
+  (label "Plot with two current flank setbacks, south-east corner")
+  (frame frame:site)
+  (position
+    (value (60.0 100.0 0.0) m)
+    (source "Boundary survey BS-2026-04, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-403
+  (label "Plot with two current flank setbacks, north-east corner")
+  (frame frame:site)
+  (position
+    (value (60.0 110.0 0.0) m)
+    (source "Boundary survey BS-2026-04, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-404
+  (label "Plot with two current flank setbacks, north-west corner")
+  (frame frame:site)
+  (position
+    (value (50.0 110.0 0.0) m)
+    (source "Boundary survey BS-2026-04, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-401 (label "Plot with two current flank setbacks, road frontage") (frame frame:site) (vertices geom:V-401 geom:V-402)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-04, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-402 (label "Plot with two current flank setbacks, east flank") (frame frame:site) (vertices geom:V-402 geom:V-403)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-04, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-403 (label "Plot with two current flank setbacks, rear") (frame frame:site) (vertices geom:V-403 geom:V-404)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-04, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-404 (label "Plot with two current flank setbacks, west flank") (frame frame:site) (vertices geom:V-404 geom:V-401)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-04, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02"))
+  (setback
+    (value 4.0 m)
+    (source "Deed of variation DV-2026-001, condition 4 as varied")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-401
+  (label "Plot with two current flank setbacks boundary")
+  (frame frame:site)
+  (edges geom:E-401 geom:E-402 geom:E-403 geom:E-404))
+(node plan:P-04
+  (label "Plot with two current flank setbacks")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-401))
+
+; Its frontage is set back by nought, which is a rule somebody wrote down rather
+; than an edge nobody mentioned. The buildable region reaches the boundary there.
+(vertex geom:V-501
+  (label "Plot built to the back of the footway, south-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-05, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-502
+  (label "Plot built to the back of the footway, south-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-05, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-503
+  (label "Plot built to the back of the footway, north-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-05, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-504
+  (label "Plot built to the back of the footway, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-05, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-501 (label "Plot built to the back of the footway, road frontage") (frame frame:site) (vertices geom:V-501 geom:V-502)
+  (setback
+    (value 0.0 m)
+    (source "Planning consent PC-2026-05, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-502 (label "Plot built to the back of the footway, east flank") (frame frame:site) (vertices geom:V-502 geom:V-503)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-05, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-503 (label "Plot built to the back of the footway, rear") (frame frame:site) (vertices geom:V-503 geom:V-504)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-05, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-504 (label "Plot built to the back of the footway, west flank") (frame frame:site) (vertices geom:V-504 geom:V-501)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-05, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-501
+  (label "Plot built to the back of the footway boundary")
+  (frame frame:site)
+  (edges geom:E-501 geom:E-502 geom:E-503 geom:E-504))
+(node plan:P-05
+  (label "Plot built to the back of the footway")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-501))
+
+; The grid is in metres and the setbacks are claimed in millimetres. Nothing here
+; converts between the two, so every edge of it is refused rather than one of them
+; being read as two thousand metres.
+(vertex geom:V-601
+  (label "Plot whose setbacks are written in millimetres, south-west corner")
+  (frame frame:site)
+  (position
+    (value (100.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-06, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-602
+  (label "Plot whose setbacks are written in millimetres, south-east corner")
+  (frame frame:site)
+  (position
+    (value (110.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-06, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-603
+  (label "Plot whose setbacks are written in millimetres, north-east corner")
+  (frame frame:site)
+  (position
+    (value (110.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-06, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-604
+  (label "Plot whose setbacks are written in millimetres, north-west corner")
+  (frame frame:site)
+  (position
+    (value (100.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-06, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-601 (label "Plot whose setbacks are written in millimetres, road frontage") (frame frame:site) (vertices geom:V-601 geom:V-602)
+  (setback-mm
+    (value 2000.0 mm)
+    (source "Planning consent PC-2026-06, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 mm))
+    (date "2026-04-02")))
+(edge geom:E-602 (label "Plot whose setbacks are written in millimetres, east flank") (frame frame:site) (vertices geom:V-602 geom:V-603)
+  (setback-mm
+    (value 2000.0 mm)
+    (source "Planning consent PC-2026-06, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 mm))
+    (date "2026-04-02")))
+(edge geom:E-603 (label "Plot whose setbacks are written in millimetres, rear") (frame frame:site) (vertices geom:V-603 geom:V-604)
+  (setback-mm
+    (value 2000.0 mm)
+    (source "Planning consent PC-2026-06, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 mm))
+    (date "2026-04-02")))
+(edge geom:E-604 (label "Plot whose setbacks are written in millimetres, west flank") (frame frame:site) (vertices geom:V-604 geom:V-601)
+  (setback-mm
+    (value 2000.0 mm)
+    (source "Planning consent PC-2026-06, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 mm))
+    (date "2026-04-02")))
+(loop geom:L-601
+  (label "Plot whose setbacks are written in millimetres boundary")
+  (frame frame:site)
+  (edges geom:E-601 geom:E-602 geom:E-603 geom:E-604))
+(node plan:P-06
+  (label "Plot whose setbacks are written in millimetres")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-601))
+
+; A setback of minus one metre is a boundary somebody meant to move. A setback
+; takes area off a parcel and never adds any.
+(vertex geom:V-701
+  (label "Plot whose frontage was written outwards, south-west corner")
+  (frame frame:site)
+  (position
+    (value (150.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-07, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-702
+  (label "Plot whose frontage was written outwards, south-east corner")
+  (frame frame:site)
+  (position
+    (value (160.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-07, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-703
+  (label "Plot whose frontage was written outwards, north-east corner")
+  (frame frame:site)
+  (position
+    (value (160.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-07, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-704
+  (label "Plot whose frontage was written outwards, north-west corner")
+  (frame frame:site)
+  (position
+    (value (150.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-07, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-701 (label "Plot whose frontage was written outwards, road frontage") (frame frame:site) (vertices geom:V-701 geom:V-702)
+  (setback
+    (value -1.0 m)
+    (source "Planning consent PC-2026-07, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-702 (label "Plot whose frontage was written outwards, east flank") (frame frame:site) (vertices geom:V-702 geom:V-703)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-07, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-703 (label "Plot whose frontage was written outwards, rear") (frame frame:site) (vertices geom:V-703 geom:V-704)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-07, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-704 (label "Plot whose frontage was written outwards, west flank") (frame frame:site) (vertices geom:V-704 geom:V-701)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-07, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-701
+  (label "Plot whose frontage was written outwards boundary")
+  (frame frame:site)
+  (edges geom:E-701 geom:E-702 geom:E-703 geom:E-704))
+(node plan:P-07
+  (label "Plot whose frontage was written outwards")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-701))
+
+; Two millimetres is closer than two corners of this project are the same corner
+; within, so a boundary moved by it has been moved by less than the model knows
+; where it is.
+(vertex geom:V-801
+  (label "Plot with a setback below the tolerance, south-west corner")
+  (frame frame:site)
+  (position
+    (value (200.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-08, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-802
+  (label "Plot with a setback below the tolerance, south-east corner")
+  (frame frame:site)
+  (position
+    (value (210.0 200.0 0.0) m)
+    (source "Boundary survey BS-2026-08, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-803
+  (label "Plot with a setback below the tolerance, north-east corner")
+  (frame frame:site)
+  (position
+    (value (210.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-08, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(vertex geom:V-804
+  (label "Plot with a setback below the tolerance, north-west corner")
+  (frame frame:site)
+  (position
+    (value (200.0 210.0 0.0) m)
+    (source "Boundary survey BS-2026-08, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+(edge geom:E-801 (label "Plot with a setback below the tolerance, road frontage") (frame frame:site) (vertices geom:V-801 geom:V-802)
+  (setback
+    (value 0.002 m)
+    (source "Planning consent PC-2026-08, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-802 (label "Plot with a setback below the tolerance, east flank") (frame frame:site) (vertices geom:V-802 geom:V-803)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-08, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-803 (label "Plot with a setback below the tolerance, rear") (frame frame:site) (vertices geom:V-803 geom:V-804)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-08, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(edge geom:E-804 (label "Plot with a setback below the tolerance, west flank") (frame frame:site) (vertices geom:V-804 geom:V-801)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-08, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+(loop geom:L-801
+  (label "Plot with a setback below the tolerance boundary")
+  (frame frame:site)
+  (edges geom:E-801 geom:E-802 geom:E-803 geom:E-804))
+(node plan:P-08
+  (label "Plot with a setback below the tolerance")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-801))

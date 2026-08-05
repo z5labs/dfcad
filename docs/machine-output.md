@@ -482,8 +482,8 @@ what is known about it.
 
 | Field | Type | Meaning |
 |-------|------|---------|
-| `budget.from` | string | The frame the value was written in. |
-| `budget.to` | string | The frame it was expressed in. |
+| `budget.from` | string, optional | The frame the value was written in. Absent for a budget that is a computation rather than a route between two frames — `buildable` writes one. |
+| `budget.to` | string, optional | The frame it was expressed in. Absent for the same reason. |
 | `budget.terms[].kind` | string | `independent` or `systematic`, which is how it combines: independent terms in quadrature, systematic terms linearly. |
 | `budget.terms[].name` | string | The id a systematic error is shared with, or the name of the claim an independent one came from. |
 | `budget.terms[].magnitude` | number | The one-sigma figure, as it was written. |
@@ -826,6 +826,72 @@ specification](../SPEC.md#77-route)).
 `route` writes nothing, whatever it answers. It is the same decision every write command
 makes, asked on its own — which is how an author checks where something would land before
 authoring it.
+
+### `buildable`
+
+What may be built inside a boundary once the setback claimed on each of its edges has been
+taken off it. It takes the id of the thing to derive, and three flags — none of which has a
+default.
+
+| Flag | Meaning |
+|------|---------|
+| `--setback <predicate>` | The predicate an edge's setback distance is claimed under. Required. |
+| `--position <predicate>` | The predicate a corner's position is claimed under, which is what the boundary is read from. Required. |
+| `--tolerance <name>` | The tolerance corners are judged coincident against and rounded corners are drawn to. Required. |
+
+Which predicate carries a setback, which carries a position, and how close two corners are
+one corner are project data ([0012](decisions/0012-tolerances-are-registry-data.md)). A
+default compiled into the command would be the engine deciding one of them on a project's
+behalf, so a run that names none of the three is a **usage error** naming every flag it was
+not given at once.
+
+Nothing in the model says what is buildable, and nothing here writes it back
+([0009](decisions/0009-derived-values-are-never-written-back.md)). The region is read out of
+the corners, the edges and the claims every time it is asked for, so it cannot disagree with
+any of them — which matters more here than anywhere else, because the shape it describes is
+the one a permanent structure gets placed against.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the derivation was asked about. |
+| `derived` | bool | Whether there is a region below. Written whatever the outcome, so a parcel whose setbacks left nothing of it (`derived` true, `region.empty` true) reads differently from one whose setbacks could not be read (`derived` false). |
+| `frame` | string, optional | The frame the boundary and the answer are expressed in. |
+| `unit` | string, optional | That frame's linear unit. Every distance here is in it and every area in the square of it. |
+| `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
+| `parcel` | object, optional | The boundary the setbacks were taken off, as the model holds it. Same shape as `region`. |
+| `setbacks[].edge` | string | The id of the edge the setback was claimed on. |
+| `setbacks[].distance` | number | How far back it pushes the boundary, in `unit`. |
+| `setbacks[].unit` | string | The unit that distance is in, which is the frame's. |
+| `setbacks[].claim` | string, optional | The id of the claim it was resolved from. Absent for a claim that wrote none, which is most of them. |
+| `setbacks[].source` | string, optional | The evidence the distance came from: a consent, a statute, a deed. |
+| `setbacks[].span` | object | Where that claim was written. |
+| `region` | object, optional | What is left buildable. Written for a derivation that succeeded whether or not it covers anything. |
+| `region.area` | number | What it covers, holes taken away, in the square of `unit`. |
+| `region.empty` | bool | Whether it covers nothing, which is a state of the answer rather than an absence of one. |
+| `region.pieces[].area` | number | What one connected part encloses once its holes are taken away. |
+| `region.pieces[].outer` | array | The ring bounding that part, closed without repeating its first corner, each corner as its components. |
+| `region.pieces[].holes` | array, optional | The rings taken out of it. Absent where there are none. |
+| `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims and the setback claims together. Same shape as [`budget`](#budget), without `from` and `to`. |
+
+Different setbacks per edge are the ordinary case — six metres at the road, four at the rear,
+three at each flank — and which edge is which is not modelled. A setback is a claim written on
+the edge it governs, so the numbers go on the edges and each is applied where it was written;
+the engine carries no domain vocabulary
+([0010](decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+
+An edge with no live setback claim is **exit `1`**, with a diagnostic naming that edge —
+never a setback of nought. An edge that really is not set back says so, as a claim with a
+value of nought and the provenance every other value carries. Two claims equally current
+about one edge, a setback written outwards, one written in a unit the frame is not in and one
+shorter than the tolerance are refused the same way. The result object still comes back with
+`derived` false, so a caller reads why from the diagnostics on stderr rather than from an
+empty stream.
+
+Setbacks that meet in the middle are **exit `0`**: `derived` is true, `region.empty` is true,
+and a warning on stderr says which parcel its own regime consumed. That is the answer to the
+question rather than a failure to answer it, and it is reported so that an empty region cannot
+be read as one that was never computed. What never comes back is the inside-out shape
+offsetting each edge on its own produces when the offsets cross over each other.
 
 ### `check`
 

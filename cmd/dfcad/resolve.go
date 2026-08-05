@@ -216,15 +216,19 @@ type resolveResult struct {
 	Budget *budgetReport `json:"budget,omitempty"`
 }
 
-// budgetReport is the accumulated uncertainty of a cross-frame answer.
+// budgetReport is the accumulated uncertainty of a computed answer.
 //
 // It is a list of terms rather than a figure. "±0.06 m" is an answer nobody can
 // act on; "the georeference is 80% of it, and it came from this claim" says what
 // to re-measure.
 type budgetReport struct {
-	// From and To are the frames the route ran between.
-	From string `json:"from"`
-	To   string `json:"to"`
+	// From and To are the frames the route ran between, for a budget which is
+	// one. They are absent for a budget accumulated over a computation rather
+	// than over a route between two frames — a derived region is one — because
+	// naming a frame such a budget did not travel between would be a route
+	// nobody took.
+	From string `json:"from,omitempty"`
+	To   string `json:"to,omitempty"`
 
 	// Terms are the accumulated terms, in the order they were contributed.
 	Terms []budgetTerm `json:"terms"`
@@ -619,7 +623,22 @@ func express(
 		result.Value.Unit = string(declared.Unit)
 	}
 
-	report := budgetReport{From: string(written), To: into, Terms: make([]budgetTerm, 0)}
+	report := budgetOf(budget)
+	report.From, report.To = string(written), into
+
+	result.Budget = &report
+
+	return exitSuccess
+}
+
+// budgetOf is an accumulated budget as the machine contract writes it.
+//
+// It is one function rather than one per command because a budget means the
+// same thing wherever it comes from: a cross-frame answer and a derived region
+// are both a computation over claims, and two renderings of one type are two
+// shapes a caller has to learn.
+func budgetOf(budget dfcad.Budget) budgetReport {
+	report := budgetReport{Terms: make([]budgetTerm, 0)}
 	for _, term := range budget.Terms() {
 		report.Terms = append(report.Terms, budgetTerm{
 			Kind:         string(term.Kind),
@@ -654,9 +673,7 @@ func express(
 		}
 	}
 
-	result.Budget = &report
-
-	return exitSuccess
+	return report
 }
 
 // named is a set of claims as a budget names them: the claim's own id where it

@@ -2709,3 +2709,62 @@ func ExampleDigestOf() {
 	// Output:
 	// true false
 }
+
+// ExampleTopology_BuildableOf derives what may be built on a plot from the
+// plot's boundary and the setback claimed on each of its edges.
+//
+// Nothing in the model says what is buildable. The region is read back out of
+// the corners, the edges and the claims every time it is asked for, so the day
+// the frontage setback changes there is no second polygon left saying the old
+// answer — which is the failure this derivation exists to make unrepresentable,
+// because the shape it describes is the one a permanent structure gets placed
+// against.
+func ExampleTopology_BuildableOf() {
+	root := "testdata/buildable/parcels"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	setbacks := dfcad.Setbacks{Predicate: "setback", Claims: claims}
+
+	// Six metres at the road, three at each flank and four at the rear. Which
+	// edge is which is written on the edges rather than known here.
+	plot, _ := nodes.Node("plan:P-01")
+
+	sited, _ := topology.BuildableOf(plot, boundaries, survey, setbacks)
+	fmt.Println(sited.Report())
+
+	// How well the edge of it is known follows from the corners and from the
+	// setbacks together, term by term, with the control point every corner was
+	// shot from counted once.
+	combined, _ := sited.Budget().Combined()
+	dominant, _ := sited.Budget().Dominant()
+	fmt.Printf("±%.3f %s, of which the largest term is %s\n",
+		combined.Standard(), combined.Unit, dominant.Name)
+
+	// A plot its own setbacks consume comes back covering nothing, with a
+	// diagnostic saying so. It is the answer to the question rather than a
+	// failure to answer it, so it is a warning and the region is still a region.
+	infill, _ := nodes.Node("plan:P-02")
+
+	consumed, diags := topology.BuildableOf(infill, boundaries, survey, setbacks)
+	fmt.Println(consumed, diags[0].Severity)
+
+	// Output:
+	// plan:P-01: 240.0 m² buildable of 600.0 m²
+	//   geom:E-101: 6.0 m
+	//   geom:E-102: 3.0 m
+	//   geom:E-103: 4.0 m
+	//   geom:E-104: 3.0 m
+	// ±0.023 m, of which the largest term is the setback of geom:E-101
+	// nothing is buildable inside plan:P-02 warning
+}
