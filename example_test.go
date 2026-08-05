@@ -512,9 +512,9 @@ func ExampleRules_Run_structuralInvariants() {
 
 	// Every failure below is a file which loads. A loop which does not close,
 	// two rooms drawn over one another, parts which do not add up to the whole,
-	// a fit too loose for the answer it is used for and a room in a setback are
-	// all well-formed models, and nothing short of running the rules finds any
-	// of them.
+	// a part drawn in another frame, a fit too loose for the answer it is used
+	// for and a room in a setback are all well-formed models, and nothing short
+	// of running the rules finds any of them.
 	for _, violation := range graph.Rules().Run().Violations {
 		fmt.Printf("%s — %s\n", violation.Check, violation.Message)
 	}
@@ -524,6 +524,7 @@ func ExampleRules_Run_structuralInvariants() {
 	// contained-areas-sum — expected what site:L-01 contains to add up to its own 24.0 m², found 28.0 m², which is 4.0 m² more than the whole
 	// stays-clear-of-zone — expected site:S-102 to stay clear of the zone site:Z-90, found it crossing into it over 4.0 m²
 	// boundary-loops-close — expected the loop geom:L-13 to close, found a gap of 0.3 m between geom:V-13 and geom:V-09
+	// contained-areas-sum — expected everything summed into site:L-05 to be declared in frame:building, the frame it is drawn in, found site:S-501 in frame:annex
 	// boundary-loops-close — expected the loop geom:L-13 to close, found a gap between geom:V-13 and geom:V-09 whose size could not be measured
 	// cross-frame-budget-holds — expected site:A-01 in frame:building to be known to within 0.008 m, found a combined uncertainty of 0.01 m (k = 1.0, ≈ 68%) accumulated from 2 terms
 }

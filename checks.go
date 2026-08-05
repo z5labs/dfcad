@@ -391,9 +391,40 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 		return nil
 	}
 
-	var parts float64
+	// Everything summed has to be declared in the frame the whole is, and a
+	// content which is not is refused rather than added in. A coordinate means
+	// nothing without the frame it was written in, the transform between two
+	// frames carries a scale, and nothing here converts between them
+	// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)) — so an area
+	// read in one frame added to an area read in another is a total which is a
+	// figure of no shape. It is the same refusal [Region.Intersect] makes of two
+	// operands in different frames, made here because a sum has no second
+	// operand to make it of.
+	var (
+		parts     float64
+		elsewhere []Failure
+	)
 	for _, one := range shapes {
-		parts += one.region.Area()
+		if one.region.Frame() == whole.Frame() {
+			parts += one.region.Area()
+			continue
+		}
+
+		elsewhere = append(elsewhere, Failure{
+			Message: fmt.Sprintf(
+				"expected everything summed into %s to be declared in %s, the frame it is drawn in, found %s in %s",
+				nodeName(node), whole.Frame(), one.node.ID(), one.region.Frame(),
+			),
+			Hint: "nothing here converts between frames on its own: the transform between two of them is a " +
+				"measurement with an accuracy of its own, so an area read in one is not a figure of the same " +
+				"shape in the other",
+			Span:    graph.Nodes().named(one.node),
+			Related: []RelatedLocation{{Span: graph.Nodes().named(node), Message: "the node its area would be summed into"}},
+		})
+	}
+
+	if len(elsewhere) > 0 {
+		return elsewhere
 	}
 
 	discrepancy := parts - whole.Area()

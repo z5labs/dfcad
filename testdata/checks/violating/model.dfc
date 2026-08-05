@@ -153,6 +153,51 @@
   (boundary geom:L-13)
   (assert boundary-loops-close (tolerance boundary-closure) (position position)))
 
+; A room set out in the annex, drawn in the annex's own frame. Nothing here
+; converts between frames, so its area is not a figure of the same shape in the
+; frame the storey below is drawn in, and the rule which would add it in refuses
+; rather than adding a number to a number.
+(vertex geom:V-21 (label "Annex room, corner 1") (frame frame:annex)
+  (position (value (0.0 0.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(vertex geom:V-22 (label "Annex room, corner 2") (frame frame:annex)
+  (position (value (2.0 0.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(vertex geom:V-23 (label "Annex room, corner 3") (frame frame:annex)
+  (position (value (2.0 2.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(vertex geom:V-24 (label "Annex room, corner 4") (frame frame:annex)
+  (position (value (0.0 2.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(edge geom:E-21 (label "Annex room, side 1") (frame frame:annex) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "Annex room, side 2") (frame frame:annex) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "Annex room, side 3") (frame frame:annex) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "Annex room, side 4") (frame frame:annex) (vertices geom:V-24 geom:V-21))
+(loop geom:L-15 (label "Annex room outline") (frame frame:annex)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+
+; A second storey on the same plate as the first, holding the annex room.
+(node site:L-05
+  (label "Level 1 annex")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-10)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+(node site:S-501
+  (label "Annex meeting room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:annex)
+  (within site:L-05)
+  (boundary geom:L-15))
+
 ; The same outline, with the rule written on a node which does not say which
 ; predicate carries a position. The loop is as open as it was, and the check says
 ; so — with a gap it cannot put a number to, which is what is true rather than a

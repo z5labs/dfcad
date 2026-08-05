@@ -106,6 +106,13 @@ func TestTheInitialCheckSetReportsWhatItIsFor(t *testing.T) {
 				"4.0 m² more than the whole",
 		},
 		{
+			name:     "refuses to sum an area read in one frame into a whole drawn in another",
+			check:    "contained-areas-sum",
+			instance: "site:L-05",
+			expected: "expected everything summed into site:L-05 to be declared in frame:building, the frame it is " +
+				"drawn in, found site:S-501 in frame:annex",
+		},
+		{
 			name:     "reports a shape which crosses into a zone, naming the zone and how much of it is crossed",
 			check:    "stays-clear-of-zone",
 			instance: "site:S-102",
@@ -135,10 +142,10 @@ func TestTheInitialCheckSetReportsWhatItIsFor(t *testing.T) {
 		}
 	})
 
-	t.Run("runs every rule the model states and fails the six which are broken", func(t *testing.T) {
-		assert.Equal(t, 7, run.Rules)
-		assert.Equal(t, 7, run.Ran, "every check the fixture names has an implementation")
-		assert.Equal(t, 6, run.Failed)
+	t.Run("runs every rule the model states and fails the seven which are broken", func(t *testing.T) {
+		assert.Equal(t, 8, run.Rules)
+		assert.Equal(t, 8, run.Ran, "every check the fixture names has an implementation")
+		assert.Equal(t, 7, run.Failed)
 		assert.Equal(t, 1, run.Passed)
 	})
 
