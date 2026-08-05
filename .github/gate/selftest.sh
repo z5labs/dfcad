@@ -66,13 +66,20 @@ env -u GITHUB_STEP_SUMMARY \
 gate_exit=$?
 set -e
 
-# Indented by two spaces, which is the whole of what makes them inert: Actions
-# reads a workflow command only at the start of a line. Without it the gate's
-# own `::error::` lines would decorate this run with three failures which are
-# the point of the run, and its `::group::` lines would nest inside this one,
-# which Actions does not support. The text stays exactly as the gate wrote it,
-# because the assertions below read it.
-sed 's/^::/  ::/' "$log"
+# Prefixed, which is what makes them inert. Without it the gate's own
+# `::error::` lines would decorate this run with three failures which are the
+# point of the run, and its `::group::` lines would nest inside this one, which
+# Actions does not support.
+#
+# The prefix is a visible marker rather than indentation: Actions strips leading
+# whitespace before it looks for a workflow command, so two spaces in front of
+# `::error` neutralise nothing — measured on run 30981085140, where an indented
+# line still produced an annotation. Anything non-blank ahead of the colons does
+# work, and saying "captured" says why the line is there.
+#
+# Only what is echoed is rewritten. The assertions below read $log, which still
+# holds exactly what the gate wrote.
+sed 's/^::/[captured] ::/' "$log"
 echo "::endgroup::"
 
 fail() {

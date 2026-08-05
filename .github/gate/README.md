@@ -122,11 +122,18 @@ without claiming to have run any rule over it, and an annotation naming the file
 and a diagnostic naming the file, line and column. A gate which stopped blocking
 fails there, in the run that broke it.
 
-The self-test indents the gate's own workflow commands by two spaces before
-echoing them. Actions reads a workflow command only at the start of a line, so
-that is the whole of what makes them inert: without it, a run whose gate
-correctly failed would decorate itself with three errors that are the point of
-the run rather than a problem with it.
+The self-test prefixes the gate's own workflow commands with `[captured] `
+before echoing them, and unsets `GITHUB_STEP_SUMMARY` for the run. Without both,
+a run whose gate correctly failed would decorate itself with three errors and a
+red row in the runtime table that are the point of the run rather than a problem
+with it.
+
+The prefix is a visible marker rather than indentation because **Actions strips
+leading whitespace before it looks for a workflow command**, so two spaces in
+front of `::error` neutralise nothing — measured on
+[run 30981085140](https://github.com/z5labs/dfcad/actions/runs/30981085140),
+where an indented line still produced an annotation. Anything non-blank ahead of
+the colons does work.
 
 ## Adopting it in a data repository
 
