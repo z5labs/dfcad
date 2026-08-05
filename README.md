@@ -103,6 +103,12 @@ modelling a different subject, it is not an engine change.
   interface's output contract: what is on stdout, what is on stderr, the shape
   of each command's JSON object and the rule by which that shape may change,
   and what each exit code means.
+- [`docs/versioning.md`](./docs/versioning.md) — the three versions this
+  repository carries, which changes move which of them, and the git tag
+  convention a release is cut with. The convention is constrained by what the
+  standard pipeline does with a tag rather than chosen freely, and the table
+  showing which schemes survive that is the part worth reading before tagging
+  anything.
 - [`docs/siting-worked-example.md`](./docs/siting-worked-example.md) — one
   question, *does this building fit on this plot?*, followed from the claims it
   is answered from through the frame chain and the overlay to the error budget

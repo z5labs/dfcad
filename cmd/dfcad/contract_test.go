@@ -48,6 +48,9 @@ func object(t *testing.T, stdout string) map[string]any {
 // added later cannot quietly fall out of the walks which check the contract
 // holds for every one of them.
 var samples = map[string][]string{
+	// version reads no model, so the fixture the walks build around is beside
+	// the point for it and it takes no arguments either way.
+	"version":        {},
 	"fmt":            {},
 	"list-types":     {},
 	"list-instances": {},
