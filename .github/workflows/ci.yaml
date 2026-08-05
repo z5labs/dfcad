@@ -16,9 +16,58 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  # Pinned to the engineVersion the module itself declares, so the CLI and the
+  # engine it provisions are the pair the module was written against. An engine
+  # the module has not been run on is a difference between this repository's CI
+  # and everybody else's, which is the whole thing the module exists to prevent.
+  DAGGER_VERSION: "0.21.7"
+
 jobs:
+  # The Z5Labs standard pipeline: fmt, vet, golangci-lint and `go test -race`,
+  # then a scratch image per platform, published when the ref matches publishOn.
+  # It is one `dagger call` and it stays one: a step here which reran any of
+  # those stages would be a second definition of the standard, and the two would
+  # drift. See the continuous integration section of CLAUDE.md.
+  #
+  # The job keeps the name `build`, which is what branch protection on main
+  # already requires. What it runs has changed; what it asserts has not.
   build:
     name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          # The module reads the refs at HEAD to decide whether to publish and
+          # how to tag, so it needs real git metadata rather than a snapshot of
+          # the tree.
+          fetch-depth: 0
+
+      - name: Install the Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh \
+            | DAGGER_VERSION="$DAGGER_VERSION" BIN_DIR="$HOME/.local/bin" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Run the standard pipeline
+        run: |
+          dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
+            go-app --source=. --pkg=./cmd/dfcad \
+            ci
+
+  # Repo-specific verification, which the module has no hook for and which
+  # therefore lives here as its own job rather than as a step beside a module
+  # stage.
+  #
+  # The goldens under testdata are how a change to the printer or to the
+  # diagnostic renderer is reviewed: the diff is what says what the change did.
+  # That only holds while every one of them is what this package actually
+  # produces, so they are regenerated here and the tree is required to come back
+  # unchanged. A golden edited by hand, or left stale by a change nobody
+  # regenerated, fails here rather than quietly becoming the recorded behaviour.
+  goldens:
+    name: goldens
     runs-on: ubuntu-latest
     steps:
       - name: Check out the repository
@@ -30,38 +79,9 @@ jobs:
           # The toolchain version lives in go.mod and nowhere else, so bumping
           # the module bumps CI with it.
           go-version-file: go.mod
-          # Caches both the module download cache and the build cache, keyed by
-          # go.sum, so a warm run does not recompile the dependency tree.
           cache: true
           cache-dependency-path: go.sum
 
-      - name: Check gofmt
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [ -n "$unformatted" ]; then
-            echo "::error::these files are not gofmt'd:"
-            echo "$unformatted"
-            gofmt -d .
-            exit 1
-          fi
-
-      - name: Build
-        run: go build ./...
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test
-        run: go test -race ./...
-
-      # The goldens under testdata are how a change to the printer or to the
-      # diagnostic renderer is reviewed: the diff is what says what the change
-      # did. That only holds while every one of them is what this package
-      # actually produces, so they are regenerated here and the tree is required
-      # to come back unchanged. A golden edited by hand, or left stale by a
-      # change nobody regenerated, fails here rather than quietly becoming the
-      # recorded behaviour.
-      #
       # Only the root package is run, because -update is its flag: passing it to
       # a test binary which does not define one is an error rather than a no-op.
       - name: Check the golden files are what the code produces
@@ -73,3 +93,88 @@ jobs:
             git diff -- testdata
             exit 1
           fi
+
+  # The model gate: `dfcad fmt --check` and `dfcad check` over the fixture
+  # model, so that a branch whose model is broken is visibly failing rather than
+  # merely unreviewed. This is the half a consuming data repository adopts; see
+  # .github/gate/README.md.
+  model:
+    name: model
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          # Same requirement as the build job: the binary this gate runs is
+          # built by the module, which stamps it from the refs at HEAD.
+          fetch-depth: 0
+
+      - name: Install the Dagger CLI
+        run: |
+          curl -fsSL https://dl.dagger.io/dagger/install.sh \
+            | DAGGER_VERSION="$DAGGER_VERSION" BIN_DIR="$HOME/.local/bin" sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Builder is the module's local-dev sibling: it routes through the same
+      # per-platform build Ci does, so the binary the gate runs is the one the
+      # pipeline ships. `go run ./cmd/dfcad` would be a second way of producing
+      # it, and the gate and the artifact could then disagree about what the
+      # tool does.
+      - name: Build the dfcad binary with the standard pipeline
+        run: |
+          dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
+            go-app --source=. --pkg=./cmd/dfcad \
+            builder binary export --path=./dfcad
+          chmod +x ./dfcad
+          ./dfcad --help >/dev/null
+
+      # Exercising the gate against a deliberately broken model, every run, and
+      # before the gate is believed about anything else. A gate nobody has seen
+      # fail is not known to be a gate: a swallowed exit code or a filter which
+      # stopped matching would leave every later step passing, and a branch
+      # which broke the model would then merge looking exactly like one which
+      # did not.
+      - name: Confirm the gate blocks a broken model
+        run: .github/gate/selftest.sh --binary ./dfcad
+
+      - name: Open the runtime table
+        run: |
+          mkdir -p gate-results
+          {
+            echo "### dfcad model gate"
+            echo
+            echo "| model root | fmt ms | fmt exit | check ms | check exit |"
+            echo "|---|---:|---:|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The fixture model, gated by the binary above. The step summary row each
+      # gate writes is where runtime growth becomes visible without downloading
+      # anything; the JSON beside it carries the same numbers for a run somebody
+      # wants to compare against another.
+      - name: Gate the fixture model
+        run: |
+          .github/gate/gate.sh \
+            --binary ./dfcad \
+            --root cmd/dfcad/testdata/budget \
+            --results gate-results
+
+      # Uploaded whatever the gate decided: the run somebody wants the results
+      # of is usually the one that failed.
+      #
+      # A missing result warns rather than fails, so that an upload cannot turn
+      # an earlier, clear failure into a second and more confusing one. That the
+      # gate does write all three files is asserted by the self-test above,
+      # which is the right place for it: there it is a statement about the gate
+      # rather than about whether this job got far enough to run it.
+      #
+      # v5 still warns that it targets Node.js 20. v4 did too, and bumping did
+      # not remove it — measured on runs 30981600042 and 30981847887. The
+      # deprecation is upstream's to fix; there is no version of this action
+      # here which is quiet, so a later bump should not be made expecting one.
+      - name: Upload the structured results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v5
+        with:
+          name: dfcad-gate-results
+          path: gate-results/
+          if-no-files-found: warn

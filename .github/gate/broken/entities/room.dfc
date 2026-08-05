@@ -1,0 +1,11 @@
+; A node naming a type the registry beside it does not declare. It is canonical,
+; so `dfcad fmt --check` passes over it and only `dfcad check` has anything to
+; say — which is the point: the two stages of the gate answer different
+; questions, and the self-test requires both of them to answer.
+(node
+  site:S-002
+  (label "Meeting Room B")
+  (kind Space)
+  (type BroomCupboard)
+  (geometry area)
+  (frame frame:building))

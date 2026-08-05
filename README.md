@@ -111,6 +111,11 @@ modelling a different subject, it is not an engine change.
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
   arity and ordering, and the canonical printing of each. It is the definition
   of the format; the loader is implemented against it, not the other way round.
+- [`.github/gate/README.md`](./.github/gate/README.md) — the model gate:
+  `dfcad fmt --check` and `dfcad check` run over a model root on every pull
+  request, so a branch whose model is broken is visibly failing. It is written
+  to be copied — a consuming data repository runs the CLI over its own entities,
+  and this is that half of CI.
 
 ## Install
 
