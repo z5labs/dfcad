@@ -359,14 +359,22 @@ func TestGraphDigest(t *testing.T) {
 
 	t.Run("has no digest where a file the walk reached could not be read", func(t *testing.T) {
 		root := copyTree(t, derivedFixture)
-		require.NoError(t, os.Chmod(filepath.Join(root, "model.dfc"), 0o000))
-		t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "model.dfc"), 0o644) })
+
+		// A dangling symlink is an entity file a walk reaches and nothing can
+		// read, which is the case wanted here. Making one unreadable by its
+		// permissions would not be: a run as root reads it anyway, and the test
+		// would then assert nothing wherever CI happens to be root.
+		require.NoError(t, os.Symlink("gone.dfc", filepath.Join(root, "dangling.dfc")))
 
 		graph, diags := LoadGraph(root)
 		require.NotEmpty(t, diags, "the file which could not be read is reported")
 
 		_, ok := graph.Digest()
 		assert.False(t, ok, "one key would name a different set of inputs on a machine which could read it")
+
+		_, err := DigestOf(root)
+		var digestErr DigestError
+		require.ErrorAs(t, err, &digestErr, "and reading the tree for a digest reports it rather than skipping it")
 	})
 }
 
