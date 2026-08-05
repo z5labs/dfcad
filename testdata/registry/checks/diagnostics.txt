@@ -1,0 +1,28 @@
+testdata/registry/checks/registry.dfc:27:14: error: expected a registered check name after the invariant tag, found boundary-loops-cluse, which the engine registers no check under
+27 |   (invariant boundary-loops-cluse (tolerance boundary-closure))
+   |              ^^^^^^^^^^^^^^^^^^^^
+   = hint: did you mean boundary-loops-close?
+testdata/registry/checks/registry.dfc:28:46: error: expected a declared tolerance name after the tolerance tag, found the number 0.005
+28 |   (invariant boundary-loops-close (tolerance 0.005))
+   |                                              ^^^^^
+   = hint: a tolerance is registry data rather than a number written where it is used: declare it with (tolerance <name> (value <magnitude> <unit>)) and name it here, so that how close is close enough is one decision in one place
+testdata/registry/checks/registry.dfc:29:3: error: expected a (tolerance ...) parameter of the check boundary-loops-close, found none
+29 |   (invariant boundary-loops-close (slack boundary-closure))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: boundary-loops-close takes a declared tolerance name: How far a loop may fail to close and still count as closed.
+testdata/registry/checks/registry.dfc:29:36: error: expected a parameter of the check boundary-loops-close, found (slack ...), which is not one of them
+29 |   (invariant boundary-loops-close (slack boundary-closure))
+   |                                    ^^^^^
+   = hint: boundary-loops-close takes (tolerance ...)
+testdata/registry/checks/registry.dfc:30:3: error: expected a (tolerance ...) parameter of the check boundary-loops-close, found none
+30 |   (invariant boundary-loops-close)
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: boundary-loops-close takes a declared tolerance name: How far a loop may fail to close and still count as closed.
+testdata/registry/checks/registry.dfc:31:31: error: expected a parameter of the check within-resolves, found (tolerance ...), which is not one of them
+31 |   (invariant within-resolves (tolerance boundary-closure))
+   |                               ^^^^^^^^^
+   = hint: within-resolves takes no parameter
+testdata/registry/checks/registry.dfc:32:40: error: expected a declared predicate, found depth, which no registry file declares
+32 |   (invariant required-claim (predicate depth)))
+   |                                        ^^^^^
+   = hint: the declared predicates are width

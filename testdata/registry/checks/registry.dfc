@@ -1,0 +1,32 @@
+; A type-level invariant names a check from the engine's closed registry and
+; supplies its parameters, and both are resolved when the registry loads rather
+; than when anything runs: the name against the check registry, and a parameter
+; naming a tolerance against this model's own.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "The clear width between two faces."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (invariant boundary-loops-close (tolerance boundary-closure))
+  (invariant required-claim (predicate width)))
+
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A space people pass through.")
+  (invariant boundary-loops-cluse (tolerance boundary-closure))
+  (invariant boundary-loops-close (tolerance 0.005))
+  (invariant boundary-loops-close (slack boundary-closure))
+  (invariant boundary-loops-close)
+  (invariant within-resolves (tolerance boundary-closure))
+  (invariant required-claim (predicate depth)))
