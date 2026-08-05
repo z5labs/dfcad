@@ -1,0 +1,179 @@
+; Three pieces of ground, drawn once, with the shots taken on them held nowhere
+; near here.
+;
+; Not one of these nodes says what the ground does. A region is four corners,
+; four edges and a loop; how the ground falls across it is derived from the shots
+; inside it every time somebody asks, and is written into no file a walk would
+; read (docs/decisions/0009-derived-values-are-never-written-back.md).
+;
+; The three exist to put the derivation in three situations:
+;
+;   S-terrace  enough shots, in two frames, with a mark shot twice
+;   S-strip    two shots, which is not enough to bound any area
+;   S-ridge    four shots on one line, which bound none either
+;
+; Each links the file its own shots were written in, which is the stored half of
+; the relationship: somebody decided that evidence backs that ground. Which
+; shots fall inside which region is the derived half, and is stored nowhere.
+
+(vertex geom:V-01
+  (label "Terrace, south-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-02
+  (label "Terrace, south-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-03
+  (label "Terrace, north-east corner")
+  (frame frame:site)
+  (position
+    (value (20.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-04
+  (label "Terrace, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-05
+  (label "Strip, south-west corner")
+  (frame frame:site)
+  (position
+    (value (40.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-06
+  (label "Strip, south-east corner")
+  (frame frame:site)
+  (position
+    (value (60.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-07
+  (label "Strip, north-east corner")
+  (frame frame:site)
+  (position
+    (value (60.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-08
+  (label "Strip, north-west corner")
+  (frame frame:site)
+  (position
+    (value (40.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-09
+  (label "Ridge, south-west corner")
+  (frame frame:site)
+  (position
+    (value (80.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-10
+  (label "Ridge, south-east corner")
+  (frame frame:site)
+  (position
+    (value (100.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-11
+  (label "Ridge, north-east corner")
+  (frame frame:site)
+  (position
+    (value (100.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+(vertex geom:V-12
+  (label "Ridge, north-west corner")
+  (frame frame:site)
+  (position
+    (value (80.0 12.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-05")))
+
+(edge geom:E-01 (label "Terrace, south boundary") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Terrace, east boundary") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Terrace, north boundary") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Terrace, west boundary") (frame frame:site) (vertices geom:V-04 geom:V-01))
+
+(edge geom:E-05 (label "Strip, south boundary") (frame frame:site) (vertices geom:V-05 geom:V-06))
+(edge geom:E-06 (label "Strip, east boundary") (frame frame:site) (vertices geom:V-06 geom:V-07))
+(edge geom:E-07 (label "Strip, north boundary") (frame frame:site) (vertices geom:V-07 geom:V-08))
+(edge geom:E-08 (label "Strip, west boundary") (frame frame:site) (vertices geom:V-08 geom:V-05))
+
+(edge geom:E-09 (label "Ridge, south boundary") (frame frame:site) (vertices geom:V-09 geom:V-10))
+(edge geom:E-10 (label "Ridge, east boundary") (frame frame:site) (vertices geom:V-10 geom:V-11))
+(edge geom:E-11 (label "Ridge, north boundary") (frame frame:site) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12 (label "Ridge, west boundary") (frame frame:site) (vertices geom:V-12 geom:V-09))
+
+(loop geom:L-01
+  (label "Terrace boundary")
+  (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(loop geom:L-02
+  (label "Strip boundary")
+  (frame frame:site)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-08))
+(loop geom:L-03
+  (label "Ridge boundary")
+  (frame frame:site)
+  (edges geom:E-09 geom:E-10 geom:E-11 geom:E-12))
+
+(node site:S-terrace
+  (label "Terrace")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01)
+  (observed-in "observations/2026-05-06-terrace.obs"))
+(node site:S-strip
+  (label "Verge strip")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-02)
+  (observed-in "observations/2026-05-07-strip.obs"))
+(node site:S-ridge
+  (label "Ridge line")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-03)
+  (observed-in "observations/2026-05-07-ridge.obs"))
