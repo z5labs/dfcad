@@ -1,0 +1,126 @@
+name: GHCR retention
+
+# Branch builds accumulate. Every push to main publishes an image tagged
+# `<short-sha>-<commit-time>`, which is what makes a commit pullable without a
+# release — and none of them is ever superseded, because the tag names the
+# commit rather than a moving line of development. Without a policy the
+# package grows forever and the tag list stops being readable.
+#
+# This is registry housekeeping and not a stage of the standard pipeline. It
+# does not build, tag or publish anything, so it is not a second definition of
+# the build; it only decides how long what the pipeline published stays
+# reachable. See docs/publishing.md for the policy this implements.
+
+on:
+  schedule:
+    # Weekly. There is nothing time-critical here — the point is that the
+    # sweep happens without anyone remembering it, not that it happens soon
+    # after a build.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted without deleting it"
+        type: boolean
+        default: true
+
+concurrency:
+  group: ghcr-retention
+  cancel-in-progress: false
+
+permissions:
+  # Deleting a version of a container package that is scoped to this
+  # repository. Nothing else here reads the repository at all.
+  packages: write
+
+jobs:
+  prune:
+    name: prune branch builds
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # How long a branch build stays pullable, and how many of the newest
+      # survive regardless of age. The floor exists so that a repository which
+      # has been quiet for a quarter still has recent images to bisect
+      # against; the window is what stops the list growing without bound.
+      RETENTION_DAYS: "90"
+      MIN_KEEP: "10"
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - name: Delete branch builds past the retention window
+        run: |
+          owner="${GITHUB_REPOSITORY%%/*}"
+          package="${GITHUB_REPOSITORY##*/}"
+
+          # A repository that has not published yet has no package, and the
+          # API says so with a 404. That is the ordinary state of a new
+          # repository rather than a failure of this job — but it is the only
+          # failure that is, so the error is read rather than discarded.
+          # Swallowing every error here would report a revoked token, a
+          # renamed package or an API change as "nothing to prune", and this
+          # job would then be quietly dead for as long as nobody looked.
+          if ! versions=$(gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            "/orgs/$owner/packages/container/$package/versions" 2>error.txt); then
+            if grep -qi "not found" error.txt; then
+              echo "::notice::no container package $owner/$package; nothing to prune"
+              exit 0
+            fi
+            cat error.txt >&2
+            exit 1
+          fi
+
+          cutoff=$(date -u -d "-$RETENTION_DAYS days" +%Y-%m-%dT%H:%M:%SZ)
+
+          # Three things are deliberately never deleted here.
+          #
+          # A version carrying any tag that is not a branch build is kept, and
+          # `all` rather than a match on the first tag is what enforces it: a
+          # release cut from the tip of main is one digest wearing both
+          # `v1.2.3` and `<short-sha>-<commit-time>`, and deleting it as a
+          # branch build would delete the release.
+          #
+          # An untagged version is kept. On GHCR the per-platform manifests
+          # under a multi-architecture index are untagged versions of the same
+          # package, so "delete everything untagged" — the usual recipe —
+          # deletes the arm64 half of images that are still current.
+          #
+          # The newest MIN_KEEP branch builds are kept whatever their age.
+          deletable=$(printf '%s' "$versions" | jq -r \
+            --argjson keep "$MIN_KEEP" --arg cutoff "$cutoff" '
+              (add // [])
+              | map(select((.metadata.container.tags | length) > 0))
+              | map(select(.metadata.container.tags
+                  | all(test("^[0-9a-f]{7,40}-[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}"))))
+              | sort_by(.created_at)
+              | reverse
+              | .[$keep:]
+              | map(select(.created_at < $cutoff))
+              | .[]
+              | "\(.id) \(.created_at) \(.metadata.container.tags | join(","))"
+            ')
+
+          if [ -z "$deletable" ]; then
+            echo "::notice::no branch build is older than $RETENTION_DAYS days beyond the newest $MIN_KEEP"
+            exit 0
+          fi
+
+          {
+            echo "### GHCR retention"
+            echo
+            echo "Cutoff \`$cutoff\`, keeping the newest \`$MIN_KEEP\` branch builds."
+            echo
+            echo "| version | created | tags | action |"
+            echo "|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while read -r id created tags; do
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "| \`$id\` | $created | \`$tags\` | would delete |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            gh api --method DELETE \
+              -H "Accept: application/vnd.github+json" \
+              "/orgs/$owner/packages/container/$package/versions/$id" </dev/null
+            echo "| \`$id\` | $created | \`$tags\` | deleted |" >> "$GITHUB_STEP_SUMMARY"
+          done <<< "$deletable"

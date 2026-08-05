@@ -118,6 +118,10 @@ So: **no build metadata and no path-shaped tags.** Semver permits the first and 
 projects use the second; neither is available here, and the reason is one level down in the
 pipeline rather than a matter of taste.
 
+Pushing one of these tags is what cuts a release, and what a release *is* — the image, where
+it goes, what a consumer pins and how long it stays there — is
+[`publishing.md`](./publishing.md).
+
 ## What an untagged build reports
 
 Every commit is built, and only a tagged one is a release. A build from a commit with no
@@ -131,6 +135,9 @@ which is deliberately not semver — a branch build is not a release and must no
 one — and is the same string the pipeline uses as that build's image tag. The commit is
 still `.build.commit`, so such a binary identifies itself exactly as precisely as a tagged
 one does.
+
+Such a build is published and pullable, which is what makes bisecting against `main` cheap.
+It is not kept forever: [`publishing.md`](./publishing.md) states the retention window.
 
 ## What an unstamped build reports
 
