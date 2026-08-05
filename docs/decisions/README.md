@@ -69,3 +69,4 @@ the code in front of them and needs the part that is not in the code.
 | [0016](./0016-writes-are-all-or-nothing.md)           | Writes are all-or-nothing                                | Accepted |
 | [0017](./0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md) | The answer is the default and the evidence is asked for | Accepted |
 | [0018](./0018-three-versions-stamped-by-the-pipeline.md) | Three versions, moving separately, stamped by the pipeline | Accepted |
+| [0019](./0019-the-registry-is-the-distribution-channel.md) | The registry is the distribution channel, digests are authoritative, no `latest` | Accepted |

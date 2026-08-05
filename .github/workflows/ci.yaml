@@ -5,6 +5,12 @@ on:
   push:
     branches:
       - main
+    # A release is a tag push and nothing else. The tag is here so the
+    # pipeline runs on one at all; whether that run publishes is decided by
+    # the publishOn regex against the refs at HEAD, not by this list and not
+    # by an `if:` on a job. See docs/publishing.md.
+    tags:
+      - "v*"
 
 # A pull request only needs an answer about its newest commit. Superseded runs
 # are cancelled so the queue reflects what is actually up for review. Pushes to
@@ -35,6 +41,17 @@ jobs:
   build:
     name: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Pushing the image to GHCR. Read-only on a pull request from a fork,
+      # which is one of the two reasons such a run cannot publish; the other
+      # is that its ref does not match publishOn.
+      packages: write
+      # The workload identity token the module exchanges to sign the SLSA
+      # provenance it attaches to every published digest. Without it the
+      # module refuses to publish rather than publishing unattested, so this
+      # is not an optional grant on a job that pushes anything.
+      id-token: write
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
@@ -50,10 +67,45 @@ jobs:
             | DAGGER_VERSION="$DAGGER_VERSION" BIN_DIR="$HOME/.local/bin" sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # The registry, the credentials and the publishOn regex are inputs to
+      # the module call, so this one step covers the pull request that must
+      # not publish and the tag push that must. Nothing here decides which:
+      # publishOn is matched against the refs pointing at HEAD, a pull
+      # request's merge commit carries none of them, and the same command
+      # therefore builds on a pull request and publishes on a tag.
+      #
+      # --binary-name carries the owner because it is the repository path
+      # within the registry, and GHCR has no single-segment repositories:
+      # the module publishes to <registry>/<binaryName>, so ghcr.io plus
+      # `dfcad` would be ghcr.io/dfcad, which does not exist and cannot be
+      # created. Lower-cased because a docker repository path may not carry
+      # capitals and a fork's owner may.
       - name: Run the standard pipeline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          args=(
+            go-app --source=. --pkg=./cmd/dfcad
+            --binary-name="${GITHUB_REPOSITORY,,}"
+            --registry=ghcr.io
+            --auth-username="$GITHUB_ACTOR"
+            --auth=env:GITHUB_TOKEN
+            --publish-on='^refs/(heads/main|tags/v.+)$'
+          )
+          # The OIDC endpoint is present only where `id-token: write` was
+          # actually granted, which a fork's pull request does not get. The
+          # inputs are passed when they exist rather than passed empty,
+          # because an empty secret would be a credential the module accepts
+          # and then fails to exchange; a run that is missing them and does
+          # try to publish is refused by the module, naming both of them.
+          if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            args+=(
+              --id-token-request-url="$ACTIONS_ID_TOKEN_REQUEST_URL"
+              --id-token-request-token=env:ACTIONS_ID_TOKEN_REQUEST_TOKEN
+            )
+          fi
           dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
-            go-app --source=. --pkg=./cmd/dfcad \
+            "${args[@]}" \
             ci
 
   # Repo-specific verification, which the module has no hook for and which

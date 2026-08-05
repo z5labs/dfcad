@@ -109,6 +109,10 @@ modelling a different subject, it is not an engine change.
   standard pipeline does with a tag rather than chosen freely, and the table
   showing which schemes survive that is the part worth reading before tagging
   anything.
+- [`docs/publishing.md`](./docs/publishing.md) — the published image: where it is,
+  what the tags mean, what to pin, what the pipeline attaches to each digest, and how
+  long a branch build stays pullable. It describes what the standard pipeline does
+  with a ref rather than a convention layered on top of it.
 - [`docs/siting-worked-example.md`](./docs/siting-worked-example.md) — one
   question, *does this building fit on this plot?*, followed from the claims it
   is answered from through the frame chain and the overlay to the error budget
@@ -145,16 +149,30 @@ modelling a different subject, it is not an engine change.
 
 ## Install
 
-As a library:
+The command line tool is a container image, and that is the one install path. There is no
+binary download.
+
+```sh
+docker pull ghcr.io/z5labs/dfcad:v1.2.3
+```
+
+The model is a directory of text files, so mount it and ask a question:
+
+```console
+$ docker run --rm -v "$PWD:/model:ro" ghcr.io/z5labs/dfcad:v1.2.3 \
+    resolve --root /model site:S-103 area | jq -c '{value, accuracy}'
+{"value":{"shape":"scalar","unit":"m2","scalar":32},"accuracy":[{"kind":"independent","magnitude":0.08,"unit":"m2"}]}
+```
+
+Pin the digest rather than the tag in anything automated —
+`ghcr.io/z5labs/dfcad@sha256:…`. Digests are authoritative and tags are advisory; there is
+no `latest`. [`docs/publishing.md`](./docs/publishing.md) has the tag convention, how long a
+build stays pullable, and what is attached to each published digest.
+
+As a library, it is an ordinary Go module:
 
 ```sh
 go get github.com/z5labs/dfcad
-```
-
-As a command line tool:
-
-```sh
-go install github.com/z5labs/dfcad/cmd/dfcad@latest
 ```
 
 ## License
