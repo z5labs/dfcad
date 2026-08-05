@@ -2961,6 +2961,59 @@ func ExampleGraph_ObservationsWithin() {
 	// site:S-bed cannot place shot:0004: 0.000 m from the boundary, known to 0.017 m
 }
 
+// ExampleGraph_SurfaceWithin shows the ground answered for from the shots
+// somebody took, rather than from a surface somebody drew.
+//
+// Nothing below is stored. The surface is derived from the observations inside
+// the region every time it is asked, kept only under the build output directory,
+// and written into no file a walk would read — so a shot taken tomorrow changes
+// what the ground does here, and no file has to be edited to say so.
+func ExampleGraph_SurfaceWithin() {
+	graph, _ := dfcad.LoadGraph("testdata/surface/terrace")
+
+	surface, _ := graph.SurfaceWithin("site:S-terrace", dfcad.SurfaceDerivation{
+		Against: dfcad.Derivation{Tolerance: "boundary-closure", Position: "position"},
+	})
+
+	// How it was derived travels with it. Two interpolations of one set of
+	// points are two different answers, and a grid of levels with no method on
+	// it is one nobody can check.
+	fmt.Println(surface)
+	for _, parameter := range surface.Parameters() {
+		fmt.Printf("  %s\n", parameter)
+	}
+
+	// The surface reaches as far as the shots and no further. A point beyond
+	// the hull of them is reported as outside, never extrapolated: there is no
+	// measurement out there, and a level continued past the last shot reads
+	// exactly like a surveyed one.
+	for _, at := range []dfcad.Point{{4, 4, 0}, {14, 8, 0}, {19, 11, 0}} {
+		elevation, inside := surface.Elevation(at)
+		if !inside {
+			fmt.Printf("(%.0f, %.0f) is outside the surveyed ground\n", at[0], at[1])
+			continue
+		}
+
+		fmt.Printf("(%.0f, %.0f) is at %.3f m ± %.3f m, from %v\n",
+			at[0], at[1], elevation.Value(), elevation.Uncertainty(), elevation.From())
+	}
+
+	// And a surface can be traced back to the afternoon behind it.
+	fmt.Printf("derived from %v\n", surface.Observations())
+
+	// Output:
+	// site:S-terrace: tin from 7 points, 8 facets, hull of 4 points
+	//   method=tin
+	//   tolerance=boundary-closure
+	//   position=position
+	//   minimum-points=3
+	//   ambiguous=excluded
+	// (4, 4) is at 100.120 m ± 0.014 m, from [shot:0001 shot:0005 shot:0006]
+	// (14, 8) is at 100.540 m ± 0.015 m, from [shot:0003 shot:0005 shot:0007]
+	// (19, 11) is outside the surveyed ground
+	// derived from [shot:0001 shot:0002 shot:0003 shot:0004 shot:0005 shot:0006 shot:0007 shot:0008]
+}
+
 func ExampleValidateAppendOnly() {
 	read := func(name string) dfcad.ObservationSource {
 		src, _ := os.ReadFile(filepath.Join("testdata", "observations", "append", name))

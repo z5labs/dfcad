@@ -75,6 +75,21 @@
 // assigned to a side, which is why [Members.Inside] and [Members.Ambiguous] are
 // separate slices and not one carrying a flag.
 //
+// The ground itself is derived from those shots the same way.
+// [Graph.SurfaceWithin] interpolates a [Surface] over the observations inside a
+// region — [SurfaceTIN] triangulating them, [SurfaceIDW] weighting them by
+// distance — and [Surface.Elevation] answers what the ground does at a point
+// nobody stood on. It is a build output: it is kept in the derived cache under
+// [BuildDir] and written into no source, so deleting that cache costs time and
+// nothing else.
+//
+// Two things travel with it because they are what make it checkable.
+// [Surface.Method] and [Surface.Parameters] are how it was arrived at, since two
+// interpolations of one set of points are two different answers, and
+// [Surface.Observations] is every record behind it. Its edge is the shots rather
+// than the region: a point beyond the convex hull of them is reported as outside
+// and never extrapolated to.
+//
 // docs/observation-file.md is the specification: the line schema field by
 // field, what each precision figure means and which uncertainty convention it
 // follows, and the two shapes of ambiguous timestamp the format refuses.

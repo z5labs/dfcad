@@ -488,32 +488,55 @@ func (c *Cache) record(count func(*CacheStats)) {
 // cache and reported as a miss — rather than returned or raised. Corruption in a
 // build output is a recomputation, never a failed run.
 func (c *Cache) Lookup(key Key) (Footprints, bool) {
-	if c == nil || !key.cacheable() {
-		c.record(func(s *CacheStats) { s.Misses++ })
+	var prints Footprints
+
+	held := c.fetch(key.Digest, key.entry(), func(payload []byte) bool {
+		var ok bool
+		prints, ok = decodeEntry(payload, key)
+		return ok
+	})
+	if !held {
 		return Footprints{}, false
 	}
 
-	path := filepath.Join(c.dir, key.Digest.String(), key.entry())
+	return prints, true
+}
+
+// fetch reads the entry named entry under digest and hands its verified payload
+// to decode, reporting whether anything usable came back.
+//
+// The reading, the checksum, the statistics and the discard live here rather
+// than in each caller because they are the same for every kind of entry, and an
+// entry which did not verify has to be removed by whoever holds the path. What
+// differs between kinds is only what the payload means, which is decode's
+// business alone.
+func (c *Cache) fetch(digest Digest, entry string, decode func(payload []byte) bool) bool {
+	if c == nil || !digest.Known() {
+		c.record(func(s *CacheStats) { s.Misses++ })
+		return false
+	}
+
+	path := filepath.Join(c.dir, digest.String(), entry)
 
 	content, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			c.record(func(s *CacheStats) { s.Misses++ })
-			return Footprints{}, false
+			return false
 		}
 		c.discard(path)
-		return Footprints{}, false
+		return false
 	}
 
-	prints, ok := decodeEntry(content, key)
-	if !ok {
+	payload, verified := unsealed(content)
+	if !verified || !decode(payload) {
 		c.discard(path)
-		return Footprints{}, false
+		return false
 	}
 
 	c.record(func(s *CacheStats) { s.Hits++ })
 
-	return prints, true
+	return true
 }
 
 // discard throws away an entry which did not verify and counts it.
@@ -540,13 +563,30 @@ func (c *Cache) Store(key Key, prints Footprints) error {
 		return nil
 	}
 
-	content, err := encodeEntry(key, prints)
+	payload, err := encodeEntry(key, prints)
 	if err != nil {
 		c.record(func(s *CacheStats) { s.Errors++ })
 		return CacheError{Op: "store", Path: c.dir, Err: err}
 	}
 
-	dir := filepath.Join(c.dir, key.Digest.String())
+	return c.put(key.Digest, key.entry(), payload)
+}
+
+// put writes payload as the entry named entry under digest, sealed with its
+// checksum.
+//
+// The write is atomic and the statistics are kept here for the same reason
+// [Cache.fetch] keeps them: every kind of entry is written exactly this way, and
+// a second copy of the rename dance is a second chance to leave half an entry
+// behind.
+func (c *Cache) put(digest Digest, entry string, payload []byte) error {
+	if c == nil || !digest.Known() {
+		return nil
+	}
+
+	content := sealed(payload)
+
+	dir := filepath.Join(c.dir, digest.String())
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		c.record(func(s *CacheStats) { s.Errors++ })
 		return CacheError{Op: "store", Path: dir, Err: err}
@@ -570,7 +610,7 @@ func (c *Cache) Store(key Key, prints Footprints) error {
 		return CacheError{Op: "store", Path: temp.Name(), Err: err}
 	}
 
-	path := filepath.Join(dir, key.entry())
+	path := filepath.Join(dir, entry)
 	if err := os.Rename(temp.Name(), path); err != nil {
 		_ = os.Remove(temp.Name())
 		c.record(func(s *CacheStats) { s.Errors++ })
@@ -660,11 +700,47 @@ type pieceRecord struct {
 	Area  float64   `json:"area"`
 }
 
-// encodeEntry writes an entry: a hex checksum, a newline, then the JSON.
+// sealed wraps a payload as an entry is written: a hex checksum, a newline, then
+// the payload.
 //
-// The checksum is over the JSON and is what catches the damage JSON cannot catch
-// itself — a truncated write which still parses, a byte flipped inside a number.
-// A cache which trusted the parse would serve those as answers.
+// The checksum is over the payload and is what catches the damage JSON cannot
+// catch itself — a truncated write which still parses, a byte flipped inside a
+// number. A cache which trusted the parse would serve those as answers.
+func sealed(payload []byte) []byte {
+	sum := sha256.Sum256(payload)
+
+	// The buffer is grown by append rather than sized up front. Sizing it would
+	// mean arithmetic over the length of a payload with no bound on it, which is
+	// an overflow waiting to be reached by a large enough model.
+	content := append([]byte(hex.EncodeToString(sum[:])), '\n')
+
+	return append(content, payload...)
+}
+
+// unsealed reads a sealed entry back, reporting whether it checksummed.
+func unsealed(content []byte) ([]byte, bool) {
+	newline := slices.Index(content, '\n')
+	if newline < 0 {
+		return nil, false
+	}
+
+	want, err := hex.DecodeString(string(content[:newline]))
+	if err != nil {
+		return nil, false
+	}
+
+	payload := content[newline+1:]
+
+	got := sha256.Sum256(payload)
+	if !slices.Equal(want, got[:]) {
+		return nil, false
+	}
+
+	return payload, true
+}
+
+// encodeEntry writes the derived geometry of a whole model as the payload of one
+// entry.
 func encodeEntry(key Key, prints Footprints) ([]byte, error) {
 	entry := cacheEntry{
 		Version:   cacheVersion,
@@ -681,20 +757,7 @@ func encodeEntry(key Key, prints Footprints) ([]byte, error) {
 		entry.Footprints = append(entry.Footprints, print.record())
 	}
 
-	payload, err := json.Marshal(entry)
-	if err != nil {
-		return nil, err
-	}
-
-	sum := sha256.Sum256(payload)
-
-	// The buffer is grown by append rather than sized up front. Sizing it would
-	// mean arithmetic over the length of a payload with no bound on it, which is
-	// an overflow waiting to be reached by a large enough model.
-	content := append([]byte(hex.EncodeToString(sum[:])), '\n')
-	content = append(content, payload...)
-
-	return content, nil
+	return json.Marshal(entry)
 }
 
 // decodeEntry reads an entry back, reporting whether it verified against the key
@@ -704,23 +767,7 @@ func encodeEntry(key Key, prints Footprints) ([]byte, error) {
 // same thing to a caller: there is nothing usable here, compute it. Which way it
 // failed is not actionable, since the remedy for a corrupt build output is to
 // discard it whatever corrupted it.
-func decodeEntry(content []byte, key Key) (Footprints, bool) {
-	newline := slices.Index(content, '\n')
-	if newline < 0 {
-		return Footprints{}, false
-	}
-
-	want, err := hex.DecodeString(string(content[:newline]))
-	if err != nil {
-		return Footprints{}, false
-	}
-
-	payload := content[newline+1:]
-	got := sha256.Sum256(payload)
-	if !slices.Equal(want, got[:]) {
-		return Footprints{}, false
-	}
-
+func decodeEntry(payload []byte, key Key) (Footprints, bool) {
 	var entry cacheEntry
 	if err := json.Unmarshal(payload, &entry); err != nil {
 		return Footprints{}, false
