@@ -109,6 +109,31 @@
 // docs/decisions/0012-tolerances-are-registry-data.md for why no check carries a
 // number.
 //
+// # Invariants
+//
+// A type registry entry may declare invariants, which are checks written once on
+// the type and applied to every instance of it. [Graph.Invariants] is what bears
+// on one instance and [Graph.AllInvariants] is every binding in the model.
+// Nothing is stored on an instance, so a rule declared today reaches a node
+// written tomorrow without either being touched — which is the point of stating
+// it on the type rather than copying it onto a hundred and fifty nodes.
+//
+// Invariants are not inherited. A node's are the ones its own type declares:
+// none descends from the node containing it, from a zone it belongs to or from
+// another type, because the type registry declares no hierarchy. What is
+// filtered is applicability — a check declares which kinds and which geometry
+// forms it can examine, an invariant naming one that could examine no instance
+// of the type is refused when the registry loads, and one that can examine some
+// of them binds to those.
+//
+// [Graph.CheckInvariants] runs them and returns a [Violation] for each way an
+// instance does not satisfy one. A violation names the instance, the check, the
+// parameters it was evaluated with and the registry file and line that declared
+// the rule, so a failure of a rule stated once leads back to the one place it is
+// written. A check declaring itself and implementing nothing binds and lists
+// exactly as one that does and runs nothing, which [InvariantBinding.Runnable]
+// is how to tell apart.
+//
 // # Accuracy
 //
 // This is the convention every accuracy in the engine is stated under, and it

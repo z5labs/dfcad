@@ -12,6 +12,8 @@ import (
 	"path"
 	"slices"
 	"strings"
+
+	sexpr "github.com/z5labs/sexpr-go"
 )
 
 // projectTag is the one registry form which declares no name.
@@ -113,7 +115,23 @@ type registryLoader struct {
 	// tolerance in the first, and a loader which resolved as it read would
 	// report it undeclared for no reason but the order the directory happened
 	// to be listed in.
-	invariants []*Node
+	invariants []typeInvariant
+}
+
+// typeInvariant is one written invariant together with the name of the type it
+// was written on.
+//
+// The type comes along because whether the check it names can apply to anything
+// is a question about that type's kinds and geometry forms, and a `kind` or a
+// `geometry` written after the invariant is as declared as one written before
+// it. The name rather than the declaration, because the declaration is not
+// complete until its form has been read to the end.
+type typeInvariant struct {
+	// declaredType is the name of the type the invariant was written on.
+	declaredType string
+
+	// form is the invariant form as it was written.
+	form *Node
 }
 
 // frameDeclaration is one accepted frame together with where the parts a later
@@ -342,7 +360,7 @@ func (l *registryLoader) declareType(node *Node) {
 		declared.Description, _ = l.text(arg, "a string")
 	}
 
-	var invariants []*Node
+	var invariants []typeInvariant
 	for _, child := range childForms(node, "invariant") {
 		check, _, ok := l.name(child, "a check name")
 		if !ok {
@@ -356,7 +374,7 @@ func (l *registryLoader) declareType(node *Node) {
 			Span:       child.Span,
 		})
 
-		invariants = append(invariants, child)
+		invariants = append(invariants, typeInvariant{declaredType: name, form: child})
 	}
 
 	if existing, ok := l.registry.types[name]; ok {
@@ -789,7 +807,8 @@ func (l *registryLoader) resolve() {
 	// anything has run it
 	// ([0011](docs/decisions/0011-assertions-are-named-parameterised-checks.md)).
 	for _, invariant := range l.invariants {
-		l.add(validateAssertion(invariant, l.registry)...)
+		l.add(validateAssertion(invariant.form, l.registry)...)
+		l.applicable(invariant)
 	}
 
 	l.cycles()
@@ -804,6 +823,56 @@ func (l *registryLoader) resolve() {
 			Hint:     `a registry file declares (project (globalid-namespace "<url>")), which is what every GlobalId derives from`,
 		})
 	}
+}
+
+// applicable reports an invariant naming a check which could apply to no
+// instance of the type it was written on.
+//
+// It is caught here, at registry load, rather than when something runs the
+// check, because an invariant which applies to nothing does not fail: it
+// passes, silently, on every instance of the type forever. The mistake is that
+// the rule was never checked, and the only moment that is visible is the one
+// where the type and the check are both in front of the reader.
+//
+// A check name nothing registers, and an invariant nothing could read a check
+// name out of, are already reported by the pass above; neither is reported
+// twice here.
+func (l *registryLoader) applicable(written typeInvariant) {
+	declaredType, ok := l.registry.types[written.declaredType]
+	if !ok {
+		return
+	}
+
+	arg, ok := argument(written.form, 0)
+	if !ok {
+		return
+	}
+
+	name, ok := arg.Datum.(sexpr.Symbol)
+	if !ok {
+		return
+	}
+
+	check, ok := registeredChecks.lookup(name.Value)
+	if !ok {
+		return
+	}
+
+	message, hint, ok := inapplicable(check, declaredType)
+	if !ok {
+		return
+	}
+
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     written.form.Span,
+		Message:  message,
+		Hint:     hint,
+		Related: []RelatedLocation{{
+			Span:    declaredType.Span,
+			Message: "the type it is written on is declared here",
+		}},
+	})
 }
 
 // cycles reports a parent chain which returns to a frame it already passed

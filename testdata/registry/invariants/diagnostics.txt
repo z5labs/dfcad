@@ -1,0 +1,21 @@
+testdata/registry/invariants/registry.dfc:18:3: error: expected an invariant naming a check which applies to a node, found edge-endpoints-differ, which applies to edge
+18 |   (invariant edge-endpoints-differ)
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: an invariant is declared on a type and applies to its instances, which are nodes; a check which applies to a vertex, an edge or a loop is written as an assert on that subject instead
+testdata/registry/invariants/registry.dfc:14:7: note: the type it is written on is declared here
+14 | (type Partition
+   |       ^^^^^^^^^
+testdata/registry/invariants/registry.dfc:19:3: error: expected an invariant naming a check which applies to a geometry form the type Partition permits, found boundary-loops-close, which applies to area, surface and solid
+19 |   (invariant boundary-loops-close (tolerance boundary-closure)))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: Partition permits line, so no instance of it is a subject this check could examine; an invariant which applies to nothing does not fail, it passes on every instance forever
+testdata/registry/invariants/registry.dfc:14:7: note: the type it is written on is declared here
+14 | (type Partition
+   |       ^^^^^^^^^
+testdata/registry/invariants/registry.dfc:27:3: error: expected an invariant naming a check which applies to a geometry form the type Campus permits, found boundary-loops-close, which applies to area, surface and solid
+27 |   (invariant boundary-loops-close (tolerance boundary-closure)))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: Campus permits no geometry at all, so no instance of it is a subject this check could examine; an invariant which applies to nothing does not fail, it passes on every instance forever
+testdata/registry/invariants/registry.dfc:23:7: note: the type it is written on is declared here
+23 | (type Campus
+   |       ^^^^^^

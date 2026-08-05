@@ -280,6 +280,11 @@ func (e invalidCheckError) Error() string {
 type checkSet struct {
 	byName map[string]CheckDeclaration
 	names  []string
+
+	// runners are the implementations of the checks which have one, by name. A
+	// check which declares itself and implements nothing is absent, which is
+	// what an invariant naming it binds to and does not run.
+	runners map[string]Runner
 }
 
 // newCheckSet registers checks, panicking on a declaration the set cannot hold.
@@ -291,7 +296,10 @@ type checkSet struct {
 // numeric literal tolerance the format exists to keep out
 // ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
 func newCheckSet(checks ...Check) *checkSet {
-	set := &checkSet{byName: make(map[string]CheckDeclaration, len(checks))}
+	set := &checkSet{
+		byName:  make(map[string]CheckDeclaration, len(checks)),
+		runners: make(map[string]Runner, len(checks)),
+	}
 
 	for _, check := range checks {
 		declared := check.Declare().clone()
@@ -305,6 +313,9 @@ func newCheckSet(checks ...Check) *checkSet {
 		}
 
 		set.byName[declared.Name] = declared
+		if runner, ok := check.(Runner); ok {
+			set.runners[declared.Name] = runner
+		}
 	}
 
 	set.names = slices.Sorted(maps.Keys(set.byName))
@@ -403,6 +414,12 @@ func (s *checkSet) lookup(name string) (CheckDeclaration, bool) {
 		return CheckDeclaration{}, false
 	}
 	return declared.clone(), true
+}
+
+// runner returns the implementation of one check, and is nil where the set
+// registers the check but nothing implements it.
+func (s *checkSet) runner(name string) Runner {
+	return s.runners[name]
 }
 
 // all returns every declaration the set holds, in name order.
