@@ -87,6 +87,19 @@ func (a Argument) String() string {
 	return "(" + strings.Join(written, " ") + ")"
 }
 
+// clone copies the argument so that what a check is handed cannot be written
+// through to the binding it came from.
+//
+// The datums themselves are shared rather than copied. A loaded tree is never
+// written to — a [Graph] is read-only once loaded — so what this protects is the
+// cheap accident of a check writing over the slice it was given, and copying a
+// subtree per parameter per instance would copy most of a registry file to hand
+// a check a name it only reads.
+func (a Argument) clone() Argument {
+	a.Values = slices.Clone(a.Values)
+	return a
+}
+
 // arguments reads the parameters written on one invariant.
 func arguments(invariant Invariant) []Argument {
 	out := make([]Argument, 0, len(invariant.Parameters))
@@ -188,7 +201,18 @@ func (s CheckSubject) Node() *SemanticNode { return s.node }
 
 // Arguments returns every parameter the invariant supplied, in the order they
 // were written.
-func (s CheckSubject) Arguments() []Argument { return slices.Clone(s.arguments) }
+//
+// What comes back is the check's own copy, down to the values of each
+// parameter: a check is handed what the invariant says and cannot write back
+// through it to the binding, to the instance after it, or to the rendering of
+// the violation it is about to report.
+func (s CheckSubject) Arguments() []Argument {
+	out := make([]Argument, 0, len(s.arguments))
+	for _, argument := range s.arguments {
+		out = append(out, argument.clone())
+	}
+	return out
+}
 
 // Argument returns the parameter written under name, and whether one was.
 //
@@ -199,7 +223,7 @@ func (s CheckSubject) Arguments() []Argument { return slices.Clone(s.arguments) 
 func (s CheckSubject) Argument(name string) (Argument, bool) {
 	for _, argument := range s.arguments {
 		if argument.Name == name {
-			return argument, true
+			return argument.clone(), true
 		}
 	}
 	return Argument{}, false

@@ -423,6 +423,37 @@ func TestCheckSubject(t *testing.T) {
 	assert.False(t, ok, "a parameter the invariant did not write is not there to be read")
 }
 
+// TestCheckSubjectIsReadOnly covers what a check cannot do to the invariant it
+// was handed.
+//
+// A check runs against every instance of its type in turn, so a check which
+// wrote through its arguments would change the rule the instances after it are
+// judged by, and the violation it is about to report would render as something
+// nobody wrote.
+func TestCheckSubjectIsReadOnly(t *testing.T) {
+	graph := loadInvariantFixture(t, "valid")
+	node := instanceOf(t, graph, "site:S-102")
+
+	bindings := graph.Invariants(node)
+	require.Len(t, bindings, 1)
+
+	subject := CheckSubject{graph: graph, node: node, arguments: bindings[0].Arguments}
+
+	handed := subject.Arguments()
+	require.Len(t, handed, 1)
+	require.NotEmpty(t, handed[0].Values)
+	handed[0].Values[0] = &Node{}
+
+	looked, ok := subject.Argument("predicate")
+	require.True(t, ok)
+	looked.Values[0] = &Node{}
+
+	again, ok := subject.Argument("predicate")
+	require.True(t, ok)
+	assert.Equal(t, "(predicate width)", again.String())
+	assert.Equal(t, "(predicate width)", bindings[0].Arguments[0].String())
+}
+
 // TestGraphInvariantsOfNothing covers the states a caller reaches before a model
 // has been written: no graph, no node, and a node naming a type nothing
 // declares.
