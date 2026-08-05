@@ -57,8 +57,13 @@ var samples = map[string][]string{
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
 	"check":          {},
-	"route":          {"--kind", "Space", "--type", "MeetingRoom", "site:S-104"},
-	"apply":          {"batch.json"},
+	// A review needs a revision to compare against, and the fixture tree is not
+	// a repository. Comparing the model with itself is the invocation which
+	// exercises the contract without one, and it finds nothing, which is what a
+	// walk asserting a successful run needs.
+	"review": {"--base-root", "."},
+	"route":  {"--kind", "Space", "--type", "MeetingRoom", "site:S-104"},
+	"apply":  {"batch.json"},
 	"add-node": {
 		"--kind", "Space", "--type", "MeetingRoom",
 		"--geometry", "area", "--frame", "frame:building",

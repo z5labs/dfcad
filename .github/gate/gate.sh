@@ -6,7 +6,10 @@
 # https://opensource.org/licenses/MIT
 #
 # gate.sh runs `dfcad fmt --check` and `dfcad check` over one model root and
-# says, by its exit code, whether that model may be merged.
+# says, by its exit code, whether that model may be merged. Given --against it
+# runs `dfcad review` as well, which asks the question the other two cannot: not
+# whether this revision of the model is sound, but whether the change to it
+# needs an explanation.
 #
 # It is the repository-specific half of CI. The Go half — fmt, vet, lint and
 # `go test -race` — belongs to GoApp.Ci in the z5labs daggerverse module and is
@@ -15,7 +18,8 @@
 #
 # Usage:
 #
-#	gate.sh --binary <dfcad> --root <model root> [--results <dir>]
+#	gate.sh --binary <dfcad> --root <model root> [--results <dir>] \
+#	        [--against <ref>] [--policy <check>=<ruling>]...
 #
 # Run it from the directory paths should be reported relative to, which in CI is
 # the repository root: the paths dfcad writes are the ones it walked, and
@@ -26,10 +30,13 @@ set -euo pipefail
 binary=""
 root=""
 results=""
+against=""
+policies=()
 
 usage() {
 	cat >&2 <<'EOF'
-usage: gate.sh --binary <dfcad> --root <model root> [--results <dir>]
+usage: gate.sh --binary <dfcad> --root <model root> [--results <dir>] \
+               [--against <ref>] [--policy <check>=<ruling>]...
 
 	--binary   the dfcad executable to run. In CI this is the binary the
 	           standard pipeline built, so the gate and the shipped artifact
@@ -38,6 +45,15 @@ usage: gate.sh --binary <dfcad> --root <model root> [--results <dir>]
 	--results  where to write the structured results. Defaults to a temporary
 	           directory, which is what a local run wants; CI passes a path it
 	           then uploads.
+	--against  the branch this revision is being merged into. Given one, the
+	           gate also runs `dfcad review` against the merge base of it and
+	           HEAD. Left out, the review stage does not run at all: a checkout
+	           with no history to reach — a tarball, a shallow clone, a model
+	           root which is not in a repository — has no second revision to be
+	           compared with, and a gate which refused those would be one
+	           nobody could adopt incrementally.
+	--policy   what one kind of review finding means: failure, warning or
+	           ignored. Repeatable, and passed straight through.
 EOF
 }
 
@@ -53,6 +69,14 @@ while [ $# -gt 0 ]; do
 		;;
 	--results)
 		results="${2:-}"
+		shift 2
+		;;
+	--against)
+		against="${2:-}"
+		shift 2
+		;;
+	--policy)
+		policies+=(--policy "${2:-}")
 		shift 2
 		;;
 	-h | --help)
@@ -231,25 +255,87 @@ if [ "$check_exit" -eq 2 ]; then
 fi
 echo "::endgroup::"
 
-total_ms=$((fmt_ms + check_ms))
+# The third question, and the one neither of the others can be asked: not
+# whether this revision of the model is sound, but whether the change to it
+# needs an explanation. It runs only when a branch to compare against was named,
+# because it is the one stage which needs two revisions rather than one.
+review_json="${results}/${slug}.review.json"
+review_md="${results}/${slug}.review.md"
+review_exit=0
+review_ms=0
+
+if [ -n "$against" ]; then
+	echo "::group::dfcad review --root ${root} --against ${against}"
+	run_stage "$review_json" review --root "$root" --against "$against" \
+		--annotate "$review_md" "${policies[@]+"${policies[@]}"}"
+	review_exit=$stage_exit
+	review_ms=$stage_ms
+
+	# A finding carries the span of the change and the ruling the policy gave
+	# it, so the annotation lands on the line and says how much it matters. A
+	# finding the policy acknowledged is in the result and nowhere else, which
+	# is what "ignored" means, so it is filtered out here as it is on stderr.
+	#
+	# The span of a finding whose side is "base" points into the merge base,
+	# which is a file this checkout may no longer hold — GitHub then drops the
+	# annotation, and the message still reads in the log. Saying which revision
+	# the line is in is what keeps that from looking like a wrong line number.
+	jq -r '
+		.findings[]
+		| select(.ruling != "ignored")
+		| [
+			.span.start.path,
+			(.span.start.line | tostring),
+			(.span.start.column | tostring),
+			(if .ruling == "failure" then "error" else "warning" end),
+			(.kind + " on " + .subject + " (in the " + .side + " revision): " + .message
+			 + (if .commit then " [" + (.commit.sha[0:12]) + " " + .commit.summary + "]" else "" end))
+		  ]
+		| join($fs)
+	' --arg fs "$FS" "$review_json" | while IFS="$FS" read -r path line col level message; do
+		annotate "$level" "$path" "$line" "$col" "$message"
+	done
+
+	# A review which could not read one of its two revisions exits 2 with
+	# nothing on stdout to annotate from, and the reason — a shallow checkout, a
+	# branch which is not there, a merge base which does not load — is on stderr
+	# above. It is said here too, because a stage which failed with no
+	# annotation at all reads as a stage which passed.
+	if [ "$review_exit" -eq 2 ]; then
+		echo "::error::${root} could not be reviewed against ${against}; the reason is above"
+	fi
+	echo "::endgroup::"
+fi
+
+total_ms=$((fmt_ms + check_ms + review_ms))
 timing="${results}/${slug}.timing.json"
 jq -n \
 	--arg root "$root" \
 	--argjson fmt "$fmt_ms" \
 	--argjson check "$check_ms" \
+	--argjson review "$review_ms" \
 	--argjson total "$total_ms" \
-	'{root: $root, milliseconds: {fmt: $fmt, check: $check, total: $total}}' \
+	'{root: $root, milliseconds: {fmt: $fmt, check: $check, review: $review, total: $total}}' \
 	>"$timing"
 
-printf 'gate %s: fmt %sms (exit %s), check %sms (exit %s)\n' \
-	"$root" "$fmt_ms" "$fmt_exit" "$check_ms" "$check_exit" >&2
+printf 'gate %s: fmt %sms (exit %s), check %sms (exit %s), review %sms (exit %s)\n' \
+	"$root" "$fmt_ms" "$fmt_exit" "$check_ms" "$check_exit" "$review_ms" "$review_exit" >&2
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-	printf '| `%s` | %s | %s | %s | %s |\n' \
-		"$root" "$fmt_ms" "$fmt_exit" "$check_ms" "$check_exit" \
+	printf '| `%s` | %s | %s | %s | %s | %s | %s |\n' \
+		"$root" "$fmt_ms" "$fmt_exit" "$check_ms" "$check_exit" "$review_ms" "$review_exit" \
 		>>"$GITHUB_STEP_SUMMARY"
+
+	# The review's own summary goes after the table row rather than where it was
+	# written, because appending it between the header and the rows would break
+	# the table it lands in the middle of. It is written to a file first for
+	# exactly that reason, and the file is uploaded with the rest of the
+	# results.
+	if [ -s "$review_md" ]; then
+		cat "$review_md" >>"$GITHUB_STEP_SUMMARY"
+	fi
 fi
 
-if [ "$fmt_exit" -ne 0 ] || [ "$check_exit" -ne 0 ]; then
+if [ "$fmt_exit" -ne 0 ] || [ "$check_exit" -ne 0 ] || [ "$review_exit" -ne 0 ]; then
 	exit 1
 fi
