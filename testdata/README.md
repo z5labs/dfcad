@@ -7,7 +7,9 @@ able to trust its values. These directories are what keep that from happening
 quietly.
 
 A directory walk reads only files whose extension is `.dfc`, so this file and
-the goldens beside the fixtures are invisible to it.
+the goldens beside the fixtures are invisible to it. Observation files are
+`.obs` and are read by a walk of their own, which is what keeps the two formats
+from picking each other up.
 
 ## Layout
 
@@ -35,6 +37,7 @@ the goldens beside the fixtures are invisible to it.
 | `siting`                   | The fixture the cross-frame siting query is answered over. Two *directories* holding byte-identical models and registries which differ in exactly one claim — the fit which measures the building's grid against the site's — so that replacing a measurement with a better one is a change a test can see both halves of the answer move under. The model loads clean and holds a buildable area on the site grid and five footprints set out on other grids: one clearing by metres, one clearing by ten millimetres against an uncertainty of twenty, one crossing the boundary, one nowhere near it, and one on a grid nobody stated the accuracy of the fit for. One control point is behind the boundary survey, the interior control and the georeference alike, which is what makes a shared systematic term arrive from both sides of a comparison. |
 | `derived`                  | The fixture the derived-geometry cache is computed over. One model which loads and derives clean: a floor plate with a courtyard cut out of it, the courtyard itself, a room inside the plate, a desk zone inside that room and so inside both, and a store in a second frame which is a member of nothing. Every figure it yields is worked out by hand in the test beside it, because a cached answer is only as good as the answer it stood in for and two computations of the same wrong number agree. Nothing is written into it: the tests which populate a cache copy it first and assert every file is byte-identical afterwards. |
 | `model`                    | A two-file model the runnable examples load.                                                |
+| `observations`             | The observation format's own fixtures, which are not `.dfc` and are read by a walk of their own. One *directory* per case, each a registry and the observation files judged against it, with its rendered diagnostics inside it as `diagnostics.txt`. `valid` is one afternoon of site control with a retirement in the middle of it and loads clean; `malformed` holds every malformed-line case on its own line, so that one pass over one file reports all of them; `unterminated` is a file whose last line carries no line feed, which the next append would rewrite; `encoding` holds a byte order mark, a byte which begins no encoding and a carriage return, each in its own file because each stops the file it is in; and `log` is two files whose problems need more than one line — and three of which need more than one file — to see. `append` is the odd one out: four revisions of one file rather than a model, compared pairwise by [`ValidateAppendOnly`](../observation.go), with `edited.txt` and `truncated.txt` beside them holding what a quiet correction and a deletion had to say. |
 
 `corpus/valid` is not a second copy of `print`. The printer's fixtures are one
 per *behaviour* — how a comment moves, where a line breaks — and the corpus is
@@ -151,6 +154,28 @@ is where the tests of that layer read them from.
 | 6.9           | One reference of each class naming something the model does not hold | `graph/unresolved/`          |
 | 6.9, 6.9.1    | A ring in each of the three relations which can hold one: containment, frame parents and claim supersession | `graph/cyclic/` |
 
+The observation format has its own specification —
+[`docs/observation-file.md`](../docs/observation-file.md) — and its own table, because
+nothing in it is an S-expression and none of the cases above reaches it.
+
+| Specification | Error case                                          | Fixture                                     |
+|---------------|-----------------------------------------------------|---------------------------------------------|
+| 3, 7.1        | A form tag nothing declares                          | `observations/malformed/`                   |
+| 4, 5, 6, 7.1  | Too few and too many fields                          | `observations/malformed/`                   |
+| 4.1, 7.1      | A record identity and a frame which are not ids      | `observations/malformed/`                   |
+| 4.2, 7.1      | A timestamp which is not RFC 3339, one with no offset at all, and one whose offset is `-00:00` | `observations/malformed/` |
+| 4.3, 7.1      | A count where a real belongs, and a lexeme which is not a number | `observations/malformed/`       |
+| 5, 7.1        | A negative precision and a negative antenna height   | `observations/malformed/`                   |
+| 4.4, 6, 7.1   | A quoted string never closed, one carrying an escape the format does not know, one which is empty, and one followed by text | `observations/malformed/` |
+| 4.4, 5, 6, 7.1 | A quoted id, and a reason nobody quoted              | `observations/malformed/`                   |
+| 2, 7.1        | A last line with no line feed after it               | `observations/unterminated/`                |
+| 2, 7.1        | A byte order mark, a byte which begins no encoding, and a carriage return before the line feed | `observations/encoding/` |
+| 7.2           | Two records sharing one identity, across two files    | `observations/log/`                         |
+| 6, 7.2        | A retirement naming a record the log does not hold, one naming itself, one naming a record written later in another file, and a record retired twice | `observations/log/` |
+| 5, 7.2        | A frame and an id namespace no registry file declares | `observations/log/`                         |
+| 6, 7.2        | A retirement timestamped before the record it retires | `observations/log/`                         |
+| 8             | A line an edit rewrote, and records a truncation deleted rather than retired | `observations/append/`      |
+
 Two stated limits are checked in Go rather than as fixtures, because a fixture
 for either would be twenty kilobytes of parentheses whose golden nobody could
 read: the nesting bound of `sexpr.MaxDepth`, and the cap on how many
@@ -181,6 +206,10 @@ wrote:
   rather than crash.
 - `FuzzPrintRoundTrip` runs the round trip against arbitrary bytes and requires
   the tree to survive it.
+- Every line of an observation file is modified in turn, one at a time, and each
+  has to come back from `ValidateAppendOnly` as a finding at that line. A golden
+  says what one edit reports; this says that *no* edit goes unreported, which is
+  the whole of what the append-only invariant is worth.
 
 A test which only compares output against a recorded string can pass while that
 output no longer reads back — a number which lost a digit, a string escaped so

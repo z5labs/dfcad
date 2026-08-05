@@ -1,0 +1,21 @@
+# Every malformed-line case of observation specification section 7.1, one per
+# line, so that one pass over one file reports all of them.
+
+shot shot:0001 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0002 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0
+obs shot:0003 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am 0.5
+obs 0004 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0005 2026-05-06T09:14:22Z :site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0006 06/05/2026 frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0007 2026-05-06T09:14:22 frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0008 2026-05-06T09:14:22-00:00 frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0009 2026-05-06T09:14:22Z frame:site 100 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0010 2026-05-06T09:14:22Z frame:site 1.0 2.0 3. method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+obs shot:0011 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed -0.012 0.021 2.000 session:am
+obs shot:0012 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 -2.000 session:am
+retire retirement:0001 2026-05-06T10:00:00Z shot:0001 "the quote is never closed
+retire retirement:0002 2026-05-06T10:00:00Z shot:0001 "an escape \q the format does not know"
+retire retirement:0003 2026-05-06T10:00:00Z shot:0001 ""
+retire retirement:0004 2026-05-06T10:00:00Z shot:0001 "a quoted string"followed by text
+retire retirement:0005 2026-05-06T10:00:00Z shot:0001 unquoted
+obs "shot:0013" 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am

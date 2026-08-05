@@ -37,6 +37,33 @@
 // the graph adds over calling them in order is the checks no single pass can
 // make, and not having to know what that order is.
 //
+// # Observations
+//
+// Field data is not an entity file. An afternoon with a rover produces
+// thousands of shots, and a record was produced by an instrument, at a time,
+// under conditions — so observations sit outside the entity files, one record
+// per line, appended as they are collected and never edited afterwards. Editing
+// one in place destroys the thing which made it evidence: after the edit there
+// is no way to tell, from the file, that the number ever said anything else.
+//
+// [LoadObservations] reads a tree of them and validates it against the
+// registry; [ParseObservations] reads one file without a registry, which is the
+// lexis of a line rather than the soundness of a log. What comes back is an
+// [ObservationLog], whose [ObservationLog.Current] is every [Observation] no
+// [ObservationRetirement] names. A retirement removes nothing: the retired
+// record stays where it was written and still says exactly what the instrument
+// said it said.
+//
+// [ValidateAppendOnly] is the invariant which needs two revisions rather than
+// one file — every line the older revision had, present and unchanged at the
+// same line number in the newer one. Lines beyond the end of the older revision
+// are an append, which is the only legal change. It knows nothing about git:
+// where the two byte sequences came from is the caller's question.
+//
+// docs/observation-file.md is the specification: the line schema field by
+// field, what each precision figure means and which uncertainty convention it
+// follows, and the two shapes of ambiguous timestamp the format refuses.
+//
 // # Writing
 //
 // [Begin] is the entry point for changing a model. A [Tx] loads the whole

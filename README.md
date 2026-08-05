@@ -114,6 +114,11 @@ modelling a different subject, it is not an engine change.
   and how that compares with reading the files instead. It is regenerated from
   the measurement rather than written down, so the claim in the repository is
   always the current one.
+- [`docs/observation-file.md`](./docs/observation-file.md) — the format field data
+  is recorded in: one record per line, appended as it is collected and never
+  edited, with a retirement being a later record naming the one it supersedes.
+  It states the line schema field by field, what each precision figure means,
+  and the append-only invariant a validator checks between two revisions.
 - [`SPEC.md`](./SPEC.md) — the entity syntax: the legal tagged forms, their
   arity and ordering, and the canonical printing of each. It is the definition
   of the format; the loader is implemented against it, not the other way round.

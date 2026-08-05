@@ -38,7 +38,8 @@ S-expression source. This specification covers two layers of what those files ma
 It does not cover the generic S-expression grammar underneath, which is
 [section 2](#2-what-this-specification-delegates). It does not cover the observation file
 format, the CLI's machine output contract, or any exported representation; those have their
-own specifications.
+own specifications — [`docs/observation-file.md`](./docs/observation-file.md) and
+[`docs/machine-output.md`](./docs/machine-output.md) respectively.
 
 Two vocabularies are compiled into the engine and are therefore fixed by this document
 rather than by registry data:
@@ -1414,7 +1415,10 @@ from the engine, where the CLI's machine output contract already carries one
 Named so that their absence reads as a decision rather than an oversight.
 
 - **The observation file format.** Observations link to entities but are their own format
-  with their own specification.
+  with their own specification, which is
+  [`docs/observation-file.md`](./docs/observation-file.md): line-delimited, append-only, and
+  outside the entity files because an afternoon with a rover produces thousands of records
+  and editing one in place destroys the thing that made it evidence.
 - **Non-straight edges as a form.** Representable already, as a claim under a registered
   predicate — see [6.3](#63-edge). No form here changes, and none is added: an arc which
   bends an edge is registry data the engine reads, not a shape this specification writes down.

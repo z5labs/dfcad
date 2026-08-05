@@ -82,6 +82,16 @@ func Load(root string) iter.Seq2[*File, error] {
 // compare them against what the canonical printer would write; it wants the
 // same enumeration and not the same reading.
 func Walk(root string) iter.Seq2[string, error] {
+	return walkExtension(root, Extension)
+}
+
+// walkExtension is [Walk] over whichever extension is being enumerated.
+//
+// It is one function rather than one per format because "which files of this
+// tree are mine" has one answer whatever the extension, and two copies of it
+// would disagree the first time one of them learned something about a tree the
+// other did not. [WalkObservations] is the other caller.
+func walkExtension(root, extension string) iter.Seq2[string, error] {
 	return func(yield func(string, error) bool) {
 		info, err := os.Stat(root)
 		if err != nil {
@@ -103,7 +113,7 @@ func Walk(root string) iter.Seq2[string, error] {
 				}
 				return nil
 			}
-			if entry.IsDir() || filepath.Ext(path) != Extension {
+			if entry.IsDir() || filepath.Ext(path) != extension {
 				return nil
 			}
 			if !yield(path, nil) {

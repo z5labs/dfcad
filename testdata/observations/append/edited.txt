@@ -1,0 +1,7 @@
+testdata/observations/append/edited.obs:6:1: error: expected line 6 to be what the earlier revision wrote, found it modified
+6 | obs shot:0003 2026-05-06T09:18:47Z frame:site 412318.880 5318241.330 34.402 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: an observation file is appended to and never edited: a bad record is retired by a later record naming it, which leaves the original readable
+testdata/observations/append/base.obs:6:1: note: the earlier revision of line 6
+6 | obs shot:0003 2026-05-06T09:18:47Z frame:site 412318.880 5318241.330 34.402 method:gnss-rtk fix:rtk-float 0.240 0.510 2.000 session:am
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

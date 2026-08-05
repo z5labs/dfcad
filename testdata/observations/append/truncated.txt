@@ -1,0 +1,7 @@
+testdata/observations/append/truncated.obs:5:1: error: expected the 6 lines the earlier revision wrote, found 2 of them removed
+5 |
+  | ^
+  = hint: a record is retired by a later record naming it, never by deleting it: a deleted record is evidence which no longer exists
+testdata/observations/append/base.obs:5:1: note: the first line the later revision does not have, at line 5
+5 | obs shot:0002 2026-05-06T09:16:03Z frame:site 412318.905 5318220.512 34.198 method:gnss-rtk fix:rtk-fixed 0.011 0.019 2.000 session:am
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

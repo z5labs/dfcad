@@ -1,0 +1,72 @@
+testdata/observations/malformed/malformed.obs:4:1: error: expected a record form, found shot, which is not one
+4 | shot shot:0001 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  | ^^^^
+  = hint: the record forms are obs and retire
+testdata/observations/malformed/malformed.obs:5:1: error: expected the 12 fields obs takes, found 6
+5 | obs shot:0002 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: an observation is written obs <id> <at> <frame> <x> <y> <z> <method> <fix> <h-precision> <v-precision> <antenna> <session>
+testdata/observations/malformed/malformed.obs:6:1: error: expected the 12 fields obs takes, found 13
+6 | obs shot:0003 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am 0.5
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: an observation is written obs <id> <at> <frame> <x> <y> <z> <method> <fix> <h-precision> <v-precision> <antenna> <session>
+testdata/observations/malformed/malformed.obs:7:5: error: expected the record's identity as an id, found 0004
+7 | obs 0004 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  |     ^^^^
+  = hint: an id is namespace:local, split on the first colon
+testdata/observations/malformed/malformed.obs:8:36: error: expected the frame as an id, found :site
+8 | obs shot:0005 2026-05-06T09:14:22Z :site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  |                                    ^^^^^
+  = hint: the namespace is everything before the first colon, and it is not empty
+testdata/observations/malformed/malformed.obs:9:15: error: expected a timestamp, found 06/05/2026
+9 | obs shot:0006 06/05/2026 frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  |               ^^^^^^^^^^
+  = hint: a timestamp is written as RFC 3339 date-time: 2026-05-06T09:14:22Z, or with an offset such as +02:00
+testdata/observations/malformed/malformed.obs:10:15: error: expected a timestamp, found 2026-05-06T09:14:22
+10 | obs shot:0007 2026-05-06T09:14:22 frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+   |               ^^^^^^^^^^^^^^^^^^^
+   = hint: a timestamp states its offset from UTC, as Z or as ±HH:MM; without one it is a local time in a zone nothing names
+testdata/observations/malformed/malformed.obs:11:15: error: expected a timestamp, found 2026-05-06T09:14:22-00:00
+11 | obs shot:0008 2026-05-06T09:14:22-00:00 frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: -00:00 is RFC 3339 for an offset nobody knows, which is not something a record of when a measurement was taken may say
+testdata/observations/malformed/malformed.obs:12:47: error: expected a coordinate component, found the count 100
+12 | obs shot:0009 2026-05-06T09:14:22Z frame:site 100 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+   |                                               ^^^
+   = hint: a real number is written with a fraction or an exponent, so that it reads back as a real
+testdata/observations/malformed/malformed.obs:13:55: error: expected a coordinate component, found 3., which is not a number
+13 | obs shot:0010 2026-05-06T09:14:22Z frame:site 1.0 2.0 3. method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+   |                                                       ^^
+   = hint: a number is an optional sign, digits, an optional fraction and an optional exponent
+testdata/observations/malformed/malformed.obs:14:89: error: expected the horizontal precision to be zero or more, found -0.012
+14 | obs shot:0011 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed -0.012 0.021 2.000 session:am
+   |                                                                                         ^^^^^^
+   = hint: a precision is a standard uncertainty and an antenna height is a length above the mark; neither is signed
+testdata/observations/malformed/malformed.obs:15:101: error: expected the antenna height to be zero or more, found -2.000
+15 | obs shot:0012 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 -2.000 session:am
+   |                                                                                                     ^^^^^^
+   = hint: a precision is a standard uncertainty and an antenna height is a length above the mark; neither is signed
+testdata/observations/malformed/malformed.obs:16:81: error: expected a closing quote, found the end of the line
+16 | retire retirement:0001 2026-05-06T10:00:00Z shot:0001 "the quote is never closed
+   |                                                                                 ^
+   = hint: a quoted string is opened and closed on one line; a record is entirely on its own line
+testdata/observations/malformed/malformed.obs:17:67: error: expected an escape, found 'q', which is not one
+17 | retire retirement:0002 2026-05-06T10:00:00Z shot:0001 "an escape \q the format does not know"
+   |                                                                   ^
+   = hint: the escapes of a quoted string are \" and \\, and there is no third
+testdata/observations/malformed/malformed.obs:18:55: error: expected a reason, found an empty one
+18 | retire retirement:0003 2026-05-06T10:00:00Z shot:0001 ""
+   |                                                       ^^
+   = hint: a retirement with no reason is not evidence of anything: the next person to read the file cannot tell a mistake from a change of mind
+testdata/observations/malformed/malformed.obs:19:72: error: expected whitespace after a quoted string, found more text
+19 | retire retirement:0004 2026-05-06T10:00:00Z shot:0001 "a quoted string"followed by text
+   |                                                                        ^
+   = hint: fields are separated by spaces or tabs
+testdata/observations/malformed/malformed.obs:20:55: error: expected a quoted reason, found unquoted
+20 | retire retirement:0005 2026-05-06T10:00:00Z shot:0001 unquoted
+   |                                                       ^^^^^^^^
+   = hint: a reason is a sentence, so it is written in double quotes: "the base was on the wrong mark"
+testdata/observations/malformed/malformed.obs:21:5: error: expected the record's identity, found a quoted string
+21 | obs "shot:0013" 2026-05-06T09:14:22Z frame:site 1.0 2.0 3.0 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+   |     ^^^^^^^^^^^
+   = hint: quoting is for a retirement's reason, which is the one field holding a sentence

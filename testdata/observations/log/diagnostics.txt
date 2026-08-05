@@ -1,0 +1,44 @@
+testdata/observations/log/a-morning.obs:7:36: error: expected a declared frame, found frame:nothing, which no registry file declares
+7 | obs shot:0003 2026-05-06T09:18:47Z frame:nothing 412318.880 5318241.330 34.402 method:gnss-rtk fix:rtk-float 0.240 0.510 2.000 session:am
+  |                                    ^^^^^^^^^^^^^
+  = hint: the declared frames are frame:site
+testdata/observations/log/a-morning.obs:8:125: error: expected a declared namespace, found crew, which no registry file declares
+8 | obs shot:0004 2026-05-06T09:21:10Z frame:site 412318.902 5318241.318 34.395 method:gnss-rtk fix:rtk-fixed 0.013 0.022 2.000 crew:am
+  |                                                                                                                             ^^^^^^^
+  = hint: the declared namespaces are fix, frame, method, retirement, session and shot
+testdata/observations/log/a-morning.obs:9:45: error: expected the record being retired, found shot:0009, which this log does not hold
+9 | retire retirement:0001 2026-05-06T10:00:00Z shot:0009 "a record this log does not hold"
+  |                                             ^^^^^^^^^
+  = hint: a retirement names a record written earlier in the log; nothing outside the log can be retired
+testdata/observations/log/a-morning.obs:10:45: error: expected the record being retired, found retirement:0002, which is this record
+10 | retire retirement:0002 2026-05-06T10:01:00Z retirement:0002 "a record retiring itself"
+   |                                             ^^^^^^^^^^^^^^^
+   = hint: a retirement is a later record naming an earlier one, and no record is earlier than itself
+testdata/observations/log/a-morning.obs:11:45: error: expected the record being retired to be written earlier, found shot:0100, which is written later
+11 | retire retirement:0003 2026-05-06T10:02:00Z shot:0100 "a record written later, in the afternoon file"
+   |                                             ^^^^^^^^^
+   = hint: a retirement is a decision taken about a record which already existed, so it is always the later of the two
+testdata/observations/log/b-afternoon.obs:6:5: note: shot:0100 is written here
+6 | obs shot:0100 2026-05-06T13:50:12Z frame:site 412300.101 5318241.350 34.410 method:gnss-rtk fix:rtk-fixed 0.012 0.020 2.000 session:pm
+  |     ^^^^^^^^^
+testdata/observations/log/b-afternoon.obs:5:5: error: expected an unused record identity, found shot:0001, which is already written
+5 | obs shot:0001 2026-05-06T13:44:51Z frame:site 412300.108 5318241.344 34.407 method:gnss-rtk fix:rtk-fixed 0.014 0.023 2.000 session:pm
+  |     ^^^^^^^^^
+  = hint: a record identity is minted once and never reused, including for a record which was retired
+testdata/observations/log/a-morning.obs:5:5: note: shot:0001 is written here
+5 | obs shot:0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 34.210 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  |     ^^^^^^^^^
+testdata/observations/log/b-afternoon.obs:8:45: error: expected a record which is not retired, found shot:0002, which is already retired
+8 | retire retirement:0005 2026-05-06T16:05:00Z shot:0002 "a second decision about a shot already retired"
+  |                                             ^^^^^^^^^
+  = hint: a record is retired once; a second retirement is two decisions about one shot with nothing saying which stands
+testdata/observations/log/b-afternoon.obs:7:45: note: shot:0002 is retired here
+7 | retire retirement:0004 2026-05-06T16:00:00Z shot:0002 "float solution beside a fixed reshot of the same corner"
+  |                                             ^^^^^^^^^
+testdata/observations/log/b-afternoon.obs:9:1: warning: expected a retirement no earlier than the record it retires, found 2026-05-06T08:00:00Z, which is earlier than 2026-05-06T09:21:10Z
+9 | retire retirement:0006 2026-05-06T08:00:00Z shot:0004 "decided, by the rover's clock, before the shot was taken"
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  = hint: instrument clocks disagree, so this is worth a look rather than a refusal
+testdata/observations/log/a-morning.obs:8:5: note: shot:0004 was taken here
+8 | obs shot:0004 2026-05-06T09:21:10Z frame:site 412318.902 5318241.318 34.395 method:gnss-rtk fix:rtk-fixed 0.013 0.022 2.000 crew:am
+  |     ^^^^^^^^^

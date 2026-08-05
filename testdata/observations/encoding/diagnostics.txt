@@ -1,0 +1,10 @@
+testdata/observations/encoding/byte-order-mark.obs:1:1: error: file begins with a UTF-8 byte order mark, which must be removed
+1 | ï»¿obs shot:0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 34.210 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  | ^
+testdata/observations/encoding/carriage-return.obs:1:135: error: expected a line feed, found a carriage return before it
+1 | obs shot:0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 34.210 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:am
+  |                                                                                                                                       ^
+  = hint: observation files are terminated with a single line feed, so that an append is the same bytes on every machine
+testdata/observations/encoding/not-utf8.obs:1:63: error: invalid UTF-8: byte 0xff begins no valid encoding
+1 | retire retirement:0001 2026-05-06T10:00:00Z shot:0001 "a byte ÿ which is no encoding"
+  |                                                               ^

@@ -1,0 +1,19 @@
+; The registry every observation fixture is read against.
+;
+; An observation file names four vocabularies and declares none of them: the
+; frame its coordinates are in, the method the shot was taken by, the fix
+; quality the instrument reported, and the session it belongs to. Every one of
+; them arrives from here, which is what keeps the survey domain out of the
+; engine.
+(project
+  (label "Observation fixture")
+  (globalid-namespace "https://example.org/models/observations"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "How a value was obtained."))
+(namespace fix (description "Fix qualities an instrument reports."))
+(namespace session (description "Field occupations: one setup, one crew, one afternoon."))
+(namespace shot (description "Observation records issued by the field crew."))
+(namespace retirement (description "Retirement records issued by the field crew."))
+
+(frame frame:site (label "Site survey grid") (unit m))
