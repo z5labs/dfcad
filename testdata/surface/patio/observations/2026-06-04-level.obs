@@ -1,0 +1,40 @@
+# The morning the same patio was levelled, ten metres to the east.
+#
+# The same twenty-five marks on the same 1.5 m by 1.25 m grid over ground of the
+# same shape, picked up with an instrument two millimetres good in the vertical
+# instead of twenty-one. It is here so that the finding of the gate is evidence
+# rather than arithmetic somebody did in a document: the density is identical and
+# the answer is not, which is what says the density was never the constraint.
+#
+# The horizontal figure is worse than the rover's and it does not matter. A
+# surface is a function of the plan position and the level is what is read off
+# it; a staff a centimetre out of position on ground falling one in eighty moves
+# the level by a tenth of a millimetre.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+
+obs shot:0101 2026-06-04T09:00:00Z frame:site 10.500 0.500 100.006250 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0102 2026-06-04T09:03:00Z frame:site 12.000 0.500 100.006250 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0103 2026-06-04T09:06:00Z frame:site 13.500 0.500 100.006250 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0104 2026-06-04T09:09:00Z frame:site 15.000 0.500 100.006250 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0105 2026-06-04T09:12:00Z frame:site 16.500 0.500 100.006250 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0106 2026-06-04T09:15:00Z frame:site 10.500 1.750 100.021875 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0107 2026-06-04T09:18:00Z frame:site 12.000 1.750 100.021875 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0108 2026-06-04T09:21:00Z frame:site 13.500 1.750 100.021875 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0109 2026-06-04T09:24:00Z frame:site 15.000 1.750 100.021875 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0110 2026-06-04T09:27:00Z frame:site 16.500 1.750 100.021875 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0111 2026-06-04T09:30:00Z frame:site 10.500 3.000 100.037500 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0112 2026-06-04T09:33:00Z frame:site 12.000 3.000 100.037500 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0113 2026-06-04T09:36:00Z frame:site 13.500 3.000 100.037500 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0114 2026-06-04T09:39:00Z frame:site 15.000 3.000 100.037500 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0115 2026-06-04T09:42:00Z frame:site 16.500 3.000 100.037500 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0116 2026-06-04T09:45:00Z frame:site 10.500 4.250 100.053125 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0117 2026-06-04T09:48:00Z frame:site 12.000 4.250 100.053125 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0118 2026-06-04T09:51:00Z frame:site 13.500 4.250 100.053125 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0119 2026-06-04T09:54:00Z frame:site 15.000 4.250 100.053125 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0120 2026-06-04T09:57:00Z frame:site 16.500 4.250 100.053125 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0121 2026-06-04T10:00:00Z frame:site 10.500 5.500 100.068750 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0122 2026-06-04T10:03:00Z frame:site 12.000 5.500 100.068750 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0123 2026-06-04T10:06:00Z frame:site 13.500 5.500 100.068750 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0124 2026-06-04T10:09:00Z frame:site 15.000 5.500 100.068750 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am
+obs shot:0125 2026-06-04T10:12:00Z frame:site 16.500 5.500 100.068750 method:levelling fix:observed 0.020 0.002 0.000 session:2026-06-04-am

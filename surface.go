@@ -100,6 +100,42 @@ func surfaceParameterText(parameters []SurfaceParameter) string {
 	return strings.Join(parts, " ")
 }
 
+// SessionSystematic is a systematic uncertainty every shot of one occupation
+// shares, stated by whoever asks for a surface.
+//
+// It is the error which does not average away however many shots the afternoon
+// produced: a base station set up over the wrong mark, an antenna height typed
+// in once, a benchmark whose level is out. Every shot of that session moves the
+// same way and by the same amount, so the term is added linearly and counted
+// once ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)) rather than
+// combined in quadrature with itself.
+//
+// It is stated on the derivation because the observation format does not carry
+// it. A record states the precision the instrument reported for that shot, which
+// is the independent part and nothing else; what the whole setup was worth is a
+// judgment made afterwards, by whoever reduced the session. Stating it here
+// keeps that judgment on the question — it lands on the result and in the cache
+// key like every other parameter — rather than in a constant nobody can read
+// back off the answer.
+//
+// A session nothing is stated for contributes no shared term. That is not a
+// claim that it has none, and [Elevation.Complete] is where a level says how far
+// its budget reaches.
+type SessionSystematic struct {
+	// Session is the occupation the term belongs to, matched against
+	// [SurfacePoint.Session].
+	Session ID
+
+	// Magnitude is the one-sigma figure, in the frame's linear unit. Zero or
+	// less states nothing and contributes nothing.
+	Magnitude float64
+}
+
+// String writes the term as the session and what it is worth.
+func (s SessionSystematic) String() string {
+	return fmt.Sprintf("%s@%s", s.Session, decimal(s.Magnitude))
+}
+
 // SurfaceDerivation is a request for a ground surface: which region's shots to
 // derive it from, by which method, and under which parameters.
 //
@@ -135,6 +171,26 @@ type SurfaceDerivation struct {
 	// part way on evidence the model has said it cannot place. Neither is wrong
 	// and the answer differs, so which was asked for is recorded.
 	Ambiguous bool
+
+	// Roughness is how far the ground departs from the interpolation, one sigma
+	// per unit of distance in plan from the nearest shot.
+	//
+	// It is the only statement anybody can make about the ground *between* the
+	// shots, and it has to be stated because nothing in a set of shots implies
+	// it: a laid slab and a ploughed field sampled on the same grid give the
+	// same arithmetic and are not known equally well. A surface derived without
+	// one still answers, and every level it gives reports [Elevation.Complete]
+	// false — the figure is then a floor, the uncertainty the answer has from
+	// the shots alone.
+	//
+	// Zero or less states nothing. It is read by every method.
+	Roughness float64
+
+	// Systematic is what each occupation's shared error is worth, one entry per
+	// session. A session named twice takes the larger of the two figures, for
+	// the reason a budget does ([BudgetTerm.Magnitude]); a session nothing is
+	// stated for contributes no shared term.
+	Systematic []SessionSystematic
 }
 
 // normalised fills in the defaults, so that everything below reads the values
@@ -149,7 +205,45 @@ func (d SurfaceDerivation) normalised() SurfaceDerivation {
 	if d.Neighbours < 0 {
 		d.Neighbours = 0
 	}
+	if !(d.Roughness > 0) || math.IsInf(d.Roughness, 0) {
+		d.Roughness = 0
+	}
+	d.Systematic = normalisedSystematic(d.Systematic)
 	return d
+}
+
+// normalisedSystematic is the stated session terms with the ones which state
+// nothing dropped, the ones stated twice merged, and the rest in one order.
+//
+// The order is by session, because the set goes into a cache key: two orderings
+// of one set of terms would key one answer under two names, and the second run
+// would recompute what the first had already stored.
+func normalisedSystematic(stated []SessionSystematic) []SessionSystematic {
+	terms := make([]SessionSystematic, 0, len(stated))
+
+	for _, term := range stated {
+		if term.Session == "" || !(term.Magnitude > 0) || math.IsInf(term.Magnitude, 0) {
+			continue
+		}
+
+		if i := slices.IndexFunc(terms, func(held SessionSystematic) bool {
+			return held.Session == term.Session
+		}); i >= 0 {
+			terms[i].Magnitude = math.Max(terms[i].Magnitude, term.Magnitude)
+			continue
+		}
+
+		terms = append(terms, term)
+	}
+
+	slices.SortFunc(terms, func(a, b SessionSystematic) int {
+		return strings.Compare(string(a.Session), string(b.Session))
+	})
+
+	if len(terms) == 0 {
+		return nil
+	}
+	return terms
 }
 
 // Parameters is every input this derivation was carried out under, in a fixed
@@ -170,6 +264,8 @@ func (d SurfaceDerivation) Parameters() []SurfaceParameter {
 		{Name: "position", Value: d.Against.Position},
 		{Name: "minimum-points", Value: strconv.Itoa(minimumSurfacePoints)},
 		{Name: "ambiguous", Value: includedOrNot(d.Ambiguous)},
+		{Name: "roughness", Value: statedOrNot(d.Roughness)},
+		{Name: "systematic", Value: systematicText(d.Systematic)},
 	}
 
 	if d.Method == SurfaceIDW {
@@ -188,6 +284,32 @@ func includedOrNot(included bool) string {
 		return "included"
 	}
 	return "excluded"
+}
+
+// statedOrNot writes a magnitude which somebody either stated or did not.
+//
+// The word rather than a nought, because the two are different answers: nothing
+// here is entitled to record "the ground is perfectly smooth" on behalf of a
+// caller who said nothing about it.
+func statedOrNot(magnitude float64) string {
+	if !(magnitude > 0) {
+		return "unstated"
+	}
+	return decimal(magnitude)
+}
+
+// systematicText writes the stated session terms as one value of one parameter,
+// which is how they reach a cache key.
+func systematicText(terms []SessionSystematic) string {
+	if len(terms) == 0 {
+		return "none"
+	}
+
+	parts := make([]string, 0, len(terms))
+	for _, term := range terms {
+		parts = append(parts, term.String())
+	}
+	return strings.Join(parts, ",")
 }
 
 // neighbourText writes a neighbour count, where none means every point.
@@ -244,6 +366,334 @@ func (k SurfaceKey) entry() string {
 	return "surface-" + hex.EncodeToString(sum.Sum(nil)) + ".json"
 }
 
+// interpolationTerm is what the term for the ground between the shots is called
+// in a budget. It is not a record's name and cannot collide with one: an id
+// carries a namespace and a colon, and this does not.
+const interpolationTerm = "interpolation"
+
+// SurfaceTerm is one term of the budget of something read off a surface.
+//
+// It is [BudgetTerm] for a surface and is separate from it for one reason: what
+// contributes here is an observation record and not a claim, and a budget which
+// had to name a claim could not attribute a level to the afternoon somebody
+// stood there. The two kinds combine identically —
+// [0006](docs/decisions/0006-accuracy-is-one-sigma.md) — and [SurfaceBudget]
+// applies exactly the arithmetic [Budget.Combined] does.
+//
+// The magnitude is what the term contributes to *this* answer, weight already
+// applied. An independent shot which carries a tenth of the weight of a level
+// contributes a tenth of its own uncertainty to it, and the term says so rather
+// than making a reader multiply.
+type SurfaceTerm struct {
+	// Kind is which of the two kinds of error this is, and so how it combines:
+	// independent terms in quadrature, systematic terms linearly.
+	Kind TermKind
+
+	// Name is what to call the term in a report: the record for a shot's own
+	// error, the term id for a shared one, and [interpolationTerm] for the
+	// ground between the shots.
+	Name string
+
+	// Source is the id a systematic error is shared with — a session, or the
+	// control the transform which carried a shot was fitted to. It is empty for
+	// an independent term.
+	Source ID
+
+	// Magnitude is the one-sigma contribution to the answer, in the surface's
+	// unit, with the weight of everything which carried it already applied.
+	//
+	// It is zero for a term which cancelled: a session error behind both ends of
+	// a fall moves both by the same amount and is not in the difference at all.
+	// Such a term is reported rather than dropped, because "the base station
+	// cancels" is the answer to why a fall is known better than either level.
+	Magnitude float64
+
+	// From are the records which carried the term into this answer, sorted.
+	From []ID
+}
+
+// Shared reports whether more than one record carried this term.
+func (t SurfaceTerm) Shared() bool { return len(t.From) > 1 }
+
+// String writes the term as it reads in a report.
+//
+// The interpolation term names the shot its distance was measured from, because
+// an answer with two ends has two of them and neither is the other.
+func (t SurfaceTerm) String() string {
+	name := t.Name
+	if name == interpolationTerm && len(t.From) > 0 {
+		name += " near " + string(t.From[0])
+	}
+
+	written := fmt.Sprintf("%s %s: %s", t.Kind, name, decimal(t.Magnitude))
+
+	if t.Kind == TermSystematic && t.Shared() {
+		written += ", counted once"
+	}
+
+	switch {
+	case t.Magnitude != 0:
+	case t.Kind == TermSystematic:
+		written += ", cancels"
+	default:
+		written += ", carries no weight"
+	}
+
+	return written
+}
+
+// clone is the term with records of its own, so that a reader handing one out
+// cannot let an append reach back into the budget it came from.
+func (t SurfaceTerm) clone() SurfaceTerm {
+	t.From = slices.Clone(t.From)
+	return t
+}
+
+// SurfaceBudget is the accumulated uncertainty of one answer read off a surface,
+// broken out by contributing term.
+//
+// It exists for the reason [Budget] does. A level is a weighted sum of shots,
+// and combining everything behind it in quadrature is right only where the
+// errors are independent: two shots of one afternoon share a base station, and a
+// systematic error in it moves both the same way, so it adds linearly and is
+// counted once however many shots carried it. Getting that backwards understates
+// a level and — much worse — makes a *difference* of two levels look uncertain
+// when the shared part of it cancels exactly.
+//
+// The zero SurfaceBudget holds nothing and every method below works on it.
+type SurfaceBudget struct {
+	// terms are the accumulated terms: independent ones in the order they were
+	// contributed, then the systematic ones, sorted by the id they are shared
+	// with.
+	terms []SurfaceTerm
+
+	// unit is the linear unit every magnitude here is in, which is the
+	// surface's own and so is one unit by construction.
+	unit Unit
+
+	// complete is whether the ground between the shots was accounted for: a
+	// roughness was stated, so the budget is a budget of the answer rather than
+	// of the shots behind it.
+	complete bool
+}
+
+// Terms returns the accumulated terms.
+//
+// The terms are a copy, down to the records attributed to each, so nothing a
+// caller does to the result reaches back into the budget.
+func (b SurfaceBudget) Terms() []SurfaceTerm {
+	out := make([]SurfaceTerm, 0, len(b.terms))
+	for _, term := range b.terms {
+		out = append(out, term.clone())
+	}
+	return out
+}
+
+// Unit returns the linear unit every magnitude in the budget is in.
+func (b SurfaceBudget) Unit() Unit { return b.unit }
+
+// Complete reports whether the budget accounts for the ground between the shots.
+//
+// It is false where the derivation stated no [SurfaceDerivation.Roughness],
+// which makes every figure here a floor: the uncertainty the answer has from the
+// shots alone, with nothing said about how well the interpolation between them
+// models ground nobody measured.
+func (b SurfaceBudget) Complete() bool { return b.complete }
+
+// Combined reduces the budget to one standard uncertainty.
+//
+// The terms combine the way specification section 6.6.5 says they do, which is
+// the way [Budget.Combined] combines a budget of claims:
+//
+//	u = √( Σ uᵢ² + ( Σ |sⱼ| )² )
+//
+// Every magnitude is already one standard deviation, so the result is too, and
+// the [Uncertainty] which comes back says so. Widening is [Uncertainty.Widen],
+// which attaches the factor it widened by.
+func (b SurfaceBudget) Combined() Uncertainty {
+	var squares, shared float64
+
+	for _, term := range b.terms {
+		magnitude := math.Abs(term.Magnitude)
+		switch term.Kind {
+		case TermSystematic:
+			shared += magnitude
+		default:
+			squares += magnitude * magnitude
+		}
+	}
+
+	return Uncertainty{
+		Magnitude:      math.Sqrt(squares + shared*shared),
+		Unit:           b.unit,
+		CoverageFactor: 1,
+	}
+}
+
+// Dominant returns the term contributing most to the combined figure, and
+// whether the budget holds one to return.
+//
+// It is what makes a budget actionable. "±20 mm" is a number somebody has to do
+// something about, and what to do — take more shots, take better ones, or level
+// the session in — is decided by which term is most of it.
+func (b SurfaceBudget) Dominant() (SurfaceTerm, bool) {
+	if len(b.terms) == 0 {
+		return SurfaceTerm{}, false
+	}
+
+	dominant := b.terms[0]
+	for _, term := range b.terms[1:] {
+		if math.Abs(term.Magnitude) > math.Abs(dominant.Magnitude) {
+			dominant = term
+		}
+	}
+	return dominant.clone(), true
+}
+
+// String writes the combined figure with its unit and coverage factor.
+func (b SurfaceBudget) String() string {
+	written := b.Combined().String()
+	if !b.complete {
+		written += ", the shots only"
+	}
+	return written
+}
+
+// surfaceBudgetBuilder accumulates the terms of one answer.
+//
+// It is where the two rules of
+// [0006](docs/decisions/0006-accuracy-is-one-sigma.md) are applied, and it is
+// one type rather than two pieces of arithmetic because a level and a difference
+// of two levels are the same accumulation under different coefficients: a level
+// takes each shot at the weight the interpolation gave it, and a fall takes each
+// shot at the difference of its two weights, which is what makes the shared part
+// of a difference cancel.
+type surfaceBudgetBuilder struct {
+	// independent are the per-record terms, keyed by the record, in the order
+	// they were first reached.
+	independent []surfaceCoefficient
+
+	// systematic are the shared terms, keyed by the id they are shared with.
+	systematic []surfaceCoefficient
+
+	// extra are terms which belong to no record and are not shared with
+	// anything: the interpolation term of each end of the answer.
+	extra []SurfaceTerm
+
+	// unit and complete travel onto the budget unchanged.
+	unit     Unit
+	complete bool
+}
+
+// surfaceCoefficient is one accumulating term: what it is worth, and the signed
+// coefficient everything which carried it has contributed so far.
+//
+// The coefficient is signed and accumulated before its absolute value is taken.
+// That is the whole of the correlation arithmetic: a term reached through two
+// inputs with opposite signs is a term which cancels, and one which took the
+// absolute value first would report a difference as though the two ends were
+// measured by different afternoons.
+type surfaceCoefficient struct {
+	key         ID
+	name        string
+	magnitude   float64
+	coefficient float64
+	from        []ID
+}
+
+// shot accumulates one record's own error at the given coefficient.
+func (b *surfaceBudgetBuilder) shot(point SurfacePoint, coefficient float64) {
+	b.add(&b.independent, point.observation, string(point.observation), point.sigma, coefficient, point.observation)
+
+	for _, term := range point.shared {
+		b.add(&b.systematic, term.Source, term.Name, term.Magnitude, coefficient, point.observation)
+	}
+}
+
+// interpolation accumulates the term for the ground between the shots at one
+// point of the surface, which belongs to that point and to nothing else.
+func (b *surfaceBudgetBuilder) interpolation(roughness, distance float64, nearest ID) {
+	if !(roughness > 0) || !(distance > 0) {
+		return
+	}
+
+	b.extra = append(b.extra, SurfaceTerm{
+		Kind:      TermIndependent,
+		Name:      interpolationTerm,
+		Magnitude: roughness * distance,
+		From:      []ID{nearest},
+	})
+}
+
+// add merges one contribution into the set it belongs to.
+func (b *surfaceBudgetBuilder) add(into *[]surfaceCoefficient, key ID, name string, magnitude, coefficient float64, from ID) {
+	if !(magnitude > 0) {
+		return
+	}
+
+	for i := range *into {
+		if (*into)[i].key != key {
+			continue
+		}
+
+		// The wider of two figures for one shared error, exactly as
+		// [Budget.contribute] takes it: a budget which cannot tell which fit of
+		// a shared error is the right one reports the wider, because a check
+		// which fails on a wide budget prompts an investigation and one which
+		// passes on a narrow one does not.
+		(*into)[i].magnitude = math.Max((*into)[i].magnitude, magnitude)
+		(*into)[i].coefficient += coefficient
+		if !slices.Contains((*into)[i].from, from) {
+			(*into)[i].from = append((*into)[i].from, from)
+		}
+		return
+	}
+
+	*into = append(*into, surfaceCoefficient{
+		key:         key,
+		name:        name,
+		magnitude:   magnitude,
+		coefficient: coefficient,
+		from:        []ID{from},
+	})
+}
+
+// budget is everything accumulated, as the budget of one answer.
+func (b *surfaceBudgetBuilder) budget() SurfaceBudget {
+	out := SurfaceBudget{unit: b.unit, complete: b.complete}
+
+	for _, held := range b.independent {
+		out.terms = append(out.terms, held.term(TermIndependent))
+	}
+	out.terms = append(out.terms, b.extra...)
+
+	shared := slices.Clone(b.systematic)
+	slices.SortStableFunc(shared, func(a, b surfaceCoefficient) int {
+		return strings.Compare(string(a.key), string(b.key))
+	})
+	for _, held := range shared {
+		out.terms = append(out.terms, held.term(TermSystematic))
+	}
+
+	return out
+}
+
+// term is one accumulated contribution as a term of the finished budget.
+func (c surfaceCoefficient) term(kind TermKind) SurfaceTerm {
+	term := SurfaceTerm{
+		Kind:      kind,
+		Name:      c.name,
+		Magnitude: math.Abs(c.coefficient) * c.magnitude,
+		From:      slices.Clone(c.from),
+	}
+	if kind == TermSystematic {
+		term.Source = c.key
+	}
+	slices.Sort(term.From)
+
+	return term
+}
+
 // SurfacePoint is one shot the surface rests on, in the surface's frame.
 //
 // It is a shot and not a coordinate: which record it came from is on it, so a
@@ -264,11 +714,25 @@ type SurfacePoint struct {
 	// plan, the third the elevation.
 	at Point
 
-	// sigma is the standard uncertainty of that elevation, one sigma
-	// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)): the record's own
-	// vertical precision, combined with the transform's where the shot was
-	// carried in from another frame.
+	// unit is the linear unit at and every uncertainty here are in, repeated
+	// from the surface so that a shot's budget carried around on its own still
+	// says what its figures mean.
+	unit Unit
+
+	// sigma is the *independent* standard uncertainty of that elevation, one
+	// sigma ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)): the record's
+	// own vertical precision, in quadrature with the independent part of the
+	// transform's where the shot was carried in from another frame. It is the
+	// part of the shot's error which correlates with no other shot.
 	sigma float64
+
+	// shared are the systematic terms this shot carries: the occupation's, where
+	// the derivation stated one, and the control behind the transform which
+	// carried it, where it was carried. They are held apart from sigma because
+	// they do not combine with it the same way — a term two shots share is
+	// counted once, and a term two shots share which is behind both ends of a
+	// difference is not in the difference at all.
+	shared []SurfaceTerm
 
 	// carried is whether the shot was written in another frame and brought
 	// across.
@@ -293,12 +757,48 @@ func (p SurfacePoint) Session() ID { return p.session }
 // At returns the coordinate, in the surface's frame and unit.
 func (p SurfacePoint) At() Point { return p.at }
 
+// Unit returns the linear unit the coordinate and every uncertainty on the shot
+// are in.
+func (p SurfacePoint) Unit() Unit { return p.unit }
+
 // Elevation returns the third component of the coordinate, which is what a
 // surface is a surface of.
 func (p SurfacePoint) Elevation() float64 { return p.at[2] }
 
-// Uncertainty returns the standard uncertainty of that elevation, one sigma.
-func (p SurfacePoint) Uncertainty() float64 { return p.sigma }
+// Uncertainty returns the standard uncertainty of that elevation, one sigma:
+// the independent part and every systematic term the shot carries, combined the
+// way a budget combines them.
+func (p SurfacePoint) Uncertainty() float64 { return p.Budget().Combined().Magnitude }
+
+// Independent returns the part of that uncertainty which correlates with no
+// other shot — the instrument's own precision, and the random part of any
+// transform the shot was carried across.
+//
+// It is separate from [SurfacePoint.Uncertainty] because it is the only part
+// which averages away. Twenty shots of one afternoon reduce this by a factor of
+// four or so between them and reduce the systematic terms by nothing at all.
+func (p SurfacePoint) Independent() float64 { return p.sigma }
+
+// Systematic returns the shared terms the shot carries, sorted by the id each is
+// shared with.
+func (p SurfacePoint) Systematic() []SurfaceTerm {
+	out := make([]SurfaceTerm, 0, len(p.shared))
+	for _, term := range p.shared {
+		out = append(out, term.clone())
+	}
+	return out
+}
+
+// Budget returns the shot's own uncertainty broken out by term.
+//
+// It is the budget of the shot rather than of anything read off the surface: the
+// weights an interpolation applies are not in it, and neither is the ground
+// between this shot and the next one.
+func (p SurfacePoint) Budget() SurfaceBudget {
+	budget := &surfaceBudgetBuilder{unit: p.unit, complete: true}
+	budget.shot(p, 1)
+	return budget.budget()
+}
 
 // Carried reports whether the shot was written in another frame and transformed
 // before it was used.
@@ -409,6 +909,13 @@ type Surface struct {
 	// derivation's tolerance, which is the distance the project has said it does
 	// not distinguish from zero.
 	slack float64
+
+	// roughness is how far the ground was said to depart from the interpolation
+	// per unit of distance from the nearest shot, and is zero where nobody said.
+	// It is kept because it is read at every question rather than at derivation:
+	// how far from the evidence a level was asked for is a property of the
+	// question.
+	roughness float64
 }
 
 // Subject returns the region the surface covers.
@@ -429,6 +936,12 @@ func (s Surface) Method() SurfaceMethod { return s.method }
 // Parameters returns every input the derivation was carried out under,
 // including the method and the defaults which were filled in.
 func (s Surface) Parameters() []SurfaceParameter { return slices.Clone(s.parameters) }
+
+// Roughness returns how far the ground was stated to depart from the
+// interpolation, one sigma per unit of distance in plan from the nearest shot.
+// It is zero where the derivation stated nothing, which is what makes every
+// level read off the surface report [Elevation.Complete] false.
+func (s Surface) Roughness() float64 { return s.roughness }
 
 // Points returns the shots the surface rests on, ordered by record identity.
 func (s Surface) Points() []SurfacePoint { return slices.Clone(s.points) }
@@ -506,9 +1019,15 @@ type Elevation struct {
 	// frame, with the answer as its third component.
 	at Point
 
-	// sigma is the standard uncertainty of that answer, one sigma, propagated
-	// from the shots it was interpolated from.
-	sigma float64
+	// budget is where that answer's uncertainty came from, term by term. The
+	// combined figure is derived from it rather than held beside it, so the two
+	// cannot come apart.
+	budget SurfaceBudget
+
+	// nearest is how far in plan the question was asked from the nearest shot
+	// the surface rests on, which is what the interpolation term of the budget
+	// is computed from.
+	nearest float64
 
 	// method is how it was interpolated, repeated from the surface so that an
 	// elevation passed on its own still says how it was arrived at.
@@ -530,10 +1049,40 @@ func (e Elevation) Value() float64 { return e.at[2] }
 // Uncertainty returns the standard uncertainty of that level, one sigma, in the
 // surface's unit.
 //
-// It is propagated from the shots behind the answer and from nothing else. It is
-// not a statement about how well the interpolation models the ground between
-// them, which is a question no arithmetic over the shots can answer.
-func (e Elevation) Uncertainty() float64 { return e.sigma }
+// It is propagated from the shots behind the answer under the weights the
+// interpolation gave them, with each shot's independent error in quadrature and
+// every systematic term the shots share added linearly and counted once
+// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)). Where the derivation
+// stated a roughness it also carries the ground between the shots, which grows
+// with the distance from them; where it did not, [Elevation.Complete] is false
+// and this figure is a floor.
+func (e Elevation) Uncertainty() float64 { return e.budget.Combined().Magnitude }
+
+// Budget returns that uncertainty broken out by contributing term.
+//
+// It is the actionable half, and it is what a caller needs to combine a level
+// with anything else: two levels off one surface share the terms their shots
+// share, and adding two combined figures in quadrature would count those twice.
+// [Surface.Fall] is that arithmetic done properly for the difference of two
+// levels.
+func (e Elevation) Budget() SurfaceBudget { return e.budget }
+
+// Nearest returns how far in plan the level was asked for from the nearest shot
+// the surface rests on, in the surface's unit.
+//
+// It is the distance the interpolation term of the budget is computed from, and
+// on its own it is the honest answer to "how far from the evidence is this?".
+func (e Elevation) Nearest() float64 { return e.nearest }
+
+// Complete reports whether the uncertainty accounts for the ground between the
+// shots.
+//
+// It is false where the derivation stated no [SurfaceDerivation.Roughness]. The
+// level is still answered and its budget still holds every term the shots put
+// there — what is missing is the one term no arithmetic over the shots can
+// supply, and a caller deciding anything against a figure this is false for is
+// deciding against a floor.
+func (e Elevation) Complete() bool { return e.budget.Complete() }
 
 // Method returns how the level was interpolated.
 func (e Elevation) Method() SurfaceMethod { return e.method }
@@ -557,7 +1106,35 @@ func (e Elevation) String() string {
 	}
 
 	return fmt.Sprintf("%s ± %s by %s from %s",
-		decimal(e.Value()), decimal(e.sigma), e.method, strings.Join(names, ", "))
+		decimal(e.Value()), decimal(e.Uncertainty()), e.method, strings.Join(names, ", "))
+}
+
+// Report is the level rendered for a person: the summary, and one line per term
+// of its budget beneath it.
+//
+// It is here rather than in the command for the reason [Fit.Report] is: a
+// library caller reporting a level and the command reporting one write the same
+// thing.
+func (e Elevation) Report() string {
+	if len(e.from) == 0 {
+		return "no elevation"
+	}
+
+	var out strings.Builder
+
+	out.WriteString(e.String())
+	fmt.Fprintf(&out, "\n  known to %s", e.budget)
+	fmt.Fprintf(&out, "\n  %s from the nearest shot", decimal(e.nearest))
+
+	for _, term := range e.budget.Terms() {
+		fmt.Fprintf(&out, "\n  %s", term)
+	}
+
+	if !e.Complete() {
+		out.WriteString("\n  no roughness stated: the figure is the shots only")
+	}
+
+	return out.String()
 }
 
 // Covers reports whether the surface has anything to say at a point.
@@ -593,6 +1170,17 @@ func (s Surface) Elevation(at Point) (Elevation, bool) {
 		return Elevation{}, false
 	}
 
+	indices, weights, ok := s.contributions(plan)
+	if !ok {
+		return Elevation{}, false
+	}
+
+	return s.answer(at, indices, weights), true
+}
+
+// contributions is which points answer for a place and how much each of them
+// counts, which is the one thing the two methods disagree about.
+func (s Surface) contributions(plan vec) ([]int, []float64, bool) {
 	var (
 		indices []int
 		weights []float64
@@ -606,19 +1194,12 @@ func (s Surface) Elevation(at Point) (Elevation, bool) {
 	}
 
 	if len(indices) == 0 {
-		return Elevation{}, false
+		return nil, nil, false
 	}
 
-	return s.answer(at, indices, weights), true
-}
-
-// answer assembles an elevation from the points which contributed and how much
-// each contributed, which is the same arithmetic whichever method chose them.
-//
-// The contributions are sorted by record identity on the way out. Which order a
-// method happened to find its points in is an implementation detail, and a
-// caller diffing two runs should not see one.
-func (s Surface) answer(at Point, indices []int, weights []float64) Elevation {
+	// Ordered by record identity. Which order a method happened to find its
+	// points in is an implementation detail, and a caller diffing two runs
+	// should not see one.
 	order := make([]int, len(indices))
 	for i := range order {
 		order[i] = i
@@ -630,30 +1211,314 @@ func (s Surface) answer(at Point, indices []int, weights []float64) Elevation {
 		)
 	})
 
-	elevation := Elevation{at: at, method: s.method}
-
-	var value, variance float64
+	sorted := make([]int, 0, len(order))
+	counted := make([]float64, 0, len(order))
 	for _, i := range order {
-		point, weight := s.points[indices[i]], weights[i]
+		sorted = append(sorted, indices[i])
+		counted = append(counted, weights[i])
+	}
+
+	return sorted, counted, true
+}
+
+// answer assembles an elevation from the points which contributed and how much
+// each contributed, which is the same arithmetic whichever method chose them.
+func (s Surface) answer(at Point, indices []int, weights []float64) Elevation {
+	elevation := Elevation{
+		at:      at,
+		method:  s.method,
+		nearest: s.nearestShot(vec{at[0], at[1]}),
+	}
+
+	budget := &surfaceBudgetBuilder{unit: s.unit, complete: s.roughness > 0}
+
+	var value float64
+	for i, index := range indices {
+		point, weight := s.points[index], weights[i]
 
 		value += weight * point.at[2]
 
-		// The terms are combined in quadrature as independent one-sigma
-		// figures. They are not: two shots of one afternoon share a base
-		// station, and a systematic error in it moves both the same way. What
-		// this is, is the floor — the uncertainty the answer has even where the
-		// shots are independent — and [SurfacePoint.Session] is what a caller
-		// needs to do better.
-		variance += (weight * point.sigma) * (weight * point.sigma)
+		// Each shot enters the budget at the weight the interpolation gave it,
+		// its own error as an independent term and everything it shares with
+		// another shot as a systematic one. Two shots of one afternoon meet each
+		// other on that session's term, which is added once at the sum of their
+		// weights rather than twice in quadrature — a base station on the wrong
+		// mark moves the whole surface and does not average away.
+		budget.shot(point, weight)
 
 		elevation.from = append(elevation.from, point.observation)
 		elevation.weights = append(elevation.weights, weight)
 	}
 
+	budget.interpolation(s.roughness, elevation.nearest, s.nearestRecord(vec{at[0], at[1]}))
+
 	elevation.at[2] = value
-	elevation.sigma = math.Sqrt(variance)
+	elevation.budget = budget.budget()
 
 	return elevation
+}
+
+// nearestShot is how far a place in plan is from the nearest shot the surface
+// rests on, which is the distance the interpolation term grows with.
+//
+// It is the nearest shot of the whole surface and not the nearest of the ones
+// which carried weight. "How far from the evidence is this?" is a question about
+// the survey rather than about which triangle the arithmetic landed in.
+func (s Surface) nearestShot(plan vec) float64 {
+	nearest := math.Inf(1)
+	for i := range s.points {
+		at := s.plan(i)
+		nearest = math.Min(nearest, math.Hypot(at.X-plan.X, at.Y-plan.Y))
+	}
+
+	if math.IsInf(nearest, 0) {
+		return 0
+	}
+	return nearest
+}
+
+// nearestRecord is which shot that distance was measured to, taken by record
+// identity where two are equally near so that the answer does not depend on the
+// order the corpus was walked in.
+func (s Surface) nearestRecord(plan vec) ID {
+	var (
+		nearest  = math.Inf(1)
+		observed ID
+	)
+
+	for i, point := range s.points {
+		at := s.plan(i)
+		distance := math.Hypot(at.X-plan.X, at.Y-plan.Y)
+
+		if distance < nearest || (distance == nearest && point.observation < observed) {
+			nearest, observed = distance, point.observation
+		}
+	}
+
+	return observed
+}
+
+// Fall is how much the ground drops between two points of one surface, and how
+// well that drop is known.
+//
+// It is a first-class answer rather than a subtraction a caller does, because
+// the subtraction is where the correlation lives. Two levels off one surface are
+// not two independent measurements: they are weighted sums of shots which share
+// afternoons, base stations and the georeference which carried them, and the
+// shared part of that error is in both levels *by the same amount*. It therefore
+// cancels out of the difference — exactly, where both ends rest on the same
+// session — and a caller who combined [Elevation.Uncertainty] twice in
+// quadrature would report a fall as several times less certain than it is, then
+// go and re-survey ground which was never the problem.
+//
+// The zero Fall is what a pair of points outside the surface gets, and every
+// method below works on it.
+type Fall struct {
+	// from is the level at the high end of the question as asked, and to at the
+	// other. Which is actually higher is the answer rather than the question.
+	from Elevation
+	to   Elevation
+
+	// run is how far apart the two are in plan, which is what a gradient is per.
+	run float64
+
+	// budget is the uncertainty of the difference, term by term, with every
+	// shared term entered once at the difference of the weights the two ends
+	// gave it.
+	budget SurfaceBudget
+}
+
+// From returns the level at the point the fall was measured from.
+func (f Fall) From() Elevation { return f.from }
+
+// To returns the level at the point it was measured to.
+func (f Fall) To() Elevation { return f.to }
+
+// Value returns the drop from the first point to the second, in the surface's
+// unit.
+//
+// It is positive where the ground falls away from the first point, which is what
+// a drainage question asks, and negative where it rises towards the second.
+func (f Fall) Value() float64 { return f.from.Value() - f.to.Value() }
+
+// Run returns how far apart the two points are in plan.
+func (f Fall) Run() float64 { return f.run }
+
+// Gradient returns the drop per unit of run, positive where the ground falls
+// away. It is zero over a run of nothing, there being no gradient to state.
+func (f Fall) Gradient() float64 {
+	if !(f.run > 0) {
+		return 0
+	}
+	return f.Value() / f.run
+}
+
+// Budget returns the uncertainty of the drop, broken out by contributing term.
+//
+// A term behind both ends appears once, at the difference of the weights the two
+// ends gave it, so a session behind the whole surface comes back at nought and
+// says so. That is the arithmetic which makes a fall answerable at all from
+// shots no one level is worth deciding against.
+func (f Fall) Budget() SurfaceBudget { return f.budget }
+
+// Uncertainty returns the standard uncertainty of the drop, one sigma, in the
+// surface's unit.
+func (f Fall) Uncertainty() float64 { return f.budget.Combined().Magnitude }
+
+// Complete reports whether that uncertainty accounts for the ground between the
+// shots, which it does only where the derivation stated a roughness.
+func (f Fall) Complete() bool { return f.budget.Complete() }
+
+// Decides reports whether the fall is known well enough for a decision which
+// needs it to a standard uncertainty of required, in the surface's unit.
+//
+// It is deliberately a comparison against a figure the caller states rather than
+// a verdict this package reaches: what a fall has to be known to is a property of
+// what is being built on it — a drain, a step, a threshold — and nothing here
+// knows that ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+//
+// A requirement which is not a figure greater than zero decides nothing, and a
+// fall whose budget does not account for the ground between the shots decides
+// nothing either: a floor compared against a requirement passes by leaving
+// something out, which is the one way this could report a decision somebody
+// should not make.
+func (f Fall) Decides(required float64) bool {
+	if !(required > 0) || !f.Complete() {
+		return false
+	}
+	return f.Uncertainty() <= required
+}
+
+// String renders the fall as a person reads it.
+func (f Fall) String() string {
+	if len(f.from.from) == 0 || len(f.to.from) == 0 {
+		return "no fall"
+	}
+
+	return fmt.Sprintf("falls %s over %s (%s) ± %s",
+		decimal(f.Value()), decimal(f.run), gradeText(f.Gradient()), decimal(f.Uncertainty()))
+}
+
+// Report is the fall rendered for a person: the summary, and one line per term
+// of the budget beneath it.
+//
+// The terms are the actionable half, and in a fall they are the surprising half
+// too: the line which reads "cancels" is the whole reason a difference of two
+// levels is worth asking for rather than working out by hand.
+func (f Fall) Report() string {
+	if len(f.from.from) == 0 || len(f.to.from) == 0 {
+		return "no fall"
+	}
+
+	var out strings.Builder
+
+	out.WriteString(f.String())
+	fmt.Fprintf(&out, "\n  from %s", f.from)
+	fmt.Fprintf(&out, "\n  to %s", f.to)
+	fmt.Fprintf(&out, "\n  known to %s", f.budget)
+
+	for _, term := range f.budget.Terms() {
+		fmt.Fprintf(&out, "\n  %s", term)
+	}
+
+	if !f.Complete() {
+		out.WriteString("\n  no roughness stated: the figure is the shots only")
+	}
+
+	return out.String()
+}
+
+// gradeText writes a gradient the way a fall is specified on a drawing.
+//
+// A gradient of nought is level and has no denominator, and one steeper than a
+// slope anybody builds is written as itself rather than as a ratio nobody reads.
+//
+// The denominator is written to a tenth and is the one figure here which is
+// rounded. A grade is a specification — one in eighty, one in forty — and
+// "1 in 79.99999999998181" is that specification rendered as though the
+// arithmetic behind it were the point. The value it came from and the
+// uncertainty beside it are written in full, which is where the arithmetic
+// belongs.
+func gradeText(gradient float64) string {
+	if gradient == 0 {
+		return "level"
+	}
+
+	magnitude := math.Abs(gradient)
+	if magnitude >= 1 {
+		return fmt.Sprintf("%s per unit", decimal(gradient))
+	}
+
+	written := fmt.Sprintf("1 in %.1f", 1/magnitude)
+	if gradient < 0 {
+		return "rises, " + written
+	}
+	return written
+}
+
+// Fall returns how much the ground drops between two points, and whether the
+// surface has anything to say at both of them.
+//
+// Both ends are answered by [Surface.Elevation] and are subject to the same rule
+// at the edge: a point beyond the hull of the shots is outside, and a fall with
+// one end outside is not answered at all rather than answered from an
+// extrapolation nobody measured.
+//
+// The uncertainty which comes back is **not** the two levels combined in
+// quadrature. Every term the two ends share is entered once, at the difference
+// of the weights they gave it, which is what makes a systematic error behind the
+// whole survey cancel out of the difference instead of being counted twice into
+// it. The independent error of a shot which backs both ends partially cancels
+// the same way.
+//
+// Only the first two components of each point are read.
+func (s Surface) Fall(from, to Point) (Fall, bool) {
+	if !s.Derived() {
+		return Fall{}, false
+	}
+
+	near, far := vec{from[0], from[1]}, vec{to[0], to[1]}
+	if !s.holds(near) || !s.holds(far) {
+		return Fall{}, false
+	}
+
+	fromIndices, fromWeights, ok := s.contributions(near)
+	if !ok {
+		return Fall{}, false
+	}
+
+	toIndices, toWeights, ok := s.contributions(far)
+	if !ok {
+		return Fall{}, false
+	}
+
+	fall := Fall{
+		from: s.answer(from, fromIndices, fromWeights),
+		to:   s.answer(to, toIndices, toWeights),
+		run:  math.Hypot(far.X-near.X, far.Y-near.Y),
+	}
+
+	// The difference is z(from) − z(to), so a shot behind the first end enters
+	// at the weight it was given there and one behind the second at minus its
+	// weight. A shot behind both meets itself and enters once at the difference.
+	budget := &surfaceBudgetBuilder{unit: s.unit, complete: s.roughness > 0}
+	for i, index := range fromIndices {
+		budget.shot(s.points[index], fromWeights[i])
+	}
+	for i, index := range toIndices {
+		budget.shot(s.points[index], -toWeights[i])
+	}
+
+	// The ground between the shots is not shared: how far the ground at one end
+	// departs from the interpolation says nothing about how far it departs four
+	// metres away, so the two ends contribute two independent terms rather than
+	// one which cancels.
+	budget.interpolation(s.roughness, fall.from.nearest, s.nearestRecord(near))
+	budget.interpolation(s.roughness, fall.to.nearest, s.nearestRecord(far))
+
+	fall.budget = budget.budget()
+
+	return fall, true
 }
 
 // weighByFacet is the [SurfaceTIN] rule: the three corners of the facet the
@@ -890,6 +1755,7 @@ func (g *Graph) surface(digest Digest, subject ID, against SurfaceDerivation) (S
 		method:     against.Method,
 		parameters: against.Parameters(),
 		slack:      members.Tolerance().Value,
+		roughness:  against.Roughness,
 	}
 
 	taken := members.Inside()
@@ -900,7 +1766,7 @@ func (g *Graph) surface(digest Digest, subject ID, against SurfaceDerivation) (S
 	shots := make([]SurfacePoint, 0, len(taken))
 	for _, member := range taken {
 		surface.frame, surface.unit = member.Frame(), member.Unit()
-		shots = append(shots, surfacePointOf(member))
+		shots = append(shots, surfacePointOf(member, against.Systematic))
 	}
 
 	// Ordered before anything is built from them. Two slices were concatenated
@@ -937,28 +1803,78 @@ func (g *Graph) surface(digest Digest, subject ID, against SurfaceDerivation) (S
 	return surface, diags
 }
 
-// surfacePointOf reads one placed shot as a point of a surface.
-func surfacePointOf(member Membership) SurfacePoint {
+// surfacePointOf reads one placed shot as a point of a surface, under whatever
+// the derivation stated about the occupations behind the shots.
+func surfacePointOf(member Membership, sessions []SessionSystematic) SurfacePoint {
 	observation := member.Observation()
 
 	point := SurfacePoint{
 		observation: observation.ID,
 		session:     observation.Session,
 		at:          member.At(),
+		unit:        member.Unit(),
 		sigma:       observation.VerticalPrecision,
 		carried:     member.Carried(),
 		ambiguous:   member.Ambiguous(),
 	}
 
-	// A carried shot is known no better than the transform which carried it.
-	// The two are independent one-sigma figures and combine in quadrature; a
-	// transform whose accuracy nothing states adds nothing here, and the shot
-	// comes back marked ambiguous by the boundary rule instead.
+	// A carried shot is known no better than the transform which carried it,
+	// and *how* it is known no better matters: the fit's own scatter is
+	// independent and combines in quadrature, while the control the fit was tied
+	// to is shared with every other shot carried across the same transform, so
+	// it is kept as a term rather than folded in. A transform whose accuracy
+	// nothing states adds nothing here — the whole budget is refused rather than
+	// half read — and the shot comes back marked ambiguous by the boundary rule
+	// instead.
 	if uncertainty, err := member.Budget().Combined(); err == nil && uncertainty.Unit == member.Unit() {
-		point.sigma = math.Hypot(point.sigma, uncertainty.Standard())
+		for _, term := range member.Budget().Terms() {
+			if term.Kind == TermSystematic && term.Source != "" {
+				point.shared = append(point.shared, SurfaceTerm{
+					Kind:      TermSystematic,
+					Name:      term.Name,
+					Source:    term.Source,
+					Magnitude: math.Abs(term.Magnitude),
+					From:      []ID{observation.ID},
+				})
+				continue
+			}
+			point.sigma = math.Hypot(point.sigma, term.Magnitude)
+		}
 	}
 
+	// The occupation's own shared error, where somebody stated one. It is the
+	// term which makes a whole afternoon's shots move together, and it is
+	// stated on the derivation because no observation record carries it.
+	if magnitude, stated := statedSystematic(sessions, observation.Session); stated {
+		point.shared = append(point.shared, SurfaceTerm{
+			Kind:      TermSystematic,
+			Name:      string(observation.Session),
+			Source:    observation.Session,
+			Magnitude: magnitude,
+			From:      []ID{observation.ID},
+		})
+	}
+
+	slices.SortFunc(point.shared, func(a, b SurfaceTerm) int {
+		return strings.Compare(string(a.Source), string(b.Source))
+	})
+
 	return point
+}
+
+// statedSystematic is what the derivation said one occupation's shared error is
+// worth, and whether it said anything at all.
+func statedSystematic(sessions []SessionSystematic, session ID) (float64, bool) {
+	if session == "" {
+		return 0, false
+	}
+
+	for _, stated := range sessions {
+		if stated.Session == session {
+			return stated.Magnitude, true
+		}
+	}
+	return 0, false
 }
 
 // mergeCoincident resolves shots which are one point in plan into one point.
@@ -1021,10 +1937,16 @@ func mergeCoincident(shots []SurfacePoint, slack float64) []SurfacePoint {
 
 		best := cluster[0]
 		for _, i := range cluster[1:] {
+			// The comparison is of what each shot is worth in total — its own
+			// error and everything it shares — rather than of the independent
+			// part alone. A shot carried across an unmeasured control is not the
+			// better shot of a mark because its instrument happened to report a
+			// tighter figure.
+			held, against := shots[i].Uncertainty(), shots[best].Uncertainty()
 			switch {
-			case shots[i].sigma < shots[best].sigma:
+			case held < against:
 				best = i
-			case shots[i].sigma == shots[best].sigma && shots[i].observation < shots[best].observation:
+			case held == against && shots[i].observation < shots[best].observation:
 				best = i
 			}
 		}
@@ -1363,20 +2285,35 @@ type surfaceEntry struct {
 	Frame      ID                   `json:"frame,omitempty"`
 	Unit       Unit                 `json:"unit,omitempty"`
 	Slack      float64              `json:"slack,omitempty"`
+	Roughness  float64              `json:"roughness,omitempty"`
 	Points     []surfacePointRecord `json:"points,omitempty"`
 	Facets     []SurfaceFacet       `json:"facets,omitempty"`
 	Hull       []int                `json:"hull,omitempty"`
 }
 
 // surfacePointRecord is one point of a surface as it is written.
+//
+// Sigma is the independent part alone and the shared terms are written beside
+// it, because the two do not combine the same way: an entry which stored the
+// combined figure would answer a fall as though the base station behind both
+// ends were two different base stations, which is the one arithmetic this whole
+// budget exists to get right.
 type surfacePointRecord struct {
-	Observation ID      `json:"observation"`
-	Session     ID      `json:"session,omitempty"`
-	At          Point   `json:"at"`
-	Sigma       float64 `json:"sigma"`
-	Carried     bool    `json:"carried,omitempty"`
-	Ambiguous   bool    `json:"ambiguous,omitempty"`
-	Coincident  []ID    `json:"coincident,omitempty"`
+	Observation ID                  `json:"observation"`
+	Session     ID                  `json:"session,omitempty"`
+	At          Point               `json:"at"`
+	Sigma       float64             `json:"sigma"`
+	Shared      []surfaceTermRecord `json:"shared,omitempty"`
+	Carried     bool                `json:"carried,omitempty"`
+	Ambiguous   bool                `json:"ambiguous,omitempty"`
+	Coincident  []ID                `json:"coincident,omitempty"`
+}
+
+// surfaceTermRecord is one systematic term of a point as it is written.
+type surfaceTermRecord struct {
+	Name      string  `json:"name"`
+	Source    ID      `json:"source"`
+	Magnitude float64 `json:"magnitude"`
 }
 
 // LookupSurface returns the surface stored under key, and whether anything
@@ -1435,12 +2372,13 @@ func encodeSurfaceEntry(key SurfaceKey, surface Surface) ([]byte, error) {
 		Frame:      surface.frame,
 		Unit:       surface.unit,
 		Slack:      surface.slack,
+		Roughness:  surface.roughness,
 		Facets:     surface.facets,
 		Hull:       surface.hull,
 	}
 
 	for _, point := range surface.points {
-		entry.Points = append(entry.Points, surfacePointRecord{
+		record := surfacePointRecord{
 			Observation: point.observation,
 			Session:     point.session,
 			At:          point.at,
@@ -1448,7 +2386,17 @@ func encodeSurfaceEntry(key SurfaceKey, surface Surface) ([]byte, error) {
 			Carried:     point.carried,
 			Ambiguous:   point.ambiguous,
 			Coincident:  point.coincident,
-		})
+		}
+
+		for _, term := range point.shared {
+			record.Shared = append(record.Shared, surfaceTermRecord{
+				Name:      term.Name,
+				Source:    term.Source,
+				Magnitude: term.Magnitude,
+			})
+		}
+
+		entry.Points = append(entry.Points, record)
 	}
 
 	return json.Marshal(entry)
@@ -1486,21 +2434,39 @@ func decodeSurfaceEntry(payload []byte, key SurfaceKey) (Surface, bool) {
 		facets:     entry.Facets,
 		hull:       entry.Hull,
 		slack:      entry.Slack,
+		roughness:  entry.Roughness,
 	}
 
 	for _, record := range entry.Points {
 		if record.Observation == "" {
 			return Surface{}, false
 		}
-		surface.points = append(surface.points, SurfacePoint{
+
+		point := SurfacePoint{
 			observation: record.Observation,
 			session:     record.Session,
 			at:          record.At,
+			unit:        entry.Unit,
 			sigma:       record.Sigma,
 			carried:     record.Carried,
 			ambiguous:   record.Ambiguous,
 			coincident:  record.Coincident,
-		})
+		}
+
+		for _, term := range record.Shared {
+			if term.Source == "" {
+				return Surface{}, false
+			}
+			point.shared = append(point.shared, SurfaceTerm{
+				Kind:      TermSystematic,
+				Name:      term.Name,
+				Source:    term.Source,
+				Magnitude: term.Magnitude,
+				From:      []ID{record.Observation},
+			})
+		}
+
+		surface.points = append(surface.points, point)
 	}
 
 	for _, facet := range surface.facets {

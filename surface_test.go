@@ -7,10 +7,12 @@ package dfcad
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -29,6 +31,10 @@ const (
 
 // surfacePosition is the predicate the corners of the fixture are read from.
 const surfacePosition = "position"
+
+// terraceSession is the occupation every shot the terrace rests on was taken in,
+// which is what makes a stated systematic term reach the whole surface at once.
+const terraceSession = ID("session:2026-05-06-am")
 
 // The shots of the terrace fall on this plane, and every level a test asserts is
 // read off it rather than off a number somebody copied out of a run.
@@ -289,6 +295,8 @@ func TestSurfaceRecordsHowItWasDerived(t *testing.T) {
 				{Name: "position", Value: surfacePosition},
 				{Name: "minimum-points", Value: "3"},
 				{Name: "ambiguous", Value: "excluded"},
+				{Name: "roughness", Value: "unstated"},
+				{Name: "systematic", Value: "none"},
 			},
 		},
 		{
@@ -300,6 +308,27 @@ func TestSurfaceRecordsHowItWasDerived(t *testing.T) {
 				{Name: "position", Value: surfacePosition},
 				{Name: "minimum-points", Value: "3"},
 				{Name: "ambiguous", Value: "included"},
+				{Name: "roughness", Value: "unstated"},
+				{Name: "systematic", Value: "none"},
+			},
+		},
+		{
+			name: "records what was said about the ground and the afternoons behind it",
+			derivation: SurfaceDerivation{
+				Roughness: 0.003,
+				Systematic: []SessionSystematic{
+					{Session: terraceSession, Magnitude: 0.010},
+					{Session: "session:2026-05-07-am", Magnitude: 0.012},
+				},
+			},
+			expected: []SurfaceParameter{
+				{Name: "method", Value: "tin"},
+				{Name: "tolerance", Value: closureTolerance},
+				{Name: "position", Value: surfacePosition},
+				{Name: "minimum-points", Value: "3"},
+				{Name: "ambiguous", Value: "excluded"},
+				{Name: "roughness", Value: "0.003"},
+				{Name: "systematic", Value: "session:2026-05-06-am@0.01,session:2026-05-07-am@0.012"},
 			},
 		},
 		{
@@ -311,6 +340,8 @@ func TestSurfaceRecordsHowItWasDerived(t *testing.T) {
 				{Name: "position", Value: surfacePosition},
 				{Name: "minimum-points", Value: "3"},
 				{Name: "ambiguous", Value: "excluded"},
+				{Name: "roughness", Value: "unstated"},
+				{Name: "systematic", Value: "none"},
 				{Name: "power", Value: "3.0"},
 				{Name: "neighbours", Value: "4"},
 			},
@@ -718,6 +749,43 @@ func TestSurfaceParticipatesInTheDerivedCache(t *testing.T) {
 		assert.Equal(t, want, got, "a surface read back out of the cache answers identically")
 	})
 
+	// A cache which stored the combined figure per point would answer a fall as
+	// though the base station behind both ends were two different base stations.
+	// So what is stored is the independent part and the shared terms apart from
+	// it, and this is what says they came back apart.
+	t.Run("carries the terms a level is made of back out of the cache", func(t *testing.T) {
+		cache, err := OpenCache(t.TempDir())
+		require.NoError(t, err)
+
+		derivation := SurfaceDerivation{
+			Against:    Derivation{Cache: cache},
+			Roughness:  0.003,
+			Systematic: []SessionSystematic{{Session: terraceSession, Magnitude: 0.010}},
+		}
+
+		first := surfaceOf(t, graph, terraceRegion, derivation)
+		second := surfaceOf(t, graph, terraceRegion, derivation)
+
+		require.Equal(t, 1, cache.Stats().Hits, "the second derivation is the cached one")
+
+		assert.Equal(t, first.Points(), second.Points())
+		assert.Equal(t, first.Roughness(), second.Roughness())
+
+		at := Point{7, 5, 0}
+
+		want, inside := first.Elevation(at)
+		require.True(t, inside)
+		got, inside := second.Elevation(at)
+		require.True(t, inside)
+
+		assert.Equal(t, want, got)
+		assert.True(t, got.Complete(), "the roughness came back with it")
+
+		term, held := surfaceTermNamed(got.Budget(), string(terraceSession))
+		require.True(t, held, "the afternoon behind the shots came back as a term of its own")
+		assert.InDelta(t, 0.010, term.Magnitude, 1e-12)
+	})
+
 	t.Run("keys a surface by every parameter it was derived under", func(t *testing.T) {
 		dir := t.TempDir()
 
@@ -730,6 +798,8 @@ func TestSurfaceParticipatesInTheDerivedCache(t *testing.T) {
 			{Method: SurfaceIDW},
 			{Method: SurfaceIDW, Power: 3},
 			{Method: SurfaceIDW, Neighbours: 4},
+			{Roughness: 0.003},
+			{Systematic: []SessionSystematic{{Session: terraceSession, Magnitude: 0.010}}},
 		}
 
 		var digest Digest
@@ -1170,4 +1240,771 @@ func TestSurfaceGeometryIsCanonical(t *testing.T) {
 		assert.Empty(t, triangulate([]vec{{0, 0}, {1, 1}}))
 		assert.Empty(t, triangulate([]vec{{1, 1}, {1, 1}, {1, 1}}))
 	})
+}
+
+// The patio fixture is two pieces of ground of the same shape and the same
+// survey density, picked up by two instruments. It is the gate: what a fall read
+// off a derived surface is worth against a decision somebody has to make.
+const (
+	roverPatio    = ID("site:S-patio")
+	levelledPatio = ID("site:S-patio-levelled")
+
+	roverSession    = ID("session:2026-06-03-am")
+	levelledSession = ID("session:2026-06-04-am")
+)
+
+// The shots of both patios fall on this plane: the ground drops one in eighty
+// away from the house wall along y = 6, which is what the patio was specified at.
+func patioLevel(y float64) float64 { return 100 + 0.0125*y }
+
+// loadPatioFixture loads the patio fixture, failing the test where the load
+// reports anything.
+func loadPatioFixture(t *testing.T) *Graph {
+	t.Helper()
+
+	graph, diags := LoadGraph(filepath.Join("testdata", "surface", "patio"))
+	require.NotNil(t, graph, "a load always yields a usable graph")
+	require.Empty(t, renderGraphDiagnostics(t, diags), "the fixture loads clean")
+
+	return graph
+}
+
+// allIndependent is every figure treated as an independent error.
+//
+// It is written out here because it is what several of the answers below must
+// *not* equal: a budget which combined a shared term this way would understate a
+// level and overstate a difference of two levels, and a test which asserted only
+// the formula the code implements would pass either way.
+func allIndependent(values ...float64) float64 {
+	var squares float64
+	for _, value := range values {
+		squares += value * value
+	}
+	return math.Sqrt(squares)
+}
+
+// surfaceTermNamed is the budget term of that name, and whether the budget holds
+// one.
+func surfaceTermNamed(budget SurfaceBudget, name string) (SurfaceTerm, bool) {
+	for _, term := range budget.Terms() {
+		if term.Name == name {
+			return term, true
+		}
+	}
+	return SurfaceTerm{}, false
+}
+
+// weightOf is what one record counted for in an interpolation.
+func weightOf(elevation Elevation, id ID) float64 {
+	for i, from := range elevation.From() {
+		if from == id {
+			return elevation.Weights()[i]
+		}
+	}
+	return 0
+}
+
+// TestSurfacePropagatesAccuracyThroughASurface is the first criterion of the
+// gate: a level nobody can say how well they know is a level nobody can decide
+// anything against.
+func TestSurfacePropagatesAccuracyThroughASurface(t *testing.T) {
+	graph := loadSurfaceFixture(t)
+
+	t.Run("answers every level with an accuracy and the terms behind it", func(t *testing.T) {
+		surface := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{})
+
+		resting := map[ID]bool{}
+		for _, point := range surface.Points() {
+			resting[point.Observation()] = true
+		}
+
+		for x := 3.0; x <= 17.0; x += 2.0 {
+			for y := 3.0; y <= 9.0; y += 2.0 {
+				at := Point{x, y, 0}
+
+				elevation, inside := surface.Elevation(at)
+				require.True(t, inside, "at %v", at)
+				require.Positive(t, elevation.Uncertainty(), "at %v", at)
+
+				terms := elevation.Budget().Terms()
+				require.NotEmpty(t, terms, "at %v", at)
+
+				for _, term := range terms {
+					for _, from := range term.From {
+						assert.True(t, resting[from], "%s is a shot the surface rests on", from)
+					}
+				}
+			}
+		}
+	})
+
+	// Nothing is shared at (4, 4): the three shots behind it were all written in
+	// the surface's own frame, so no transform was applied and no control point
+	// is behind two of them at once.
+	t.Run("combines the shots in quadrature where they share nothing", func(t *testing.T) {
+		surface := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{})
+
+		elevation, inside := surface.Elevation(Point{4, 4, 0})
+		require.True(t, inside)
+
+		independent := make([]float64, 0, len(elevation.From()))
+		for i, from := range elevation.From() {
+			for _, point := range surface.Points() {
+				if point.Observation() == from {
+					independent = append(independent, elevation.Weights()[i]*point.Independent())
+				}
+			}
+		}
+		require.Len(t, independent, len(elevation.From()))
+
+		assert.InDelta(t, allIndependent(independent...), elevation.Uncertainty(), 1e-12)
+		assert.Equal(t, UnitMetre, elevation.Budget().Unit(), "a figure with no unit on it means whatever the reader assumed")
+		assert.Equal(t, 1.0, elevation.Budget().Combined().CoverageFactor, "storage is always one sigma")
+	})
+
+	t.Run("adds a term the whole afternoon shares linearly instead", func(t *testing.T) {
+		const shared = 0.010
+
+		surface := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{
+			Systematic: []SessionSystematic{{Session: terraceSession, Magnitude: shared}},
+		})
+		plain := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{})
+
+		at := Point{4, 4, 0}
+
+		elevation, inside := surface.Elevation(at)
+		require.True(t, inside)
+
+		without, inside := plain.Elevation(at)
+		require.True(t, inside)
+
+		assert.InDelta(t, allIndependent(without.Uncertainty(), shared), elevation.Uncertainty(), 1e-12,
+			"the shared term enters once at its full magnitude, whatever the weights")
+
+		// The weights sum to one, so treating the three contributions as three
+		// independent errors of a tenth of that magnitude each would divide the
+		// shared term by the square root of three. That is the mistake the whole
+		// arrangement exists to stop.
+		naive := make([]float64, 0, len(elevation.Weights()))
+		naive = append(naive, without.Uncertainty())
+		for _, weight := range elevation.Weights() {
+			naive = append(naive, weight*shared)
+		}
+
+		assert.Greater(t, elevation.Uncertainty(), allIndependent(naive...),
+			"a systematic error does not partially cancel and does not average away")
+	})
+
+	t.Run("counts a shared term once however many shots carried it", func(t *testing.T) {
+		const shared = 0.010
+
+		surface := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{
+			Systematic: []SessionSystematic{{Session: terraceSession, Magnitude: shared}},
+		})
+
+		elevation, inside := surface.Elevation(Point{4, 4, 0})
+		require.True(t, inside)
+
+		var systematic []SurfaceTerm
+		for _, term := range elevation.Budget().Terms() {
+			if term.Source == terraceSession {
+				systematic = append(systematic, term)
+			}
+		}
+
+		require.Len(t, systematic, 1, "one afternoon is one error, not one per shot")
+		assert.Equal(t, TermSystematic, systematic[0].Kind)
+		assert.True(t, systematic[0].Shared(), "every shot behind the level carried it")
+		assert.ElementsMatch(t, elevation.From(), systematic[0].From)
+		assert.InDelta(t, shared, systematic[0].Magnitude, 1e-12,
+			"the weights sum to one, so the term arrives whole")
+	})
+
+	t.Run("keeps a transform's control apart from its own scatter", func(t *testing.T) {
+		surface := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{})
+
+		var carried SurfacePoint
+		for _, point := range surface.Points() {
+			if point.Carried() {
+				carried = point
+			}
+		}
+		require.Equal(t, ID("shot:0007"), carried.Observation())
+
+		// The fit which carried it states 0.006 m of scatter and 0.008 m at
+		// control:CP-3. The first is this shot's alone and combines in
+		// quadrature with the instrument's 0.021 m; the second is shared with
+		// everything else that transform ever carried, so it is kept as a term.
+		assert.InDelta(t, allIndependent(0.021, 0.006), carried.Independent(), 1e-12)
+
+		require.Len(t, carried.Systematic(), 1)
+		assert.Equal(t, ID("control:CP-3"), carried.Systematic()[0].Source)
+		assert.InDelta(t, 0.008, carried.Systematic()[0].Magnitude, 1e-12)
+
+		assert.InDelta(t, allIndependent(0.021, 0.006, 0.008), carried.Uncertainty(), 1e-12,
+			"one systematic term combines with the independent part the way a budget combines them")
+	})
+
+	t.Run("states the shared terms of a derivation in its parameters", func(t *testing.T) {
+		surface := surfaceOf(t, graph, terraceRegion, SurfaceDerivation{
+			Systematic: []SessionSystematic{
+				{Session: terraceSession, Magnitude: 0.004},
+				{Session: terraceSession, Magnitude: 0.010},
+				{Session: "session:nothing-stated", Magnitude: 0},
+			},
+		})
+
+		parameter, held := surfaceParameter(surface, "systematic")
+		require.True(t, held)
+		assert.Equal(t, "session:2026-05-06-am@0.01", parameter,
+			"a session stated twice is the wider of the two, and one stated with nothing is not stated")
+	})
+}
+
+// surfaceParameter is what one parameter of a derived surface was, and whether
+// it was recorded at all.
+func surfaceParameter(surface Surface, name string) (string, bool) {
+	for _, parameter := range surface.Parameters() {
+		if parameter.Name == name {
+			return parameter.Value, true
+		}
+	}
+	return "", false
+}
+
+// TestSurfaceAccuracyDegradesWithDistance is the stated rule for the ground
+// between the shots: the interpolation is charged the stated roughness per unit
+// of distance from the nearest of them, and nothing at a shot.
+func TestSurfaceAccuracyDegradesWithDistance(t *testing.T) {
+	const roughness = 0.003
+
+	graph := loadPatioFixture(t)
+
+	t.Run("says the ground between the shots is not in the figure unless somebody states it", func(t *testing.T) {
+		surface := surfaceOf(t, graph, roverPatio, SurfaceDerivation{})
+
+		elevation, inside := surface.Elevation(Point{2.75, 3.625, 0})
+		require.True(t, inside)
+
+		assert.False(t, elevation.Complete(), "nothing was said about how far the ground departs from a plane")
+		assert.False(t, elevation.Budget().Complete())
+
+		_, held := surfaceTermNamed(elevation.Budget(), interpolationTerm)
+		assert.False(t, held, "a term nobody stated is not a term of nought")
+
+		assert.Positive(t, elevation.Nearest(), "how far from the evidence it is, is still answerable")
+	})
+
+	t.Run("charges the stated roughness per unit of distance from the nearest shot", func(t *testing.T) {
+		testCases := []struct {
+			name    string
+			at      Point
+			nearest float64
+		}{
+			{name: "nothing at a shot", at: Point{2, 3, 0}, nearest: 0},
+			{name: "a quarter of a metre from one", at: Point{2, 3.25, 0}, nearest: 0.25},
+			{name: "midway between two columns", at: Point{2.75, 3, 0}, nearest: 0.75},
+			{name: "in the middle of a cell", at: Point{2.75, 3.625, 0}, nearest: math.Hypot(0.75, 0.625)},
+		}
+
+		surface := surfaceOf(t, graph, roverPatio, SurfaceDerivation{Roughness: roughness})
+
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				elevation, inside := surface.Elevation(testCase.at)
+				require.True(t, inside)
+
+				assert.True(t, elevation.Complete())
+				assert.InDelta(t, testCase.nearest, elevation.Nearest(), 1e-12)
+
+				term, held := surfaceTermNamed(elevation.Budget(), interpolationTerm)
+				if testCase.nearest == 0 {
+					assert.False(t, held, "a level asked for at a shot is that shot's level")
+					return
+				}
+
+				require.True(t, held)
+				assert.Equal(t, TermIndependent, term.Kind)
+				assert.InDelta(t, roughness*testCase.nearest, term.Magnitude, 1e-12)
+			})
+		}
+	})
+
+	t.Run("is worse the further the question is asked from the evidence", func(t *testing.T) {
+		surface := surfaceOf(t, graph, roverPatio, SurfaceDerivation{Roughness: roughness})
+
+		var last float64
+		for _, at := range []Point{{2, 3, 0}, {2, 3.125, 0}, {2, 3.25, 0}, {2.5, 3.375, 0}, {2.75, 3.625, 0}} {
+			elevation, inside := surface.Elevation(at)
+			require.True(t, inside, "at %v", at)
+
+			assert.GreaterOrEqual(t, elevation.Nearest(), last, "at %v", at)
+			last = elevation.Nearest()
+		}
+	})
+
+	t.Run("adds it to the shots rather than instead of them", func(t *testing.T) {
+		at := Point{2.75, 3.625, 0}
+
+		with := surfaceOf(t, graph, roverPatio, SurfaceDerivation{Roughness: roughness})
+		without := surfaceOf(t, graph, roverPatio, SurfaceDerivation{})
+
+		stated, inside := with.Elevation(at)
+		require.True(t, inside)
+
+		bare, inside := without.Elevation(at)
+		require.True(t, inside)
+
+		assert.InDelta(t, bare.Value(), stated.Value(), 1e-12, "how well the ground is known is not where it is")
+		assert.InDelta(t,
+			allIndependent(bare.Uncertainty(), roughness*stated.Nearest()),
+			stated.Uncertainty(), 1e-12,
+		)
+	})
+}
+
+// TestSurfaceFallCarriesItsOwnBudget is the criterion the whole arrangement is
+// for: a difference of two levels is not two levels combined, because what the
+// two share is in both of them by the same amount and so is not in the
+// difference at all.
+func TestSurfaceFallCarriesItsOwnBudget(t *testing.T) {
+	const (
+		roughness = 0.003
+		shared    = 0.010
+	)
+
+	graph := loadPatioFixture(t)
+
+	derivation := SurfaceDerivation{
+		Roughness:  roughness,
+		Systematic: []SessionSystematic{{Session: roverSession, Magnitude: shared}},
+	}
+
+	surface := surfaceOf(t, graph, roverPatio, derivation)
+
+	threshold, drain := Point{3.5, 5, 0}, Point{3.5, 1, 0}
+
+	t.Run("answers the drop, the run and the grade", func(t *testing.T) {
+		fall, ok := surface.Fall(threshold, drain)
+		require.True(t, ok)
+
+		assert.InDelta(t, patioLevel(5)-patioLevel(1), fall.Value(), 1e-9, "fifty millimetres over four metres")
+		assert.InDelta(t, 4.0, fall.Run(), 1e-12)
+		assert.InDelta(t, 1.0/80.0, fall.Gradient(), 1e-9)
+		assert.Contains(t, fall.String(), "1 in 80.0")
+	})
+
+	t.Run("reads the other way round as a rise", func(t *testing.T) {
+		fall, ok := surface.Fall(drain, threshold)
+		require.True(t, ok)
+
+		assert.InDelta(t, patioLevel(1)-patioLevel(5), fall.Value(), 1e-9)
+		assert.Negative(t, fall.Gradient())
+		assert.Contains(t, fall.String(), "rises")
+	})
+
+	t.Run("cancels the term the whole afternoon shares", func(t *testing.T) {
+		fall, ok := surface.Fall(threshold, drain)
+		require.True(t, ok)
+
+		term, held := surfaceTermNamed(fall.Budget(), string(roverSession))
+		require.True(t, held, "the term is reported rather than dropped: that it cancels is the answer")
+		assert.Equal(t, TermSystematic, term.Kind)
+		assert.True(t, term.Shared())
+		assert.Zero(t, term.Magnitude)
+	})
+
+	// The two ends rest on six different shots, so the independent part of the
+	// difference is larger than either level's. What cancels is the shared part —
+	// and where the shared part is what a level is mostly made of, which is the
+	// usual state of a survey run off one benchmark, the difference is known
+	// several times better than either end of it.
+	t.Run("answers a fall a level nobody would decide against is buried in", func(t *testing.T) {
+		buried := surfaceOf(t, graph, roverPatio, SurfaceDerivation{
+			Roughness:  roughness,
+			Systematic: []SessionSystematic{{Session: roverSession, Magnitude: 0.030}},
+		})
+
+		fall, ok := buried.Fall(threshold, drain)
+		require.True(t, ok)
+
+		require.Greater(t, fall.From().Uncertainty(), 0.030, "the benchmark is most of what a level is worth")
+
+		assert.Less(t, fall.Uncertainty(), fall.From().Uncertainty(),
+			"the difference is known better than either level it is the difference of")
+		assert.Less(t, fall.Uncertainty(), fall.To().Uncertainty())
+
+		unburied, ok := surface.Fall(threshold, drain)
+		require.True(t, ok)
+		assert.InDelta(t, unburied.Uncertainty(), fall.Uncertainty(), 1e-12,
+			"a term which cancels changes the fall by nothing at all, whatever it is worth")
+	})
+
+	t.Run("is not the two levels combined in quadrature", func(t *testing.T) {
+		fall, ok := surface.Fall(threshold, drain)
+		require.True(t, ok)
+
+		naive := allIndependent(fall.From().Uncertainty(), fall.To().Uncertainty())
+
+		assert.Less(t, fall.Uncertainty(), naive,
+			"combining two levels off one surface counts everything they share twice")
+	})
+
+	t.Run("partially cancels a shot which backs both ends", func(t *testing.T) {
+		near, far := Point{2.2, 3.2, 0}, Point{2.4, 3.4, 0}
+
+		fall, ok := surface.Fall(near, far)
+		require.True(t, ok)
+
+		var both []ID
+		for _, from := range fall.From().From() {
+			if slices.Contains(fall.To().From(), from) {
+				both = append(both, from)
+			}
+		}
+		require.NotEmpty(t, both, "the two ends are close enough to share a facet")
+
+		for _, id := range both {
+			term, held := surfaceTermNamed(fall.Budget(), string(id))
+			require.True(t, held, "%s", id)
+
+			difference := math.Abs(weightOf(fall.To(), id) - weightOf(fall.From(), id))
+			assert.InDelta(t, difference*0.021, term.Magnitude, 1e-12,
+				"a shot behind both ends enters once, at the difference of its two weights")
+			assert.Equal(t, []ID{id}, term.From, "one shot is one term however many ends it backs")
+		}
+	})
+
+	t.Run("charges the ground between the shots at each end separately", func(t *testing.T) {
+		fall, ok := surface.Fall(threshold, drain)
+		require.True(t, ok)
+
+		var interpolation []SurfaceTerm
+		for _, term := range fall.Budget().Terms() {
+			if term.Name == interpolationTerm {
+				interpolation = append(interpolation, term)
+			}
+		}
+
+		require.Len(t, interpolation, 2,
+			"how far the ground departs from the interpolation here says nothing about four metres away")
+		for _, term := range interpolation {
+			assert.Equal(t, TermIndependent, term.Kind)
+			assert.InDelta(t, roughness*0.5, term.Magnitude, 1e-12)
+		}
+	})
+
+	t.Run("refuses a fall with an end beyond the surveyed ground", func(t *testing.T) {
+		_, ok := surface.Fall(threshold, Point{30, 1, 0})
+		assert.False(t, ok, "there is no measurement out there")
+
+		_, ok = surface.Fall(Point{-30, 1, 0}, drain)
+		assert.False(t, ok)
+
+		_, ok = Surface{}.Fall(threshold, drain)
+		assert.False(t, ok)
+	})
+
+	t.Run("decides nothing against a budget which leaves the ground out", func(t *testing.T) {
+		bare := surfaceOf(t, graph, roverPatio, SurfaceDerivation{
+			Systematic: derivation.Systematic,
+		})
+
+		fall, ok := bare.Fall(threshold, drain)
+		require.True(t, ok)
+
+		require.Less(t, fall.Uncertainty(), 0.030, "the figure is well inside a requirement of thirty millimetres")
+		assert.False(t, fall.Decides(0.030), "a floor which passes a requirement passes it by leaving something out")
+
+		stated, ok := surface.Fall(threshold, drain)
+		require.True(t, ok)
+		assert.True(t, stated.Decides(0.030))
+		assert.False(t, stated.Decides(0), "a requirement which is not a figure decides nothing")
+	})
+
+	t.Run("says nothing about a pair of points nobody can be answered for", func(t *testing.T) {
+		assert.Equal(t, "no fall", Fall{}.String())
+		assert.Equal(t, "no fall", Fall{}.Report())
+		assert.Zero(t, Fall{}.Gradient())
+		assert.Zero(t, Fall{}.Uncertainty())
+	})
+}
+
+// The decision the patio fixture was surveyed for, and what it requires of the
+// answer.
+//
+// **Every figure here was settled before a surface was derived.** The fixture's
+// registry says so, and [docs/surface-accuracy-gate.md] states the reasoning: a
+// patio which does not fall away from the house does not drain, one which falls
+// too steeply is unpleasant to stand on, and the two limits are fifty
+// millimetres apart over the run the decision is made across. A requirement
+// settled afterwards is not a requirement — it is a description of whatever the
+// survey happened to achieve.
+const (
+	// patioGrade is the fall the patio was specified at: one in eighty away
+	// from the house, which over the run below is fifty millimetres.
+	patioGrade = 1.0 / 80.0
+
+	// patioRun is how far the decision is made over: threshold to drain edge.
+	patioRun = 4.0
+
+	// patioRequired is what the fall has to be known to, as a standard
+	// uncertainty in metres. Five millimetres at one sigma is ten at k = 2,
+	// which is a fifth of the gap between the two grades the decision is
+	// between — small enough that the decision turns on the patio rather than
+	// on the survey.
+	patioRequired = 0.005
+
+	// patioCoverage is what the requirement is restated at when it is reported
+	// to somebody who has to act on it.
+	patioCoverage = 2.0
+
+	// patioRoughness is how far a laid patio was stated to depart from a plane,
+	// one sigma per metre of distance from the nearest shot.
+	patioRoughness = 0.003
+
+	// patioSpacing is the grid both patios were surveyed on.
+	patioSpacingX = 1.5
+	patioSpacingY = 1.25
+)
+
+// patioThreshold and patioDrain are the two points the decision is made between
+// on the rover patio; the levelled one is the same ground ten metres east.
+var (
+	patioThreshold = Point{3.5, 5, 0}
+	patioDrain     = Point{3.5, 1, 0}
+)
+
+// patioSurvey is one of the two surveys of the same ground.
+type patioSurvey struct {
+	subject    ID
+	instrument string
+	precision  float64
+	session    ID
+	systematic float64
+	east       float64
+}
+
+// surfaceGolden returns the record held in testdata/surface/patio/name, having
+// first rewritten it from got when -update was passed.
+func surfaceGolden(t *testing.T, name string, got string) string {
+	t.Helper()
+
+	path := filepath.Join("testdata", "surface", "patio", name)
+	if *updateGolden {
+		require.NoError(t, os.WriteFile(path, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(want)
+}
+
+// TestPatioFallGate is the gate: the surface put to a decision with a stated
+// accuracy requirement, and the achieved accuracy measured against it.
+//
+// The mechanism being right does not make the answer usable, and this is where
+// that is found out. What comes back is recorded in the repository as
+// testdata/surface/patio/decision.txt, so the finding is a file somebody can
+// read and a diff somebody has to explain rather than a number in a transcript.
+func TestPatioFallGate(t *testing.T) {
+	surveys := []patioSurvey{
+		{
+			subject:    roverPatio,
+			instrument: "gnss-rtk",
+			precision:  0.021,
+			session:    roverSession,
+			systematic: 0.010,
+		},
+		{
+			subject:    levelledPatio,
+			instrument: "levelling",
+			precision:  0.002,
+			session:    levelledSession,
+			systematic: 0.003,
+			east:       10,
+		},
+	}
+
+	graph := loadPatioFixture(t)
+
+	measured := make(map[ID]Fall, len(surveys))
+
+	var out strings.Builder
+
+	requirement := Uncertainty{Magnitude: patioRequired, Unit: UnitMetre, CoverageFactor: 1}
+	widened, err := requirement.Widen(patioCoverage)
+	require.NoError(t, err)
+
+	out.WriteString("The decision, stated before any surface was derived\n")
+	fmt.Fprintf(&out, "  a patio must fall at least %s away from the house or it does not drain\n",
+		gradeText(patioGrade))
+	fmt.Fprintf(&out, "  the fall is decided over %.3f m of run, threshold to drain edge\n", patioRun)
+	fmt.Fprintf(&out, "  it must be known to %s, which is %s\n", figure(requirement), figure(widened))
+	fmt.Fprintf(&out, "  the ground departs from a laid plane by %.4f m per metre from the nearest shot\n",
+		patioRoughness)
+
+	for _, survey := range surveys {
+		surface := surfaceOf(t, graph, survey.subject, SurfaceDerivation{
+			Roughness:  patioRoughness,
+			Systematic: []SessionSystematic{{Session: survey.session, Magnitude: survey.systematic}},
+		})
+
+		east := func(at Point) Point { return Point{at[0] + survey.east, at[1], at[2]} }
+
+		fall, ok := surface.Fall(east(patioThreshold), east(patioDrain))
+		require.True(t, ok, "%s", survey.subject)
+
+		measured[survey.subject] = fall
+
+		// The shots on their own: the answer a survey of infinite density would
+		// give with this instrument, which is what says whether density is the
+		// constraint at all.
+		var shots []float64
+		for _, term := range fall.Budget().Terms() {
+			if term.Name != interpolationTerm {
+				shots = append(shots, term.Magnitude)
+			}
+		}
+		alone := allIndependent(shots...)
+
+		widenedFall, err := fall.Budget().Combined().Widen(patioCoverage)
+		require.NoError(t, err)
+
+		fmt.Fprintf(&out, "\n%s — %s, %s on a %.3f m by %.3f m grid, vertical precision %.3f m\n",
+			survey.subject, survey.instrument, plural(surface.Len(), "shot"),
+			patioSpacingX, patioSpacingY, survey.precision)
+
+		fmt.Fprintf(&out, "  the fall is %.4f m over %.3f m of run, which is %s\n",
+			fall.Value(), fall.Run(), gradeText(fall.Gradient()))
+		fmt.Fprintf(&out, "  known to %s, which is %s\n", figure(fall.Budget().Combined()), figure(widenedFall))
+		fmt.Fprintf(&out, "  each end on its own is worth %.4f m\n", fall.From().Uncertainty())
+
+		for _, term := range fall.Budget().Terms() {
+			line := fmt.Sprintf("    %-48s %.4f m %s", termText(term), term.Magnitude, remarkText(term))
+			fmt.Fprintf(&out, "%s\n", strings.TrimRight(line, " "))
+		}
+
+		fmt.Fprintf(&out, "  achieved %.4f m against a requirement of %.4f m, %.1f times it\n",
+			fall.Uncertainty(), patioRequired, fall.Uncertainty()/patioRequired)
+		fmt.Fprintf(&out, "  verdict: %s\n", decidesText(fall.Decides(patioRequired)))
+		fmt.Fprintf(&out, "  the shots alone are worth %.4f m, so a denser survey %s\n",
+			alone, reachText(alone <= patioRequired))
+
+		if alone <= patioRequired {
+			// How far from a shot the question may be asked before the ground
+			// between them uses up what the shots left of the budget, and the
+			// grid spacing which keeps every question inside that.
+			room := math.Sqrt((patioRequired*patioRequired - alone*alone) / 2)
+			reach := room / patioRoughness
+
+			fmt.Fprintf(&out, "  it holds out to %.3f m from the nearest shot, a grid of %.3f m\n",
+				reach, reach*math.Sqrt2)
+
+			worst := math.Hypot(patioSpacingX/2, patioSpacingY/2)
+			assert.Less(t, worst, reach,
+				"the grid surveyed keeps every point of the patio inside the reach the budget allows")
+		}
+	}
+
+	assert.Equal(t, surfaceGolden(t, "decision.txt", out.String()), out.String(),
+		"the outcome of the gate is recorded in the repository, and a change to it is a diff to explain")
+
+	rover, levelled := measured[roverPatio], measured[levelledPatio]
+
+	t.Run("misses the requirement at the density and instrument surveyed", func(t *testing.T) {
+		assert.False(t, rover.Decides(patioRequired))
+		assert.Greater(t, rover.Uncertainty(), patioRequired)
+	})
+
+	t.Run("misses it because of the instrument and not the density", func(t *testing.T) {
+		term, held := rover.Budget().Dominant()
+		require.True(t, held)
+
+		assert.Equal(t, TermIndependent, term.Kind)
+		assert.NotEqual(t, interpolationTerm, term.Name,
+			"the ground between the shots is a millimetre and a half of a twenty-one millimetre budget")
+
+		var shots []float64
+		for _, term := range rover.Budget().Terms() {
+			if term.Name != interpolationTerm {
+				shots = append(shots, term.Magnitude)
+			}
+		}
+
+		assert.Greater(t, allIndependent(shots...), patioRequired,
+			"the shots alone miss it, so no density of them would meet it")
+	})
+
+	t.Run("meets it on the same ground at the same density, levelled", func(t *testing.T) {
+		assert.True(t, levelled.Decides(patioRequired))
+		assert.Less(t, levelled.Uncertainty(), patioRequired)
+
+		term, held := levelled.Budget().Dominant()
+		require.True(t, held)
+		assert.Equal(t, interpolationTerm, term.Name,
+			"with an instrument this good the ground between the shots is what the budget is made of, "+
+				"which is where density starts to be the question")
+	})
+
+	t.Run("answers the same fall either way", func(t *testing.T) {
+		assert.InDelta(t, rover.Value(), levelled.Value(), 1e-9,
+			"the two patios are the same ground: what differs between the answers is what they are worth")
+		assert.InDelta(t, patioGrade*patioRun, rover.Value(), 1e-9)
+	})
+}
+
+// figure writes an uncertainty for the record: rounded to a tenth of a
+// millimetre, with the coverage factor it is stated at.
+//
+// It is rounded and [Uncertainty.String] is not, on purpose. This is a record
+// checked into the repository and compared byte for byte, and the last bits of a
+// float are where a compiler is free to fuse a multiply and an add on one
+// architecture and not on another. The figures the tests assert on are the full
+// ones; what is written down is the figure somebody acts on.
+func figure(uncertainty Uncertainty) string {
+	written := fmt.Sprintf("%.4f %s (k = %.0f", uncertainty.Magnitude, uncertainty.Unit, uncertainty.CoverageFactor)
+	if confidence, spelled := uncertainty.Confidence(); spelled {
+		written += ", " + confidence
+	}
+	return written + ")"
+}
+
+// termText is one budget term named for the record, without its magnitude, which
+// is written beside it to a fixed width.
+func termText(term SurfaceTerm) string {
+	name := term.Name
+	if name == interpolationTerm && len(term.From) > 0 {
+		name += " near " + string(term.From[0])
+	}
+	return string(term.Kind) + " " + name
+}
+
+// remarkText is what a term of nought has to say for itself.
+func remarkText(term SurfaceTerm) string {
+	switch {
+	case term.Magnitude != 0:
+		return ""
+	case term.Kind == TermSystematic:
+		return "(cancels: it is in both ends by the same amount)"
+	default:
+		return "(carries no weight here)"
+	}
+}
+
+// decidesText writes a verdict about a requirement the way the record reads it.
+func decidesText(decides bool) string {
+	if decides {
+		return "DECIDES"
+	}
+	return "DOES NOT DECIDE"
+}
+
+// reachText writes whether taking more shots is worth anything.
+func reachText(reaches bool) string {
+	if reaches {
+		return "reaches it"
+	}
+	return "cannot reach it"
 }

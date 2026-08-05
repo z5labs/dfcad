@@ -109,6 +109,14 @@ modelling a different subject, it is not an engine change.
   it comes back with, and asked again after a re-survey. It is where the
   systematic terms earn their keep: the arithmetic is spelled out beside the
   naive all-quadrature figure it must not equal.
+- [`docs/surface-accuracy-gate.md`](./docs/surface-accuracy-gate.md) — a derived
+  surface put to a decision: *does this patio fall enough to drain?*, with the
+  accuracy the decision needs stated before the surface was built and the
+  achieved accuracy measured against it. It is where the propagation through a
+  surface is spelled out — the shots in quadrature, the base station added once
+  and cancelling out of a difference, the ground between the shots charged by
+  distance — and it records a miss: the requirement is missed by a factor of
+  four, and survey density is not the reason.
 - [`docs/token-budget.md`](./docs/token-budget.md) — what the discovery path
   costs an agent, measured with a real tokenizer against a representative model,
   and how that compares with reading the files instead. It is regenerated from

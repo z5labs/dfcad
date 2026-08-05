@@ -3008,10 +3008,76 @@ func ExampleGraph_SurfaceWithin() {
 	//   position=position
 	//   minimum-points=3
 	//   ambiguous=excluded
+	//   roughness=unstated
+	//   systematic=none
 	// (4, 4) is at 100.120 m ± 0.014 m, from [shot:0001 shot:0005 shot:0006]
 	// (14, 8) is at 100.540 m ± 0.015 m, from [shot:0003 shot:0005 shot:0007]
 	// (19, 11) is outside the surveyed ground
 	// derived from [shot:0001 shot:0002 shot:0003 shot:0004 shot:0005 shot:0006 shot:0007 shot:0008]
+}
+
+// ExampleSurface_Fall shows a decision made against a derived surface: how much
+// the ground falls across a patio, and whether that is known well enough to
+// decide anything by.
+//
+// The requirement is stated first and in the same units as the answer. A fall
+// which has to be one in eighty over four metres is fifty millimetres of drop,
+// and the survey has to resolve that well enough for the decision to turn on the
+// patio rather than on the survey — here, five millimetres at one sigma.
+//
+// The part worth reading twice is the last line of the budget. Every shot of the
+// patio was taken in one occupation on one base station, and whatever that base
+// station is out by is in both ends of the fall by the same amount. It therefore
+// cancels: the difference is known better than either level it is the difference
+// of, and a caller who combined the two levels in quadrature would have counted
+// that error twice over and gone off to re-survey ground which was never the
+// problem.
+func ExampleSurface_Fall() {
+	graph, _ := dfcad.LoadGraph("testdata/surface/patio")
+
+	surface, _ := graph.SurfaceWithin("site:S-patio", dfcad.SurfaceDerivation{
+		Against: dfcad.Derivation{Tolerance: "boundary-closure", Position: "position"},
+
+		// What the project says about the ground between the shots, and what an
+		// afternoon on one base station is worth. Neither is in any file: the
+		// first is a property of the paving and the second of the setup, and a
+		// budget which assumed nought for either would be quietly optimistic.
+		Roughness: 0.003,
+		Systematic: []dfcad.SessionSystematic{
+			{Session: "session:2026-06-03-am", Magnitude: 0.010},
+		},
+	})
+
+	threshold, drain := dfcad.Point{3.5, 5, 0}, dfcad.Point{3.5, 1, 0}
+
+	fall, inside := surface.Fall(threshold, drain)
+	if !inside {
+		return
+	}
+
+	fmt.Printf("the patio falls %.3f m over %.1f m, which is %.0f mm of drop\n",
+		fall.Value(), fall.Run(), fall.Value()*1000)
+	fmt.Printf("each level on its own is worth %.4f m\n", fall.From().Uncertainty())
+	fmt.Printf("the fall between them is worth %.4f m\n", fall.Uncertainty())
+
+	for _, term := range fall.Budget().Terms() {
+		if term.Kind == dfcad.TermSystematic {
+			fmt.Printf("%s: %.4f m\n", term.Name, term.Magnitude)
+		}
+	}
+
+	// Which is the whole point of asking: the answer is measured against a
+	// requirement somebody stated, and it does not meet it.
+	fmt.Println("decides a fall known to 5 mm:", fall.Decides(0.005))
+	fmt.Println("decides a fall known to 30 mm:", fall.Decides(0.030))
+
+	// Output:
+	// the patio falls 0.050 m over 4.0 m, which is 50 mm of drop
+	// each level on its own is worth 0.0182 m
+	// the fall between them is worth 0.0215 m
+	// session:2026-06-03-am: 0.0000 m
+	// decides a fall known to 5 mm: false
+	// decides a fall known to 30 mm: true
 }
 
 func ExampleValidateAppendOnly() {

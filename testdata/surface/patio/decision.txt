@@ -1,0 +1,40 @@
+The decision, stated before any surface was derived
+  a patio must fall at least 1 in 80.0 away from the house or it does not drain
+  the fall is decided over 4.000 m of run, threshold to drain edge
+  it must be known to 0.0050 m (k = 1, ≈ 68%), which is 0.0100 m (k = 2, ≈ 95%)
+  the ground departs from a laid plane by 0.0030 m per metre from the nearest shot
+
+site:S-patio — gnss-rtk, 25 shots on a 1.500 m by 1.250 m grid, vertical precision 0.021 m
+  the fall is 0.0500 m over 4.000 m of run, which is 1 in 80.0
+  known to 0.0215 m (k = 1, ≈ 68%), which is 0.0430 m (k = 2, ≈ 95%)
+  each end on its own is worth 0.0182 m
+    independent shot:0018                            0.0084 m
+    independent shot:0019                            0.0000 m (carries no weight here)
+    independent shot:0023                            0.0126 m
+    independent shot:0003                            0.0126 m
+    independent shot:0004                            0.0000 m (carries no weight here)
+    independent shot:0008                            0.0084 m
+    independent interpolation near shot:0023         0.0015 m
+    independent interpolation near shot:0003         0.0015 m
+    systematic session:2026-06-03-am                 0.0000 m (cancels: it is in both ends by the same amount)
+  achieved 0.0215 m against a requirement of 0.0050 m, 4.3 times it
+  verdict: DOES NOT DECIDE
+  the shots alone are worth 0.0214 m, so a denser survey cannot reach it
+
+site:S-patio-levelled — levelling, 25 shots on a 1.500 m by 1.250 m grid, vertical precision 0.002 m
+  the fall is 0.0500 m over 4.000 m of run, which is 1 in 80.0
+  known to 0.0029 m (k = 1, ≈ 68%), which is 0.0059 m (k = 2, ≈ 95%)
+  each end on its own is worth 0.0037 m
+    independent shot:0118                            0.0008 m
+    independent shot:0119                            0.0000 m (carries no weight here)
+    independent shot:0123                            0.0012 m
+    independent shot:0103                            0.0012 m
+    independent shot:0104                            0.0000 m (carries no weight here)
+    independent shot:0108                            0.0008 m
+    independent interpolation near shot:0123         0.0015 m
+    independent interpolation near shot:0103         0.0015 m
+    systematic session:2026-06-04-am                 0.0000 m (cancels: it is in both ends by the same amount)
+  achieved 0.0029 m against a requirement of 0.0050 m, 0.6 times it
+  verdict: DECIDES
+  the shots alone are worth 0.0020 m, so a denser survey reaches it
+  it holds out to 1.076 m from the nearest shot, a grid of 1.522 m
