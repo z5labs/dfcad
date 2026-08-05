@@ -1,0 +1,8 @@
+# One afternoon on two grids, only one of which is tied to the site.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:0001 2026-05-07T13:02:11Z frame:site 4.000 4.000 0.000 method:total-station fix:observed 0.008 0.014 1.500 session:2026-05-07-pm
+obs shot:0002 2026-05-07T13:05:40Z frame:orphan 1.000 1.000 0.000 method:total-station fix:observed 0.008 0.014 1.500 session:2026-05-07-pm
+obs shot:0003 2026-05-07T13:08:22Z frame:orphan 2.000 1.500 0.000 method:total-station fix:observed 0.008 0.014 1.500 session:2026-05-07-pm
+obs shot:0004 2026-05-07T13:11:07Z frame:paddock 2.000 2.000 0.000 method:total-station fix:observed 0.008 0.014 1.500 session:2026-05-07-pm
+obs shot:0005 2026-05-07T13:14:52Z frame:paddock 20.000 20.000 0.000 method:total-station fix:observed 0.008 0.014 1.500 session:2026-05-07-pm

@@ -1,0 +1,71 @@
+; One plot which is drawn and one which is not.
+;
+; The shed is a semantic node covering area which references no loop, which is
+; what a thing looks like between somebody deciding it exists and somebody going
+; out to measure it. A membership query asked of it has nothing to test a
+; coordinate against, and says that rather than reporting that nothing is inside
+; it — "no answer" and "the answer is none" are different states and only one of
+; them is worth acting on.
+
+(vertex geom:V-01
+  (label "Plot, south-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-05-06")))
+(vertex geom:V-02
+  (label "Plot, south-east corner")
+  (frame frame:site)
+  (position
+    (value (10.0 0.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-05-06")))
+(vertex geom:V-03
+  (label "Plot, north-east corner")
+  (frame frame:site)
+  (position
+    (value (10.0 8.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-05-06")))
+(vertex geom:V-04
+  (label "Plot, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 8.0 0.0) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-05-06")))
+
+(edge geom:E-01 (label "Plot, south boundary") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Plot, east boundary") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Plot, north boundary") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Plot, west boundary") (frame frame:site) (vertices geom:V-04 geom:V-01))
+
+(loop geom:L-01
+  (label "Plot boundary")
+  (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(node site:S-plot
+  (label "The plot")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01)
+  (observed-in "observations/2026-05-07-stranded.obs"))
+
+(node site:S-shed
+  (label "Shed, decided on and not yet measured")
+  (kind Space)
+  (type Yard)
+  (geometry area)
+  (frame frame:site))

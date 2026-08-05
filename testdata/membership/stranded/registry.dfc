@@ -1,0 +1,77 @@
+; The vocabulary of a model with a corner of the survey nobody has tied in yet.
+;
+; frame:orphan is declared with a parent and measured by nothing. That is a
+; diagnostic the load reports, and it is deliberately still here: an afternoon
+; shot on a grid whose fit to the site has not been reduced is an ordinary
+; state for a project to be in for a week, and the question this fixture asks is
+; what a membership query does with those shots — not whether the model is
+; finished.
+;
+; The answer is that it says so, once, naming the frame and how much evidence is
+; stranded in it. A coordinate in a frame nothing relates to the region's frame
+; is not outside the region and is not nearly inside it: it has no relationship
+; to that boundary at all.
+;
+; frame:paddock is the softer version of the same defect. It is fitted to the
+; site and the fit states no accuracy, so a coordinate can be carried across it
+; and how well it arrives is a number nobody wrote down. A shot carried across a
+; transform like that is never confidently inside anything: it is reported, and
+; the band it would have been judged against comes back as one which could not be
+; arrived at. A shot on that grid which lands well clear of the plot is still no
+; result, because the two terms which were stated — the tolerance and the shot's
+; own precision — are what a shot has to be filtered on when the third is missing.
+(project
+  (label "Stranded frame fixture")
+  (globalid-namespace "https://example.org/models/stranded"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace fix (description "Fix qualities an instrument reports."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "How a value was obtained."))
+(namespace session (description "Field occupations: one setup, one crew, one afternoon."))
+(namespace shot (description "Observation records issued by the field crew."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(frame frame:orphan
+  (label "A grid whose fit to the site has not been reduced")
+  (unit m)
+  (parent frame:site))
+
+(frame frame:paddock
+  (label "A grid fitted to the site by a measurement stating no accuracy")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0002)
+  (frame-transform
+    (id survey:C-0002)
+    (value
+      (transform
+        (translation 2.0 2.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Field note, unreduced")
+    (method method:total-station)
+    (date "2026-05-07")))
+
+(type Yard
+  (kind Space)
+  (geometry area)
+  (description "Open ground around a dwelling."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

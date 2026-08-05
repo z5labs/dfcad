@@ -367,6 +367,18 @@ func newObservationStore(root string, registry *Registry) *observationStore {
 // rather than for the reading: a file which is not there is reported in the
 // words the load reports it in, naming the thing whose evidence is missing.
 func (s *observationStore) log(subject ID, links []ObservationLink) (*ObservationLog, []Diagnostic) {
+	return s.gather(links, func(string) ID { return subject })
+}
+
+// gather is [observationStore.log] with the entity a link belongs to looked up
+// per path rather than fixed for the whole call.
+//
+// It is what reads a set of links nobody wrote as a set — the whole model's,
+// which is every entity's put together ([Graph.AllObservations]). Merging them
+// first and then reporting against one entity would lose which node named the
+// file which is not there, and "something links to a file which is missing" is
+// not a diagnostic anybody can act on.
+func (s *observationStore) gather(links []ObservationLink, wrote func(clean string) ID) (*ObservationLog, []Diagnostic) {
 	if s == nil || len(links) == 0 {
 		return newObservationLog(), nil
 	}
@@ -408,7 +420,7 @@ func (s *observationStore) log(subject ID, links []ObservationLink) (*Observatio
 		// about the entity which wrote it.
 		if problems := checkObservationLink(s.root, link); len(problems) > 0 {
 			for _, problem := range problems {
-				diags = append(diags, observationLinkDiagnostic(problem, subject, link, Span{}))
+				diags = append(diags, observationLinkDiagnostic(problem, wrote(paths[i]), link, Span{}))
 			}
 			continue
 		}
@@ -491,6 +503,49 @@ func (g *Graph) Observations(entity Entity) (*ObservationLog, []Diagnostic) {
 		return newObservationLog(), nil
 	}
 	return g.observations.log(entity.ID(), entity.ObservedIn())
+}
+
+// AllObservations returns the records of every observation file the model links
+// to, as one log, with whatever is wrong with them.
+//
+// It is the corpus a question about the model rather than about one entity is
+// answered from — which shots fall inside this region
+// ([Graph.ObservationsWithin]) is the case it exists for. A file linked by two
+// entities is read once and its records appear once, because the records are
+// the field work and not the links to it.
+//
+// **This reads every observation file the model links to**, which is precisely
+// what [Graph.Observations] exists to avoid doing on a caller's behalf. Nothing
+// calls it as part of loading a model, and a command which asks a question about
+// one entity should ask [Graph.Observations] instead. Reading is still done once
+// for the life of the graph.
+//
+// The order is the order a walk reads the files in — the lexical order of their
+// paths, then the order of the lines within each — which is what makes "earlier
+// in the log", and so which retirement retires what, one question with one
+// answer.
+func (g *Graph) AllObservations() (*ObservationLog, []Diagnostic) {
+	if g == nil {
+		return newObservationLog(), nil
+	}
+
+	var (
+		links []ObservationLink
+		wrote = make(map[string]ID)
+	)
+
+	for entity := range g.entities() {
+		for _, link := range entity.ObservedIn() {
+			clean := path.Clean(link.Path)
+			if _, seen := wrote[clean]; seen {
+				continue
+			}
+			wrote[clean] = entity.ID()
+			links = append(links, link)
+		}
+	}
+
+	return g.observations.gather(links, func(clean string) ID { return wrote[clean] })
 }
 
 // ObservationFiles returns the paths of every observation file the model links
