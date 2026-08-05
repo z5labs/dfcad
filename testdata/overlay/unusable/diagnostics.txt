@@ -1,0 +1,8 @@
+testdata/overlay/unusable/model.dfc:50:7: error: expected the loop geom:L-01 not to cross itself, found the segment geom:V-012 to geom:V-013 crossing geom:V-014 to geom:V-011 at (2.0 1.5 0.0) m
+50 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a ring which crosses itself encloses no one region; the signed sum over it counts the parts either side of the crossing against each other, which is a number and is not an area
+testdata/overlay/unusable/model.dfc:103:7: error: expected the loop geom:L-02 to enclose an area, found one of zero: its corners all lie on one line
+103 | (loop geom:L-02
+    |       ^^^^^^^^^
+    = hint: an area of zero here is the arithmetic being right about a shape which is wrong; a ring needs three corners which are not collinear before it encloses anything

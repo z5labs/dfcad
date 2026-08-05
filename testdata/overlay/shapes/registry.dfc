@@ -1,0 +1,59 @@
+; The vocabulary the model beside this file is overlaid against.
+;
+; The tolerance is the one thing here an operation cannot be run without. Two
+; corners closer together than it are one corner, an offset is drawn to a circle
+; within it, and a result narrower than it is not a shape — so how close is close
+; enough is a decision this project wrote down and never one the engine made.
+;
+; The annex is a second frame so that two regions in different frames can be put
+; to an operation and refused. It is in the same unit as the building and is
+; still a different frame: a coordinate means nothing without the frame it was
+; written in, and sharing a unit is not sharing an origin.
+(project
+  (label "Overlay fixture")
+  (globalid-namespace "https://example.org/models/overlay"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:building)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 30.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-20")))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

@@ -2423,3 +2423,106 @@ func ExamplePolicy() {
 	// ignored boundary-moved-without-claim
 	// failure is still what an id which vanished means
 }
+
+// ExampleTopology_RegionOf reads the area two rooms cover and overlays them,
+// which is the question a setback or a clearance is asked as: not how big is
+// this, but what is left of it once that is taken out.
+//
+// Nothing about what a region covers is stored. It is read back out of the
+// loops bounding the node every time it is asked for, so an overlap cannot
+// disagree with the geometry it was computed from.
+func ExampleTopology_RegionOf() {
+	root := "testdata/overlay/shapes"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	first, _ := nodes.Node("site:S-01")
+	second, _ := nodes.Node("site:S-02")
+
+	room, _ := topology.RegionOf(first, boundaries, survey)
+	store, _ := topology.RegionOf(second, boundaries, survey)
+
+	shared, _ := room.Intersect(store)
+	both, _ := room.Union(store)
+	rest, _ := room.Difference(store)
+
+	fmt.Println(shared)
+	fmt.Println(both)
+	fmt.Println(rest)
+
+	// How the two sit against each other, which "not inside" does not say: each
+	// of them reaches outside the other.
+	containment, _ := room.Containment(store)
+	fmt.Printf("%s and %s are %s\n", room.Subject(), store.Subject(), containment)
+
+	// Output:
+	// the region derived from site:S-01: area 4.0 m², 1 piece
+	// the region derived from site:S-01: area 24.0 m², 1 piece
+	// the region derived from site:S-01: area 8.0 m², 1 piece
+	// site:S-01 and site:S-02 are overlapping
+}
+
+// ExampleRegion_Buffer offsets a floor plate outwards and inwards, which are the
+// setback question and the clearance one and are the same construction run
+// either way round.
+//
+// The plate has a courtyard in it, and both offsets do the right thing to it
+// without anything having to say which of the two rings is the hole: growing the
+// plate shrinks the courtyard, and shrinking the plate grows it.
+func ExampleRegion_Buffer() {
+	root := "testdata/overlay/shapes"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	node, _ := nodes.Node("site:S-04")
+	plate, _ := topology.RegionOf(node, boundaries, survey)
+
+	fmt.Println(plate)
+
+	for _, distance := range []float64{1, -1} {
+		offset, _ := plate.Buffer(distance)
+
+		// One piece with one hole either way round. Growing the plate by a metre
+		// shrinks the courtyard by one, and shrinking the plate by a metre grows
+		// the courtyard by one — which is the same offset applied to the whole of
+		// the boundary rather than two rules about two rings.
+		bounds, _ := offset.Bounds()
+		fmt.Printf("offset by %g m: %.2f m², %d hole, reaching %s\n",
+			distance, offset.Area(), len(offset.Pieces()[0].Holes()), bounds)
+	}
+
+	// An inward offset which eats a shape returns a region covering nothing,
+	// which is the answer rather than a failure: a corridor 400 mm wide has
+	// nothing 300 mm clear of both of its walls.
+	corridor, _ := nodes.Node("site:S-07")
+	thin, _ := topology.RegionOf(corridor, boundaries, survey)
+
+	collapsed, _ := thin.Buffer(-0.3)
+	fmt.Println(collapsed.Empty(), collapsed.Area())
+
+	// Output:
+	// site:S-04: area 84.0 m², 1 piece, 1 hole
+	// offset by 1 m: 139.12 m², 1 hole, reaching (9.0 -1.0 0.0) to (21.0 11.0 0.0) m
+	// offset by -1 m: 28.88 m², 1 hole, reaching (11.0 1.0 0.0) to (19.0 9.0 0.0) m
+	// true 0
+}
