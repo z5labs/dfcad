@@ -1,0 +1,142 @@
+; The models a check meets before anybody has finished drawing one: a storey
+; with one room in it, a storey with none, a node whose type says it has an area
+; and which references no outline, and a zone which groups without enclosing.
+;
+; None of these is malformed and every one of them loads. What each check does
+; with them is a decision rather than an accident, so it is written down here and
+; asserted next door: three of them are failures a gate should report and the
+; rest are rules which hold of a model nobody has subdivided yet.
+
+; One four by four square, which is every shape this fixture has. It bounds the
+; storey, the one room in it and the zone below, because a loop bounds any
+; number of nodes and two storeys with identical plates are one drawing.
+(vertex geom:V-01 (label "Plate, south-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Plate, south-east corner") (frame frame:building)
+  (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "Plate, north-east corner") (frame frame:building)
+  (position (value (4.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "Plate, north-west corner") (frame frame:building)
+  (position (value (0.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01 (label "Plate, south side") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Plate, east side") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Plate, north side") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+; An edge which says nothing backs it. That is a virtual boundary — the open
+; line between a foyer and a dining room — and it is as ordinary as a wall.
+(edge geom:E-04
+  (label "Plate, west side")
+  (frame frame:building)
+  (vertices geom:V-04 geom:V-01)
+  (assert edge-backing-resolves))
+
+(loop geom:L-20 (label "Plate outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; A storey with one room in it. There is no second shape for the one room to
+; overlap, and the one room is the whole of the storey, so both rules about what
+; it contains hold.
+(node site:L-02
+  (label "Level 2")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-20)
+  (assert contained-areas-do-not-overlap (tolerance boundary-closure) (position position))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+(node site:S-201
+  (label "Level 2 open plan")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-02)
+  (boundary geom:L-20))
+
+; A storey nobody has divided up yet. Nothing was subdivided, so there is no
+; subdivision to disagree with the whole and the rule holds of it.
+(node site:L-03
+  (label "Level 3")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-20)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+; A storey whose type declares an area and which references no outline. There is
+; nothing for its contents to add up to, which is a failure and not a pass —
+; while the rule about the loops bounding it holds, because it has none which do
+; not close.
+(node site:L-04
+  (label "Level 4")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (assert boundary-loops-close (tolerance boundary-closure) (position position))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+; A room with no outline, told to stay clear of a zone which has one: there is
+; no shape to hold the rule of, which the check says rather than passing.
+(node site:S-401
+  (label "Level 4 open plan")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-04)
+  (assert stays-clear-of-zone (zone site:Z-41) (tolerance boundary-closure) (position position)))
+
+; A room with an outline, told to stay clear of a zone which has none: nothing
+; can cross into a zone which encloses nothing, so the rule as written cannot be
+; decided either way and the check says so.
+(node site:S-402
+  (label "Level 2 store")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-20)
+  (assert stays-clear-of-zone (zone site:Z-40) (tolerance boundary-closure) (position position)))
+
+(node site:Z-40
+  (label "Occupancy zone")
+  (kind Zone)
+  (type Setback)
+  (geometry area)
+  (frame frame:building))
+
+(node site:Z-41
+  (label "Northern setback")
+  (kind Zone)
+  (type Setback)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-20))
+
+; A pump already in the frame the answer is wanted in. No transform is applied,
+; so there is nothing to be uncertain about — and an exact zero is the one figure
+; a budget never reports.
+(node site:A-02
+  (label "Level 2 pump")
+  (kind Element)
+  (type Fixture)
+  (frame frame:building)
+  (assert cross-frame-budget-holds (frame frame:building) (limit frame-budget)))

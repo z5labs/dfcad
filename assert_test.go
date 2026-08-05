@@ -565,7 +565,7 @@ func TestRunningTheAssertionsOfAModel(t *testing.T) {
 	graph := loadValidAssertFixture(t, "valid", registeredChecks)
 
 	set := newCheckSet(
-		boundaryLoopsClose{},
+		declaredOnly{boundaryLoopsClose{}},
 		requiredClaim{},
 		withinResolves{},
 		runnableEdgeEndpointsDiffer{},

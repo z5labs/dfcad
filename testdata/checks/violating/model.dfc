@@ -1,0 +1,241 @@
+; A model which breaks one rule of each check the engine implements, so that
+; what a run reports about each of them is what a fixture holds rather than what
+; a test constructed.
+;
+; Every failure here is a shape or a reference which loads perfectly well. That
+; is the point: a loop which does not close, two rooms drawn over one another,
+; parts which do not add up to the whole, a fit too loose for the answer it is
+; used for and a building in a setback are all well-formed files, and nothing
+; short of running the rules finds any of them.
+
+; The floor plate, six by four: twenty-four square metres of storey for the two
+; rooms below to divide up between them.
+(vertex geom:V-01 (label "Level, south-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Level, south-east corner") (frame frame:building)
+  (position (value (6.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "Level, north-east corner") (frame frame:building)
+  (position (value (6.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "Level, north-west corner") (frame frame:building)
+  (position (value (0.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+; Room A's east wall, at four metres, and room B's west wall, at three: the
+; metre between them is drawn into both rooms.
+(vertex geom:V-05 (label "Room A, south-east corner") (frame frame:building)
+  (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-06 (label "Room A, north-east corner") (frame frame:building)
+  (position (value (4.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-07 (label "Room B, south-west corner") (frame frame:building)
+  (position (value (3.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-08 (label "Room B, north-west corner") (frame frame:building)
+  (position (value (3.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+; The store's corners. Its last edge stops three hundred millimetres short of
+; the corner its first began at, which is sixty times the closure tolerance.
+(vertex geom:V-09 (label "Store, corner 1") (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-10 (label "Store, corner 2") (frame frame:building)
+  (position (value (12.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-11 (label "Store, corner 3") (frame frame:building)
+  (position (value (12.0 2.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-12 (label "Store, corner 4") (frame frame:building)
+  (position (value (10.0 2.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-13 (label "Store, corner 5") (frame frame:building)
+  (position (value (10.0 0.3 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+; The setback strip, from five metres to eight: room B is drawn a metre into it.
+(vertex geom:V-14 (label "Setback, corner 1") (frame frame:building)
+  (position (value (5.0 0.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-15 (label "Setback, corner 2") (frame frame:building)
+  (position (value (8.0 0.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-16 (label "Setback, corner 3") (frame frame:building)
+  (position (value (8.0 4.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-17 (label "Setback, corner 4") (frame frame:building)
+  (position (value (5.0 4.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+
+; The level's outline. Its west wall and its east wall are each traversed by a
+; room as well, which is one edge referenced from two loops rather than two
+; edges saying the same thing.
+(edge geom:E-01 (label "Level, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Level, east wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Level, north wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Level, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-10 (label "Level outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(edge geom:E-05 (label "Room A, south wall") (frame frame:building) (vertices geom:V-01 geom:V-05))
+(edge geom:E-06 (label "Room A, east wall") (frame frame:building) (vertices geom:V-05 geom:V-06))
+(edge geom:E-07 (label "Room A, north wall") (frame frame:building) (vertices geom:V-06 geom:V-04))
+(loop geom:L-11 (label "Room A outline") (frame frame:building)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-04))
+
+(edge geom:E-09 (label "Room B, south wall") (frame frame:building) (vertices geom:V-07 geom:V-02))
+(edge geom:E-11 (label "Room B, north wall") (frame frame:building) (vertices geom:V-03 geom:V-08))
+(edge geom:E-12 (label "Room B, west wall") (frame frame:building) (vertices geom:V-08 geom:V-07))
+(loop geom:L-12 (label "Room B outline") (frame frame:building)
+  (edges geom:E-09 geom:E-02 geom:E-11 geom:E-12))
+
+(edge geom:E-13 (label "Store, side 1") (frame frame:building) (vertices geom:V-09 geom:V-10))
+(edge geom:E-14 (label "Store, side 2") (frame frame:building) (vertices geom:V-10 geom:V-11))
+(edge geom:E-15 (label "Store, side 3") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-16 (label "Store, side 4") (frame frame:building) (vertices geom:V-12 geom:V-13))
+(loop geom:L-13 (label "Store outline") (frame frame:building)
+  (edges geom:E-13 geom:E-14 geom:E-15 geom:E-16))
+
+(edge geom:E-17 (label "Setback, side 1") (frame frame:building) (vertices geom:V-14 geom:V-15))
+(edge geom:E-18 (label "Setback, side 2") (frame frame:building) (vertices geom:V-15 geom:V-16))
+(edge geom:E-19 (label "Setback, side 3") (frame frame:building) (vertices geom:V-16 geom:V-17))
+(edge geom:E-20 (label "Setback, side 4") (frame frame:building) (vertices geom:V-17 geom:V-14))
+(loop geom:L-14 (label "Setback outline") (frame frame:building)
+  (edges geom:E-17 geom:E-18 geom:E-19 geom:E-20))
+
+; The storey states both rules about what it contains: that the rooms in it do
+; not overlap, and that they add up to it. They do neither.
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-10)
+  (assert contained-areas-do-not-overlap (tolerance boundary-closure) (position position))
+  (assert contained-areas-do-not-overlap
+    (tolerance boundary-closure)
+    (position position)
+    (kind Element))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-11))
+
+(node site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-12)
+  (assert stays-clear-of-zone (zone site:Z-90) (tolerance boundary-closure) (position position)))
+
+(node site:S-901
+  (label "Store")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-13)
+  (assert boundary-loops-close (tolerance boundary-closure) (position position)))
+
+; A room set out in the annex, drawn in the annex's own frame. Nothing here
+; converts between frames, so its area is not a figure of the same shape in the
+; frame the storey below is drawn in, and the rule which would add it in refuses
+; rather than adding a number to a number.
+(vertex geom:V-21 (label "Annex room, corner 1") (frame frame:annex)
+  (position (value (0.0 0.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(vertex geom:V-22 (label "Annex room, corner 2") (frame frame:annex)
+  (position (value (2.0 0.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(vertex geom:V-23 (label "Annex room, corner 3") (frame frame:annex)
+  (position (value (2.0 2.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(vertex geom:V-24 (label "Annex room, corner 4") (frame frame:annex)
+  (position (value (0.0 2.0 0.0) m) (source "Annex control set AC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-03-04")))
+(edge geom:E-21 (label "Annex room, side 1") (frame frame:annex) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "Annex room, side 2") (frame frame:annex) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "Annex room, side 3") (frame frame:annex) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "Annex room, side 4") (frame frame:annex) (vertices geom:V-24 geom:V-21))
+(loop geom:L-15 (label "Annex room outline") (frame frame:annex)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+
+; A second storey on the same plate as the first, holding the annex room.
+(node site:L-05
+  (label "Level 1 annex")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-10)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)))
+
+(node site:S-501
+  (label "Annex meeting room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:annex)
+  (within site:L-05)
+  (boundary geom:L-15))
+
+; The same outline, with the rule written on a node which does not say which
+; predicate carries a position. The loop is as open as it was, and the check says
+; so — with a gap it cannot put a number to, which is what is true rather than a
+; pass on a model nobody gave coordinates for.
+(node site:S-902
+  (label "Store, as recorded before the survey")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-13)
+  (assert boundary-loops-close (tolerance boundary-closure)))
+
+; A wall inside the storey, with no outline of its own. It is a content of the
+; storey like the rooms are, and the rules about what the storey contains leave
+; it out: a check about what covers ground has nothing to say about a node which
+; covers none.
+(node site:W-01
+  (label "Partition between the rooms")
+  (kind Element)
+  (type Fixture)
+  (frame frame:building)
+  (within site:L-01))
+
+(node site:Z-90
+  (label "Northern setback")
+  (kind Zone)
+  (type Setback)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-14))
+
+; Nothing about the pump has to be measured for this to fail: the fit between
+; the frame it was set out in and the one the answer is wanted in is looser than
+; the limit, whatever is asked of it.
+(node site:A-01
+  (label "Annex pump")
+  (kind Element)
+  (type Fixture)
+  (frame frame:annex)
+  (assert cross-frame-budget-holds (frame frame:building) (limit frame-budget)))

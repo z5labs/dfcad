@@ -408,9 +408,14 @@ func ExampleChecks() {
 	}
 
 	// Output:
-	// boundary-loops-close (tolerance <tolerance>)
+	// boundary-loops-close (tolerance <tolerance>) (position <predicate>)
+	// contained-areas-do-not-overlap (tolerance <tolerance>) (position <predicate>) (kind <kind>)
+	// contained-areas-sum (tolerance <tolerance>) (area-tolerance <tolerance>) (position <predicate>) (kind <kind>)
+	// cross-frame-budget-holds (frame <frame>) (limit <tolerance>)
+	// edge-backing-resolves
 	// edge-endpoints-differ
 	// required-claim (predicate <predicate>)
+	// stays-clear-of-zone (zone <id>) (tolerance <tolerance>) (position <predicate>)
 	// within-resolves
 	// zone-members-resolve
 }
@@ -481,11 +486,14 @@ func ExampleRules_Run() {
 
 	run := rules.Run()
 
-	// Every check the engine registers declares what it constrains and takes;
-	// what implements them is the initial check set. So these rules are bound,
-	// listed and counted, and until then they decide nothing — which is not the
-	// same answer as a model whose rules all hold.
+	// Every check the engine registers declares what it constrains and takes,
+	// and some of them have an implementation to run. So a run reports three
+	// answers rather than two: the room references no loop, so the check which
+	// reads its outline finds nothing to disagree with and passes, while the two
+	// rules naming a check nothing implements decide nothing — which is not the
+	// same answer as a rule which held.
 	fmt.Println("rules:", run.Rules)
+	fmt.Println("passed:", run.Passed)
 	fmt.Println("undecided:", run.Rules-run.Ran)
 	fmt.Println("failed:", run.Failed)
 
@@ -494,8 +502,31 @@ func ExampleRules_Run() {
 	// site:S-102 required-claim (predicate width)
 	// site:S-101 boundary-loops-close (tolerance boundary-closure)
 	// rules: 3
-	// undecided: 3
+	// passed: 1
+	// undecided: 2
 	// failed: 0
+}
+
+func ExampleRules_Run_structuralInvariants() {
+	graph, _ := dfcad.LoadGraph("testdata/checks/violating")
+
+	// Every failure below is a file which loads. A loop which does not close,
+	// two rooms drawn over one another, parts which do not add up to the whole,
+	// a part drawn in another frame, a fit too loose for the answer it is used
+	// for and a room in a setback are all well-formed models, and nothing short
+	// of running the rules finds any of them.
+	for _, violation := range graph.Rules().Run().Violations {
+		fmt.Printf("%s — %s\n", violation.Check, violation.Message)
+	}
+
+	// Output:
+	// contained-areas-do-not-overlap — expected no two of the shapes within site:L-01 to cover the same ground, found site:S-101 and site:S-102 overlapping by 4.0 m²
+	// contained-areas-sum — expected what site:L-01 contains to add up to its own 24.0 m², found 28.0 m², which is 4.0 m² more than the whole
+	// stays-clear-of-zone — expected site:S-102 to stay clear of the zone site:Z-90, found it crossing into it over 4.0 m²
+	// boundary-loops-close — expected the loop geom:L-13 to close, found a gap of 0.3 m between geom:V-13 and geom:V-09
+	// contained-areas-sum — expected everything summed into site:L-05 to be declared in frame:building, the frame it is drawn in, found site:S-501 in frame:annex
+	// boundary-loops-close — expected the loop geom:L-13 to close, found a gap between geom:V-13 and geom:V-09 whose size could not be measured
+	// cross-frame-budget-holds — expected site:A-01 in frame:building to be known to within 0.008 m, found a combined uncertainty of 0.01 m (k = 1.0, ≈ 68%) accumulated from 2 terms
 }
 
 func ExampleGraph_Assertions() {
