@@ -1,0 +1,41 @@
+# The morning the patio was picked up on the rover.
+#
+# Twenty-five shots on a 1.5 m by 1.25 m grid, which is a dense survey of a patio
+# by any measure and is the density the gate is decided at. Every one of them
+# falls on the plane z = 100 + 0.0125y — the ground drops one in eighty away from
+# the house wall along y = 6 — so a level read off the derived surface anywhere
+# inside them has an arithmetic answer a test can state rather than a number
+# somebody copied out of a run.
+#
+# Nothing here is noisy on purpose. What this file is for is the *budget* of an
+# answer, not the residual of one: every shot states the precision the instrument
+# reported for it, and what a whole afternoon on one base station is worth is
+# stated on the derivation, because no line of this format carries it.
+#
+# id at frame x y z method fix h-precision v-precision antenna session
+
+obs shot:0001 2026-06-03T09:00:00Z frame:site 0.500 0.500 100.006250 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0002 2026-06-03T09:03:00Z frame:site 2.000 0.500 100.006250 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0003 2026-06-03T09:06:00Z frame:site 3.500 0.500 100.006250 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0004 2026-06-03T09:09:00Z frame:site 5.000 0.500 100.006250 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0005 2026-06-03T09:12:00Z frame:site 6.500 0.500 100.006250 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0006 2026-06-03T09:15:00Z frame:site 0.500 1.750 100.021875 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0007 2026-06-03T09:18:00Z frame:site 2.000 1.750 100.021875 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0008 2026-06-03T09:21:00Z frame:site 3.500 1.750 100.021875 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0009 2026-06-03T09:24:00Z frame:site 5.000 1.750 100.021875 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0010 2026-06-03T09:27:00Z frame:site 6.500 1.750 100.021875 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0011 2026-06-03T09:30:00Z frame:site 0.500 3.000 100.037500 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0012 2026-06-03T09:33:00Z frame:site 2.000 3.000 100.037500 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0013 2026-06-03T09:36:00Z frame:site 3.500 3.000 100.037500 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0014 2026-06-03T09:39:00Z frame:site 5.000 3.000 100.037500 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0015 2026-06-03T09:42:00Z frame:site 6.500 3.000 100.037500 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0016 2026-06-03T09:45:00Z frame:site 0.500 4.250 100.053125 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0017 2026-06-03T09:48:00Z frame:site 2.000 4.250 100.053125 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0018 2026-06-03T09:51:00Z frame:site 3.500 4.250 100.053125 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0019 2026-06-03T09:54:00Z frame:site 5.000 4.250 100.053125 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0020 2026-06-03T09:57:00Z frame:site 6.500 4.250 100.053125 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0021 2026-06-03T10:00:00Z frame:site 0.500 5.500 100.068750 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0022 2026-06-03T10:03:00Z frame:site 2.000 5.500 100.068750 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0023 2026-06-03T10:06:00Z frame:site 3.500 5.500 100.068750 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0024 2026-06-03T10:09:00Z frame:site 5.000 5.500 100.068750 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am
+obs shot:0025 2026-06-03T10:12:00Z frame:site 6.500 5.500 100.068750 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-06-03-am

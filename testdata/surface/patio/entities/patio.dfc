@@ -1,0 +1,123 @@
+; Two patios of the same shape, drawn once, with the shots taken on them held
+; nowhere near here.
+;
+; Neither node says what the ground does, and neither says how well anybody knows
+; it. Both are derived from the shots inside the region every time somebody asks,
+; and are written into no file a walk would read
+; (docs/decisions/0009-derived-values-are-never-written-back.md).
+;
+; The house wall runs along the north boundary of each, at y = 6, and the ground
+; falls away from it towards the garden. The decision the gate turns on is the
+; fall from the threshold at (3.5, 5) to the drain edge at (3.5, 1) — four metres
+; of run, and fifty millimetres of drop if the patio was laid to the one in
+; eighty it was specified at.
+
+
+(vertex geom:V-01
+  (label "Rover patio, south-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-02
+  (label "Rover patio, south-east corner")
+  (frame frame:site)
+  (position
+    (value (7.0 0.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-03
+  (label "Rover patio, north-east corner")
+  (frame frame:site)
+  (position
+    (value (7.0 6.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-04
+  (label "Rover patio, north-west corner")
+  (frame frame:site)
+  (position
+    (value (0.0 6.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-05
+  (label "Levelled patio, south-west corner")
+  (frame frame:site)
+  (position
+    (value (10.0 0.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-06
+  (label "Levelled patio, south-east corner")
+  (frame frame:site)
+  (position
+    (value (17.0 0.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-07
+  (label "Levelled patio, north-east corner")
+  (frame frame:site)
+  (position
+    (value (17.0 6.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+(vertex geom:V-08
+  (label "Levelled patio, north-west corner")
+  (frame frame:site)
+  (position
+    (value (10.0 6.0 0.0) m)
+    (source "Site control set SC-09, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-9))
+    (date "2026-06-02")))
+
+(edge geom:E-01 (label "Rover patio, south boundary") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Rover patio, east boundary") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Rover patio, north boundary") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Rover patio, west boundary") (frame frame:site) (vertices geom:V-04 geom:V-01))
+
+(edge geom:E-05 (label "Levelled patio, south boundary") (frame frame:site) (vertices geom:V-05 geom:V-06))
+(edge geom:E-06 (label "Levelled patio, east boundary") (frame frame:site) (vertices geom:V-06 geom:V-07))
+(edge geom:E-07 (label "Levelled patio, north boundary") (frame frame:site) (vertices geom:V-07 geom:V-08))
+(edge geom:E-08 (label "Levelled patio, west boundary") (frame frame:site) (vertices geom:V-08 geom:V-05))
+
+(loop geom:L-01
+  (label "Rover patio boundary")
+  (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(loop geom:L-02
+  (label "Levelled patio boundary")
+  (frame frame:site)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-08))
+
+(node site:S-patio
+  (label "Patio, picked up on the rover")
+  (kind Space)
+  (type Patio)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01)
+  (observed-in "observations/2026-06-03-rover.obs"))
+(node site:S-patio-levelled
+  (label "Patio, levelled")
+  (kind Space)
+  (type Patio)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-02)
+  (observed-in "observations/2026-06-04-level.obs"))

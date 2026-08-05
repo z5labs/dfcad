@@ -90,6 +90,22 @@
 // than the region: a point beyond the convex hull of them is reported as outside
 // and never extrapolated to.
 //
+// Every level comes back with the budget it was propagated from
+// ([Elevation.Budget]), under the same two rules a claim's budget follows: the
+// shots' own errors in quadrature under the weights the interpolation gave them,
+// and a term a whole afternoon shares — a base station, the control a transform
+// was fitted to — added linearly and counted once. Where the derivation states a
+// [SurfaceDerivation.Roughness], the ground between the shots is charged for too,
+// growing with the distance from the nearest of them; where it does not,
+// [Elevation.Complete] is false and the figure is a floor.
+//
+// [Surface.Fall] is the difference of two levels, and it is a first-class answer
+// because the subtraction is where the correlation lives: what the two ends share
+// is in both by the same amount and so cancels out of the difference. A caller
+// combining two levels in quadrature would report a drainage fall as several
+// times less certain than it is. docs/surface-accuracy-gate.md is that put to a
+// decision with a stated accuracy requirement, and what it found.
+//
 // docs/observation-file.md is the specification: the line schema field by
 // field, what each precision figure means and which uncertainty convention it
 // follows, and the two shapes of ambiguous timestamp the format refuses.

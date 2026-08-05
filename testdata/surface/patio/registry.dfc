@@ -1,0 +1,52 @@
+; The vocabulary of a patio somebody is about to decide a drainage fall across.
+;
+; The decision came first and is written down before anything was derived:
+; docs/surface-accuracy-gate.md states what the fall has to be known to, and it
+; states it in millimetres of standard uncertainty rather than as a feeling about
+; whether the survey looks good enough.
+;
+; Nothing in this file says anything about a surface, and nothing in it says how
+; well an afternoon on one base station is known. The first is derived from the
+; shots inside a region every time it is asked
+; (docs/decisions/0009-derived-values-are-never-written-back.md); the second is
+; stated on the derivation, because the observation format carries the precision
+; of a shot and not the worth of a setup.
+;
+; Two pieces of ground of the same shape, ten metres apart, surveyed at the same
+; density by two instruments. That is the whole design of the fixture: what
+; differs between the answers cannot be the density, because the density is
+; identical.
+(project
+  (label "Patio fall accuracy gate")
+  (globalid-namespace "https://example.org/models/patio"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace fix (description "Fix qualities an instrument reports."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "How a value was obtained."))
+(namespace session (description "Field occupations: one setup, one crew, one afternoon."))
+(namespace shot (description "Observation records issued by the field crew."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(type Patio
+  (kind Space)
+  (geometry area)
+  (description "Paved ground laid to a fall."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))
+
+(route everything
+  (file "entities/patio.dfc")
+  (description "One file, which is all a fixture this size needs."))
