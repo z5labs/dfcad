@@ -62,6 +62,15 @@ type geometric struct {
 	// be read from, which is a diagnostic of its own.
 	frame ID
 
+	// observations are the observation files this node links to, in the order
+	// they were written and with a repeated path held once.
+	//
+	// A corner is the entity most often linked to a file of shots, because a
+	// corner is what somebody stood over with a rover. What is held is the path
+	// and never the records: reading them is [Graph.Observations], and it
+	// happens when a caller asks rather than when the model is loaded.
+	observations []ObservationLink
+
 	// assertions are the checks written on this node, in the order they were
 	// written and as they were written.
 	//
@@ -108,6 +117,15 @@ func (v *Vertex) Label() string { return v.label }
 // vertex which wrote none is structurally wrong rather than a vertex with an
 // axis absent.
 func (v *Vertex) Frame() ID { return v.frame }
+
+// ObservedIn returns the observation files the vertex links to, in the order
+// they were written. [SemanticNode.ObservedIn] says what a link is and what
+// reading one costs.
+//
+// This is the link most models write most often: a corner is a thing somebody
+// occupied, and the shots they took there are the evidence behind every claim
+// about where it is.
+func (v *Vertex) ObservedIn() []ObservationLink { return cloneLinks(v.observations) }
 
 // Assertions returns the assertions written on the vertex, in the order they
 // were written. [SemanticNode.Assertions] says what they are and what they are
@@ -204,6 +222,11 @@ func (e *Edge) Vertices() (start, end ID) { return e.start, e.end }
 // error — is held once.
 func (e *Edge) BackedBy() []ID { return slices.Clone(e.backing) }
 
+// ObservedIn returns the observation files the edge links to, in the order they
+// were written. [SemanticNode.ObservedIn] says what a link is and what reading
+// one costs.
+func (e *Edge) ObservedIn() []ObservationLink { return cloneLinks(e.observations) }
+
 // Assertions returns the assertions written on the edge, in the order they were
 // written. [SemanticNode.Assertions] says what they are and what they are not.
 func (e *Edge) Assertions() []Assertion { return cloneAssertions(e.assertions) }
@@ -261,6 +284,11 @@ func (l *Loop) Frame() ID { return l.frame }
 // An id which was not one is not here, because there was no id to keep; that it
 // was written is a diagnostic carrying what was there.
 func (l *Loop) Edges() []ID { return slices.Clone(l.edges) }
+
+// ObservedIn returns the observation files the loop links to, in the order they
+// were written. [SemanticNode.ObservedIn] says what a link is and what reading
+// one costs.
+func (l *Loop) ObservedIn() []ObservationLink { return cloneLinks(l.observations) }
 
 // Assertions returns the assertions written on the loop, in the order they were
 // written. [SemanticNode.Assertions] says what they are and what they are not.
@@ -652,6 +680,8 @@ func (l *topologyLoader) read(form *Node) (geometric, Span) {
 	if arg, ok := argumentOf(form, frameTag); ok {
 		g.frame, _ = l.id(arg, "a frame id")
 	}
+
+	g.observations = l.observedIn(form)
 
 	g.assertions = l.assertions(form, l.registry, l.checks)
 

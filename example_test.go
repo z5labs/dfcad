@@ -2858,6 +2858,44 @@ func ExampleLoadObservations() {
 	// shot:2026-05-06-0003: 0.240, retired on line 8: float solution beside a fixed reshot of the same corner
 }
 
+func ExampleGraph_Observations() {
+	// The model is loaded whole, and not one observation file is opened doing
+	// it: what a load checks is that each linked file is there. That is the
+	// whole point of keeping the records outside the entity files — an
+	// afternoon with a rover is thousands of shots, and retrieving one corner
+	// must not cost a season of field work.
+	graph, diags := dfcad.LoadGraph("testdata/graph/observed")
+	fmt.Println(len(diags), "diagnostics, and the files not yet read")
+
+	corner, _ := graph.Entity("geom:V-01")
+
+	// The links are part of the model, so saying where the evidence is costs
+	// nothing.
+	for _, link := range corner.ObservedIn() {
+		fmt.Println("observed in", link.Path)
+	}
+
+	// Asking for the records is what opens the files. They are read once each
+	// for the life of the graph, and the several files a thing links to are one
+	// log: "earlier" is a question about the whole of what was read.
+	log, problems := graph.Observations(corner)
+	fmt.Println(log.Len(), "records of both forms,", len(problems), "problems")
+
+	for observation := range log.Current() {
+		fmt.Printf("%s %s %.3f\n", observation.ID, observation.Fix, observation.HorizontalPrecision)
+	}
+
+	// Output:
+	// 0 diagnostics, and the files not yet read
+	// observed in observations/2026-05-06-site-control.obs
+	// observed in observations/2026-05-07-interior.obs
+	// 6 records of both forms, 0 problems
+	// shot:2026-05-06-0001 fix:rtk-fixed 0.012
+	// shot:2026-05-06-0002 fix:rtk-fixed 0.011
+	// shot:2026-05-07-0001 fix:observed 0.004
+	// shot:2026-05-07-0002 fix:observed 0.004
+}
+
 func ExampleValidateAppendOnly() {
 	read := func(name string) dfcad.ObservationSource {
 		src, _ := os.ReadFile(filepath.Join("testdata", "observations", "append", name))

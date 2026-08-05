@@ -3,6 +3,7 @@
 (vertex geom:V-01
   (label "Room B, north-west corner")
   (frame frame:building)
+  (observed-in "observations/2026-05-06-site-control.obs")
   (position
     (value (0.0 0.0 0.0) m)
     (source "Interior control set IC-01, Acme Surveys")

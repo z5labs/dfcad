@@ -1,0 +1,35 @@
+; Four links, none of which reaches a file this model can read, and one which
+; does not exist at all in a directory holding no observation file whatsoever.
+;
+; They are four different mistakes and are reported as four: a file which is
+; not there is not the same finding as a path which leaves the model, and
+; telling somebody "the observations are wrong" when what is wrong is an
+; extension is how a five-second fix becomes an afternoon.
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:site)
+  (observed-in "observations/2026-05-07-interior.obs"))
+
+(vertex geom:V-01
+  (label "Room A, north-west corner")
+  (frame frame:site)
+  (observed-in "../elsewhere/2026-05-06-site-control.obs")
+  (observed-in "observations/2026-05-06-site-control.dfc"))
+
+(vertex geom:V-02
+  (label "Room A, north-east corner")
+  (frame frame:site)
+  (observed-in "observations/2026-05-07-interior.obs"))
+
+; The two ways a path stops meaning one thing on every machine. Both are
+; refused wherever the model is read rather than wherever they happen to be
+; dangerous: a link one clone follows out of the model root and another refuses
+; is worse than either behaviour on its own.
+(vertex geom:V-03
+  (label "Room A, south-east corner")
+  (frame frame:site)
+  (observed-in "observations\\2026-05-06-site-control.obs")
+  (observed-in "C:/surveys/2026-05-06-site-control.obs"))

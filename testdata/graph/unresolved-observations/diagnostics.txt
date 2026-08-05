@@ -1,0 +1,42 @@
+testdata/graph/unresolved-observations/entities/site.dfc:14:16: error: expected the observation file site:S-101 links to, found nothing at "observations/2026-05-07-interior.obs"
+14 |   (observed-in "observations/2026-05-07-interior.obs"))
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: the records have not been collected yet, the file has been moved, or the path is relative to the file it was written in rather than to the model root
+testdata/graph/unresolved-observations/entities/site.dfc:8:7: note: site:S-101 is written here
+8 | (node site:S-101
+  |       ^^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:19:16: error: expected a path beneath the model root, found "../elsewhere/2026-05-06-site-control.obs", which geom:V-01 links to
+19 |   (observed-in "../elsewhere/2026-05-06-site-control.obs")
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: an observation file is part of the model and is read by a walk of it, so a link which leaves the root names a file no clone of this repository is guaranteed to have; move the file inside the root and link to it from there
+testdata/graph/unresolved-observations/entities/site.dfc:16:9: note: geom:V-01 is written here
+16 | (vertex geom:V-01
+   |         ^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:20:16: error: expected a path ending in .obs, found "observations/2026-05-06-site-control.dfc", which geom:V-01 links to
+20 |   (observed-in "observations/2026-05-06-site-control.dfc"))
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: observation files are .obs and are read by a walk of their own, which is what keeps the two formats from picking each other up
+testdata/graph/unresolved-observations/entities/site.dfc:16:9: note: geom:V-01 is written here
+16 | (vertex geom:V-01
+   |         ^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:25:16: error: expected the observation file geom:V-02 links to, found nothing at "observations/2026-05-07-interior.obs"
+25 |   (observed-in "observations/2026-05-07-interior.obs"))
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: the records have not been collected yet, the file has been moved, or the path is relative to the file it was written in rather than to the model root
+testdata/graph/unresolved-observations/entities/site.dfc:22:9: note: geom:V-02 is written here
+22 | (vertex geom:V-02
+   |         ^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:34:16: error: expected a path written with forward slashes, found "observations\\2026-05-06-site-control.obs", which geom:V-03 links to
+34 |   (observed-in "observations\\2026-05-06-site-control.obs")
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a path is written with forward slashes whatever machine wrote it, so that one model reads the same way in every clone of the repository; a backslash is a legal character in a file name on the systems which do not use it as a separator, so nothing here can guess which was meant
+testdata/graph/unresolved-observations/entities/site.dfc:31:9: note: geom:V-03 is written here
+31 | (vertex geom:V-03
+   |         ^^^^^^^^^
+testdata/graph/unresolved-observations/entities/site.dfc:35:16: error: expected a path beneath the model root, found "C:/surveys/2026-05-06-site-control.obs", which geom:V-03 links to
+35 |   (observed-in "C:/surveys/2026-05-06-site-control.obs"))
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: an observation file is part of the model and is read by a walk of it, so a link which leaves the root names a file no clone of this repository is guaranteed to have; move the file inside the root and link to it from there
+testdata/graph/unresolved-observations/entities/site.dfc:31:9: note: geom:V-03 is written here
+31 | (vertex geom:V-03
+   |         ^^^^^^^^^

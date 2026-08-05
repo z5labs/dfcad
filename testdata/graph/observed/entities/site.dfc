@@ -1,0 +1,43 @@
+; The room is linked to the afternoon its floor level was taken, and its
+; corners to the site control which fixed them. The link is written on the
+; thing which was measured, and the same file is cited by more than one of
+; them, which is ordinary: one occupation produces the shots behind several
+; things.
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:site)
+  (observed-in "observations/2026-05-07-interior.obs"))
+
+(vertex geom:V-01
+  (label "Room A, north-west corner")
+  (frame frame:site)
+  (observed-in "observations/2026-05-06-site-control.obs")
+  (observed-in "observations/2026-05-07-interior.obs")
+  (position
+    (value (412300.120 5318220.455 34.210) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:gnss-rtk)
+    (accuracy (independent 0.012 m))
+    (date "2026-05-06")))
+
+(vertex geom:V-02
+  (label "Room A, north-east corner")
+  (frame frame:site)
+  (observed-in "observations/2026-05-06-site-control.obs")
+  (position
+    (value (412318.905 5318220.512 34.198) m)
+    (source "Site control set SC-01, Acme Surveys")
+    (method method:gnss-rtk)
+    (accuracy (independent 0.011 m))
+    (date "2026-05-06")))
+
+; The corner nobody has reduced yet. Its file holds a line no reader can make
+; sense of, and this model loads clean all the same — which is the whole of what
+; "the observations are not read at load" means, said in a way a test can see.
+(vertex geom:V-03
+  (label "Room A, south-east corner")
+  (frame frame:site)
+  (observed-in "observations/2026-05-08-suspect.obs"))

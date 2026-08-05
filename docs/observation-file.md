@@ -316,7 +316,10 @@ Named so that their absence reads as a decision rather than an oversight.
   record's `method` and `session` rather than restated here.
 - **Attaching an observation to an entity.** A record is not written on a node and names none;
   what cites a record is a claim's provenance, in the entity format, which is the one place
-  the model says what it believes and why.
+  the model says what it believes and why. The link that does exist runs the other way and is
+  to a whole file: an entity writes `(observed-in "<path>")`
+  ([`SPEC.md` 6.10](../SPEC.md#610-observed-in)) to say where the shots behind it are kept,
+  which costs one line in the entity file and nothing at all until somebody asks to see them.
 - **Derived quantities.** No mean, no residual, no adjusted coordinate, no session summary. A
   derivation is computed from the records and never written back beside them
   ([0009](./decisions/0009-derived-values-are-never-written-back.md)).

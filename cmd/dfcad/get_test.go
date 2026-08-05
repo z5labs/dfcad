@@ -825,3 +825,150 @@ func TestCheckClaimsAcceptsEveryWayOfReportingThem(t *testing.T) {
 
 	assert.NoError(t, checkClaims(claimsFull, true))
 }
+
+// observedRegistry is the vocabulary the surveyed fixture below is judged
+// against. An observation file names four vocabularies and declares none of
+// them, so all four arrive from here.
+const observedRegistry = `(project
+  (label "Observation retrieval fixture")
+  (globalid-namespace "https://example.org/models/observed"))
+
+(namespace fix (description "Fix qualities an instrument reports."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "How a value was obtained."))
+(namespace retirement (description "Retirement records issued by the field crew."))
+(namespace session (description "Field occupations."))
+(namespace shot (description "Observation records issued by the field crew."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+`
+
+// observedModel is two corners: one linked to an afternoon of sound records,
+// and one linked to a file holding a line nothing can read.
+//
+// The second is what makes "the file was not read" observable from outside the
+// engine. Retrieving that corner is a clean run, which it could not be if the
+// file behind it had been opened; asking for the records is what produces the
+// diagnostic.
+const observedModel = `(vertex geom:V-01
+  (label "The corner somebody shot twice")
+  (frame frame:site)
+  (observed-in "observations/site-control.obs"))
+
+(vertex geom:V-02
+  (label "The corner whose file nobody has fixed")
+  (frame frame:site)
+  (observed-in "observations/suspect.obs"))
+`
+
+// observedRecords is one morning of control with a float shot retired by a
+// later record.
+const observedRecords = `# id at frame x y z method fix h-precision v-precision antenna session
+obs shot:2026-05-06-0001 2026-05-06T09:14:22Z frame:site 412300.120 5318220.455 34.210 method:gnss-rtk fix:rtk-fixed 0.012 0.021 2.000 session:2026-05-06-am
+obs shot:2026-05-06-0002 2026-05-06T09:18:47Z frame:site 412318.880 5318241.330 34.402 method:gnss-rtk fix:rtk-float 0.240 0.510 2.000 session:2026-05-06-am
+retire retirement:2026-05-06-0001 2026-05-06T16:02:00Z shot:2026-05-06-0002 "float solution beside a fixed reshot of the same corner"
+`
+
+// suspectRecords is one line whose timestamp is not one.
+const suspectRecords = `obs shot:2026-05-08-0001 the-eighth-of-may frame:site 412300.108 5318241.344 34.407 method:total-station fix:observed 0.004 0.006 1.520 session:2026-05-08-am
+`
+
+// observedTree is the fixture tree the observation retrievals are run against.
+func observedTree() map[string]string {
+	return map[string]string{
+		"registry.dfc":                  observedRegistry,
+		"entities/geometry.dfc":         observedModel,
+		"observations/site-control.obs": observedRecords,
+		"observations/suspect.obs":      suspectRecords,
+	}
+}
+
+// TestRunGetNamesTheObservationFilesWithoutReadingThem is the retrieval this
+// story is about: the answer says where the evidence is and costs nothing to
+// produce.
+//
+// The corner it asks about links to a file with a malformed line in it, and the
+// run is clean. That is the assertion — a run which had opened the file would
+// have had to report the line — and it is made from outside the engine, with
+// nothing stubbed.
+func TestRunGetNamesTheObservationFilesWithoutReadingThem(t *testing.T) {
+	t.Chdir(tree(t, observedTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "geom:V-02"}, &stdout, &stderr), stderr.String())
+
+	assert.Empty(t, stderr.String(), "the file behind the corner was not opened, so its malformed line is unreported")
+
+	entity := listed[getResult](t, stdout.String()).Entity
+
+	assert.Equal(t, []string{"observations/suspect.obs"}, entity.Observations)
+	assert.Nil(t, entity.Records, "the records are absent rather than empty, because nobody asked for them")
+}
+
+// TestRunGetReadsTheObservationFilesWhenAskedFor is the other half: a run which
+// needs the records opens the files, and says what is wrong with what it found.
+func TestRunGetReadsTheObservationFilesWhenAskedFor(t *testing.T) {
+	t.Chdir(tree(t, observedTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "--observations", "geom:V-01"}, &stdout, &stderr), stderr.String())
+
+	assert.Empty(t, stderr.String(), "the records behind this corner are sound")
+
+	entity := listed[getResult](t, stdout.String()).Entity
+
+	assert.Equal(t, []string{"observations/site-control.obs"}, entity.Observations)
+	require.NotNil(t, entity.Records)
+	require.Len(t, *entity.Records, 2, "the retired shot is reported rather than dropped")
+
+	records := *entity.Records
+
+	assert.Equal(t, "shot:2026-05-06-0001", records[0].ID)
+	assert.Equal(t, "2026-05-06T09:14:22Z", records[0].At)
+	assert.Equal(t, "frame:site", records[0].Frame)
+	assert.Equal(t, []float64{412300.120, 5318220.455, 34.210}, records[0].Coordinate)
+	assert.Equal(t, "method:gnss-rtk", records[0].Method)
+	assert.Equal(t, "fix:rtk-fixed", records[0].Fix)
+	assert.Equal(t, 0.012, records[0].HorizontalPrecision)
+	assert.Equal(t, 0.021, records[0].VerticalPrecision)
+	assert.Equal(t, 2.0, records[0].AntennaHeight)
+	assert.Equal(t, "session:2026-05-06-am", records[0].Session)
+	assert.Nil(t, records[0].Retired, "nothing retired the fixed shot")
+
+	require.NotNil(t, records[1].Retired, "the float shot carries the record which retired it")
+	assert.Equal(t, "retirement:2026-05-06-0001", records[1].Retired.ID)
+	assert.Equal(t, "float solution beside a fixed reshot of the same corner", records[1].Retired.Reason)
+}
+
+// TestRunGetReportsWhatIsWrongWithTheRecordsItRead checks that reading the
+// files is reading them properly: the observation format's own diagnostics
+// reach stderr, and the answer on stdout is still one object.
+func TestRunGetReportsWhatIsWrongWithTheRecordsItRead(t *testing.T) {
+	t.Chdir(tree(t, observedTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "--observations", "geom:V-02"}, &stdout, &stderr))
+
+	assert.Contains(t, stderr.String(), "observations/suspect.obs")
+	assert.Contains(t, stderr.String(), "error:")
+
+	entity := listed[getResult](t, stdout.String()).Entity
+
+	require.NotNil(t, entity.Records)
+	assert.Empty(t, *entity.Records, "a line which could not be read is not a record, and the list is still a list")
+}
+
+// TestRunGetReportsTheObservationFilesToAPerson checks the human rendering,
+// which is where somebody reading the run finds out there is field work behind
+// the thing at all.
+func TestRunGetReportsTheObservationFilesToAPerson(t *testing.T) {
+	t.Chdir(tree(t, observedTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess,
+		run([]string{"get", "--observations", "geom:V-01", "--format", formatHuman, "-v"}, &stdout, &stderr))
+
+	assert.Contains(t, stderr.String(), "observed-in: observations/site-control.obs")
+	assert.Contains(t, stderr.String(), "1 observation file, 2 records")
+}

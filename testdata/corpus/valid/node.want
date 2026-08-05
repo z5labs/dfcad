@@ -13,6 +13,8 @@
   (member-of site:Z-02)
   (boundary geom:L-01)
   (boundary geom:L-02)
+  (observed-in "observations/2026-05-06-site-control.obs")
+  (observed-in "observations/2026-05-07-interior.obs")
   (retired
     (date "2026-07-14")
     (reason "Merged into the corridor.")
