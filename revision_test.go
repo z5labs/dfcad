@@ -431,12 +431,35 @@ func errorsAmong(diags []Diagnostic) []Diagnostic {
 // path which climbs out of the destination is not something git produces, and
 // is exactly what the guard is for.
 func TestExtractRefusesAPathOutsideTheDestination(t *testing.T) {
-	dest := t.TempDir()
+	testCases := []struct {
+		name  string
+		entry string
+	}{
+		{
+			name:  "refuses a name which begins with a parent reference",
+			entry: "../escaped.dfc",
+		},
+		{
+			name:  "refuses a name which walks out through a parent part way along",
+			entry: "entities/../../escaped.dfc",
+		},
+		{
+			name:  "refuses an absolute name, which no join would have contained",
+			entry: "/escaped.dfc",
+		},
+	}
 
-	err := unpack(archiveOf(t, "../escaped.dfc", "(node site:S-101 (kind Space) (type MeetingRoom))\n"), dest)
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dest := t.TempDir()
 
-	assert.ErrorIs(t, err, ErrOutsideModel)
-	assert.NoFileExists(t, filepath.Join(filepath.Dir(dest), "escaped.dfc"))
+			err := unpack(archiveOf(t, testCase.entry, "(node site:S-101 (kind Space))\n"), dest)
+
+			assert.ErrorIs(t, err, ErrOutsideModel)
+			assert.NoFileExists(t, filepath.Join(filepath.Dir(dest), "escaped.dfc"))
+			assert.NoFileExists(t, filepath.Join(dest, "escaped.dfc"))
+		})
+	}
 }
 
 // TestExtractSkipsWhatIsNotAFile is its own function for the same reason: a

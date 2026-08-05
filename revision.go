@@ -302,13 +302,24 @@ func unpack(archive *tar.Reader, dest string) error {
 			return err
 		}
 
-		// A path which climbs out of the destination is refused rather than
+		// An entry which climbs out of the destination is refused rather than
 		// cleaned into one which does not: an archive is input, and an input
 		// which tried is not one to guess the intent of.
-		target := filepath.Join(root, filepath.FromSlash(header.Name))
-		if target != root && !strings.HasPrefix(target, root+string(filepath.Separator)) {
+		//
+		// The name is judged before it is joined to anything, and
+		// [filepath.IsLocal] is the whole of the test: it refuses an absolute
+		// path, a name which begins with a parent reference, and one which
+		// walks out through a parent part way along. Judging the entry rather
+		// than the path it produced is what makes this a statement about what
+		// the archive said, which is the thing which cannot be trusted —
+		// checking where the join landed is the same test written after the
+		// fact, and one refactor away from being written after the write.
+		name := filepath.FromSlash(header.Name)
+		if !filepath.IsLocal(name) {
 			return fmt.Errorf("%s: %w", header.Name, ErrOutsideModel)
 		}
+
+		target := filepath.Join(root, name)
 
 		switch header.Typeflag {
 		case tar.TypeDir:
