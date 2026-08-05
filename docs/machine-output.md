@@ -154,6 +154,43 @@ Neither flag has any effect on the exit code.
 
 ## Payloads
 
+### `version`
+
+Which build this is, and which contracts it implements. It reads no model and takes no
+arguments.
+
+```json
+{
+  "version": 2,
+  "command": "version",
+  "build": {
+    "version": "v1.2.3",
+    "commit": "abc1234",
+    "stamped": true
+  },
+  "contracts": {
+    "output": 2,
+    "entity-format": "1.1"
+  }
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `build.version` | string | The tool's version: the git tag pointing at the commit it was built from, or `<short-sha>-<commit-time>` where no tag does. `dev` on a binary nobody stamped. |
+| `build.commit` | string | The short SHA it was built from. `unknown` on a binary nobody stamped. |
+| `build.stamped` | boolean | Whether the two above came from the build. `false` means a plain `go build`, and that neither value beside it identifies anything. |
+| `contracts.output` | integer | The version of this contract, which is the same number the envelope carries. |
+| `contracts.entity-format` | string | The `MAJOR.MINOR` version of the entity format in [`SPEC.md`](../SPEC.md) that this build loads and prints. |
+
+The build's version is nested rather than written at the top level because the envelope has
+already spent `version` on this contract. `.version` is the contract the object was written
+against; `.build.version` is the tool that wrote it. The two are different numbers in
+different forms, and [`versioning.md`](./versioning.md) is the relationship between them,
+the entity format version and the git tags they come from.
+
+Exit code: `0`, unless the invocation itself was wrong.
+
 ### `fmt`
 
 ```json

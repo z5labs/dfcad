@@ -52,6 +52,16 @@ type command struct {
 
 // commands is every subcommand, in the order the usage lists them.
 var commands = []command{
+	// First, because it is the one command which answers a question about the
+	// tool rather than about a model — and the one somebody reaches for before
+	// they have a model at all, or when they are writing down what they were
+	// running when something went wrong.
+	{
+		name:    "version",
+		summary: "say which build this is, and which contracts it implements",
+		usage:   versionUsage,
+		run:     runVersion,
+	},
 	{
 		name:    "fmt",
 		summary: "rewrite entity files into canonical form",

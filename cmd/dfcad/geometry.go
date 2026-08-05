@@ -338,7 +338,7 @@ func runAddVertex(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 
 	reportRouted(cmd, globals, stderr, id, destination)
 
-	return commit(cmd, tx, globals, stdout, stderr)
+	return commitChange(cmd, tx, globals, stdout, stderr)
 }
 
 // runAddEdge is the add-edge command.
@@ -403,7 +403,7 @@ func runAddEdge(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 
 	reportRouted(cmd, globals, stderr, id, destination)
 
-	return commit(cmd, tx, globals, stdout, stderr)
+	return commitChange(cmd, tx, globals, stdout, stderr)
 }
 
 // runAddLoop is the add-loop command.
@@ -450,7 +450,7 @@ func runAddLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 
 	reportRouted(cmd, globals, stderr, id, destination)
 
-	return commit(cmd, tx, globals, stdout, stderr)
+	return commitChange(cmd, tx, globals, stdout, stderr)
 }
 
 // runScaffoldLoop is the scaffold-loop command.

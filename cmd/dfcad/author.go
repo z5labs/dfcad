@@ -181,7 +181,7 @@ func runAddNode(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 		fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, destination.Path)
 	}
 
-	return commit(cmd, tx, globals, stdout, stderr)
+	return commitChange(cmd, tx, globals, stdout, stderr)
 }
 
 // runSetLabel is the set-label command.
@@ -213,7 +213,7 @@ func runSetLabel(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		return usageError(cmd, err, stderr, false)
 	}
 
-	return commit(cmd, tx, globals, stdout, stderr)
+	return commitChange(cmd, tx, globals, stdout, stderr)
 }
 
 // runRetire is the retire command.
@@ -262,7 +262,7 @@ func runRetire(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		return usageError(cmd, err, stderr, false)
 	}
 
-	return commit(cmd, tx, globals, stdout, stderr)
+	return commitChange(cmd, tx, globals, stdout, stderr)
 }
 
 // subject is the id a write command was given, which is its first argument.
@@ -333,9 +333,15 @@ func begin(cmd command, globals *globals, stderr io.Writer) (*dfcad.Tx, int, boo
 	return tx, exitSuccess, true
 }
 
-// commit writes the change and reports it, which is the same last step for
+// commitChange writes the change and reports it, which is the same last step for
 // every command which changes the model.
-func commit(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io.Writer) int {
+//
+// It is not called `commit` because that name is spoken for: the standard
+// pipeline stamps this package's build with -X main.commit, and -X takes effect
+// only on a string variable of exactly that name. A function there instead is a
+// binary which silently reports no commit at all, so the name belongs to the
+// variable in version.go and this is the one which moved.
+func commitChange(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io.Writer) int {
 	out, exit, ok := apply(cmd, tx, globals, stderr)
 	if !ok {
 		return exit
@@ -347,7 +353,7 @@ func commit(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io.Write
 // apply writes the change, renders it for a person and says whether the run
 // should go on to write a result at all.
 //
-// It is separate from [commit] because what a command has to say about a change
+// It is separate from [commitChange] because what a command has to say about a change
 // is not the same for all of them: a claim written or retracted is reported
 // beside the commit, and the object carrying both is the command's rather than
 // this layer's.
