@@ -128,11 +128,13 @@ type path struct {
 	calls []call
 
 	// target is what the story asked the path to cost, and it is the gate. It
-	// is not asserted on, because it is not met: raising it to meet the
-	// measurement would turn the claim into a description, and lowering the
-	// measurement to meet it is the partitioning review issue #38 opens rather
-	// than something this file can do. The record reports both figures and
-	// which way round they came out.
+	// is not asserted on: raising it to meet a measurement would turn the claim
+	// into a description of whatever the code happens to do. The record reports
+	// both figures and which way round they came out.
+	//
+	// Zero is a path nobody set a target for, which is measured to stop it
+	// drifting rather than gated. [path.gated] is the question, so that a
+	// target of zero cannot be read as a path which must cost nothing.
 	target int
 
 	// ceiling is the most the path may cost under any encoding measured, and it
@@ -143,8 +145,17 @@ type path struct {
 	ceiling int
 }
 
-// met reports whether the path came in under what the story asked of it.
+// gated reports whether anybody set a target for the path.
+func (p path) gated() bool {
+	return p.target > 0
+}
+
+// met reports whether the path came in under what the story asked of it. A path
+// nobody asked anything of is not met and not missed.
 func (p path) met(costs []int) bool {
+	if !p.gated() {
+		return false
+	}
 	for _, cost := range costs {
 		if cost > p.target {
 			return false
@@ -153,43 +164,78 @@ func (p path) met(costs []int) bool {
 	return true
 }
 
-// The two paths measured.
+// The four paths measured.
 //
 // Discovery is the pair of calls the query surface is partitioned around: what
 // kinds of thing are there, and which of them exist. The cold question is the
 // whole of what the engine is for — a dimensional answer from an agent that has
-// read nothing — and it is discovery plus the two calls that turn a name into a
+// read nothing — and it is discovery plus the one call that turns a name into a
 // number.
+//
+// That `resolve` is the whole of the fetch is the finding of the partitioning
+// review, issue #113. The path first measured for issue #38 ran `get` before
+// `resolve`, and `get` is not a targeted fetch: it is the retrieval of a thing
+// entire, with every claim written on it and where each was written, which is a
+// different question from how big the room is. It is still measured, below, so
+// that the figure #38 recorded stays comparable — it is simply no longer what
+// the gate is read off.
+//
+// The warm question is the same question asked by an agent that has already
+// paid for the vocabulary. It is measured because the two costs scale with
+// different things: `list-types` grows with the registry and is paid once per
+// cold start, and the rest grows with neither and is paid per question.
 //
 // `MeetingRoom` is the type asked about because it is a middling one in this
 // model: six instances against `Office`'s sixteen and `OfficeBuilding`'s one.
 // Measuring the smallest type would report the arrangement at its best.
 var (
+	listTypes    = call{name: "dfcad list-types", args: []string{"list-types", "--root", budgetRoot}}
+	listRooms    = call{name: "dfcad list-instances MeetingRoom", args: []string{"list-instances", "MeetingRoom", "--root", budgetRoot}}
+	getRoom      = call{name: "dfcad get site:S-111", args: []string{"get", "site:S-111", "--root", budgetRoot}}
+	resolveArea  = call{name: "dfcad resolve site:S-111 area", args: []string{"resolve", "site:S-111", "area", "--root", budgetRoot}}
+	describeType = call{
+		name: "dfcad list-types --describe",
+		args: []string{"list-types", "--describe", "--root", budgetRoot},
+	}
+	evidenceArea = call{
+		name: "dfcad resolve site:S-111 area --evidence",
+		args: []string{"resolve", "site:S-111", "area", "--evidence", "--root", budgetRoot},
+	}
+)
+
+var (
 	discovery = path{
 		name:    "discovery",
 		what:    "what kinds of thing are in this model, and which meeting rooms exist",
 		target:  500,
-		ceiling: 600,
-		calls: []call{
-			{name: "dfcad list-types", args: []string{"list-types", "--root", budgetRoot}},
-			{name: "dfcad list-instances MeetingRoom", args: []string{"list-instances", "MeetingRoom", "--root", budgetRoot}},
-		},
+		ceiling: 460,
+		calls:   []call{listTypes, listRooms},
 	}
 
 	coldQuestion = path{
 		name:    "a dimensional question from a cold start",
 		what:    "how big is Meeting Room B on level 1, starting from nothing",
 		target:  500,
-		ceiling: 1200,
-		calls: []call{
-			{name: "dfcad list-types", args: []string{"list-types", "--root", budgetRoot}},
-			{name: "dfcad list-instances MeetingRoom", args: []string{"list-instances", "MeetingRoom", "--root", budgetRoot}},
-			{name: "dfcad get site:S-111", args: []string{"get", "site:S-111", "--root", budgetRoot}},
-			{name: "dfcad resolve site:S-111 area", args: []string{"resolve", "site:S-111", "area", "--root", budgetRoot}},
-		},
+		ceiling: 530,
+		calls:   []call{listTypes, listRooms, resolveArea},
 	}
 
-	paths = []path{discovery, coldQuestion}
+	warmQuestion = path{
+		name:    "the same question once the vocabulary is known",
+		what:    "how big is Meeting Room B on level 1, for an agent which has already read list-types",
+		target:  300,
+		ceiling: 280,
+		calls:   []call{listRooms, resolveArea},
+	}
+
+	wholeRetrieval = path{
+		name:    "the same question by way of a whole retrieval",
+		what:    "how big is Meeting Room B on level 1, retrieving the thing itself on the way",
+		ceiling: 820,
+		calls:   []call{listTypes, listRooms, getRoom, resolveArea},
+	}
+
+	paths = []path{discovery, coldQuestion, warmQuestion, wholeRetrieval}
 )
 
 // answer runs one call and returns what it wrote to stdout, which is the whole
@@ -279,37 +325,36 @@ func modelFiles(t testing.TB) (files []string, sources map[string][]byte) {
 	return files, sources
 }
 
-// subjectFile is the file the cold question's answer was written in, taken from
-// the span `get` reported rather than written down here. A hard-coded path
-// would keep saying the same thing after the fixture moved the node.
+// subjectFile is the file the question's answer was written in, taken from the
+// span `get` reported rather than written down here. A hard-coded path would
+// keep saying the same thing after the fixture moved the node.
 func subjectFile(t testing.TB) string {
 	t.Helper()
 
 	var got struct {
 		Entity struct {
-			Span struct {
-				Start struct {
-					Path string `json:"path"`
-				} `json:"start"`
-			} `json:"span"`
+			Span dfcad.Span `json:"span"`
 		} `json:"entity"`
 	}
-	require.NoError(t, json.Unmarshal([]byte(answer(t, coldQuestion.calls[2])), &got))
+	require.NoError(t, json.Unmarshal([]byte(answer(t, getRoom)), &got))
 	require.NotEmpty(t, got.Entity.Span.Start.Path)
 
 	return filepath.ToSlash(got.Entity.Span.Start.Path)
 }
 
 // TestTheDiscoveryPathDoesNotGetMoreExpensive holds the measured cost where it
-// is while the gate is missed.
+// is.
 //
-// It asserts the ceiling rather than the target, because the target is not met
-// and a red suite says nothing a reader of docs/token-budget.md does not
-// already know. What it is for is the change nobody measured: a field added to
-// a listing entry, a span widened, a description lengthened. Any of those makes
-// the miss worse, and this is where that arrives — as a failing test naming the
-// path and the figure, to be weighed against the gate rather than absorbed into
-// it by raising the constant.
+// It asserts the ceiling rather than the target. The two gated paths now meet
+// their targets, and asserting a target directly would make the first field
+// anybody adds a failure reported as though the bet had come apart. What this
+// is for is the change nobody measured: a field added to a listing entry, a
+// span widened, a description restored to a default. Each arrives here as a
+// failing test naming the path and the figure, to be weighed against the gate
+// rather than absorbed into it by raising the constant.
+//
+// The ceiling sits just above what was measured, on both encodings, for the
+// same reason. A ceiling with room in it is a ceiling nothing hits.
 func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -322,6 +367,14 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 		{
 			name: "answers a dimensional question from nothing",
 			path: coldQuestion,
+		},
+		{
+			name: "answers it again without paying for the vocabulary twice",
+			path: warmQuestion,
+		},
+		{
+			name: "retrieves the whole thing on the way to the same answer",
+			path: wholeRetrieval,
 		},
 	}
 
@@ -362,24 +415,24 @@ type field struct {
 
 var fields = []field{
 	{
-		name: "the descriptions in `list-types`",
-		call: discovery.calls[0],
+		name: "the descriptions `--describe` adds",
+		call: describeType,
 		keys: []string{"description"},
 	},
 	{
-		name: "the spans in `get`",
-		call: coldQuestion.calls[2],
-		keys: []string{"span"},
-	},
-	{
-		name: "the spans in `resolve`",
-		call: coldQuestion.calls[3],
-		keys: []string{"span"},
-	},
-	{
-		name: "the whole claim beside the value in `resolve`",
-		call: coldQuestion.calls[3],
+		name: "the whole claim `--evidence` adds",
+		call: evidenceArea,
 		keys: []string{"claim"},
+	},
+	{
+		name: "the spans in `get`",
+		call: getRoom,
+		keys: []string{"span"},
+	},
+	{
+		name: "the accuracy beside the value in `resolve`",
+		call: resolveArea,
+		keys: []string{"accuracy"},
 	},
 }
 
@@ -579,6 +632,12 @@ func measurements(t testing.TB) string {
 		fmt.Fprintf(&out, "| **the whole path** |")
 		for j := range encodings {
 			fmt.Fprintf(&out, " **%d** |", totals[j])
+		}
+
+		if !p.gated() {
+			fmt.Fprintf(&out, "\n\nNo target: nothing asked this path to cost anything in particular. "+
+				"Regression ceiling %d tokens.\n", p.ceiling)
+			continue
 		}
 
 		verdict := "**missed**"

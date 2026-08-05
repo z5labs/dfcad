@@ -67,3 +67,4 @@ the code in front of them and needs the part that is not in the code.
 | [0014](./0014-the-machine-output-contract-is-part-of-the-interface.md) | The machine output contract is part of the interface | Accepted |
 | [0015](./0015-the-cli-is-the-primary-write-path.md)   | The CLI is the primary write path                        | Accepted |
 | [0016](./0016-writes-are-all-or-nothing.md)           | Writes are all-or-nothing                                | Accepted |
+| [0017](./0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md) | The answer is the default and the evidence is asked for | Accepted |

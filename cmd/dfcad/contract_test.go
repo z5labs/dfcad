@@ -598,7 +598,7 @@ func TestEmitWritesOneObjectAndNothingElse(t *testing.T) {
 	}))
 
 	assert.Equal(t,
-		`{"version":1,"command":"fmt","files":[{"path":"a&b<c>.dfc","status":"unchanged"}]}`+"\n",
+		`{"version":2,"command":"fmt","files":[{"path":"a&b<c>.dfc","status":"unchanged"}]}`+"\n",
 		stdout.String(),
 	)
 

@@ -418,9 +418,13 @@ func TestRunResolve(t *testing.T) {
 			assert.Equal(t, testCase.expectedStrict, result.Strict)
 			assert.Equal(t, testCase.expectedCandidates, considered(result.Candidates))
 
+			// The audit trail is never in the default answer, whatever came of
+			// the resolution. --evidence is what asks for it.
+			assert.Nil(t, result.Claim)
+
 			if testCase.expectedValue == "" {
 				assert.Nil(t, result.Value)
-				assert.Nil(t, result.Claim)
+				assert.Empty(t, result.ClaimID)
 				return
 			}
 
@@ -430,45 +434,79 @@ func TestRunResolve(t *testing.T) {
 			require.NotNil(t, result.Value)
 			assert.Equal(t, testCase.expectedValue, spellClaimValue(*result.Value))
 
-			// And with the claim it came from, so that the answer can be taken
-			// back to the evidence for it without a second call.
-			require.NotNil(t, result.Claim)
-			assert.Equal(t, testCase.expectedClaim, result.Claim.ID)
-			assert.NotEmpty(t, result.Claim.Source)
-			assert.NotEmpty(t, result.Claim.Span.Start.Path)
+			// And with the id of the claim it came from, so that the answer can
+			// be taken back to what it came from without a second call. The
+			// rest of that claim is a second question and is behind --evidence.
+			assert.Equal(t, testCase.expectedClaim, result.ClaimID)
 		})
 	}
+}
+
+// TestRunResolveKeepsTheAuditTrailBehindAFlag is its own function because it
+// asks a different question from the answer: not how big the room is, but who
+// said so and where they wrote it down.
+//
+// The two are separated because the second was three quarters of what this
+// command cost, and is wanted on a small minority of the calls that pay for it.
+// See docs/decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md.
+func TestRunResolveKeepsTheAuditTrailBehindAFlag(t *testing.T) {
+	t.Run("leaves the claim out of the answer", func(t *testing.T) {
+		result := answering(t, exitSuccess, "site:S-101", "area")
+
+		assert.Nil(t, result.Claim)
+		assert.Equal(t, "survey:A-0002", result.ClaimID)
+	})
+
+	t.Run("reports the claim in full when it is asked for", func(t *testing.T) {
+		result := answering(t, exitSuccess, "--evidence", "site:S-101", "area")
+
+		require.NotNil(t, result.Claim)
+		assert.Equal(t, "survey:A-0002", result.Claim.ID)
+		assert.NotEmpty(t, result.Claim.Source)
+		assert.Equal(t, "2026-05-06", result.Claim.Date)
+		assert.Equal(t, "method:total-station", result.Claim.Method)
+		assert.NotEmpty(t, result.Claim.Span.Start.Path)
+
+		// The answer is unchanged by having asked. --evidence adds a field; it
+		// does not report a different resolution.
+		assert.Equal(t, "survey:A-0002", result.ClaimID)
+		require.NotNil(t, result.Value)
+		assert.Equal(t, "24.2 m2", spellClaimValue(*result.Value))
+	})
 }
 
 // TestRunResolveCarriesTheAccuracyOfItsAnswer is its own function because it is
 // about what travels beside the number rather than about which number came back.
 //
 // A resolution which reported the value and dropped how well it is known would
-// be handing back exactly the bare number the format exists to prevent.
+// be handing back exactly the bare number the format exists to prevent — which
+// is why the accuracy is beside the value in the default answer rather than
+// inside the audit trail --evidence asks for.
 func TestRunResolveCarriesTheAccuracyOfItsAnswer(t *testing.T) {
 	result := answering(t, exitSuccess, "site:S-101", "area")
 
-	require.NotNil(t, result.Claim)
-	require.Len(t, result.Claim.Accuracy, 1)
+	require.Len(t, result.Accuracy, 1)
 
-	assert.Equal(t, "independent", result.Claim.Accuracy[0].Kind)
-	assert.InDelta(t, 0.05, result.Claim.Accuracy[0].Magnitude, 0)
-	assert.Equal(t, "m2", result.Claim.Accuracy[0].Unit)
-
-	assert.Equal(t, "2026-05-06", result.Claim.Date)
-	assert.Equal(t, "method:total-station", result.Claim.Method)
+	assert.Equal(t, "independent", result.Accuracy[0].Kind)
+	assert.InDelta(t, 0.05, result.Accuracy[0].Magnitude, 0)
+	assert.Equal(t, "m2", result.Accuracy[0].Unit)
 }
 
 // TestRunResolveNamesAnAnswerWhoseClaimWroteNoID is its own function because it
 // is the other end of traceability: a claim id is optional, and an answer which
-// came from a claim with no name of its own is traced by where it was written.
+// came from a claim with no name of its own is traced by where it was written,
+// which is what --evidence reports.
 func TestRunResolveNamesAnAnswerWhoseClaimWroteNoID(t *testing.T) {
 	result := answering(t, exitSuccess, "site:S-103", "area")
 
-	require.NotNil(t, result.Claim)
-	assert.Empty(t, result.Claim.ID)
-	assert.Equal(t, "entities/site.dfc", result.Claim.Span.Start.Path)
-	assert.Positive(t, result.Claim.Span.Start.Line)
+	assert.Empty(t, result.ClaimID)
+
+	evidenced := answering(t, exitSuccess, "--evidence", "site:S-103", "area")
+
+	require.NotNil(t, evidenced.Claim)
+	assert.Empty(t, evidenced.Claim.ID)
+	assert.Equal(t, "entities/site.dfc", evidenced.Claim.Span.Start.Path)
+	assert.Positive(t, evidenced.Claim.Span.Start.Line)
 }
 
 // TestRunResolveAuditsEveryCandidate is its own function because --candidates
@@ -478,7 +516,11 @@ func TestRunResolveAuditsEveryCandidate(t *testing.T) {
 	t.Run("reports every live claim beside the winner", func(t *testing.T) {
 		result := answering(t, exitSuccess, "--candidates", "site:S-101", "area")
 
-		assert.Equal(t, "survey:A-0002", result.Claim.ID)
+		// The winner is named the way it is without the flag, and is among the
+		// candidates in full and marked current. Reporting it twice over would
+		// be the audit view answering the question as well.
+		assert.Equal(t, "survey:A-0002", result.ClaimID)
+		assert.Nil(t, result.Claim)
 
 		// The retracted claim is not among them. It was never a candidate, so
 		// reporting it here would say the rule weighed something it never saw.

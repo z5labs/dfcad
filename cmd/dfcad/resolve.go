@@ -23,13 +23,22 @@ Usage:
 The current value of one predicate about one thing: the number, the unit it is
 in, how well it is known, the id of the claim it came from and which step of the
 rule picked that claim over the others. This is the call the rest of the system
-exists to make cheap — "how wide is that room" answered once, with the evidence
-attached rather than a lookup away.
+exists to make cheap — "how wide is that room" answered once, with what is
+needed to trust the number beside it.
+
+That is the answer and not the audit trail. The value, its unit, its accuracy
+and the id of the claim it came from say how good the number is; the source
+string, the method, the rank and where it was written say who to argue with,
+which is a different question and three quarters of what the answer used to
+cost. --evidence asks it.
 
 Flags:
 
+	--evidence       report the winning claim in full beside the answer: its
+	                 source, its method, its rank and where it was written
 	--candidates     report every live claim under the predicate beside the
-	                 answer, each marked with what resolution made of it
+	                 answer, each in full and marked with what resolution made
+	                 of it
 	--frame <id>     express a coordinate answer in this frame rather than in
 	                 the one the thing is written in
 
@@ -69,8 +78,8 @@ written in different units reports the terms and no combined figure.
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object resolve writes carries "subject" and "predicate", the "outcome" and
-the "reason" for it, and the "value" and the "claim" it came from where there is
-one.
+the "reason" for it, and the "value", its "accuracy" and the "claim-id" it came
+from where there is one. The whole "claim" is written under --evidence.
 `
 
 // The outcomes a resolution can have, which is what says which of the fields of
@@ -193,13 +202,39 @@ type resolveResult struct {
 	// nothing resolved.
 	Value *claimValue `json:"value,omitempty"`
 
+	// Accuracy is how well the answer is known, one entry per term, as the
+	// claim it came from stated it. Absent where nothing resolved, and absent
+	// where the claim stated none — which makes the answer unrankable rather
+	// than exact, and is what Reason says.
+	//
+	// It is beside the value rather than only inside the claim because it is
+	// part of the answer: a dimension without an accuracy is a number somebody
+	// has to go and qualify, and a caller which had to ask for the audit trail
+	// to find out how good the number is would ask for it every time.
+	Accuracy []accuracyTerm `json:"accuracy,omitempty"`
+
+	// ClaimID is the id of the claim the answer came from. Absent where nothing
+	// resolved, and absent where the claim wrote no id, which is the great
+	// majority of them: an id is required only of a claim something references.
+	//
+	// Where there is one it is what a supersession or a deprecation names, so
+	// it is the one part of the audit trail an answer is acted on with rather
+	// than read.
+	ClaimID string `json:"claim-id,omitempty"`
+
 	// Frame is the coordinate frame the value is expressed in. Absent for a
 	// value which is not a position, which is in no frame.
 	Frame string `json:"frame,omitempty"`
 
-	// Claim is the claim the answer came from, with the evidence it carries:
-	// its id, its source, its method, its accuracy and its date. Absent where
-	// nothing resolved.
+	// Claim is the claim the answer came from in full, with the evidence it
+	// carries: its source, its method, its rank, its date and where it was
+	// written. Written under --evidence and absent otherwise.
+	//
+	// It is asked for rather than given because it is the audit trail rather
+	// than the answer, and it was three quarters of what this command cost —
+	// docs/token-budget.md priced the same answer at 199 tokens with it and 51
+	// without. Whoever is going to argue with the number asks for it; whoever
+	// wanted the number does not pay for it.
 	Claim *claimEntry `json:"claim,omitempty"`
 
 	// Candidates are the claims which could still be the answer, in source
@@ -300,6 +335,7 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	flags := newFlagSet(cmd, globals)
 
 	auditing := flags.Bool("candidates", false, "")
+	evidencing := flags.Bool("evidence", false, "")
 	into := flags.String("frame", "", "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
@@ -368,10 +404,18 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	answer, answerable := answered(resolution)
 	if answerable {
 		entry := entryOf(answer, madeOf(answer, resolution))
-		result.Claim = &entry
 
 		value := entry.Value
 		result.Value = &value
+		result.Accuracy = entry.Accuracy
+		result.ClaimID = entry.ID
+
+		// The whole claim only where it was asked for. What is above is the
+		// answer and how good it is; what is here is who wrote it down and
+		// where, which is the audit trail.
+		if *evidencing {
+			result.Claim = &entry
+		}
 
 		if written, ok := frameOf(entity); ok && value.Shape == string(dfcad.ShapeCoordinate) {
 			result.Frame = string(written)
@@ -738,8 +782,8 @@ func spellAnswer(result resolveResult) string {
 	out.WriteString(", ")
 	out.WriteString(spellReason(result))
 
-	if result.Claim != nil && result.Claim.ID != "" {
-		out.WriteString(", from " + result.Claim.ID)
+	if result.ClaimID != "" {
+		out.WriteString(", from " + result.ClaimID)
 	}
 	if result.Budget != nil && result.Budget.Combined != nil {
 		out.WriteString(", ±" + number(result.Budget.Combined.Magnitude) + " " + result.Budget.Combined.Unit)

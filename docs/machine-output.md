@@ -42,7 +42,7 @@ Every object on stdout begins with the same two fields, whichever command wrote 
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "fmt"
 }
 ```
@@ -71,6 +71,41 @@ side of it and the exit codes — and a caller reads it once for every command i
 
 Growth is cheap and breakage is loud, deliberately. Every output change has to be
 classified as one or the other, and that judgement is a review burden on purpose.
+
+Version `2` is the only version change so far. It is
+[0017. The answer is the default and the evidence is asked for](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md),
+and it did three things a caller on version `1` sees:
+
+- Every `span` became a string. It was two nested objects.
+- `resolve` stopped writing `claim` by default and started writing `accuracy` and
+  `claim-id`. `--evidence` restores `claim`.
+- `list-types` stopped writing `description` by default, and writes `absent` only where it
+  holds. `--describe` restores `description`.
+
+## Spans
+
+Wherever this contract writes where something is — a query answer, a diagnostic, an
+invariant violation, a review finding — it writes a **string**:
+
+```
+path:line:column-line:column
+path:line:column
+```
+
+The path is exactly as the loader reached the file, so it opens as written. Lines and
+columns are 1-based, and a column is a byte offset into its line rather than a count of
+characters. The second form is an empty span, which is what something with no source text
+of its own — a token that is missing, the end of a file — points at; it is written when the
+two ends are the same point rather than repeated.
+
+The path is written once because a span never crosses a file. It is written first, and the
+numbers are read from the right, so a path holding a colon or a dash parses unambiguously.
+
+Byte offsets are not written. They are a convenience for a tool holding the source bytes,
+which is one line index away from recovering them; everything else that reads a span wants a
+file and a line, and paid for the offsets on every span it never read. That is the
+version-`2` change, and it is why the whole span is a string rather than the same object
+with two fields dropped.
 
 ## Exit codes
 
@@ -123,7 +158,7 @@ Neither flag has any effect on the exit code.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "fmt",
   "files": [
     {
@@ -136,10 +171,7 @@ Neither flag has any effect on the exit code.
       "diagnostics": [
         {
           "severity": "error",
-          "span": {
-            "start": {"path": "site/b.dfc", "line": 1, "column": 7, "offset": 6},
-            "end": {"path": "site/b.dfc", "line": 1, "column": 7, "offset": 6}
-          },
+          "span": "site/b.dfc:1:7",
           "message": "unexpected end of tokens at line 1, column 7, expected one of: RParen"
         }
       ]
@@ -177,11 +209,15 @@ half the tree has not answered the question the other half answered.
 ### `list-types`
 
 The whole registry, which is the first call to make against a model nothing has read
-before. It takes no arguments.
+before. It takes no arguments and one flag.
+
+| Flag | Meaning |
+|------|---------|
+| `--describe` | Include the one line the registry gives each type. |
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "list-types",
   "types": [
     {
@@ -189,15 +225,12 @@ before. It takes no arguments.
       "kinds": ["Zone"],
       "geometries": [],
       "absent": true,
-      "description": "A group of things administered together, which has no shape.",
       "instances": 1
     },
     {
       "name": "MeetingRoom",
       "kinds": ["Space"],
       "geometries": ["area"],
-      "absent": false,
-      "description": "An enclosed room used for meetings.",
       "instances": 12
     }
   ]
@@ -210,9 +243,16 @@ before. It takes no arguments.
 | `types[].name` | string | The type name, which is what `list-instances` takes. |
 | `types[].kinds` | array | The kinds an instance may declare, in specification order rather than the order the declaration was written in. |
 | `types[].geometries` | array | The geometry forms an instance may declare, in specification order. |
-| `types[].absent` | boolean | Whether an instance may omit its geometry entirely. Absence is not a geometry form — a node with no geometry omits the child rather than naming one — so it is a field of its own rather than a member of `geometries`. |
-| `types[].description` | string, optional | The one line the registry gives the type. Absent when it was not written. |
+| `types[].absent` | boolean, optional | Whether an instance may omit its geometry entirely. Absent on a type that requires one, the way `retired` is on a listed instance. Absence is not a geometry form — a node with no geometry omits the child rather than naming one — so it is a field of its own rather than a member of `geometries`. |
+| `types[].description` | string, optional | The one line the registry gives the type. Written under `--describe`, and absent under it too when the registry wrote none. |
 | `types[].instances` | integer | How many semantic nodes declare this type. |
+
+The descriptions are asked for rather than given. They are prose about the vocabulary rather
+than about this model, they grow with the registry rather than with the model, and this is
+the call every cold start begins with — so whoever is deciding which type to ask about next
+paid for them on every run and read them on almost none. The measurement is in
+[`token-budget.md`](./token-budget.md) and the reasoning in
+[0017](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md).
 
 ### `list-instances`
 
@@ -236,7 +276,7 @@ caller reading a mixed listing can tell which is which without asking about each
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "list-instances",
   "instances": [
     {
@@ -298,7 +338,7 @@ which came back and so which of the fields to expect.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "get",
   "entity": {
     "id": "site:S-101",
@@ -312,10 +352,7 @@ which came back and so which of the fields to expect.
     "member-of": ["site:Z-01"],
     "boundaries": ["geom:L-01"],
     "observations": ["observations/2026-05-07-interior.obs"],
-    "span": {
-      "start": {"path": "entities/site.dfc", "line": 13, "column": 1, "offset": 142},
-      "end": {"path": "entities/site.dfc", "line": 52, "column": 43, "offset": 1284}
-    },
+    "span": "entities/site.dfc:13:1-52:43",
     "claims": [
       {
         "id": "survey:A-0002",
@@ -326,10 +363,7 @@ which came back and so which of the fields to expect.
         "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
         "date": "2026-05-06",
         "rank": "normal",
-        "span": {
-          "start": {"path": "entities/site.dfc", "line": 30, "column": 3, "offset": 712},
-          "end": {"path": "entities/site.dfc", "line": 36, "column": 25, "offset": 934}
-        }
+        "span": "entities/site.dfc:30:3-36:25"
       }
     ]
   }
@@ -355,7 +389,7 @@ which came back and so which of the fields to expect.
 | `entity.observations` | array, optional | The observation files it links to, as paths relative to the model root, in the order it wrote them. Absent when it links to none. Producing this reads nothing. |
 | `entity.observation-records` | array, optional | The records those files hold, written under `--observations` and absent otherwise. Empty rather than absent when the flag was given and the files hold no record, because "nobody has surveyed this" and "you did not ask" are different answers. |
 | `entity.retired` | object, optional | How a semantic node stopped existing: `date`, `reason`, and `superseded-by` where something stands in its place. Absent for a node that was not retired. |
-| `entity.span` | object | Where it was written: file, line, column and byte offset, at both ends of the form. |
+| `entity.span` | span | Where it was written: the file, and the line and column of both ends of the form. |
 | `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
 
 Every claim carries the evidence for its value, because a value without it is the bare
@@ -373,7 +407,7 @@ number the format exists to stop:
 | `claims[].rank` | string | `normal` or `deprecated`, reported whether or not it was written. |
 | `claims[].superseded-by` | string, optional | The id of the claim that replaced this one. |
 | `claims[].resolution` | string, optional | What the rule left this claim as: `current`, `tied` or `unranked`. Written under `--claims resolved` and absent otherwise, because under `--claims full` nothing has been resolved. |
-| `claims[].span` | object | Where the claim was written. |
+| `claims[].span` | span | Where the claim was written. |
 
 Each record of `entity.observation-records` is one shot, in log order across every file the
 thing links to:
@@ -390,7 +424,7 @@ thing links to:
 | `observation-records[].antenna-height` | number | The offset from the mark to the phase centre or prism the coordinate has already been reduced by. |
 | `observation-records[].session` | string | The occupation the record belongs to, which is how a systematic error is attributed to the setup that caused it. |
 | `observation-records[].retired` | object, optional | The later record that retired this one: `id`, `at`, `reason` and `span`. Absent for a record nothing retired. |
-| `observation-records[].span` | object | The line of the file the record was written on. |
+| `observation-records[].span` | span | The line of the file the record was written on. |
 
 A retired record is reported rather than dropped. Retirement removes trust in a number and
 never the number itself, and an answer that quietly left it out would be the tool rewriting
@@ -434,11 +468,11 @@ anything.
 ### `resolve`
 
 One predicate about one thing, answered: the value, the unit it is in, how well it is
-known, the claim it came from and which step of the rule picked that claim.
+known, the id of the claim it came from and which step of the rule picked that claim.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "resolve",
   "subject": "site:S-101",
   "predicate": "area",
@@ -446,6 +480,26 @@ known, the claim it came from and which step of the rule picked that claim.
   "reason": "accuracy",
   "strict": false,
   "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+  "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+  "claim-id": "survey:A-0002"
+}
+```
+
+That is the answer. The audit trail behind it — who said so, how, when, and where they
+wrote it down — is `--evidence`:
+
+```json
+{
+  "version": 2,
+  "command": "resolve",
+  "subject": "site:S-101",
+  "predicate": "area",
+  "outcome": "resolved",
+  "reason": "accuracy",
+  "strict": false,
+  "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
+  "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+  "claim-id": "survey:A-0002",
   "claim": {
     "id": "survey:A-0002",
     "predicate": "area",
@@ -456,15 +510,15 @@ known, the claim it came from and which step of the rule picked that claim.
     "date": "2026-05-06",
     "rank": "normal",
     "resolution": "current",
-    "span": {"start": {"path": "entities/site.dfc", "line": 18, "column": 3, "offset": 402},
-             "end": {"path": "entities/site.dfc", "line": 24, "column": 26, "offset": 619}}
+    "span": "entities/site.dfc:18:3-24:26"
   }
 }
 ```
 
 | Flag | Meaning |
 |------|---------|
-| `--candidates` | Report every live claim under the predicate beside the answer, each marked with what resolution made of it. |
+| `--evidence` | Report the winning claim in full beside the answer: its source, its method, its rank, its date and where it was written. |
+| `--candidates` | Report every live claim under the predicate beside the answer, each in full and marked with what resolution made of it. |
 | `--frame <id>` | Express a coordinate answer in this frame rather than in the one the thing is written in. |
 
 | Field | Type | Meaning |
@@ -475,20 +529,33 @@ known, the claim it came from and which step of the rule picked that claim.
 | `reason` | string | Which step of the rule produced that outcome: `only`, `accuracy`, `recency`, `unranked`, `ambiguous` or `unclaimed`. |
 | `strict` | boolean | Whether the registry declares the predicate strict. Written whatever the outcome. |
 | `value` | object, optional | The answer, in the same shape `claims[].value` takes elsewhere. Absent where nothing resolved. |
+| `accuracy` | array, optional | How well the answer is known, term by term, as the claim it came from stated it. Absent where nothing resolved, and absent where the claim stated none — which makes the answer unrankable rather than exact, and is what `reason` says. |
+| `claim-id` | string, optional | The id of the claim the answer came from. Absent where nothing resolved, and absent where the claim wrote no id, which is the great majority of them: an id is required only of a claim something references. |
 | `frame` | string, optional | The coordinate frame the value is expressed in. Absent for a value that is not a position, which is in no frame. |
-| `claim` | object, optional | The claim the answer came from, in the shape documented under `get`. Absent where nothing resolved. |
-| `candidates` | array, optional | Claims that could still be the answer, each in that same shape and marked with its `resolution`. |
+| `claim` | object, optional | The claim the answer came from, in the shape documented under `get`. Written under `--evidence` and absent otherwise. |
+| `candidates` | array, optional | Claims that could still be the answer, each in that same full shape and marked with its `resolution`. |
 | `budget` | object, optional | The accumulated error of a cross-frame answer, broken out by term. Written only where a frame transform was applied. |
+
+`value`, `accuracy` and `claim-id` are the answer; `claim` is the audit trail. The split is
+[0017. The answer is the default and the evidence is asked for](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md),
+and it is drawn where it is because how good a number is belongs to the number, while who to
+argue with about it is a separate question asked far less often. It is not a trim of what
+this engine refuses to hand over: an answer never comes back as a bare figure, because
+`accuracy` is beside it whenever the claim stated one.
 
 The four outcomes and the four exit codes line up, because what a caller does about each is
 different:
 
 | Outcome | Exit | Carries |
 |---------|------|---------|
-| `resolved` | `0` | `value` and `claim`. `reason` is `only`, `accuracy` or `recency`. |
-| `unranked` | `0` | `value` and `claim`. The one live claim under a predicate nothing rankable was said about: still what the model says, and not an answer the rule chose. |
-| `ambiguous` | `4`, or `5` where `strict` | `candidates`, every one of them. No `value` and no `claim`. |
-| `unclaimed` | `1` | Neither. Nothing live is written under the predicate. |
+| `resolved` | `0` | `value`, `accuracy` and `claim-id`, and `claim` under `--evidence`. `reason` is `only`, `accuracy` or `recency`. |
+| `unranked` | `0` | The same. The one live claim under a predicate nothing rankable was said about: still what the model says, and not an answer the rule chose. There is no `accuracy`, which is why. |
+| `ambiguous` | `4`, or `5` where `strict` | `candidates`, every one of them and each in full. No `value`, no `accuracy`, no `claim-id` and no `claim`. |
+| `unclaimed` | `1` | None of them. Nothing live is written under the predicate. |
+
+Under `ambiguous` the candidates come back in full whether or not `--evidence` was given.
+Where there is no answer the evidence is the answer, and a caller asked to choose between
+two claims cannot do it from two values.
 
 An ambiguity is never broken by picking one. Every tied claim comes back whether or not
 `--candidates` was given, because narrowing four claims to two is most of the work of
@@ -559,7 +626,7 @@ takes a query, an id, and three flags.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "traverse",
   "subject": "site:S-101",
   "query": "adjacent-to",
@@ -575,10 +642,7 @@ takes a query, an id, and three flags.
       "type": "Corridor",
       "frame": "frame:building",
       "via": ["geom:E-02"],
-      "span": {
-        "start": {"path": "entities/site.dfc", "line": 41, "column": 1, "offset": 812},
-        "end": {"path": "entities/site.dfc", "line": 48, "column": 25, "offset": 994}
-      }
+      "span": "entities/site.dfc:41:1-48:25"
     }
   ]
 }
@@ -600,7 +664,7 @@ takes a query, an id, and three flags.
 | `results[].classification` | string, optional | What an edge of a boundary separates the region by: `physical`, `virtual`, or `unresolved` where it names a backing element the model does not hold. Absent for a result that is not an edge. |
 | `results[].backing` | array, optional | The ids of the elements that physically realise an edge, in the order the edge named them. Absent for a virtual edge, which names none. |
 | `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. Written under `adjacent-to` and absent otherwise. |
-| `results[].span` | object | Where it was written. |
+| `results[].span` | span | Where it was written. |
 
 Every result says which relation produced it, and containment is never reported as
 membership or the other way round. A wall inside a storey and grouped into three zones is
@@ -651,7 +715,7 @@ replaced them, so a retraction is followable forward without a second call.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "claims",
   "subject": "site:S-101",
   "claims": [
@@ -666,10 +730,7 @@ replaced them, so a retraction is followable forward without a second call.
       "rank": "deprecated",
       "superseded-by": "survey:A-0002",
       "resolution": "retracted",
-      "span": {
-        "start": {"path": "entities/site.dfc", "line": 20, "column": 3, "offset": 412},
-        "end": {"path": "entities/site.dfc", "line": 28, "column": 34, "offset": 703}
-      }
+      "span": "entities/site.dfc:20:3-28:34"
     },
     {
       "id": "survey:A-0002",
@@ -681,10 +742,7 @@ replaced them, so a retraction is followable forward without a second call.
       "date": "2026-05-06",
       "rank": "normal",
       "resolution": "current",
-      "span": {
-        "start": {"path": "entities/site.dfc", "line": 29, "column": 3, "offset": 706},
-        "end": {"path": "entities/site.dfc", "line": 35, "column": 25, "offset": 928}
-      }
+      "span": "entities/site.dfc:29:3-35:25"
     }
   ]
 }
@@ -745,7 +803,7 @@ empty answer would read as a model nobody disagrees about.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "conflicts",
   "conflicts": [
     {
@@ -761,10 +819,7 @@ empty answer would read as a model nobody disagrees about.
           "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
           "rank": "normal",
           "resolution": "current",
-          "span": {
-            "start": {"path": "entities/site.dfc", "line": 29, "column": 3, "offset": 706},
-            "end": {"path": "entities/site.dfc", "line": 35, "column": 25, "offset": 928}
-          }
+          "span": "entities/site.dfc:29:3-35:25"
         },
         {
           "id": "survey:A-0003",
@@ -772,10 +827,7 @@ empty answer would read as a model nobody disagrees about.
           "value": {"shape": "scalar", "unit": "m2", "scalar": 24.0},
           "rank": "normal",
           "resolution": "outranked",
-          "span": {
-            "start": {"path": "entities/site.dfc", "line": 36, "column": 3, "offset": 931},
-            "end": {"path": "entities/site.dfc", "line": 42, "column": 25, "offset": 1147}
-          }
+          "span": "entities/site.dfc:36:3-42:25"
         }
       ]
     }
@@ -825,7 +877,7 @@ namespace alone, or by one that matches on nothing.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "route",
   "subject": {"id": "site:S-104", "kind": "Space", "type": "MeetingRoom"},
   "destination": {
@@ -896,7 +948,7 @@ the one a permanent structure gets placed against.
 | `setbacks[].unit` | string | The unit that distance is in, which is the frame's. |
 | `setbacks[].claim` | string, optional | The id of the claim it was resolved from. Absent for a claim that wrote none, which is most of them. |
 | `setbacks[].source` | string, optional | The evidence the distance came from: a consent, a statute, a deed. |
-| `setbacks[].span` | object | Where that claim was written. |
+| `setbacks[].span` | span | Where that claim was written. |
 | `region` | object, optional | What is left buildable. Written for a derivation that succeeded whether or not it covers anything. |
 | `region.area` | number | What it covers, holes taken away, in the square of `unit`. |
 | `region.empty` | bool | Whether it covers nothing, which is a state of the answer rather than an absence of one. |
@@ -1018,7 +1070,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "check",
   "summary": {"checks": 7, "runnable": 6, "ran": 6, "passed": 4, "failed": 2},
   "violations": [
@@ -1027,14 +1079,8 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
       "type": "MeetingRoom",
       "check": "required-claim",
       "arguments": ["(predicate width)"],
-      "declared": {
-        "start": {"path": "registry.dfc", "line": 37, "column": 3, "offset": 812},
-        "end": {"path": "registry.dfc", "line": 37, "column": 40, "offset": 849}
-      },
-      "subject": {
-        "start": {"path": "entities/site.dfc", "line": 29, "column": 1, "offset": 706},
-        "end": {"path": "entities/site.dfc", "line": 34, "column": 24, "offset": 902}
-      },
+      "declared": "registry.dfc:37:3-37:40",
+      "subject": "entities/site.dfc:29:1-34:24",
       "message": "expected a claim under width on the subject, found none",
       "hint": "the type requires one of every instance; write the claim, or take the invariant off the type"
     }
@@ -1141,7 +1187,7 @@ exit code.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "review",
   "comparison": {
     "against": "main",
@@ -1161,10 +1207,7 @@ exit code.
       "ruling": "warning",
       "subject": "site:S-101",
       "side": "head",
-      "span": {
-        "start": {"path": "entities/geometry.dfc", "line": 15, "column": 5, "offset": 312},
-        "end": {"path": "entities/geometry.dfc", "line": 15, "column": 28, "offset": 335}
-      },
+      "span": "entities/geometry.dfc:15:5-15:28",
       "commit": {
         "sha": "5f2b8c1d9e3a47b6c0d1e2f3a4b5c6d7e8f90123",
         "summary": "story(site): widen Meeting Room A",
@@ -1175,10 +1218,7 @@ exit code.
       "hint": "a corner which moved was measured again, so write the measurement: `dfcad supersede geom:V-02 position ...` keeps what the first survey said beside what the second one found",
       "related": [
         {
-          "span": {
-            "start": {"path": "entities/geometry.dfc", "line": 12, "column": 3, "offset": 240},
-            "end": {"path": "entities/geometry.dfc", "line": 18, "column": 30, "offset": 421}
-          },
+          "span": "entities/geometry.dfc:12:3-18:30",
           "message": "the claim this rewrote, as the merge base holds it"
         }
       ]
@@ -1188,10 +1228,7 @@ exit code.
       "ruling": "failure",
       "subject": "geom:V-04",
       "side": "base",
-      "span": {
-        "start": {"path": "entities/geometry.dfc", "line": 28, "column": 1, "offset": 640},
-        "end": {"path": "entities/geometry.dfc", "line": 35, "column": 24, "offset": 838}
-      },
+      "span": "entities/geometry.dfc:28:1-35:24",
       "commit": {
         "sha": "5f2b8c1d9e3a47b6c0d1e2f3a4b5c6d7e8f90123",
         "summary": "story(site): widen Meeting Room A",
@@ -1204,10 +1241,7 @@ exit code.
         {
           "from": "geom:E-03",
           "relation": "vertices",
-          "span": {
-            "start": {"path": "entities/geometry.dfc", "line": 41, "column": 1, "offset": 980},
-            "end": {"path": "entities/geometry.dfc", "line": 41, "column": 92, "offset": 1071}
-          }
+          "span": "entities/geometry.dfc:41:1-41:92"
         }
       ]
     }
@@ -1287,7 +1321,7 @@ the decision looks like and for what happens when the rules do not place a node.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "add-node",
   "dryRun": false,
   "files": [
@@ -1375,7 +1409,7 @@ free, and an id is never issued twice
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "add-node",
   "dryRun": false,
   "files": [
@@ -1512,7 +1546,7 @@ nothing to read a corner against until it is known.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "scaffold-loop",
   "dryRun": false,
   "files": [
@@ -1614,7 +1648,7 @@ is refused: that is the same problem one reference further along.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "retire",
   "dryRun": false,
   "files": [
@@ -1700,7 +1734,7 @@ for correcting rather than disagreeing.
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "add-claim",
   "dryRun": false,
   "files": [
@@ -1743,7 +1777,7 @@ the number it used to be
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "supersede",
   "dryRun": false,
   "files": [
@@ -1787,7 +1821,7 @@ Retracting the only live claim of a subject and predicate is permitted, and is r
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "deprecate-claim",
   "dryRun": false,
   "files": [
@@ -1827,7 +1861,7 @@ an earlier one wrote, and nothing is judged against the model as it stands halfw
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "command": "apply",
   "dryRun": false,
   "files": [

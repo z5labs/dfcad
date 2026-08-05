@@ -71,7 +71,14 @@ const (
 // that reads a documented field keeps working. A field is never removed,
 // renamed, reordered into a different meaning, or given a different type
 // without this number changing. Growth is cheap; breakage is loud.
-const outputVersion = 1
+//
+// 2 is the trimming
+// docs/decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md
+// argues for: a span is a string rather than two objects, `resolve` reports the
+// answer and its accuracy rather than the whole winning claim, and `list-types`
+// leaves out the registry's prose. Each of those is a field retyped or dropped
+// from a default, which is what this number is for.
+const outputVersion = 2
 
 // envelope is the head of the object every command writes to stdout, and the
 // only part of that object whose shape does not depend on which command ran.
