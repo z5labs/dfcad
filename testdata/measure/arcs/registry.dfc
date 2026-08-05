@@ -1,0 +1,56 @@
+; The vocabulary the curved shapes beside this file are measured against.
+;
+; An arc is registry data and not a form: this file declares the predicates a
+; curved edge carries its centre and its plane under, and the engine reads them
+; because a caller resolved them and handed them over. Nothing compiled in
+; learns the names below.
+(project
+  (label "Arc measurement fixture")
+  (globalid-namespace "https://example.org/models/arcs"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate arc-centre
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The centre of the circle a curved edge runs on, in the frame of the edge."))
+
+(predicate arc-through
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "A point a curved edge passes through between its two ends, which says which of the two arcs between them is meant."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, and how far out of one plane its corners and the centres of its arcs may lie."))
+
+(tolerance chord-deviation
+  (value 0.01 m)
+  (description "How far a straight segment standing in for a curve may fall from it."))
+
+(tolerance coarse-chord-deviation
+  (value 0.5 m)
+  (description "How far a straight segment standing in for a curve may fall from it where only a rough outline is wanted."))
+
+(tolerance hair-chord-deviation
+  (value 0.000000000001 m)
+  (description "Finer than anything on this project was surveyed to, and here to be refused rather than drawn."))

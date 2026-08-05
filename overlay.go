@@ -226,6 +226,11 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 			// vocabulary of the shape rather than of the arithmetic over it.
 			return region, m.diags
 		}
+
+		if one.curved {
+			m.add(m.undrawn(node, one))
+			return region, m.diags
+		}
 	}
 
 	if !m.coplanar(node, rings) {
@@ -281,6 +286,28 @@ func (m *measurer) untolerated(node *SemanticNode) Diagnostic {
 		),
 		Hint: "an overlay judges two corners coincident and draws an offset to a distance the project wrote down; " +
 			"there is no default for it, and one compiled in here would be the engine deciding how close is close enough",
+	}
+}
+
+// undrawn reports a region bounded by a ring which bends, which every operation
+// in this file is over straight segments and so will not read.
+//
+// It is a refusal and not a limitation being worked around. An overlay walks
+// segments, so reading a curved boundary here would mean tessellating it — and
+// choosing a resolution for somebody's boundary in the middle of answering a
+// question about whether two rooms overlap is exactly the accident an arc kept
+// as an arc exists to prevent. The caller draws the curve deliberately, to a
+// tolerance they name, and knows they have.
+func (m *measurer) undrawn(node *SemanticNode, one *outline) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     m.topology.namedAt(node.id, node.span),
+		Message: fmt.Sprintf(
+			"expected every loop bounding %s to be straight to read it as a plane figure, found that %s bends along an arc",
+			nodeName(node), geometricName(loopTag, one.loop.id),
+		),
+		Hint: "an overlay is computed over straight segments; tessellate the loop to a chord tolerance you name and " +
+			"operate on that, rather than having a resolution chosen for you here",
 	}
 }
 
