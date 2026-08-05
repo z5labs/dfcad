@@ -232,7 +232,7 @@ const listGeometry = `(vertex geom:V-01
 (edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
 `
 
-// listBatch is the operation file the walks over every command apply.
+// listBatch is the operation file every walk over the commands applies.
 //
 // It is two operations rather than one because the second names what the first
 // wrote, which is the property a batch exists for: a node and the claim about it
