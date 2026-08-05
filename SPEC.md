@@ -769,8 +769,19 @@ The description is for the person reading the registry. Nothing in the engine re
   added later, so an invariant true of a type is stated once rather than copied onto a
   hundred and fifty instances. A violation names the instance, the invariant, the parameters
   it was evaluated with, and the registry file and line that declared it.
+- An `invariant` is **never inherited.** It applies to the instances of the type that
+  declares it and to nothing else: not to the nodes those instances contain, not to the
+  members of a zone that carries one, and not from one type to another — the type registry
+  declares no hierarchy for a type to inherit through. A rule that should hold of the rooms
+  inside a storey is declared on the room type, because a rule that reached instances through
+  containment would apply to a different set of nodes every time somebody moved one.
 - An `invariant` naming a check that cannot apply to the type's `kind` or `geometry` is a
-  load error caught at **registry** load, not at run.
+  load error caught at **registry** load, not at run. *Cannot apply* means no instance the
+  type permits could be examined at all — a check written on an edge, one that applies to no
+  `kind` the type permits, or one that measures a geometry form the type permits none of.
+  Where a type permits several forms and the check applies to some of them, the invariant is
+  accepted and binds to the instances it can examine: a type permitting both an area and no
+  geometry carries a closure check on the instances that have an area.
 
 ### 7.4 `predicate`
 

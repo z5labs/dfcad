@@ -415,6 +415,34 @@ func ExampleChecks() {
 	// zone-members-resolve
 }
 
+func ExampleGraph_Invariants() {
+	graph, _ := dfcad.LoadGraph("testdata/invariant/valid")
+
+	// An invariant is written once on the type and applies to every instance of
+	// it, so what bears on one node is asked of the graph rather than read off
+	// the node: nothing was copied onto it, and a room written after the rule
+	// was declared carries it exactly as one written before.
+	for node := range graph.Nodes().All() {
+		for _, binding := range graph.Invariants(node) {
+			fmt.Println(binding, "declared on", binding.Type)
+		}
+	}
+
+	// The corridor's type declares no invariant, which is ordinary: nothing is
+	// bound to it and nothing is printed about it. Nor does it inherit the
+	// storey's, though it is written inside one.
+	corridor, _ := graph.Node("site:S-201")
+	fmt.Println("bound to the corridor:", len(graph.Invariants(corridor)))
+
+	// Output:
+	// site:S-103 required-claim (predicate width) declared on MeetingRoom
+	// site:L-01 within-resolves declared on Level
+	// site:Z-02 boundary-loops-close (tolerance boundary-closure) declared on OccupancyZone
+	// site:S-101 required-claim (predicate width) declared on MeetingRoom
+	// site:S-102 required-claim (predicate width) declared on MeetingRoom
+	// bound to the corridor: 0
+}
+
 func ExampleValidateAssertion() {
 	const path = "entities/level-1.dfc"
 

@@ -1,0 +1,58 @@
+; The vocabulary of a model whose types carry invariants.
+;
+; Each invariant is stated once here and applies to every instance of its type,
+; including the ones written after it and in another file: nothing is copied
+; onto an instance, so a rule true of a type cannot be unevenly maintained
+; across the instances which happen to have been written first.
+(project
+  (label "Invariant fixture")
+  (globalid-namespace "https://example.org/models/invariant"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "The clear width between two faces."))
+
+; Every meeting room carries a width, said once rather than on each of them.
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (invariant required-claim (predicate width)))
+
+; A type with no invariant is ordinary. Nothing binds to its instances and a run
+; over the model says nothing about them.
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms."))
+
+; A type permitting an area and its absence. The invariant binds to the
+; instances which have an area and not to the ones which have no shape at all,
+; which is what the type permits them to be.
+(type OccupancyZone
+  (kind Zone)
+  (geometry area)
+  (geometry absent)
+  (description "A region occupancy is counted over.")
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+
+; Declared on the storey and not on what the storey contains: an invariant is
+; not inherited, so the rooms within a level carry the level's invariant
+; nowhere.
+(type Level
+  (kind Storey)
+  (geometry surface)
+  (description "One storey, taken as its finished floor.")
+  (invariant within-resolves))

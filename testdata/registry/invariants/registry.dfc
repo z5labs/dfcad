@@ -1,0 +1,38 @@
+; An invariant is written on a type and applies to every instance of it, so a
+; check which could examine no instance of that type is caught here, when the
+; registry loads, rather than when something runs it. An invariant which applies
+; to nothing does not fail: it passes on every instance forever, and the rule
+; nobody notices is unchecked is the one this refuses.
+(project (globalid-namespace "https://example.org/models/riverside"))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close and still count as closed."))
+
+; edge-endpoints-differ is written on an edge and not on a node, and a loop this
+; type's instances never have cannot be closed by one which is a line.
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces.")
+  (invariant edge-endpoints-differ)
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+
+; A type whose only permitted geometry is its absence has no instance with a
+; shape to measure.
+(type Campus
+  (kind Zone)
+  (geometry absent)
+  (description "A group of things administered together, which has no shape.")
+  (invariant boundary-loops-close (tolerance boundary-closure)))
+
+; Accepted, and here to show where the rule stops: a type permitting an area and
+; its absence has instances the check can examine, so the invariant binds to
+; those and not to the ones with no shape.
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (geometry absent)
+  (description "An enclosed room used for meetings.")
+  (invariant boundary-loops-close (tolerance boundary-closure))
+  (invariant within-resolves))

@@ -103,6 +103,10 @@ func TestLoadRegistry(t *testing.T) {
 			name:    "resolves an invariant's check name and its parameters when the registry loads",
 			fixture: "checks",
 		},
+		{
+			name:    "names a check an invariant could apply to no instance of its type with",
+			fixture: "invariants",
+		},
 	}
 
 	for _, testCase := range testCases {

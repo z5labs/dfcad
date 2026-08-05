@@ -1,0 +1,21 @@
+; A meeting room added after the invariant was declared, in a file the invariant
+; has never been written into.
+;
+; It carries the width its type requires the same way the rooms written before it
+; do, because the rule lives on the type and is bound to an instance when the
+; question is asked rather than copied onto it when the instance is written.
+(node site:S-103
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-02)
+  (width
+    (id survey:W-0002)
+    (value 3.6 m)
+    (source "As-built check AB-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-11")))
