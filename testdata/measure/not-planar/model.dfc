@@ -1,0 +1,56 @@
+; A room with one corner a metre above the other three.
+;
+; Three points are always in a plane and four are not. The number a projection
+; of this would give is smaller than the shape, which is why it is refused
+; rather than reported.
+(vertex geom:V-01
+  (label "Warped room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Warped room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Warped room, corner 3")
+  (frame frame:building)
+  (position
+    (value (4.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Warped room, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 4.0 1.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Warped room, side 1") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Warped room, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Warped room, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Warped room, side 4") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Warped room boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(node site:S-01
+  (label "Warped room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))

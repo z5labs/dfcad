@@ -1,0 +1,261 @@
+; The four shapes whose sizes are worked out by hand in measure_test.go, and
+; the same square written two more ways.
+;
+; None of the sizes is written down anywhere here. A square is four vertices,
+; four edges and a loop; that it is twelve square metres is computed from those
+; every time it is asked, so moving a corner changes the answer with no other
+; edit and no number left behind to disagree with it.
+(vertex geom:V-01
+  (label "Square room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Square room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Square room, corner 3")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Square room, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Square room, side 1") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Square room, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Square room, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Square room, side 4") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Square room boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(node site:S-01
+  (label "Square room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+; The same four edges, written in the order the ring runs the other way round,
+; and again starting from a different one of them. A size is a property of the
+; shape and not of where somebody began writing it down, so all three of these
+; measure the same.
+(loop geom:L-02
+  (label "Square room boundary, written backwards")
+  (frame frame:building)
+  (edges geom:E-04 geom:E-03 geom:E-02 geom:E-01))
+(node site:S-02
+  (label "Square room, written backwards")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+(loop geom:L-03
+  (label "Square room boundary, written from the second edge")
+  (frame frame:building)
+  (edges geom:E-02 geom:E-03 geom:E-04 geom:E-01))
+(node site:S-03
+  (label "Square room, written from the second edge")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-03))
+
+(vertex geom:V-11
+  (label "Triangular room, corner 1")
+  (frame frame:building)
+  (position
+    (value (10.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-12
+  (label "Triangular room, corner 2")
+  (frame frame:building)
+  (position
+    (value (16.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-13
+  (label "Triangular room, corner 3")
+  (frame frame:building)
+  (position
+    (value (10.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-11 (label "Triangular room, side 1") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12 (label "Triangular room, side 2") (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (label "Triangular room, side 3") (frame frame:building) (vertices geom:V-13 geom:V-11))
+(loop geom:L-11
+  (label "Triangular room boundary")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13))
+(node site:S-11
+  (label "Triangular room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-11))
+
+(vertex geom:V-21
+  (label "L-shaped room, corner 1")
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-22
+  (label "L-shaped room, corner 2")
+  (frame frame:building)
+  (position
+    (value (28.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-23
+  (label "L-shaped room, corner 3")
+  (frame frame:building)
+  (position
+    (value (28.0 1.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-24
+  (label "L-shaped room, corner 4")
+  (frame frame:building)
+  (position
+    (value (22.0 1.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-25
+  (label "L-shaped room, corner 5")
+  (frame frame:building)
+  (position
+    (value (22.0 5.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-26
+  (label "L-shaped room, corner 6")
+  (frame frame:building)
+  (position
+    (value (20.0 5.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-21 (label "L-shaped room, side 1") (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "L-shaped room, side 2") (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "L-shaped room, side 3") (frame frame:building) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "L-shaped room, side 4") (frame frame:building) (vertices geom:V-24 geom:V-25))
+(edge geom:E-25 (label "L-shaped room, side 5") (frame frame:building) (vertices geom:V-25 geom:V-26))
+(edge geom:E-26 (label "L-shaped room, side 6") (frame frame:building) (vertices geom:V-26 geom:V-21))
+(loop geom:L-21
+  (label "L-shaped room boundary")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24 geom:E-25 geom:E-26))
+(node site:S-21
+  (label "L-shaped room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-21))
+
+(vertex geom:V-31
+  (label "Concave room, corner 1")
+  (frame frame:building)
+  (position
+    (value (30.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-32
+  (label "Concave room, corner 2")
+  (frame frame:building)
+  (position
+    (value (34.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-33
+  (label "Concave room, corner 3")
+  (frame frame:building)
+  (position
+    (value (34.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-34
+  (label "Concave room, corner 4")
+  (frame frame:building)
+  (position
+    (value (32.0 1.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-35
+  (label "Concave room, corner 5")
+  (frame frame:building)
+  (position
+    (value (30.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-31 (label "Concave room, side 1") (frame frame:building) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (label "Concave room, side 2") (frame frame:building) (vertices geom:V-32 geom:V-33))
+(edge geom:E-33 (label "Concave room, side 3") (frame frame:building) (vertices geom:V-33 geom:V-34))
+(edge geom:E-34 (label "Concave room, side 4") (frame frame:building) (vertices geom:V-34 geom:V-35))
+(edge geom:E-35 (label "Concave room, side 5") (frame frame:building) (vertices geom:V-35 geom:V-31))
+(loop geom:L-31
+  (label "Concave room boundary")
+  (frame frame:building)
+  (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34 geom:E-35))
+(node site:S-31
+  (label "Concave room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-31))

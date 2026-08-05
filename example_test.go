@@ -1205,6 +1205,55 @@ func ExampleTopology_Assemble() {
 	//   geom:E-02: geom:V-03 to geom:V-02, reversed: true
 }
 
+// ExampleTopology_MeasureRegion answers how big a room is from the boundary it
+// references, rather than from a number written down beside it.
+//
+// An area recorded in the model is a second source of truth. It is right on the
+// day somebody typed it and wrong the first time a wall moves, and nothing in the
+// file says which of those it currently is. Computing it means the question
+// cannot be answered wrongly: the corners are the only thing stated, and the
+// answer is derived from them every time it is asked.
+func ExampleTopology_MeasureRegion() {
+	root := "testdata/measure/courtyard"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	// Which predicate carries a position is vocabulary this repository owns, so
+	// the positions are resolved here and handed in. Place fills the claim behind
+	// each one at the same time, which is what lets the answer carry a budget.
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	plate, _ := nodes.Node("site:S-01")
+
+	measurement, _ := topology.MeasureRegion(plate, boundaries, survey)
+
+	// Ten metres square, less a four-metre courtyard in the middle of it.
+	// Nothing in the model says which of the two loops is the hole: the one
+	// inside the other is, and it is taken away.
+	area, _ := measurement.Area()
+	length, _ := measurement.Length()
+	fmt.Printf("%s: %g %s², bounded by %g %s of wall\n", measurement.Subject(), area, measurement.Unit(), length, measurement.Unit())
+
+	// And how well that is known, which is the whole reason a position is a
+	// claim: the tie to the control point is one error shared by every corner,
+	// so it is counted once instead of eight times.
+	combined, _ := measurement.Budget().Combined()
+	dominant, _ := measurement.Budget().Dominant()
+	fmt.Printf("corners known to %s, mostly %s\n", combined, dominant.Name)
+
+	// Output:
+	// site:S-01: 84 m², bounded by 56 m of wall
+	// corners known to 0.013856406460551019 m (k = 1.0, ≈ 68%), mostly control:CP-3
+}
+
 // ExampleResolveFrames relates an indoor floor plan to the survey it sits on,
 // and says how well that relationship is actually known.
 //

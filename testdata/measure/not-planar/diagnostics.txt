@@ -1,0 +1,7 @@
+testdata/measure/not-planar/model.dfc:15:9: error: expected every corner of the loop geom:L-01 to lie in one plane within the tolerance boundary-closure, which is 0.005 m, found geom:V-02 0.4923659639173309 m out of it
+15 | (vertex geom:V-02
+   |         ^^^^^^^^^
+   = hint: an area is a property of a plane figure; the number a projection of a ring which is not planar would give is smaller than the shape and is not the area of anything
+testdata/measure/not-planar/registry.dfc:30:12: note: the tolerance is declared here
+30 | (tolerance boundary-closure
+   |            ^^^^^^^^^^^^^^^^

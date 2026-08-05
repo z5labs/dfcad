@@ -169,6 +169,33 @@
 // "nothing has been written to decide whether it holds" are different answers;
 // [Rule.Runs] is how to tell them apart.
 //
+// # Measuring
+//
+// How big a room is, is computed from its boundary and is never read from a
+// field. [Topology.MeasureRegion] gives the area, the perimeter, the centroid
+// and the axis-aligned bounding box of a semantic node from the loops it
+// references; [Topology.MeasureLoop] and [Topology.MeasureEdge] do the same one
+// and two levels down. Nothing any of them produces is written back, so a
+// measurement cannot disagree with the geometry it describes: move a corner and
+// the answer moves, with no edit which says so and no recorded number left
+// behind to go stale (see docs/decisions/0009-derived-values-are-never-written-back.md).
+//
+// A [Survey] is what they are computed against — where the vertices are, the
+// claims which put them there, the tolerance rings are judged against, and the
+// registry. Which predicate carries a position is vocabulary the consuming
+// repository owns, so the positions are resolved by the caller and handed in;
+// [Survey.Place] takes a [Resolution] and fills both halves at once. Every
+// figure comes back in the unit of the frame the thing is declared in, an area
+// in the square of it, and with the [Budget] of the position claims it rests on.
+//
+// Each figure also comes back with whether it could be computed at all. A ring
+// which does not close, one which crosses itself, one whose corners are not in
+// one plane and one whose corners are collinear each produce a diagnostic and no
+// area — never a plausible-looking number, which for the first three is exactly
+// what a projection or a signed sum would give. A region bounded by more than
+// one ring is measured by nesting, so a courtyard subtracts without anything in
+// the model having to declare which loop is the outside one.
+//
 // # Reviewing a change
 //
 // Every rule above constrains one revision. Some things are suspicious only as

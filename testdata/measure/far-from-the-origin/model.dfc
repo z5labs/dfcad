@@ -1,0 +1,57 @@
+; The same four-by-three room, on a projected grid rather than at the origin.
+;
+; Seven digits of every coordinate here are the same as every other coordinate,
+; and multiplying them together before subtracting is what spends the precision
+; the answer needs. Everything is measured from the minimum corner of the
+; bounding box, so the arithmetic sees a four and a three.
+(vertex geom:V-01
+  (label "Room on the grid, corner 1")
+  (frame frame:building)
+  (position
+    (value (1234567.25 7654321.5 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Room on the grid, corner 2")
+  (frame frame:building)
+  (position
+    (value (1234571.25 7654321.5 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Room on the grid, corner 3")
+  (frame frame:building)
+  (position
+    (value (1234571.25 7654324.5 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Room on the grid, corner 4")
+  (frame frame:building)
+  (position
+    (value (1234567.25 7654324.5 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Room on the grid, side 1") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Room on the grid, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Room on the grid, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Room on the grid, side 4") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Room on the grid boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(node site:S-01
+  (label "Room on the grid")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
