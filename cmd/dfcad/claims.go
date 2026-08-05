@@ -212,7 +212,7 @@ type conflictEntry struct {
 }
 
 // runClaims is the claims command.
-func runClaims(cmd command, args []string, stdout, stderr io.Writer) int {
+func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -268,7 +268,7 @@ func runClaims(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runConflicts is the conflicts command.
-func runConflicts(cmd command, args []string, stdout, stderr io.Writer) int {
+func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

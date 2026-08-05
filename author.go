@@ -398,9 +398,10 @@ func (spec NodeSpec) form() *Node {
 // type does not permit, an undeclared frame and an id namespace nobody declared
 // are each a refusal the author can act on without reading the registry.
 //
-// An id something already holds is refused, naming where that thing is defined.
-// A retired id is refused the same way, because retiring says the thing stopped
-// existing rather than that its name came free: an id is never issued twice
+// An id something already holds is refused, naming where that thing is defined,
+// and an id this same change has already written is refused with it. A retired
+// id is refused the same way, because retiring says the thing stopped existing
+// rather than that its name came free: an id is never issued twice
 // ([0002](docs/decisions/0002-immutable-id-mutable-label.md)).
 //
 // path is where the node goes. [Registry.Destination] is what decides it from
@@ -419,7 +420,7 @@ func (tx *Tx) AddNode(spec NodeSpec, path string) error {
 		return err
 	}
 
-	if err := tx.free(spec.ID); err != nil {
+	if err := tx.unheld(spec.ID); err != nil {
 		return err
 	}
 
@@ -459,6 +460,10 @@ func (tx *Tx) free(id ID) error {
 
 	return taken
 }
+
+// entityTags are the forms which hold an entity, which is what a reference
+// resolves to and what a claim is written on.
+var entityTags = []string{nodeTag, vertexTag, edgeTag, loopTag}
 
 // familyOf is the tag the model wrote an entity as.
 func familyOf(entity Entity) string {
@@ -508,14 +513,40 @@ func (tx *Tx) SetLabel(id ID, label string) error {
 	return tx.Replace(form, labelled(form, label))
 }
 
-// entity reports whether the model holds an entity under id.
+// entity reports whether the model holds an entity under id, counting what this
+// same change has already written.
+//
+// The forms this change wrote answer for the reason [Tx.references] counts them:
+// the graph is the model as the transaction found it, and a batch which writes a
+// node and then names it is one statement rather than two changes which have to
+// be committed in turn.
 func (tx *Tx) entity(id ID) error {
 	if _, ok := tx.graph.Entity(id); ok {
 		return nil
 	}
 
+	if tx.wrote(id) {
+		return nil
+	}
+
 	nearest, _ := tx.graph.Nearest(id)
 	return UnknownEntityError{ID: id, Nearest: nearest}
+}
+
+// wrote reports whether this change has already written an entity under id.
+//
+// Only the entity forms answer. A registry form written under a name rather than
+// an id is not something a reference reaches or a claim is written on, and
+// reading one as an entity would make a batch which names a type resolve to it.
+func (tx *Tx) wrote(id ID) bool {
+	form, ok := tx.Form(id)
+	if !ok {
+		return false
+	}
+
+	tag, _ := formTag(form)
+
+	return slices.Contains(entityTags, tag)
 }
 
 // RetirementSpec is how a node is being retired: when, why, and what replaces

@@ -50,6 +50,13 @@ var ErrNoEdges = errors.New("a loop is traversed through one or more edges, in o
 // ErrNoNamespace is a scaffold with no id namespace to mint into.
 var ErrNoNamespace = errors.New("scaffolding mints ids, which are minted in a declared namespace")
 
+// ErrNoCorners is a scaffold with no corner list.
+//
+// It is the corners which are the room: a scaffold with none is a request to
+// lay out nothing, and reporting it as a list which does not close would answer
+// the wrong question.
+var ErrNoCorners = errors.New("scaffolding a loop is written with the corners of the loop, in order and closed")
+
 // NotOfFamilyError reports an id which names a member of the model other than
 // the one the reference required.
 //
@@ -899,6 +906,15 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 		}
 	}
 
+	// The corners are checked after the axes the registry decides, and after the
+	// predicate in particular, because a caller which could not read a corner
+	// without the declaration hands the list over unread: reporting that as a
+	// scaffold of no corners would answer with the consequence of the mistake
+	// rather than with the mistake.
+	if len(spec.Corners) == 0 {
+		return nil, ErrNoCorners
+	}
+
 	// The provenance is checked once, against the id the first corner would be
 	// minted under, rather than once per corner: every claim this run writes
 	// carries the same evidence, so a missing source is a property of the
@@ -906,17 +922,15 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 	// thing about which one is wrong. The subject is a real id rather than a
 	// stand-in because the check is the one every claim is held to, and one
 	// held against a subject nobody is writing is a different check.
-	if len(spec.Corners) > 0 {
-		first, err := tx.MintID(spec.Namespace, vertexMark)
-		if err != nil {
-			return nil, err
-		}
+	first, err := tx.MintID(spec.Namespace, vertexMark)
+	if err != nil {
+		return nil, err
+	}
 
-		probe := spec.Provenance
-		probe.Subject, probe.Predicate, probe.Value = first, spec.Predicate, spec.Corners[0].Position
-		if err := probe.Check(registry); err != nil {
-			return nil, err
-		}
+	probe := spec.Provenance
+	probe.Subject, probe.Predicate, probe.Value = first, spec.Predicate, spec.Corners[0].Position
+	if err := probe.Check(registry); err != nil {
+		return nil, err
 	}
 
 	builder := &scaffolder{

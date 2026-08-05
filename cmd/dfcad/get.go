@@ -373,7 +373,7 @@ type accuracyTerm struct {
 }
 
 // runGet is the get command.
-func runGet(cmd command, args []string, stdout, stderr io.Writer) int {
+func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

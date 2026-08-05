@@ -291,7 +291,7 @@ type combinedUncertainty struct {
 }
 
 // runResolve is the resolve command.
-func runResolve(cmd command, args []string, stdout, stderr io.Writer) int {
+func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

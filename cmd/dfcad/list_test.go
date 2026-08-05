@@ -232,12 +232,52 @@ const listGeometry = `(vertex geom:V-01
 (edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
 `
 
+// listBatch is the operation file every walk over the commands applies.
+//
+// It is two operations rather than one because the second names what the first
+// wrote, which is the property a batch exists for: a node and the claim about it
+// are one statement, and applying them as two commands would mean two loads and
+// a window in which the node has no area.
+//
+// It sits in the model root and the walk never reads it: the walk reads entity
+// files, and an operation file is an input to a command rather than part of the
+// model.
+const listBatch = `{
+  "version": 1,
+  "operations": [
+    {
+      "op": "add-node",
+      "id": "site:S-104",
+      "kind": "Space",
+      "type": "MeetingRoom",
+      "geometry": "area",
+      "frame": "frame:building",
+      "label": "Meeting Room D"
+    },
+    {
+      "op": "add-claim",
+      "subject": "site:S-104",
+      "predicate": "area",
+      "claim": {
+        "value": "18.0",
+        "unit": "m2",
+        "source": "As-built check AB-2026-012, Acme Surveys",
+        "method": "method:total-station",
+        "accuracy": ["independent 0.05 m2"],
+        "date": "2026-05-06"
+      }
+    }
+  ]
+}
+`
+
 // model is the fixture tree both commands are run against.
 func model() map[string]string {
 	return map[string]string{
 		"registry.dfc":          listRegistry,
 		"entities/site.dfc":     listModel,
 		"entities/geometry.dfc": listGeometry,
+		"batch.json":            listBatch,
 	}
 }
 

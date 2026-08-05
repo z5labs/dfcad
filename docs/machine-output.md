@@ -1377,6 +1377,87 @@ Retracting the only live claim of a subject and predicate is permitted, and is r
 }
 ```
 
+### `apply`
+
+A batch of edits from an operation file, applied as one change. It takes the file to read,
+or none — or `-` — to read standard input, so a generated batch can be piped in.
+
+The file's shape is [the operation file format](./operation-file.md): one JSON object
+carrying an optional `version` and the `operations`, each naming the command that makes the
+same change on its own and carrying that command's flags as its members. That document is the
+input contract; this is what applying one reports.
+
+A batch is one transaction. The model is read once, every operation is applied to it in
+order, and the model they produce together is validated once — so an operation may name what
+an earlier one wrote, and nothing is judged against the model as it stands halfway through.
+
+```json
+{
+  "version": 1,
+  "command": "apply",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "entities/site.dfc",
+      "status": "rewritten",
+      "effects": [
+        {"op": "created", "tag": "node", "id": "site:S-104"},
+        {"op": "modified", "tag": "node", "id": "site:S-104"}
+      ],
+      "diff": "--- entities/site.dfc.orig\n+++ entities/site.dfc\n@@ -7,3 +7,4 @@\n..."
+    }
+  ],
+  "operations": [
+    {
+      "index": 1,
+      "op": "add-node",
+      "effects": [{"op": "created", "tag": "node", "id": "site:S-104"}],
+      "notices": []
+    },
+    {
+      "index": 2,
+      "op": "add-claim",
+      "effects": [{"op": "modified", "tag": "node", "id": "site:S-104"}],
+      "notices": []
+    }
+  ],
+  "totals": {"operations": 2, "created": 1, "modified": 1, "retired": 0},
+  "notices": []
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `operations` | array | One entry per operation, in the order they were applied. |
+| `operations[].index` | integer | Its place in the batch, counted from one — which is how a refusal names an operation, so the two can be read together. |
+| `operations[].op` | string | The operation it was. |
+| `operations[].effects` | array | What it did to the model, in the order the mutations were applied. The same effects `files[].effects` carries, grouped by the operation that caused them instead of by the file they landed in. |
+| `operations[].claim` | string, optional | The id of the claim it wrote. Absent where it wrote none, or wrote one with no id of its own. |
+| `operations[].replaced` | string, optional | The id of the claim it retracted. Absent for an operation that retracted none. |
+| `operations[].snaps` | array, optional | Every corner a `scaffold-loop` landed on a vertex the model already held, in the shape that command's payload documents. Absent for every other operation. |
+| `operations[].notices` | array | What it had to say about the model it produced, in the shape the claim commands document. |
+| `totals` | object | What the batch did as a whole. |
+| `totals.operations` | integer | How many operations were applied. |
+| `totals.created` | integer | How many things the batch created. It counts effects rather than files: what an author asked for is a node, not the file it landed in. |
+| `totals.modified` | integer | How many it modified. |
+| `totals.retired` | integer | How many it retired. |
+| `notices` | array | Every notice the batch produced, in the order the operations reported them. The same notices `operations[].notices` carries, gathered. |
+
+Exit codes are the ones every write command has, with the operation file reading as input:
+
+| Code | When |
+|------|------|
+| `0` | The batch was applied, or, under `--dry-run`, would have been. |
+| `2` | The operation file could not be read or is not a batch; or the change was refused because the resulting model would not load, the tree did not load to begin with, or a file could not be written. |
+| `3` | The invocation was wrong, or an operation of the batch was: an id something already holds, a type nothing declares, a value of the wrong shape. It is the code the same mistake gets from the command that makes the change on its own. |
+
+A refused batch writes nothing at all and nothing reaches stdout, whichever of the three
+passes refused it. What is wrong with the *file* is reported in full — every operation that
+has a problem, each named by its index — because an author fixing a generated batch should
+not have to reissue it once per mistake. What the *model* refuses is the first operation it
+refuses: the operations after it may depend on it, and the failures they would then have
+would bury the one that is real.
+
 ### Diagnostics and the exit code of a read
 
 The listings, `get`, `traverse`, `claims` and `conflicts` exit `0` whenever they answered,

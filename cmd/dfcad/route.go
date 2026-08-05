@@ -103,7 +103,7 @@ func (MissingIDError) Error() string {
 }
 
 // runRoute is the route command.
-func runRoute(cmd command, args []string, stdout, stderr io.Writer) int {
+func runRoute(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 

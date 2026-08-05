@@ -2022,3 +2022,114 @@ func ExampleTx_Scaffold_unclosed() {
 	// the corner list does not close: corner 4 is 3.0 m from corner 1, and the tolerance boundary-closure permits 0.005 m
 	// the gap is 3 m
 }
+
+// ExampleTx_Apply applies a batch of edits as one change: the model is read
+// once, every operation is applied to it in order, and what they produce
+// together is validated once.
+//
+// The second operation names what the first one wrote, which is the pair a
+// batch exists for — a node and the claim about it are one statement, and
+// applying them as two commands would mean two loads and a moment in which the
+// model holds a room nobody has measured.
+func ExampleTx_Apply() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	batch, err := dfcad.ParseBatch(strings.NewReader(`{
+		"version": 1,
+		"operations": [
+			{"op": "add-node", "id": "site:S-103", "kind": "Space", "type": "MeetingRoom",
+			 "geometry": "area", "frame": "frame:building", "label": "Meeting Room C"},
+			{"op": "add-claim", "subject": "site:S-103", "predicate": "width",
+			 "claim": {"value": "0.102", "unit": "m",
+			           "source": "As-built check AB-2026-020, Acme Surveys",
+			           "method": "method:total-station",
+			           "accuracy": ["independent 0.003 m"],
+			           "date": "2026-05-06"}}
+		]
+	}`))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	applied, err := tx.Apply(batch)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// Nothing has been written yet. The batch is one change, and the change is
+	// made by committing it.
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+
+	for _, operation := range applied {
+		for _, effect := range operation.Effects {
+			fmt.Printf("%d %s: %s %s %s\n",
+				operation.Index, operation.Operation, effect.Op, effect.Tag, effect.ID)
+		}
+	}
+	for _, file := range commit.Files {
+		fmt.Println(filepath.Base(file.Path), file.Status)
+	}
+
+	// Output:
+	// 1 add-node: created node site:S-103
+	// 2 add-claim: modified node site:S-103
+	// site.dfc rewritten
+}
+
+// ExampleParseBatch_refused reports every problem an operation file has at
+// once, each naming the operation it is about by its place in the list.
+//
+// An author fixing a batch a tool generated should not have to reissue it once
+// per mistake, which is the same rule a refused write is reported by.
+func ExampleParseBatch_refused() {
+	_, err := dfcad.ParseBatch(strings.NewReader(`{
+		"operations": [
+			{"op": "add-node", "kind": "Space"},
+			{"op": "add-node", "id": "site:S-103", "edges": ["geom:E-01"]},
+			{"op": "add-widget", "id": "site:S-104"}
+		]
+	}`))
+
+	var refused dfcad.BatchError
+	if errors.As(err, &refused) {
+		for _, problem := range refused.Errs {
+			fmt.Println(problem)
+		}
+	}
+
+	// Every problem is reachable, so a caller branches on what is wrong rather
+	// than on the message saying so.
+	fmt.Println("no id was written:", errors.Is(err, dfcad.ErrNoID))
+
+	// Output:
+	// operation 1, add-node: a node is written with an id
+	// operation 2, add-node: json: unknown field "edges"
+	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, set-label, retire, add-claim, supersede, deprecate-claim
+	// no id was written: true
+}

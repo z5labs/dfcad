@@ -165,11 +165,13 @@ resolution, and "notices": what the change has to say about the model it
 produced.
 `
 
-// ErrMissingValue is a claim with nothing claimed.
+// ErrMissingValue is a claim with nothing claimed, named by the flag which
+// writes it.
 //
 // It is not the same as an empty one: `--value ""` under a predicate declaring
 // text is the empty string, which is a value a claim may legally hold, and
-// leaving the flag out says nothing at all.
+// leaving the flag out says nothing at all. The engine's [dfcad.ErrNoValue] is
+// the same absence said without a flag to name.
 var ErrMissingValue = errors.New("expected the value being claimed, found no --value")
 
 // ErrMissingSubjectAndPredicate is a claim command with nothing to write the
@@ -283,7 +285,7 @@ type noticeEntry struct {
 }
 
 // runAddClaim is the add-claim command.
-func runAddClaim(cmd command, args []string, stdout, stderr io.Writer) int {
+func runAddClaim(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -323,7 +325,7 @@ func runAddClaim(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runSupersede is the supersede command.
-func runSupersede(cmd command, args []string, stdout, stderr io.Writer) int {
+func runSupersede(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -370,7 +372,7 @@ func runSupersede(cmd command, args []string, stdout, stderr io.Writer) int {
 }
 
 // runDeprecateClaim is the deprecate-claim command.
-func runDeprecateClaim(cmd command, args []string, stdout, stderr io.Writer) int {
+func runDeprecateClaim(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -449,59 +451,52 @@ func claimFlags(flags *flag.FlagSet) claimAxes {
 	return axes
 }
 
+// written is the axes as the engine reads them, which is the same value an
+// operation file decodes to.
+//
+// A claim written on a command line and a claim written in a batch are the same
+// claim, so they are read by one piece of code and refused in the same words:
+// the flags here are the spelling, and what a spelling means is the engine's.
+func (axes claimAxes) written() dfcad.ClaimAxes {
+	written := dfcad.ClaimAxes{
+		Unit:     *axes.unit,
+		Source:   *axes.source,
+		Method:   *axes.method,
+		Accuracy: []string(*axes.accuracy),
+		Date:     *axes.date,
+		ID:       *axes.id,
+	}
+
+	// A flag nobody wrote and a flag written empty are different: `--value ""`
+	// under a predicate declaring text is the empty string, which is a value a
+	// claim may legally hold.
+	if axes.value.set {
+		written.Value = &axes.value.value
+	}
+
+	return written
+}
+
 // spec is the claim the flags describe, read against what the registry declares
 // about the predicate.
 //
 // The registry is needed before the value can be read at all: which of the four
 // shapes a value takes is registry data, and reading `1.0 2.0 3.0` as a scalar
 // or as a coordinate is a question only the declaration answers. A predicate
-// nothing declares is therefore answered here rather than by guessing a shape
-// and reporting the value against it — and it is answered in the engine's words,
-// so a caller reads one sentence whether the refusal came from here or from a
-// library call.
+// nothing declares is therefore answered by the engine rather than by guessing a
+// shape and reporting the value against it, so a caller reads one sentence
+// whether the refusal came from here or from a library call.
 func (axes claimAxes) spec(subject dfcad.ID, predicate string, registry *dfcad.Registry) (dfcad.ClaimSpec, error) {
-	spec := dfcad.ClaimSpec{Subject: subject, Predicate: predicate, Source: *axes.source}
+	spec, err := axes.written().Spec(subject, predicate, registry)
 
-	declared, ok := registry.Predicate(predicate)
-	if !ok {
-		return spec, spec.Check(registry)
-	}
-
-	if !axes.value.set {
+	// The engine names the axis, because an axis is what a library caller and
+	// an operation file both write. Here the axis was written as a flag, and
+	// the flag is what the author typed and what they will fix.
+	if errors.Is(err, dfcad.ErrNoValue) {
 		return spec, ErrMissingValue
 	}
 
-	value, err := dfcad.ParseValue(axes.value.value, dfcad.Unit(*axes.unit), declared)
-	if err != nil {
-		return spec, err
-	}
-	spec.Value = value
-
-	if spec.Date, err = on(*axes.date); err != nil {
-		return spec, err
-	}
-
-	for _, id := range []struct {
-		written string
-		into    *dfcad.ID
-	}{{*axes.method, &spec.Method}, {*axes.id, &spec.ID}} {
-		if id.written == "" {
-			continue
-		}
-		if *id.into, err = dfcad.ParseID(id.written); err != nil {
-			return spec, err
-		}
-	}
-
-	for _, term := range *axes.accuracy {
-		read, err := dfcad.ParseAccuracyTerm(term)
-		if err != nil {
-			return spec, err
-		}
-		spec.Accuracy = append(spec.Accuracy, read)
-	}
-
-	return spec, nil
+	return spec, err
 }
 
 // claimedOn is the subject and the predicate a claim command was given.

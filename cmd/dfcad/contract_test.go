@@ -57,6 +57,7 @@ var samples = map[string][]string{
 	"claims":         {"site:S-101"},
 	"conflicts":      {},
 	"route":          {"--kind", "Space", "--type", "MeetingRoom", "site:S-104"},
+	"apply":          {"batch.json"},
 	"add-node": {
 		"--kind", "Space", "--type", "MeetingRoom",
 		"--geometry", "area", "--frame", "frame:building",
