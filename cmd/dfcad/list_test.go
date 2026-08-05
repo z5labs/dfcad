@@ -169,6 +169,7 @@ const listModel = `(node site:S-102
   (type MeetingRoom)
   (geometry area)
   (frame frame:site-grid)
+  (boundary geom:L-21)
   (area
     (id site:M-0001)
     (value 31.0 m2)
@@ -322,6 +323,61 @@ const listGeometry = `(vertex geom:V-01
   (label "Plot one boundary")
   (frame frame:building)
   (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+
+; Room C, outlined on the site grid rather than on the building's. It is what
+; makes a fit a cross-frame question: the plot above is drawn on one grid and
+; this is drawn on another, so deciding whether one sits inside the other means
+; reading the claim which measures the two against each other and carrying its
+; accuracy into the answer.
+(vertex geom:V-21
+  (label "Room C, south-west corner")
+  (frame frame:site-grid)
+  (position
+    (value (125.0 203.0 0.0) m)
+    (source "Interior control set IC-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-22
+  (label "Room C, south-east corner")
+  (frame frame:site-grid)
+  (position
+    (value (133.0 203.0 0.0) m)
+    (source "Interior control set IC-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-23
+  (label "Room C, north-east corner")
+  (frame frame:site-grid)
+  (position
+    (value (133.0 209.0 0.0) m)
+    (source "Interior control set IC-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-24
+  (label "Room C, north-west corner")
+  (frame frame:site-grid)
+  (position
+    (value (125.0 209.0 0.0) m)
+    (source "Interior control set IC-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-21 (label "Room C, south wall") (frame frame:site-grid) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "Room C, east wall") (frame frame:site-grid) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "Room C, north wall") (frame frame:site-grid) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "Room C, west wall") (frame frame:site-grid) (vertices geom:V-24 geom:V-21))
+
+(loop geom:L-21
+  (label "Room C outline")
+  (frame frame:site-grid)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
 `
 
 // listParcels is the plot the buildable derivation is run over.

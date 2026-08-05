@@ -1,0 +1,406 @@
+; A buildable area surveyed on the site grid, and five proposed footprints set
+; out on the building's own grid.
+;
+; Nothing here says whether anything fits. That is read back out of the corners,
+; the frames and the claims every time the question is asked: the footprints are
+; carried into the site frame across the georeference, offset by whatever
+; clearance is required of them, overlaid on the buildable area and measured.
+;
+; The five footprints are the situations a siting answer has to tell apart. One
+; clears by metres, one clears by ten millimetres against an uncertainty of
+; twenty, one crosses the boundary, one is not over the plot at all, and one is
+; set out on a grid nobody stated the accuracy of the fit for — which is
+; undecidable rather than either of the first two.
+
+; The buildable area: thirty metres by twenty on the site grid, surveyed from
+; the same control point the georeference was fitted against.
+(vertex geom:V-01
+  (label "Buildable area, south-west corner")
+  (frame frame:site)
+  (position
+    (id survey:P-0001)
+    (value (0.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+
+(vertex geom:V-02
+  (label "Buildable area, south-east corner")
+  (frame frame:site)
+  (position
+    (id survey:P-0002)
+    (value (30.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+
+(vertex geom:V-03
+  (label "Buildable area, north-east corner")
+  (frame frame:site)
+  (position
+    (id survey:P-0003)
+    (value (30.0 20.0 0.0) m)
+    (source "Boundary survey BS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+
+(vertex geom:V-04
+  (label "Buildable area, north-west corner")
+  (frame frame:site)
+  (position
+    (id survey:P-0004)
+    (value (0.0 20.0 0.0) m)
+    (source "Boundary survey BS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-1))
+    (date "2026-03-11")))
+
+(edge geom:E-01 (label "Buildable area, south") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Buildable area, east") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Buildable area, north") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Buildable area, west") (frame frame:site) (vertices geom:V-04 geom:V-01))
+
+(loop geom:L-01
+  (label "Buildable area boundary")
+  (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(node plan:B-01
+  (label "Buildable area")
+  (kind Site)
+  (type BuildableArea)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01))
+
+; The proposal as designed: ten metres by eight, set out from the building grid
+; origin. Carried across the georeference it lands four metres inside the
+; nearest edge of the buildable area, which is metres clear of the twenty
+; millimetres the answer is known to.
+(vertex geom:V-11
+  (label "Block A footprint, south-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0011)
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-12
+  (label "Block A footprint, south-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0012)
+    (value (10.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-13
+  (label "Block A footprint, north-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0013)
+    (value (10.0 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-14
+  (label "Block A footprint, north-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0014)
+    (value (0.0 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(edge geom:E-11 (label "Block A footprint, south") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12 (label "Block A footprint, east") (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (label "Block A footprint, north") (frame frame:building) (vertices geom:V-13 geom:V-14))
+(edge geom:E-14 (label "Block A footprint, west") (frame frame:building) (vertices geom:V-14 geom:V-11))
+
+(loop geom:L-11
+  (label "Block A footprint outline")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+
+(node plan:S-01
+  (label "Block A footprint")
+  (kind Building)
+  (type Footprint)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-11))
+
+; A proposal shifted twenty metres east along the building grid, which puts five
+; metres of it over the eastern edge of the buildable area. The clearance comes
+; back as a deficit of five metres — the depth of the incursion, not the width
+; of the gap somewhere else.
+(vertex geom:V-21
+  (label "Block B footprint, south-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0021)
+    (value (20.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-22
+  (label "Block B footprint, south-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0022)
+    (value (30.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-23
+  (label "Block B footprint, north-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0023)
+    (value (30.0 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-24
+  (label "Block B footprint, north-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0024)
+    (value (20.0 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(edge geom:E-21 (label "Block B footprint, south") (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "Block B footprint, east") (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "Block B footprint, north") (frame frame:building) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "Block B footprint, west") (frame frame:building) (vertices geom:V-24 geom:V-21))
+
+(loop geom:L-21
+  (label "Block B footprint outline")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+
+(node plan:S-02
+  (label "Block B footprint")
+  (kind Building)
+  (type Footprint)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-21))
+
+; A proposal drawn right up against the western edge: carried across, it clears
+; it by ten millimetres. The answer is known to twenty, so the model cannot say
+; whether it fits — which is a different finding from either "it fits" or "it
+; does not", and the one somebody has to act on.
+(vertex geom:V-31
+  (label "Block C footprint, south-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0031)
+    (value (-4.99 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-32
+  (label "Block C footprint, south-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0032)
+    (value (0.01 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-33
+  (label "Block C footprint, north-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0033)
+    (value (0.01 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-34
+  (label "Block C footprint, north-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0034)
+    (value (-4.99 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(edge geom:E-31 (label "Block C footprint, south") (frame frame:building) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (label "Block C footprint, east") (frame frame:building) (vertices geom:V-32 geom:V-33))
+(edge geom:E-33 (label "Block C footprint, north") (frame frame:building) (vertices geom:V-33 geom:V-34))
+(edge geom:E-34 (label "Block C footprint, west") (frame frame:building) (vertices geom:V-34 geom:V-31))
+
+(loop geom:L-31
+  (label "Block C footprint outline")
+  (frame frame:building)
+  (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34))
+
+(node plan:S-03
+  (label "Block C footprint")
+  (kind Building)
+  (type Footprint)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-31))
+
+; A proposal forty metres east, which is not over the plot at all. There is no
+; incursion to measure the depth of, so the deficit reported is how far away it
+; is: fifteen metres somebody has to close.
+(vertex geom:V-41
+  (label "Block D footprint, south-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0041)
+    (value (40.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-42
+  (label "Block D footprint, south-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0042)
+    (value (48.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-43
+  (label "Block D footprint, north-east corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0043)
+    (value (48.0 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-44
+  (label "Block D footprint, north-west corner")
+  (frame frame:building)
+  (position
+    (id survey:P-0044)
+    (value (40.0 8.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(edge geom:E-41 (label "Block D footprint, south") (frame frame:building) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42 (label "Block D footprint, east") (frame frame:building) (vertices geom:V-42 geom:V-43))
+(edge geom:E-43 (label "Block D footprint, north") (frame frame:building) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (label "Block D footprint, west") (frame frame:building) (vertices geom:V-44 geom:V-41))
+
+(loop geom:L-41
+  (label "Block D footprint outline")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+
+(node plan:S-04
+  (label "Block D footprint")
+  (kind Building)
+  (type Footprint)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-41))
+
+; A proposal a metre clear of the northern edge, set out on the annex grid —
+; the one nobody stated the accuracy of the fit for. The clearance is computed
+; and the verdict is withheld: a metre of daylight buys no confidence at all
+; while one of the measurements behind it is unknown rather than nought.
+(vertex geom:V-51
+  (label "Block E footprint, south-west corner")
+  (frame frame:annex)
+  (position
+    (id survey:P-0051)
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-52
+  (label "Block E footprint, south-east corner")
+  (frame frame:annex)
+  (position
+    (id survey:P-0052)
+    (value (10.0 0.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-53
+  (label "Block E footprint, north-east corner")
+  (frame frame:annex)
+  (position
+    (id survey:P-0053)
+    (value (10.0 5.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(vertex geom:V-54
+  (label "Block E footprint, north-west corner")
+  (frame frame:annex)
+  (position
+    (id survey:P-0054)
+    (value (0.0 5.0 0.0) m)
+    (source "Interior control set IC-2026-03, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-1))
+    (date "2026-04-08")))
+
+(edge geom:E-51 (label "Block E footprint, south") (frame frame:annex) (vertices geom:V-51 geom:V-52))
+(edge geom:E-52 (label "Block E footprint, east") (frame frame:annex) (vertices geom:V-52 geom:V-53))
+(edge geom:E-53 (label "Block E footprint, north") (frame frame:annex) (vertices geom:V-53 geom:V-54))
+(edge geom:E-54 (label "Block E footprint, west") (frame frame:annex) (vertices geom:V-54 geom:V-51))
+
+(loop geom:L-51
+  (label "Block E footprint outline")
+  (frame frame:annex)
+  (edges geom:E-51 geom:E-52 geom:E-53 geom:E-54))
+
+(node plan:S-05
+  (label "Block E footprint")
+  (kind Building)
+  (type Footprint)
+  (geometry area)
+  (frame frame:annex)
+  (boundary geom:L-51))
