@@ -741,3 +741,58 @@
   (geometry area)
   (frame frame:building)
   (boundary geom:L-14))
+
+; A room whose two long walls were written to the wrong corners, so that it
+; crosses itself. It loads clean and is not a region: an operation against
+; it has to say which of its operands is the one it cannot use.
+(vertex geom:V-151
+  (label "Crossed room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 30.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-152
+  (label "Crossed room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 30.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-153
+  (label "Crossed room, corner 3")
+  (frame frame:building)
+  (position
+    (value (0.0 33.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-154
+  (label "Crossed room, corner 4")
+  (frame frame:building)
+  (position
+    (value (4.0 33.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-151 (label "Crossed room, side 1") (frame frame:building) (vertices geom:V-151 geom:V-152))
+(edge geom:E-152 (label "Crossed room, side 2") (frame frame:building) (vertices geom:V-152 geom:V-153))
+(edge geom:E-153 (label "Crossed room, side 3") (frame frame:building) (vertices geom:V-153 geom:V-154))
+(edge geom:E-154 (label "Crossed room, side 4") (frame frame:building) (vertices geom:V-154 geom:V-151))
+(loop geom:L-15
+  (label "Crossed room boundary")
+  (frame frame:building)
+  (edges geom:E-151 geom:E-152 geom:E-153 geom:E-154))
+(node site:S-14
+  (label "Crossed room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-15))

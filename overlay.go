@@ -454,7 +454,7 @@ func (r Region) comparable(other Region, what string) []Diagnostic {
 		}
 		return []Diagnostic{{
 			Severity: SeverityError,
-			Span:     r.span,
+			Span:     r.at(one),
 			Message: fmt.Sprintf(
 				"expected two regions to take the %s of, found that %s covers no area which could be operated on",
 				what, one.name(),
@@ -520,6 +520,22 @@ func (r Region) comparable(other Region, what string) []Diagnostic {
 	}
 
 	return nil
+}
+
+// at is where a diagnostic about an operand of an operation points: at that
+// operand where it was written down anywhere, and at the region the operation
+// was asked of otherwise.
+//
+// Which operand a refusal is about is the actionable half of it. A region read
+// from a node carries the span of the node, so a refusal about the second
+// operand points at the second operand; one derived from an operation carries
+// the span of what it was derived from, and a zero region carries none at all,
+// which is when this falls back to the receiver.
+func (r Region) at(one Region) Span {
+	if one.span != (Span{}) {
+		return one.span
+	}
+	return r.span
 }
 
 // derive is the region an operation over this one produces, before what it
@@ -879,7 +895,21 @@ func (r Region) In(target ID, frames *Frames) (Region, []Diagnostic) {
 
 	basis, ok := planeOf(normalOf(moved[0]), moved[0][0])
 	if !ok {
-		return result, nil
+		// The rings went in enclosing an area and came out enclosing none, which
+		// a rigid transform cannot do and a degenerate one can. Reporting it as a
+		// region covering nothing would turn a transform which collapsed the
+		// model into an answer, and that answer would be the same one a clearance
+		// which genuinely has nothing in it gives.
+		return Region{}, []Diagnostic{{
+			Severity: SeverityError,
+			Span:     r.span,
+			Message: fmt.Sprintf(
+				"expected %s to still enclose an area once expressed in the frame %s, found that it lies in no plane",
+				r.name(), target,
+			),
+			Hint: "a transform between two frames is rigid up to a scale, so a shape which comes out of one flattened " +
+				"is a transform which is not one; the region it would come back as covers nothing and is not this shape",
+		}}
 	}
 
 	figure := make([]contour, 0, len(moved))

@@ -687,14 +687,21 @@ func (a *arrangement) usable(rings []contour) []contour {
 	return out
 }
 
-// meeting is where two segments cross, and whether they cross at a point at all.
+// meeting is the one point two segments meet at, and whether they meet at a
+// point at all.
 //
-// Only a proper crossing is reported. Segments which merely touch at an end,
-// and segments which lie along each other, are found by [arrangement.along]
-// instead — every position either of them reaches is already a candidate, and a
-// segment is split at every candidate lying on it. Reporting them here as well
-// would be a second answer to a question already answered, and the two would
-// disagree the first time a rounding went the other way.
+// It is only ever asked about positions which are not already known, and there
+// is exactly one kind: where two segments cross away from either's ends. A
+// crossing at an end is reported too and costs nothing, because that position is
+// already a candidate and both spellings of it intern to the same point.
+//
+// Segments which lie along each other meet at no single point and come back
+// false, which is not a gap: every position either of them reaches is already a
+// candidate, and [arrangement.along] splits a segment at every candidate lying
+// on it. That is what makes an overlap along a shared wall need no case of its
+// own here — and answering it here as well would be a second answer to a
+// question already answered, with the two free to disagree the first time a
+// rounding went the other way.
 func meeting(one, other segment) (vec, bool) {
 	first := one.b.sub(one.a)
 	second := other.b.sub(other.a)

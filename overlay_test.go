@@ -778,3 +778,35 @@ func TestRegionInWithoutResolvedFrames(t *testing.T) {
 	require.Len(t, diags, 1)
 	assert.Equal(t, SeverityError, diags[0].Severity)
 }
+
+// TestRegionOverlayNamesTheOperandItRefuses checks the half of a refusal which
+// makes it actionable: which of the two regions is the one which cannot be
+// operated on, and where that one was written.
+func TestRegionOverlayNamesTheOperandItRefuses(t *testing.T) {
+	model := loadOverlaidModel(t, "shapes")
+
+	room := model.region(t, "site:S-01")
+
+	node, ok := model.nodes.Node("site:S-14")
+	require.True(t, ok)
+
+	crossed, found := model.topology.RegionOf(node, model.boundaries, model.survey)
+	require.NotEmpty(t, found, "a room which crosses itself is not a region")
+
+	result, refused := room.Union(crossed)
+
+	assert.True(t, result.Empty())
+	require.Len(t, refused, 1)
+	assert.Equal(t, SeverityError, refused[0].Severity)
+	assert.Contains(t, refused[0].Message, "site:S-14")
+	assert.Equal(t, crossed.span, refused[0].Span, "the refusal points at the operand it is about")
+	assert.NotEqual(t, room.span, refused[0].Span)
+
+	// And a region nothing was ever read into carries no position of its own, so
+	// a refusal about it points at the region the operation was asked of.
+	result, refused = room.Union(Region{})
+
+	assert.True(t, result.Empty())
+	require.Len(t, refused, 1)
+	assert.Equal(t, room.span, refused[0].Span)
+}
