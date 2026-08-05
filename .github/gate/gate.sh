@@ -92,9 +92,18 @@ mkdir -p "$results"
 # slashes become dashes so that two roots gated in one run do not overwrite
 # each other's results. Leading dots and dashes go with them: a root beginning
 # with one — .github/gate/broken, which is the self-test's — would otherwise
-# name a hidden file, and results nobody's glob matches are results nobody
-# uploads.
+# name a hidden file, and actions/upload-artifact leaves hidden files out unless
+# it is told otherwise, so those are results nobody uploads.
+#
+# Stripping can take the whole name, and for the likeliest root of all: a data
+# repository gating the tree it is checked out in passes `--root .`, which
+# sanitizes to nothing and would leave the results named `.fmt.json`. The
+# fallback is what keeps that case from being the one that silently produces no
+# artifact.
 slug="$(printf '%s' "$root" | tr -c 'A-Za-z0-9._-' '-' | sed 's/^[.-]*//')"
+if [ -z "$slug" ]; then
+	slug="model-root"
+fi
 
 # The field separator between jq and the loops which read it. It is the ASCII
 # unit separator rather than a tab because `read` folds runs of whitespace into
