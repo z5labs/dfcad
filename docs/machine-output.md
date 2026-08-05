@@ -997,7 +997,7 @@ separately.
 | `centroid.unit` | string, optional | The frame's linear unit. |
 | `bounds.min`, `bounds.max` | array | The corners of the axis-aligned bounding box, on the frame's own axes and on no others. The extent between them is not written: it is one subtraction, and a field restating it is a second place for it to be wrong. |
 | `bounds.unit` | string, optional | The frame's linear unit. |
-| `budget` | object, optional | The accuracy of the corners every figure was computed from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. |
+| `budget` | object, optional | The accuracy of the corners every figure was computed from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
 
 **Every figure is written only where it could be computed.** "There is no answer" and "the
 answer is zero" are different states, and a shape which does not close has the first. Nothing

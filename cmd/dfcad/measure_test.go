@@ -239,6 +239,22 @@ func TestRunMeasureOfSomethingWithNoOutline(t *testing.T) {
 	assert.Nil(t, result.Area)
 	assert.Nil(t, result.Length)
 	assert.NotEmpty(t, result.Digest, "and it still says which tree it read")
+
+	// A budget with no terms, no combined figure and no reason for there being
+	// none would read as an answer known exactly. Nothing was computed from any
+	// claim, so nothing is reported about how well it is known.
+	assert.Nil(t, result.Budget)
+	assert.NotContains(t, stdoutOf(t, model(), "site:S-101"), `"budget"`)
+}
+
+// stdoutOf is what a successful measurement of one id wrote, as the bytes a
+// caller reads rather than as the object they decode to.
+func stdoutOf(t *testing.T, files map[string]string, args ...string) string {
+	t.Helper()
+
+	stdout, _ := invoke(t, exitSuccess, tree(t, files), measuring(args...)...)
+
+	return stdout
 }
 
 // TestRunMeasureRefusesAShapeWhichIsNotOne is its own function because every case

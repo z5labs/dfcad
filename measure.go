@@ -542,14 +542,27 @@ func (g *Graph) Corners(entity Entity) iter.Seq[*Vertex] {
 // not, are load errors already reported against the form which wrote them, and a
 // second diagnostic from a survey being assembled would say the same thing in the
 // vocabulary of the arithmetic instead of the file.
+//
+// What has been reached is tracked in a set rather than by scanning what has been
+// collected, so a ring of a thousand corners costs a thousand lookups and not half
+// a million comparisons. The order is still the order they were reached in: the
+// set decides whether to append and never what comes back.
 func (t *Topology) cornersOf(edges []ID, vertices ...ID) []*Vertex {
 	var out []*Vertex
 
+	reached := make(map[ID]struct{}, len(edges)*2+len(vertices))
+
 	held := func(id ID) {
-		vertex, ok := t.Vertex(id)
-		if !ok || slices.Contains(out, vertex) {
+		if _, seen := reached[id]; seen {
 			return
 		}
+
+		vertex, ok := t.Vertex(id)
+		if !ok {
+			return
+		}
+
+		reached[id] = struct{}{}
 		out = append(out, vertex)
 	}
 

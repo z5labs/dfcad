@@ -350,10 +350,27 @@ func reportMeasure(
 		result.Bounds = &measuredBox{Min: bounds.Min[:], Max: bounds.Max[:], Unit: string(bounds.Unit)}
 	}
 
-	budget := budgetOf(measurement.Budget())
-	result.Budget = &budget
+	// A budget with nothing in it is left out rather than written empty. An
+	// absent "combined" means the terms could not be reduced to one figure, and
+	// "unknown" and "units" beside it are what say why; an object carrying
+	// neither the figure nor a reason for its absence reads as an answer known
+	// exactly, which is the one thing a budget must never look like. A
+	// measurement computed from no claim at all — a node which references no
+	// loop — has no accuracy to report, and says that by reporting none.
+	if budget := budgetOf(measurement.Budget()); !empty(budget) {
+		result.Budget = &budget
+	}
 
 	return result
+}
+
+// empty reports whether a budget says nothing: no terms, no combined figure, and
+// no reason for there being none.
+func empty(budget budgetReport) bool {
+	return len(budget.Terms) == 0 &&
+		budget.Combined == nil &&
+		len(budget.Unknown) == 0 &&
+		len(budget.Units) == 0
 }
 
 // squared is the unit an area is in: the frame's linear unit, with a superscript
