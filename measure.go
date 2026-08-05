@@ -12,21 +12,24 @@ import (
 	"strings"
 )
 
-// Evidence is the claim each vertex's position was read from, keyed by the
-// vertex's id.
+// Evidence is the claim each position a measurement was computed from was read
+// from, keyed by the id of the thing that position belongs to: a vertex's own id
+// for where the corner is, and an edge's for where the centre of the arc it
+// bends along is.
 //
-// It is the other half of [Positions], supplied for the same reason: which
-// predicate carries a position is vocabulary the consuming repository owns and
-// not something the engine knows
+// It is the other half of [Positions] and of [Curvature], supplied for the same
+// reason: which predicate carries a position is vocabulary the consuming
+// repository owns and not something the engine knows
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
 // What it adds is the provenance a computed answer inherits. An area is only as
-// well known as the corners it was computed from, and a budget accumulated from
-// these claims is what lets the answer say so
+// well known as the corners and the centres it was computed from, and a budget
+// accumulated from these claims is what lets the answer say so
 // ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
 //
-// A vertex which is absent contributes nothing to the budget. The geometry is
+// An id which is absent contributes nothing to the budget. The geometry is
 // still computed — a position with no claim behind it is a caller which filled
-// one map and not the other, which [Survey.Place] exists to prevent.
+// one map and not the other, which [Survey.Place] and [Survey.Bend] exist to
+// prevent.
 type Evidence map[ID]*Claim
 
 // Survey is what a measurement is computed against: where the corners are, the
@@ -48,6 +51,10 @@ type Survey struct {
 
 	// Evidence is the claim each of those positions was read from.
 	Evidence Evidence
+
+	// Curvature is the arc each edge which bends bends along. An edge which is
+	// absent is straight.
+	Curvature Curvature
 
 	// Tolerance is the name — never a number — of the tolerance corners are
 	// judged coincident and rings judged planar against.
@@ -463,6 +470,38 @@ type outline struct {
 	// corners are the vertices of the ring, in traversal order, each once.
 	corners []ID
 
+	// edges are the edges the traversal ran through, one per corner and in the
+	// same order: the edge at an index leaves the corner at that index.
+	edges []*Edge
+
+	// bends are the arcs those edges bend along, one per edge and in the same
+	// order, nil wherever an edge is straight — which is what almost every edge
+	// is. Each is oriented the way the traversal ran through it and not the way
+	// the edge was written, so a bulge shared by two rings adds to one area and
+	// takes away from the other with nothing having to decide which.
+	bends []*bend
+
+	// curved is whether any of them is an arc, which is what decides whether a
+	// figure has to account for the area between a chord and the curve over it.
+	curved bool
+
+	// closed is whether the ring closes, which a tessellation of it reports and
+	// an area needs.
+	closed bool
+
+	// last is the corner the traversal ended at, finish where that is and
+	// finished whether there was a position to read it at.
+	//
+	// It is the traversal's own end and not the last edge's, which the two
+	// differ in wherever the ring runs through that edge backwards. A ring which
+	// closes ends at the corner it began at, which is already the first of
+	// points; one which does not ends somewhere no corner of the ring names, and
+	// a tessellation which left that out would stop a whole edge short of where
+	// the traversal got to.
+	last     ID
+	finish   Point
+	finished bool
+
 	// points are where those corners are.
 	points []Point
 
@@ -518,18 +557,29 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 		return nil, false
 	}
 
-	out := &outline{loop: loop}
+	out := &outline{loop: loop, closed: assembly.Closed(), bends: make([]*bend, len(steps))}
 	for _, step := range steps {
 		out.corners = append(out.corners, step.From())
+		out.edges = append(out.edges, step.Edge())
 	}
 
 	if !m.locate(loop, out) {
 		return nil, false
 	}
 
+	out.last = steps[len(steps)-1].To()
+	if written, ok := m.at(out.last); ok {
+		out.finish, out.finished = asPoint(written), true
+	}
+
+	if !m.curves(out, steps) {
+		return nil, false
+	}
+
 	out.measure()
 	out.bounds.Unit = m.unit
 	m.contribute(out.corners)
+	m.contribute(edgeIDs(out.edges))
 
 	if !assembly.Closed() {
 		// The gap is already reported, by the pass whose job it is and with the
@@ -611,11 +661,52 @@ func (m *measurer) locate(loop *Loop, out *outline) bool {
 	}
 
 	out.dimension = dimension
+	m.result.dimension = dimension
 	for _, written := range components {
 		out.points = append(out.points, asPoint(written))
 	}
 
 	return true
+}
+
+// curves reads the arc every edge of a ring which bends bends along, oriented
+// the way the traversal ran through it.
+//
+// An edge with no arc is left as the straight edge it is, and its two ends are
+// never read here — a ring of straight edges is measured from exactly the
+// corners it always was, and nothing about this pass touches it.
+func (m *measurer) curves(out *outline, steps []Step) bool {
+	for i, step := range steps {
+		edge := step.Edge()
+		if _, ok := m.survey.Curvature[edge.ID()]; !ok {
+			continue
+		}
+
+		from, to, _, ok := m.ends(edge)
+		if !ok {
+			return false
+		}
+
+		curve, _, ok := m.bend(edge, from, to, step.Reversed())
+		if !ok {
+			return false
+		}
+
+		out.bends[i] = curve
+		out.curved = true
+	}
+
+	return true
+}
+
+// edgeIDs is the ids of a ring's edges, which is what the claims behind their
+// arcs are keyed by.
+func edgeIDs(edges []*Edge) []ID {
+	ids := make([]ID, 0, len(edges))
+	for _, edge := range edges {
+		ids = append(ids, edge.ID())
+	}
+	return ids
 }
 
 // positionHint says what a position has to be for anything to be measured from
@@ -716,7 +807,7 @@ func (m *measurer) planar(out *outline) bool {
 	}
 
 	if worst <= m.tolerance.Value {
-		return true
+		return m.coplanarBends(out, unit, plane)
 	}
 
 	m.add(Diagnostic{
@@ -737,6 +828,49 @@ func (m *measurer) planar(out *outline) bool {
 	return false
 }
 
+// coplanarBends reports every arc of a ring which is not in the ring's plane,
+// which is an arc whose centre is out of it.
+//
+// The two ends of an arc are corners of the ring and have already been measured
+// against the plane by [measurer.planar]; the centre is the only other point the
+// parameterisation states, and it is what tilts the curve out of the shape when
+// it is wrong. A ring whose corners lie in one plane and whose bulge leaves it
+// is not a plane figure, and the area a projection of it would give is not the
+// area of anything.
+func (m *measurer) coplanarBends(out *outline, unit Point, plane float64) bool {
+	ok := true
+
+	for i, curve := range out.bends {
+		if curve == nil {
+			continue
+		}
+
+		away := math.Abs(pointDot(pointSub(curve.centre, out.origin), unit) - plane)
+		if away <= m.tolerance.Value {
+			continue
+		}
+
+		ok = false
+		m.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     curve.span,
+			Message: fmt.Sprintf(
+				"expected the arc the edge %s bends along to lie in the plane of the loop %s within the tolerance %s, "+
+					"which is %s %s, found its centre %s %s out of it",
+				geometricName(edgeTag, out.edges[i].id), geometricName(loopTag, out.loop.id),
+				m.tolerance.Name, decimal(m.tolerance.Value), m.tolerance.Unit, decimal(away), m.unit,
+			),
+			Hint: "an arc in a plane of its own is a curve leaving the shape and coming back to it; a ring is a plane " +
+				"figure, and its bulges are in the same plane its corners are",
+			Related: []RelatedLocation{
+				{Span: m.tolerance.Span, Message: "the tolerance is declared here"},
+			},
+		})
+	}
+
+	return ok
+}
+
 // crossing reports every place the ring crosses itself, naming where the
 // crossing is.
 //
@@ -754,6 +888,14 @@ func (m *measurer) crossing(out *outline) bool {
 	for i := range count {
 		for j := i + 1; j < count; j++ {
 			if adjacent(i, j, count) {
+				continue
+			}
+
+			if out.bends[i] != nil || out.bends[j] != nil {
+				// A chord is not the edge. Two curves whose chords cross may
+				// not, and two which cross may have chords which do not, so a
+				// pair with an arc in it is judged as the arc it is by
+				// [measurer.crossingBends] rather than twice and inconsistently.
 				continue
 			}
 
@@ -783,7 +925,196 @@ func (m *measurer) crossing(out *outline) bool {
 		}
 	}
 
+	if m.crossingBends(out) {
+		found = true
+	}
+
 	return found
+}
+
+// crossingBends reports every place an arc of a ring crosses another of its
+// edges, naming where the crossing is.
+//
+// It is the same question [measurer.crossing] answers for two straight edges and
+// it is asked of the curves themselves: two circles in one plane meet in at most
+// two points and a circle meets a straight edge in at most two, and each of those
+// is a crossing exactly when it lies within both sweeps.
+//
+// Two edges which meet only where they share a corner are not crossing there,
+// and neither is a curve which runs up against another and turns away without
+// passing through it. Both are judged against the declared tolerance, and so this
+// is not judged at all where that tolerance could not be applied, for the reason
+// [measurer.planar] is not
+// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
+func (m *measurer) crossingBends(out *outline) bool {
+	if !out.curved || !m.applicable() || out.magnitude == 0 {
+		return false
+	}
+
+	normal := pointScale(out.normal, 1/out.magnitude)
+
+	var found bool
+
+	count := len(out.shifted)
+	for i := range count {
+		for j := i + 1; j < count; j++ {
+			if out.bends[i] == nil && out.bends[j] == nil {
+				continue
+			}
+
+			for _, at := range m.meetings(out, normal, i, j) {
+				found = true
+				m.add(Diagnostic{
+					Severity: SeverityError,
+					Span:     m.topology.namedAt(out.loop.id, out.loop.span),
+					Message: fmt.Sprintf(
+						"expected the loop %s not to cross itself, found the edge %s crossing %s at %s%s",
+						geometricName(loopTag, out.loop.id),
+						geometricName(edgeTag, out.edges[i].id), geometricName(edgeTag, out.edges[j].id),
+						pointText(at, out.dimension), unitSuffix(m.unit),
+					),
+					Hint: "a ring which crosses itself encloses no one region; the signed sum over it counts the parts " +
+						"either side of the crossing against each other, which is a number and is not an area",
+				})
+			}
+		}
+	}
+
+	return found
+}
+
+// meetings is every point at which two edges of a ring cross, where at least one
+// of them is an arc.
+//
+// A point the two edges share as a corner is not one of them, and neither is a
+// pair of points no further apart than the tolerance: two curves which touch and
+// turn away meet the arithmetic at one point twice, and reporting that as a
+// crossing would report every fillet ever drawn.
+func (m *measurer) meetings(out *outline, normal Point, i, j int) []Point {
+	count := len(out.shifted)
+
+	first, second := out.bends[i], out.bends[j]
+
+	var candidates []Point
+	switch {
+	case first != nil && second != nil:
+		candidates = circlesMeeting(first, second, normal)
+	case first != nil:
+		candidates = circleMeetingSegment(first, out.points[j], out.points[(j+1)%count], m.tolerance.Value)
+	default:
+		candidates = circleMeetingSegment(second, out.points[i], out.points[(i+1)%count], m.tolerance.Value)
+	}
+
+	if len(candidates) == 2 && pointLength(pointSub(candidates[0], candidates[1])) <= m.tolerance.Value {
+		return nil
+	}
+
+	var shared []Point
+	for _, one := range [...]int{i, (i + 1) % count} {
+		for _, other := range [...]int{j, (j + 1) % count} {
+			if one == other {
+				shared = append(shared, out.points[one])
+			}
+		}
+	}
+
+	var crossings []Point
+	for _, at := range candidates {
+		if !onBoth(at, first, second) || near(at, shared, m.tolerance.Value) {
+			continue
+		}
+		crossings = append(crossings, at)
+	}
+
+	return crossings
+}
+
+// onBoth reports whether a point lies within the sweep of whichever of two edges
+// are arcs, which is what turns a meeting of two circles into a meeting of two
+// arcs.
+func onBoth(at Point, first, second *bend) bool {
+	if first != nil && !first.holds(at) {
+		return false
+	}
+	return second == nil || second.holds(at)
+}
+
+// near reports whether a point is no further than the tolerance from any of
+// them.
+func near(at Point, points []Point, tolerance float64) bool {
+	for _, point := range points {
+		if pointLength(pointSub(at, point)) <= tolerance {
+			return true
+		}
+	}
+	return false
+}
+
+// circlesMeeting is where the circles two coplanar arcs run on meet, which is at
+// most two points.
+//
+// Two circles about one centre are one circle or are nowhere near each other,
+// and neither is a crossing: arcs of one circle which overlap retrace the ring
+// rather than cross it, which shows up as the vector area they cancel.
+func circlesMeeting(first, second *bend, normal Point) []Point {
+	between := pointSub(second.centre, first.centre)
+
+	apart := pointLength(between)
+	if apart == 0 || apart > first.radius+second.radius || apart < math.Abs(first.radius-second.radius) {
+		return nil
+	}
+
+	along := (first.radius*first.radius - second.radius*second.radius + apart*apart) / (2 * apart)
+
+	square := first.radius*first.radius - along*along
+	if square <= 0 {
+		return nil
+	}
+
+	across := math.Sqrt(square)
+	foot := pointAdd(first.centre, pointScale(between, along/apart))
+	sideways := pointScale(pointCross(normal, between), across/apart)
+
+	return []Point{pointAdd(foot, sideways), pointSub(foot, sideways)}
+}
+
+// circleMeetingSegment is where the circle an arc runs on meets a straight edge,
+// which is at most two points.
+//
+// The ends of the segment are inside it rather than outside. A curve which
+// reaches another edge exactly at its corner is where the arithmetic lands on
+// the boundary and a rounding decides which side of it, and a crossing missed
+// because of one is a ring called sound which is not.
+func circleMeetingSegment(curve *bend, from, to Point, tolerance float64) []Point {
+	along := pointSub(to, from)
+	offset := pointSub(from, curve.centre)
+
+	square := pointDot(along, along)
+	if square == 0 {
+		return nil
+	}
+
+	margin := tolerance / math.Sqrt(square)
+
+	linear := 2 * pointDot(offset, along)
+	constant := pointDot(offset, offset) - curve.radius*curve.radius
+
+	discriminant := linear*linear - 4*square*constant
+	if discriminant <= 0 {
+		return nil
+	}
+
+	root := math.Sqrt(discriminant)
+
+	var meetings []Point
+	for _, at := range [2]float64{(-linear - root) / (2 * square), (-linear + root) / (2 * square)} {
+		if at < -margin || at > 1+margin {
+			continue
+		}
+		meetings = append(meetings, pointAdd(from, pointScale(along, at)))
+	}
+
+	return meetings
 }
 
 // single records a measurement made from one ring.
@@ -818,6 +1149,10 @@ func (m *measurer) combine(region *SemanticNode, rings []*outline) {
 	}
 
 	if !m.coplanar(region, rings) {
+		return
+	}
+
+	if !m.straight(region, rings) {
 		return
 	}
 
@@ -859,6 +1194,42 @@ func (m *measurer) combine(region *SemanticNode, rings []*outline) {
 	m.result.centroid, m.result.hasCentroid = pointScale(weighted, 1/area), true
 }
 
+// straight reports whether every ring of a region is one nesting can be judged
+// between, which is one made of straight edges, naming the first which bends.
+//
+// Nesting decides whether a ring is a hole by casting a ray from one ring at
+// another, and that ray is cast at the chords. A courtyard whose wall bows out
+// past a corner of the plate around it is inside the plate and outside its
+// chords, so the answer would flip on which side of a bulge a corner happened to
+// fall — an area which is wrong by a whole ring rather than by a sag.
+//
+// So it is refused rather than approximated. A region bounded by one ring which
+// bends is measured exactly ([outline.measure]); one bounded by several is a
+// shape this package does not yet nest, and saying so is what stops it being
+// answered wrongly.
+func (m *measurer) straight(region *SemanticNode, rings []*outline) bool {
+	for _, one := range rings {
+		if !one.curved {
+			continue
+		}
+
+		m.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     m.span,
+			Message: fmt.Sprintf(
+				"expected every loop bounding %s to be straight to nest its rings, found that %s bends along an arc",
+				nodeName(region), geometricName(loopTag, one.loop.id),
+			),
+			Hint: "a ring inside another is a hole and is taken away, and which ring is inside which is decided at the " +
+				"corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag",
+		})
+
+		return false
+	}
+
+	return true
+}
+
 // lengthOf records the total length of every ring's segments, which is the
 // length of the whole of a region's boundary.
 func (m *measurer) lengthOf(rings []*outline) {
@@ -883,13 +1254,19 @@ func (m *measurer) boundsOf(rings []*outline) {
 
 	bounds := rings[0].bounds
 	for _, one := range rings[1:] {
-		for axis := range 3 {
-			bounds.Min[axis] = math.Min(bounds.Min[axis], one.bounds.Min[axis])
-			bounds.Max[axis] = math.Max(bounds.Max[axis], one.bounds.Max[axis])
-		}
+		bounds = widened(bounds, one.bounds)
 	}
 
 	m.result.bounds, m.result.hasBounds = bounds, true
+}
+
+// widened is the box which holds both, keeping the unit of the first.
+func widened(box, other Box) Box {
+	for axis := range 3 {
+		box.Min[axis] = math.Min(box.Min[axis], other.Min[axis])
+		box.Max[axis] = math.Max(box.Max[axis], other.Max[axis])
+	}
+	return box
 }
 
 // coplanar reports whether every ring of a region lies in one and the same
@@ -993,9 +1370,22 @@ func (m *measurer) nesting(rings []*outline, index int) int {
 	return depth
 }
 
-// measure computes everything a ring's corners decide.
+// measure computes everything a ring's corners and its arcs decide.
+//
+// The arcs are accounted for exactly and are never drawn. A ring which bends is
+// its polygon of chords plus, for every arc, the circular segment between that
+// chord and the curve over it — a length, a vector area and a centroid each
+// computed from the parameterisation. So the sag of a curve is in the answer at
+// full precision rather than at whatever resolution somebody would have
+// tessellated it to.
 func (r *outline) measure() {
 	r.bounds = boxOf(r.points)
+	for _, curve := range r.bends {
+		if curve != nil {
+			r.bounds = widened(r.bounds, curve.bounds())
+		}
+	}
+
 	r.origin = r.bounds.Min
 
 	r.shifted = make([]Point, 0, len(r.points))
@@ -1003,14 +1393,27 @@ func (r *outline) measure() {
 		r.shifted = append(r.shifted, pointSub(point, r.origin))
 	}
 
+	// segments is twice the vector area of every circular segment the ring's
+	// arcs cut off from their chords, which is what the Newell sum over the
+	// corners is short by. Each points along its own arc's normal, so a bulge
+	// running the way the ring does adds and one running against it takes away.
+	var segments Point
+
 	count := len(r.shifted)
 	for i, point := range r.shifted {
 		next := r.shifted[(i+1)%count]
 
-		r.perimeter += pointLength(pointSub(next, point))
+		if curve := r.bends[i]; curve != nil {
+			r.perimeter += curve.length()
+			segments = pointAdd(segments, curve.area())
+		} else {
+			r.perimeter += pointLength(pointSub(next, point))
+		}
+
 		r.normal = pointAdd(r.normal, pointCross(point, next))
 	}
 
+	r.normal = pointAdd(r.normal, segments)
 	r.magnitude = pointLength(r.normal)
 	r.axis = dominant(r.normal)
 
@@ -1040,7 +1443,30 @@ func (r *outline) measure() {
 		weighted = pointAdd(weighted, pointScale(pointAdd(point, next), weight))
 	}
 
-	r.centroid = pointAdd(r.origin, pointScale(weighted, 1/(3*r.magnitude*r.magnitude)))
+	// Each circular segment is a piece of the shape in its own right, with its
+	// own area and its own centroid, and the two are combined the way the rings
+	// of a region are: the areas are signed along the ring's normal, so a bulge
+	// which runs against the ring pulls the centroid the other way without
+	// anything having to say that it is a bite rather than a bulge.
+	var bulges Point
+	for _, curve := range r.bends {
+		if curve == nil {
+			continue
+		}
+
+		centre, ok := curve.segment()
+		if !ok {
+			continue
+		}
+
+		signed := pointDot(curve.area(), r.normal) / (2 * r.magnitude)
+		bulges = pointAdd(bulges, pointScale(pointSub(centre, r.origin), signed))
+	}
+
+	r.centroid = pointAdd(r.origin, pointAdd(
+		pointScale(weighted, 1/(3*r.magnitude*r.magnitude)),
+		pointScale(bulges, 2/r.magnitude),
+	))
 }
 
 // shiftedTo is one of the ring's corners expressed relative to another ring's
@@ -1081,7 +1507,56 @@ func (r *outline) holds(point Point) bool {
 }
 
 // edge measures one edge, reporting an edge whose ends are at one point.
+//
+// An edge which bends is measured from its arc and never from its chord: its
+// length is the length of the curve, its centroid is where the length of the
+// curve is centred, and its box is the box the curve reaches rather than the one
+// its two ends do.
 func (m *measurer) edge(edge *Edge) {
+	start, end, dimension, ok := m.ends(edge)
+	if !ok {
+		return
+	}
+
+	curve, bends, ok := m.bend(edge, start, end, false)
+	if !ok {
+		return
+	}
+
+	m.contribute([]ID{edge.start, edge.end, edge.id})
+
+	if bends {
+		m.result.length, m.result.hasLength = curve.length(), true
+		m.result.centroid, m.result.hasCentroid = curve.centroid(), true
+		m.result.bounds, m.result.hasBounds = curve.bounds(), true
+		m.result.bounds.Unit = m.unit
+		return
+	}
+
+	m.result.length, m.result.hasLength = pointLength(pointSub(end, start)), true
+	m.result.centroid, m.result.hasCentroid = pointScale(pointAdd(start, end), 0.5), true
+	m.result.bounds, m.result.hasBounds = boxOf([]Point{start, end}), true
+	m.result.bounds.Unit = m.unit
+
+	if m.result.length != 0 {
+		return
+	}
+
+	m.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     m.edgeAt(edge),
+		Message: fmt.Sprintf(
+			"expected the edge %s to have an extent, found %s and %s at the same point, %s%s",
+			geometricName(edgeTag, edge.id), edge.start, edge.end, pointText(start, dimension), unitSuffix(m.unit),
+		),
+		Hint: "an edge with no extent gives a loop through it no direction; two corners surveyed to one coordinate are " +
+			"one corner",
+	})
+}
+
+// ends reads where an edge's two ends are, reporting an end with no position to
+// read and a pair written with different numbers of components.
+func (m *measurer) ends(edge *Edge) (Point, Point, int, bool) {
 	var missing []string
 
 	from, ok := m.at(edge.start)
@@ -1104,7 +1579,7 @@ func (m *measurer) edge(edge *Edge) {
 			),
 			Hint: m.positionHint(),
 		})
-		return
+		return Point{}, Point{}, 0, false
 	}
 
 	if len(from) != len(to) {
@@ -1118,33 +1593,12 @@ func (m *measurer) edge(edge *Edge) {
 			Hint: "nothing here is padded: a position written with fewer components than the other end is a position in " +
 				"a different space, not the same one with a zero left out",
 		})
-		return
+		return Point{}, Point{}, 0, false
 	}
-
-	start, end := asPoint(from), asPoint(to)
 
 	m.result.dimension = len(from)
-	m.result.length, m.result.hasLength = pointLength(pointSub(end, start)), true
-	m.result.centroid, m.result.hasCentroid = pointScale(pointAdd(start, end), 0.5), true
-	m.result.bounds, m.result.hasBounds = boxOf([]Point{start, end}), true
-	m.result.bounds.Unit = m.unit
 
-	m.contribute([]ID{edge.start, edge.end})
-
-	if m.result.length != 0 {
-		return
-	}
-
-	m.add(Diagnostic{
-		Severity: SeverityError,
-		Span:     m.edgeAt(edge),
-		Message: fmt.Sprintf(
-			"expected the edge %s to have an extent, found %s and %s at the same point, %s%s",
-			geometricName(edgeTag, edge.id), edge.start, edge.end, pointText(start, len(from)), unitSuffix(m.unit),
-		),
-		Hint: "an edge with no extent gives a loop through it no direction; two corners surveyed to one coordinate are " +
-			"one corner",
-	})
+	return asPoint(from), asPoint(to), len(from), true
 }
 
 // edgeAt is where a diagnostic about an edge as a whole points.

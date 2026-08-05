@@ -1,0 +1,16 @@
+testdata/measure/arcs/model.dfc:64:7: error: expected the loop geom:L-01 not to cross itself, found the edge geom:E-01 crossing geom:E-02 at (4.0 3.5 0.0) m
+64 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a ring which crosses itself encloses no one region; the signed sum over it counts the parts either side of the crossing against each other, which is a number and is not an area
+testdata/measure/arcs/model.dfc:64:7: error: expected the loop geom:L-01 not to cross itself, found the edge geom:E-01 crossing geom:E-03 at (0.5857864376269046 4.0 0.0) m
+64 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a ring which crosses itself encloses no one region; the signed sum over it counts the parts either side of the crossing against each other, which is a number and is not an area
+testdata/measure/arcs/model.dfc:64:7: error: expected the loop geom:L-01 not to cross itself, found the edge geom:E-01 crossing geom:E-03 at (3.4142135623730954 4.0 0.0) m
+64 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a ring which crosses itself encloses no one region; the signed sum over it counts the parts either side of the crossing against each other, which is a number and is not an area
+testdata/measure/arcs/model.dfc:64:7: error: expected the loop geom:L-01 not to cross itself, found the edge geom:E-01 crossing geom:E-04 at (0.0 3.5 0.0) m
+64 | (loop geom:L-01
+   |       ^^^^^^^^^
+   = hint: a ring which crosses itself encloses no one region; the signed sum over it counts the parts either side of the crossing against each other, which is a number and is not an area

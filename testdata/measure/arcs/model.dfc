@@ -1,0 +1,388 @@
+; Three shapes whose boundaries curve, none of which is written as segments.
+;
+; Every arc here is a centre and a point on the wall claimed on the edge itself, so the
+; curve stays a curve for as long as the model does. What its sag comes to is
+; computed from the circle each time it is asked and is never baked in at
+; whatever resolution somebody happened to be drawing at.
+
+; A room whose east wall bows out into a semicircular bay.
+(vertex geom:V-01
+  (label "Bay room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Bay room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Bay room, corner 3")
+  (frame frame:building)
+  (position
+    (value (4.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Bay room, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Bay room, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02
+  (label "Bay room, bay window")
+  (frame frame:building)
+  (vertices geom:V-02 geom:V-03)
+  (arc-centre
+    (value (4.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (6.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(edge geom:E-03 (label "Bay room, north wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Bay room, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Bay room boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(node site:S-01
+  (label "Room with a bay window")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+; The same four edges written in the order the ring runs the other way round,
+; which traverses the bay window from the far end. A bulge belongs to the wall
+; and not to the traversal, so the same curve bows out of both and the two
+; measure the same.
+(loop geom:L-02
+  (label "Bay room boundary, written backwards")
+  (frame frame:building)
+  (edges geom:E-04 geom:E-03 geom:E-02 geom:E-01))
+(node site:S-02
+  (label "Room with a bay window, written backwards")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+
+; The same room with the same wall curved the other way, so the bay is a bite
+; out of it rather than an addition to it. Nothing but the direction the sweep
+; runs through differs, which is the whole of what the point on the wall says.
+(vertex geom:V-11
+  (label "Alcove room, corner 1")
+  (frame frame:building)
+  (position
+    (value (10.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-12
+  (label "Alcove room, corner 2")
+  (frame frame:building)
+  (position
+    (value (14.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-13
+  (label "Alcove room, corner 3")
+  (frame frame:building)
+  (position
+    (value (14.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-14
+  (label "Alcove room, corner 4")
+  (frame frame:building)
+  (position
+    (value (10.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-11 (label "Alcove room, south wall") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12
+  (label "Alcove room, curved wall")
+  (frame frame:building)
+  (vertices geom:V-12 geom:V-13)
+  (arc-centre
+    (value (14.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (12.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(edge geom:E-13 (label "Alcove room, north wall") (frame frame:building) (vertices geom:V-13 geom:V-14))
+(edge geom:E-14 (label "Alcove room, west wall") (frame frame:building) (vertices geom:V-14 geom:V-11))
+(loop geom:L-11
+  (label "Alcove room boundary")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+(node site:S-11
+  (label "Room with a curved alcove")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-11))
+
+; A circular room, which is two vertices and two edges: a ring of arcs is a ring
+; like any other, and nothing about it is a special case.
+(vertex geom:V-21
+  (label "Round room, west point")
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-22
+  (label "Round room, east point")
+  (frame frame:building)
+  (position
+    (value (24.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-21
+  (label "Round room, south wall")
+  (frame frame:building)
+  (vertices geom:V-21 geom:V-22)
+  (arc-centre
+    (value (22.0 0.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (22.0 -2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(edge geom:E-22
+  (label "Round room, north wall")
+  (frame frame:building)
+  (vertices geom:V-22 geom:V-21)
+  (arc-centre
+    (value (22.0 0.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (22.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(loop geom:L-21
+  (label "Round room boundary")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22))
+(node site:S-21
+  (label "Round room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-21))
+
+; A floor plate with a round courtyard in the middle of it, which is the one
+; shape here nothing measures: which of two rings is inside the other is decided
+; at their corners, and a ring which bulges past a corner is not a question the
+; corners answer.
+(vertex geom:V-31
+  (label "Courtyard, west point")
+  (frame frame:building)
+  (position
+    (value (33.0 5.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-32
+  (label "Courtyard, east point")
+  (frame frame:building)
+  (position
+    (value (37.0 5.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-31
+  (label "Courtyard, south wall")
+  (frame frame:building)
+  (vertices geom:V-31 geom:V-32)
+  (arc-centre
+    (value (35.0 5.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (35.0 3.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(edge geom:E-32
+  (label "Courtyard, north wall")
+  (frame frame:building)
+  (vertices geom:V-32 geom:V-31)
+  (arc-centre
+    (value (35.0 5.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (35.0 7.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(loop geom:L-31
+  (label "Courtyard boundary")
+  (frame frame:building)
+  (edges geom:E-31 geom:E-32))
+(vertex geom:V-41
+  (label "Floor plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (30.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-42
+  (label "Floor plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (40.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-43
+  (label "Floor plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (40.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-44
+  (label "Floor plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (30.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-41 (label "Floor plate, side 1") (frame frame:building) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42 (label "Floor plate, side 2") (frame frame:building) (vertices geom:V-42 geom:V-43))
+(edge geom:E-43 (label "Floor plate, side 3") (frame frame:building) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (label "Floor plate, side 4") (frame frame:building) (vertices geom:V-44 geom:V-41))
+(loop geom:L-41
+  (label "Floor plate boundary")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+(node site:S-31
+  (label "Floor plate with a round courtyard")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-41)
+  (boundary geom:L-31))
+
+; A run of wall which does not come back to where it started, and which nothing
+; is the boundary of. A traversal which stops is still a traversal, and drawing
+; it has to reach the corner it stopped at rather than the last one it set off
+; from.
+(vertex geom:V-51
+  (label "Screen wall, west end")
+  (frame frame:building)
+  (position
+    (value (50.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-52
+  (label "Screen wall, turn")
+  (frame frame:building)
+  (position
+    (value (54.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-53
+  (label "Screen wall, north end")
+  (frame frame:building)
+  (position
+    (value (54.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-51 (label "Screen wall, straight run") (frame frame:building) (vertices geom:V-51 geom:V-52))
+(edge geom:E-52
+  (label "Screen wall, curved run")
+  (frame frame:building)
+  (vertices geom:V-52 geom:V-53)
+  (arc-centre
+    (value (54.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19"))
+  (arc-through
+    (value (56.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-19")))
+(loop geom:L-51
+  (label "Screen wall, which does not close")
+  (frame frame:building)
+  (edges geom:E-51 geom:E-52))

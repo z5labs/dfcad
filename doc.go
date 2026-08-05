@@ -208,6 +208,33 @@
 // one ring is measured by nesting, so a courtyard subtracts without anything in
 // the model having to declare which loop is the outside one.
 //
+// # Arcs and tessellation
+//
+// An edge which curves is stored as the curve it is. An [Arc] states where the
+// centre of the circle is and one point the wall passes through, and both are
+// claims like any other — resolved by the caller under whichever predicates the
+// consuming repository registers, and handed in through [Survey.Bend] beside the
+// positions. No form, no kind and nothing compiled into this package learns a
+// name when an arc arrives.
+//
+// Everything is then measured from the circle. The length of a curved wall is
+// the length of the curve, the area of a ring which bends is its polygon of
+// chords plus the circular segment over each arc, the centroid is where that
+// combined area is centred and the box is where the curve reaches rather than
+// where its two ends do. None of it is a sum over segments, so the sag of a
+// curve is in the answer at full precision and no resolution is chosen on a
+// caller's behalf.
+//
+// Tessellation is therefore a thing you ask for. [Topology.TessellateEdge] and
+// [Topology.TessellateLoop] take the name of a chord tolerance the registry
+// declares and return a [Tessellation] carrying both the segments and the
+// tolerance they were drawn to, so what a drawing is good for can be read off
+// it. The same arc and the same tolerance give the same points every time. What
+// will not happen is a curve becoming segments on the way to an answer: an
+// overlay is computed over straight edges, so [Topology.RegionOf] refuses a
+// curved boundary and says to draw it deliberately rather than drawing it for
+// you.
+//
 // # Offsetting and overlaying
 //
 // How big something is answers one question. Whether it fits answers the other,

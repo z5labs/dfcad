@@ -2557,3 +2557,54 @@ func ExampleRegion_Buffer() {
 	// offset by -1 m: 28.88 m², 1 hole, reaching (11.0 1.0 0.0) to (19.0 9.0 0.0) m
 	// true 0
 }
+
+// A curved wall is kept as the curve it is, and measured from the circle rather
+// than from a drawing of it.
+func ExampleSurvey_Bend() {
+	root := "testdata/measure/arcs"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	// Which predicates carry an arc is vocabulary this repository owns too, so
+	// the two behind one are resolved here and handed in. An edge nobody has
+	// claimed a centre for is straight.
+	for edge := range topology.Edges() {
+		centre, _ := claims.Resolve(edge.ID(), "arc-centre", registry)
+		through, _ := claims.Resolve(edge.ID(), "arc-through", registry)
+		survey.Bend(edge.ID(), centre, through)
+	}
+
+	room, _ := nodes.Node("site:S-01")
+
+	measurement, _ := topology.MeasureRegion(room, boundaries, survey)
+
+	// Four metres square, plus the half disc its east wall bows out into. The
+	// figure is the closed form and not a sum over chords, so it is right to
+	// every digit rather than to whatever resolution somebody drew at.
+	area, _ := measurement.Area()
+	length, _ := measurement.Length()
+	fmt.Printf("%s: %.6f %s², bounded by %.6f %s of wall\n",
+		measurement.Subject(), area, measurement.Unit(), length, measurement.Unit())
+
+	// Straight lines are wanted only where something actually needs them, and
+	// then the tolerance is named and travels with the answer.
+	bay, _ := topology.Edge("geom:E-02")
+	drawn, _ := topology.TessellateEdge(bay, survey, "chord-deviation")
+
+	fmt.Printf("%s drawn as %d segments, within %.6f %s of the curve, to %s\n",
+		drawn.Subject(), len(drawn.Points())-1, drawn.Deviation(), drawn.Unit(), drawn.ChordTolerance().Name)
+
+	// Output:
+	// site:S-01: 22.283185 m², bounded by 18.283185 m of wall
+	// geom:E-02 drawn as 16 segments, within 0.009631 m of the curve, to chord-deviation
+}

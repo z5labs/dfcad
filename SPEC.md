@@ -378,9 +378,13 @@ and the disagreement between them is exactly what the conflict register is for.
 
 **Non-straight edges.** This form says nothing about the shape of an edge between its two
 vertices, and it does not need to. Curvature arrives as a claim under a predicate the
-consuming repository registers — an arc centre, a bulge, a radius — with its own source,
-method and accuracy like any other measurement. **The predicate registry is the extension
-point, and adding an arc is registry data rather than a change to this specification.**
+consuming repository registers — an arc centre, a point the wall passes through — with its
+own source, method and accuracy like any other measurement. **The predicate registry is the
+extension point, and adding an arc is registry data rather than a change to this
+specification.** The engine reads one the way it reads a position: a caller resolves those
+predicates and hands the result in, and every figure is then computed from the circle rather
+than from a drawing of it. Turning a curve into straight segments is a separate operation
+which takes a declared chord tolerance, and it never happens on the way to an answer.
 
 ### 6.4 `loop`
 
@@ -1411,8 +1415,9 @@ Named so that their absence reads as a decision rather than an oversight.
 
 - **The observation file format.** Observations link to entities but are their own format
   with their own specification.
-- **Non-straight edges.** Representable already, as a claim under a registered predicate — see
-  [6.3](#63-edge). No form here changes when one arrives.
+- **Non-straight edges as a form.** Representable already, as a claim under a registered
+  predicate — see [6.3](#63-edge). No form here changes, and none is added: an arc which
+  bends an edge is registry data the engine reads, not a shape this specification writes down.
 - **A `GlobalId` field.** Derived on export, never authored
   ([0004](./docs/decisions/0004-globalid-derives-from-a-pinned-namespace.md)).
 - **Derived values of any sort** — area, length, centroid, bounding box, tessellation,

@@ -35,7 +35,14 @@ type measuredModel struct {
 func loadMeasuredModel(t *testing.T, name string) measuredModel {
 	t.Helper()
 
-	root := filepath.Join("testdata", "measure", name)
+	return loadMeasuredRoot(t, filepath.Join("testdata", "measure", name))
+}
+
+// loadMeasuredRoot is [loadMeasuredModel] over a tree somewhere other than
+// beside this file, which is what lets a round trip be loaded back out of what
+// the printer wrote.
+func loadMeasuredRoot(t *testing.T, root string) measuredModel {
+	t.Helper()
 
 	registry, registryDiags := LoadRegistry(root)
 	require.Empty(t, registryDiags, "the fixture registry loads clean")
@@ -61,6 +68,22 @@ func loadMeasuredModel(t *testing.T, name string) measuredModel {
 		require.NoError(t, err)
 
 		survey.Place(vertex.ID(), resolution)
+	}
+
+	// An arc is registry data in exactly the way a position is. This repository
+	// spells the two claims behind one `arc-centre` and `arc-through`, resolves
+	// them for the edges which carry them and hands the result over; a fixture
+	// whose registry declares neither has no curved edges to read.
+	if _, declared := registry.Predicate("arc-centre"); declared {
+		for edge := range topology.Edges() {
+			centre, err := claims.Resolve(edge.ID(), "arc-centre", registry)
+			require.NoError(t, err)
+
+			through, err := claims.Resolve(edge.ID(), "arc-through", registry)
+			require.NoError(t, err)
+
+			survey.Bend(edge.ID(), centre, through)
+		}
 	}
 
 	return measuredModel{
