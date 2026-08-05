@@ -189,7 +189,11 @@ against; `.build.version` is the tool that wrote it. The two are different numbe
 different forms, and [`versioning.md`](./versioning.md) is the relationship between them,
 the entity format version and the git tags they come from.
 
-Exit code: `0`, unless the invocation itself was wrong.
+Exit codes: `3` if the invocation was wrong — an argument, an unknown flag, an unknown
+`--format`. `2` if `--root` names something that is not a directory this run can read,
+which this command checks like every other one even though it reads no model: a global flag
+that is accepted everywhere and enforced in all but one place is one nobody can rely on.
+`0` otherwise.
 
 ### `fmt`
 
