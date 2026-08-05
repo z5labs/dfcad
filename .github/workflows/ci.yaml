@@ -166,6 +166,11 @@ jobs:
       # gate does write all three files is asserted by the self-test above,
       # which is the right place for it: there it is a statement about the gate
       # rather than about whether this job got far enough to run it.
+      #
+      # v5 still warns that it targets Node.js 20. v4 did too, and bumping did
+      # not remove it — measured on runs 30981600042 and 30981847887. The
+      # deprecation is upstream's to fix; there is no version of this action
+      # here which is quiet, so a later bump should not be made expecting one.
       - name: Upload the structured results
         if: ${{ always() }}
         uses: actions/upload-artifact@v5
