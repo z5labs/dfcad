@@ -113,6 +113,12 @@ var commands = []command{
 		run:     runCheck,
 	},
 	{
+		name:    "review",
+		summary: "report the changes in this revision which need an explanation",
+		usage:   reviewUsage,
+		run:     runReview,
+	},
+	{
 		name:    "apply",
 		summary: "apply a batch of edits from an operation file",
 		usage:   applyUsage,

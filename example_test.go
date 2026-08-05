@@ -2330,3 +2330,47 @@ func ExampleParseBatch_refused() {
 	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, set-label, retire, add-claim, supersede, deprecate-claim
 	// no id was written: true
 }
+
+func ExampleReview() {
+	// One model at two revisions: the merge base, and the change under review.
+	base, _ := dfcad.LoadGraph("testdata/review/base")
+	head, _ := dfcad.LoadGraph("testdata/review/head")
+
+	// Nothing is wrong with either revision on its own — both load, and both
+	// satisfy every rule they state. What needs an explanation is the
+	// difference between them, which is a question no single revision can be
+	// asked.
+	for _, finding := range dfcad.Review(base, head, dfcad.DefaultPolicy(), nil) {
+		fmt.Println(finding.Ruling, finding.Kind, finding.Subject)
+		fmt.Println(finding.Message)
+		fmt.Println(finding.Hint)
+	}
+
+	// Output:
+	// warning boundary-moved-without-claim site:S-101
+	// the boundary of site:S-101 moved: the position of geom:V-02 was rewritten from (4.0 0.0 0.0) m to (4.6 0.0 0.0) m inside the claim which already stated it, so nothing new was measured
+	// a corner which moved was measured again, so write the measurement: `dfcad supersede geom:V-02 position ...` keeps what the first survey said beside what the second one found
+}
+
+func ExamplePolicy() {
+	base, _ := dfcad.LoadGraph("testdata/review/base")
+	head, _ := dfcad.LoadGraph("testdata/review/head")
+
+	// A wall which moved because the room was surveyed again is a change
+	// somebody meant. Saying so is a policy, stated once, rather than not
+	// running the check.
+	policy := dfcad.DefaultPolicy().With(dfcad.FindingBoundaryMoved, dfcad.RulingIgnored)
+
+	for _, finding := range dfcad.Review(base, head, policy, nil) {
+		// The finding is still here. A check which was switched off silently is
+		// one nobody remembers is off, so what the policy acknowledged is
+		// readable from the run which acknowledged it.
+		fmt.Println(finding.Ruling, finding.Kind)
+	}
+
+	fmt.Println(policy.Ruling(dfcad.FindingIDDisappeared), "is still what an id which vanished means")
+
+	// Output:
+	// ignored boundary-moved-without-claim
+	// failure is still what an id which vanished means
+}

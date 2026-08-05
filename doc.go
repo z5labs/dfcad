@@ -169,6 +169,38 @@
 // "nothing has been written to decide whether it holds" are different answers;
 // [Rule.Runs] is how to tell them apart.
 //
+// # Reviewing a change
+//
+// Every rule above constrains one revision. Some things are suspicious only as
+// changes — a wall which quietly moved, a measurement retracted with nothing in
+// its place, an id which is simply gone — and none of them can be seen without
+// the revision the change was made against. [Review] is that question: two
+// graphs in, a [Finding] out for each change which needs an explanation.
+//
+// It is kept apart from assertions rather than folded into them, and neither is
+// meant to grow into the other. An assertion says the model is wrong and can be
+// evaluated on a fresh checkout; a finding says this change needs an
+// explanation and cannot be evaluated at all without two revisions. A rule
+// which needed the previous revision would be one nothing could run.
+//
+// What each finding means is a [Policy], which is data rather than a check per
+// flag: [DefaultPolicy] fails on an id which disappeared and on a claim
+// retracted with nothing behind it, and warns about a boundary which moved,
+// because that last one is routinely legitimate. A change which genuinely
+// re-surveyed a room is one somebody meant, and [Policy.With] is how to say so
+// once rather than by not running the check at all. A finding a policy ignored
+// stays in the result, because a check silently switched off is one nobody
+// remembers is off.
+//
+// The two revisions come from git, which [Repository] is the whole of: the
+// merge base of the branch and what it is being merged into, the tree at that
+// commit, and which commit last changed each file — so a finding names the
+// commit which introduced it rather than leaving a reviewer to bisect for it.
+// A checkout whose history does not reach the merge base is refused and told
+// what to fetch, because git answers a shallow clone with the commit its
+// history was cut off at, and a review against that would attribute the whole
+// of the branch's ancestry to this change.
+//
 // # Accuracy
 //
 // This is the convention every accuracy in the engine is stated under, and it

@@ -939,6 +939,163 @@ Every violation is also rendered to stderr as a diagnostic, on every run and in 
 because it is a problem in something somebody wrote. The struct above is the machine form of
 the same finding, and neither is produced by parsing the other.
 
+### `review`
+
+The changes in this revision which need an explanation. Every rule `check` runs constrains
+one revision; these need two, and the second one is the merge base. It takes no arguments
+and four flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--against <ref>` | The branch this revision is being merged into. The merge base of it and `HEAD` is what the model is compared against. Default `origin/HEAD`. |
+| `--base-root <dir>` | Compare against a model in this directory instead of against a revision. A relative path is resolved against `--root`. Nothing is attributed to a commit under it. |
+| `--policy <check>=<ruling>` | What one kind of finding means: `failure`, `warning` or `ignored`. Repeatable. |
+| `--annotate <path>` | Append a Markdown summary of the findings to `path`, which is what `$GITHUB_STEP_SUMMARY` makes a reviewer see. `-` writes it to stderr. |
+
+The comparison is against the **merge base** and not against the tip of `--against`: those
+two differ the moment anything else lands there, and a review against the tip would report
+everybody else's work as part of this change.
+
+The three checks, and what each is called in `--policy`:
+
+| Check | Reports | Default |
+|-------|---------|---------|
+| `boundary-moved-without-claim` | A physical boundary moved with no new measurement to account for it: a corner's claim rewritten in place, or a boundary drawn round different corners. | `warning` |
+| `claim-deprecated-without-replacement` | A claim retracted with nothing standing in its place — a replacement this revision does not hold, or a retraction which left nothing at all asserted about a subject and a predicate. | `failure` |
+| `id-disappeared-without-supersession` | An id the merge base held and this revision does not, with every reference which now names nothing. | `failure` |
+
+A boundary which moved warns because it is the one of the three which is routinely
+legitimate: a corner measured again genuinely moves, and the check cannot see the survey
+which justified it. The other two are breaches of a rule the model is built on, and each
+takes references or evidence with it.
+
+A policy is what makes this usable rather than something to route around. A finding ruled
+`ignored` **is still in the result** — a check silently switched off is one nobody remembers
+is off — and is reported nowhere else: not on stderr, not in the annotation, and not in the
+exit code.
+
+```json
+{
+  "version": 1,
+  "command": "review",
+  "comparison": {
+    "against": "main",
+    "base": "8f1c0a2b6d4e79f3b5c8a1d0e2f4a6b8c0d2e4f6",
+    "head": "5f2b8c1d9e3a47b6c0d1e2f3a4b5c6d7e8f90123",
+    "files": 2
+  },
+  "policy": {
+    "boundary-moved-without-claim": "warning",
+    "claim-deprecated-without-replacement": "failure",
+    "id-disappeared-without-supersession": "failure"
+  },
+  "summary": {"findings": 2, "failures": 1, "warnings": 1, "ignored": 0},
+  "findings": [
+    {
+      "kind": "boundary-moved-without-claim",
+      "ruling": "warning",
+      "subject": "site:S-101",
+      "side": "head",
+      "span": {
+        "start": {"path": "entities/geometry.dfc", "line": 15, "column": 5, "offset": 312},
+        "end": {"path": "entities/geometry.dfc", "line": 15, "column": 28, "offset": 335}
+      },
+      "commit": {
+        "sha": "5f2b8c1d9e3a47b6c0d1e2f3a4b5c6d7e8f90123",
+        "summary": "story(site): widen Meeting Room A",
+        "author": "A Surveyor",
+        "date": "2026-06-01T09:30:00Z"
+      },
+      "message": "the boundary of site:S-101 moved: the position of geom:V-02 was rewritten from (4.0 0.0 0.0) m to (4.6 0.0 0.0) m inside the claim which already stated it, so nothing new was measured",
+      "hint": "a corner which moved was measured again, so write the measurement: `dfcad supersede geom:V-02 position ...` keeps what the first survey said beside what the second one found",
+      "related": [
+        {
+          "span": {
+            "start": {"path": "entities/geometry.dfc", "line": 12, "column": 3, "offset": 240},
+            "end": {"path": "entities/geometry.dfc", "line": 18, "column": 30, "offset": 421}
+          },
+          "message": "the claim this rewrote, as the merge base holds it"
+        }
+      ]
+    },
+    {
+      "kind": "id-disappeared-without-supersession",
+      "ruling": "failure",
+      "subject": "geom:V-04",
+      "side": "base",
+      "span": {
+        "start": {"path": "entities/geometry.dfc", "line": 28, "column": 1, "offset": 640},
+        "end": {"path": "entities/geometry.dfc", "line": 35, "column": 24, "offset": 838}
+      },
+      "commit": {
+        "sha": "5f2b8c1d9e3a47b6c0d1e2f3a4b5c6d7e8f90123",
+        "summary": "story(site): widen Meeting Room A",
+        "author": "A Surveyor",
+        "date": "2026-06-01T09:30:00Z"
+      },
+      "message": "geom:V-04 is gone from this revision: the vertex was removed rather than retired, and 2 references still name it",
+      "hint": "a thing which stopped existing keeps its id: `dfcad retire geom:V-04 --reason ...` records what happened and leaves every reference resolving",
+      "dangling": [
+        {
+          "from": "geom:E-03",
+          "relation": "vertices",
+          "span": {
+            "start": {"path": "entities/geometry.dfc", "line": 41, "column": 1, "offset": 980},
+            "end": {"path": "entities/geometry.dfc", "line": 41, "column": 92, "offset": 1071}
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `comparison.against` | string, optional | The revision the merge base was taken with, as it was written. Absent for a `--base-root` run. |
+| `comparison.base` | string | The merge base: the full object name of the commit, or the directory a `--base-root` run read instead. |
+| `comparison.head` | string, optional | The full object name of the revision under review. Absent for a `--base-root` run. |
+| `comparison.files` | integer | How many files the range between them touched, which is what a finding is attributed through. Zero for a comparison with no history to read. |
+| `policy` | object | The ruling each check ran under, by its name. **Every** check is here, not only the ones a flag named: what a green run did about the checks it did not report is what a reader of a green run needs to know. |
+| `summary.findings` | integer | How many findings there were, ignored ones included. |
+| `summary.failures` | integer | How many the policy ruled a failure, which is what decides the exit code. |
+| `summary.warnings` | integer | How many it ruled a warning. |
+| `summary.ignored` | integer | How many it acknowledged, which are reported here and nowhere else. |
+| `findings` | array | One entry per change which needs an explanation. Empty rather than null when there are none. |
+| `findings[].kind` | string | Which check reported it, spelled as `--policy` spells it. |
+| `findings[].ruling` | string | What the policy said to do about it: `failure`, `warning` or `ignored`. |
+| `findings[].subject` | string | The id of the thing it is about: the boundary which moved, the subject of the claim which was retracted, the id which disappeared. |
+| `findings[].side` | string | Which revision `span` points into: `head` for a change to something this revision still holds, `base` for something it does not. |
+| `findings[].span` | span | Where the change is. A reader jumping to it needs `side` to know which revision the line is in. |
+| `findings[].commit` | object, optional | The commit which introduced the change: `sha`, `summary`, `author` and `date`. Absent for a comparison with no history. |
+| `findings[].message` | string | What changed and what would have accounted for it. |
+| `findings[].hint` | string, optional | What to do about it, which is usually the command which records the change properly. |
+| `findings[].related` | array, optional | The other places which explain this one, each a span and a message. |
+| `findings[].dangling` | array, optional | The references this revision still makes to an id it no longer holds, each a `from`, a `relation` and a `span`. Only `id-disappeared-without-supersession` fills it in. |
+
+Findings are ordered by check, in the order the table above lists them, then by subject, then
+by position. Two runs over the same pair of revisions produce byte-identical stdout, so a
+diff between two runs is about what changed in the branch.
+
+| Code | When |
+|------|------|
+| `0` | Nothing the policy ruled a failure. A revision which changed nothing suspicious, and one whose every finding was warned about or acknowledged, both land here. |
+| `1` | At least one finding the policy ruled a failure. Every finding is in the result. |
+| `2` | A revision could not be read: the model root is not inside a git working tree, the branch does not exist, the checkout is too shallow to reach the merge base, or the merge base itself does not load. A review needs both revisions, and half a comparison would report every id in the half it did not read as an id which disappeared. |
+| `3` | The invocation was wrong: an argument the command does not take, or a `--policy` naming no check or no ruling. |
+
+**A shallow checkout is refused rather than answered from.** Git reports a merge base at the
+point a shallow clone's history was cut off, which is a commit the two revisions never
+shared, so the review which followed would attribute the whole of the branch's ancestry to
+this change. The message names what to fetch — `git fetch --unshallow`, or `fetch-depth: 0`
+on `actions/checkout`, which the containerized pipeline requires anyway.
+
+Every finding the policy did not ignore is also rendered to stderr as a diagnostic, on every
+run and in every format, because it is a problem in a change somebody made. `--annotate`
+writes the same findings as Markdown, for `$GITHUB_STEP_SUMMARY`, which is where a reviewer
+sees them. All three are built from the fields above, and none is produced by parsing
+another.
+
 ### The shape every write command reports
 
 Adding a node, retiring one, adding a claim, correcting one, authoring geometry and
