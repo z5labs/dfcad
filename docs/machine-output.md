@@ -827,6 +827,109 @@ specification](../SPEC.md#77-route)).
 makes, asked on its own — which is how an author checks where something would land before
 authoring it.
 
+### `check`
+
+Every rule the model states, run: each type's invariants bound to each of its instances, and
+each assertion written on a thing. It is the gate — one command, one exit code, and a report
+naming what failed and where the rule that failed it is written. It takes no arguments and
+four flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--subject <id>` | Only the rules bound to this thing. Repeatable. |
+| `--type <name>` | Only the rules bound to instances of this type. Repeatable. |
+| `--check <name>` | Only the rules naming this check. Repeatable. |
+| `--list` | Write what would run, and run none of it. |
+
+Filters combine: a rule is selected when it satisfies every filter given, and a filter written
+more than once is satisfied by any of its values. A name nothing answers to — an id no thing
+in the model holds, a type no registry file declares, a check the engine does not register —
+is a **usage error** rather than an empty run, because a gate that passed on a misspelled
+filter would pass on nothing having run at all.
+
+`--subject` takes the id of a node, a vertex, an edge or a loop, because an assertion is
+written on any of the four; that is why it is not spelled `--node`. `--type` never selects a
+rule written on a vertex, an edge or a loop, because none of them declares a type.
+
+```json
+{
+  "version": 1,
+  "command": "check",
+  "summary": {"checks": 7, "runnable": 6, "ran": 6, "passed": 4, "failed": 2},
+  "violations": [
+    {
+      "instance": "site:S-102",
+      "type": "MeetingRoom",
+      "check": "required-claim",
+      "arguments": ["(predicate width)"],
+      "declared": {
+        "start": {"path": "registry.dfc", "line": 37, "column": 3, "offset": 812},
+        "end": {"path": "registry.dfc", "line": 37, "column": 40, "offset": 849}
+      },
+      "subject": {
+        "start": {"path": "entities/site.dfc", "line": 29, "column": 1, "offset": 706},
+        "end": {"path": "entities/site.dfc", "line": 34, "column": 24, "offset": 902}
+      },
+      "message": "expected a claim under width on the subject, found none",
+      "hint": "the type requires one of every instance; write the claim, or take the invariant off the type"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `summary.checks` | integer | How many rules the filters selected. |
+| `summary.runnable` | integer | How many of them would run: those whose check has an implementation and can examine the thing it is bound to. `checks` minus `runnable` is how many are bound and decide nothing. |
+| `summary.ran` | integer | How many actually ran. It equals `runnable` for a run and is `0` for a `--list`, so a listing cannot be read as a run in which every check passed. |
+| `summary.passed` | integer | How many of the ones that ran were satisfied. |
+| `summary.failed` | integer | How many were not, which is how many rules the violations are about. |
+| `violations` | array | One entry per way a rule was not satisfied, in the order the rules ran. Empty rather than null when nothing failed. |
+| `violations[].instance` | string | The id of the thing that failed. |
+| `violations[].type` | string, optional | The type that declared the rule. Absent for an assertion, which is declared on the thing itself. |
+| `violations[].check` | string | The check name the rule names. |
+| `violations[].arguments` | array, optional | The parameters it ran with, each rendered as it was written — the tolerance it was measured against among them. |
+| `violations[].declared` | span | Where the rule is written: a registry file for an invariant, the thing itself for an assertion. |
+| `violations[].subject` | span | Where what failed is written: the thing, or the part of it the check pointed at. |
+| `violations[].message` | string | What was expected and what was found. |
+| `violations[].hint` | string, optional | What to do about it. |
+| `violations[].related` | array, optional | The other places that explain this one, each a span and a message. Where the rule was declared is not among them; `declared` is. |
+
+The counts are of **rules**, not of violations. One loop that does not close and one that
+closes the wrong way are two ways of failing one check, and a summary counting them as two
+failures would say the model breaks two rules.
+
+`--list` adds `checks` beside an empty `violations` — nothing ran, so nothing failed. It is
+one entry per rule the filters selected, in the order it would run in, each carrying `subject`, `form` — `node`, `vertex`, `edge` or `loop` — `rule`, which is
+`invariant` or `assertion`, the `type` that declared it where one did, the `check` name, its
+`arguments`, its `declared` span, and `runs`, which says whether running it would decide
+anything.
+
+A check that declares itself and has no implementation is bound, listed and counted apart
+from the ones that ran. "This rule holds" and "nothing has been written to decide whether it
+holds" are different answers, and a summary that folded the second into the first would report
+a model sound because nothing looked at it.
+
+Rules run in a deterministic order and are reported in it: every invariant, node by node in
+the order the model was read, and then every assertion, thing by thing. Two runs over one
+model produce byte-identical stdout.
+
+| Code | When |
+|------|------|
+| `0` | Every rule that ran was satisfied — including a model that states no rule at all, which runs nothing and succeeds. |
+| `1` | A rule was not satisfied. Every violation is in the result. |
+| `2` | The model could not be read: a file did not parse, or the root holds no model at all. It outranks a rule that failed, because a gate reporting on half a model is answering a question nobody asked — and it is what keeps a `--root` with a character wrong from passing by having nothing in it. |
+| `3` | The invocation was wrong: an argument the command does not take, or a filter naming something no model holds. |
+
+**How long the run took is not on stdout.** The same input has to produce the same bytes
+there, and a duration is the one thing that never does. It is written to stderr instead: with
+the summary under `--format human`, and on its own under `-v` in any format, so that a check
+set becoming slow is visible without stdout ceasing to be diffable.
+
+Every violation is also rendered to stderr as a diagnostic, on every run and in every format,
+because it is a problem in something somebody wrote. The struct above is the machine form of
+the same finding, and neither is produced by parsing the other.
+
 ### The shape every write command reports
 
 Adding a node, retiring one, adding a claim, correcting one, authoring geometry and

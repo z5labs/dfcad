@@ -202,39 +202,6 @@ func (b AssertionBinding) String() string {
 	return strings.Join(written, " ")
 }
 
-// violation attaches the binding — what failed and where the rule is written —
-// to what the check found.
-//
-// No type is named, because an assertion is not declared by one. The rule is
-// written on the thing which failed, and [Violation.Declared] is where.
-func (b AssertionBinding) violation(failure Failure) Violation {
-	subject := failure.Span
-	if subject == (Span{}) && b.Subject != nil {
-		subject = b.Subject.Span()
-	}
-
-	written := make([]string, 0, len(b.Arguments))
-	for _, argument := range b.Arguments {
-		written = append(written, argument.String())
-	}
-
-	var instance ID
-	if b.Subject != nil {
-		instance = b.Subject.ID()
-	}
-
-	return Violation{
-		Instance:  instance,
-		Check:     b.Declared.Check,
-		Arguments: written,
-		Declared:  b.Declared.Span,
-		Subject:   subject,
-		Message:   failure.Message,
-		Hint:      failure.Hint,
-		Related:   failure.Related,
-	}
-}
-
 // writtenAssertions returns the assertions one thing carries and the form they
 // were written on, and whether it is a thing which carries any at all.
 //
@@ -367,21 +334,11 @@ func (g *Graph) CheckAssertions() []Violation {
 }
 
 // checkAssertions is [Graph.CheckAssertions] against a given set of checks.
+//
+// It is the assertions of [Graph.rules] run, rather than a run of its own, for
+// the reason [Graph.checkInvariants] is.
 func (g *Graph) checkAssertions(set *checkSet) []Violation {
-	var out []Violation
-
-	for binding := range g.allAssertions(set) {
-		if binding.runner == nil || !binding.Applicable() {
-			continue
-		}
-
-		subject := CheckSubject{graph: g, subject: binding.Subject, arguments: binding.Arguments}
-		for _, failure := range binding.runner.Run(subject) {
-			out = append(out, binding.violation(failure))
-		}
-	}
-
-	return out
+	return g.rules(set).assertions().Run().Violations
 }
 
 // ResolveAssertions checks every assertion of a loaded model against the model

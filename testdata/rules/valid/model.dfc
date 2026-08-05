@@ -1,0 +1,68 @@
+; A model carrying both kinds of rule: invariants its types declare, and
+; assertions written on the things themselves.
+;
+; The two kinds are what a gate runs together and reports as one summary, so the
+; fixture holds a rule which passes and a rule which fails of each kind, one
+; which is bound and decides nothing because its check declares itself and is not
+; implemented, and one instance of a type which declares no rule at all.
+(node site:Z-01
+  (label "Level 1 occupancy")
+  (kind Zone)
+  (type OccupancyZone)
+  (assert required-claim (predicate width)))
+
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (width
+    (id survey:W-0001)
+    (value 4.2 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06"))
+  (assert boundary-loops-close (tolerance boundary-closure)))
+
+(node site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building))
+
+(node site:C-01
+  (label "Level 1 corridor")
+  (kind Space)
+  (type Corridor)
+  (geometry area)
+  (frame frame:building))
+
+(vertex geom:V-01
+  (label "Room A, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18"))
+  (assert required-claim (predicate position)))
+
+(vertex geom:V-02
+  (label "Room A, north-east corner")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-01
+  (label "Room A, north wall")
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02)
+  (assert required-claim (predicate position)))
