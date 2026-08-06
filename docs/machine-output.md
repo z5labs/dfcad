@@ -1431,7 +1431,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
 | `outlines[].annotations[].anchor.vertices` | array, optional | The edge's two corners, in the order the edge was authored. Absent for a node anchor. |
 | `outlines[].annotations[].anchor.rings` | array, optional | The loops bounding the node, in the order it references them. Absent for an edge anchor. |
-| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is. Same shape as [`budget`](#budget), without `from` and `to`. |
+| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
 
 Beside `anchor`, every annotation carries the claim object `get` writes — `id`, `predicate`,
 `value`, `source`, `method`, `accuracy`, `date`, `rank` and `span` — so a claim on a plan

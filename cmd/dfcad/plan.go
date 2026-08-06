@@ -379,8 +379,13 @@ func reportPlan(
 		result.Outlines = append(result.Outlines, outlineOf(outline))
 	}
 
-	budget := budgetOf(drawn.Budget())
-	result.Budget = &budget
+	// A storey nobody has outlined yet accumulated nothing, and an empty budget
+	// object — no terms, no combined figure and no reason for there being none —
+	// reads as a plan whose rings are known exactly. It is left out instead, the
+	// way `measure` and `tessellate` leave theirs out.
+	if budget := budgetOf(drawn.Budget()); !empty(budget) {
+		result.Budget = &budget
+	}
 
 	return result
 }

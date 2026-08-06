@@ -399,6 +399,11 @@ func TestRunPlanEchoesThePredicatesItWasAskedFor(t *testing.T) {
 
 	assert.Equal(t, []string{"area", "wall-length"}, result.Annotating)
 	assert.Empty(t, result.Outlines)
+
+	// Nothing was accumulated, and an empty budget object — no terms, no
+	// combined figure and no reason for there being none — would read as a plan
+	// whose rings are known exactly.
+	assert.Nil(t, result.Budget)
 }
 
 // TestRunPlanReportsTheDigestTheBudgetAndTheTolerance is its own function
