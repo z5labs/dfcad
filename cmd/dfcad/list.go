@@ -152,8 +152,8 @@ const (
 	flagFamily    = "family"
 )
 
-// families are the families of geometric node, in the order the usage lists
-// them.
+// families are the three families a geometric node can belong to, in the order
+// the usage lists them.
 //
 // They are the tags the forms are written with, which is what [familyVertex]
 // and its siblings hold, so a filter names a family the way the file does and
