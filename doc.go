@@ -467,6 +467,35 @@
 // operation could be run over — one frame, one tolerance, one plane — so two
 // plates on different storeys are members of neither.
 //
+// # Artefacts, and the instant they carry
+//
+// An exported artefact is a build output under the same rule: it is keyed by the
+// digest of the tree it was derived from, written beneath the build directory
+// and never into the authored tree, and byte-identical for identical input
+// (see docs/decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md).
+// Nothing may reach an exported byte which is not either covered by the digest
+// or named in the artefact's key.
+//
+// A clock is the usual way that promise is lost. Every exchange format worth
+// targeting has a field defined as a creation or a modification time — a part 21
+// header's time stamp, a PDF's CreationDate, a container manifest's created —
+// and filling one from the clock costs a line and makes every export of an
+// unchanged model differ from the last for a reason which has nothing to do with
+// the model.
+//
+// [DerivationEpoch] is the single derivation of that instant, and every command
+// whose product is a file reads it from there. It is a function of the source
+// tree, which is why it takes the tree's [Digest], and the function is constant:
+// 1970-01-01T00:00:00Z, for every tree, including the one nothing could be read
+// from. An obviously wrong constant is better than a convincing lie, and the
+// provenance the field pretends to carry is carried properly instead, by
+// stating the digest through whatever mechanism the target format has for it.
+//
+// [Epoch] carries the encodings such formats demand — [Epoch.ISO8601],
+// [Epoch.STEP], [Epoch.PDF], [Epoch.Seconds] — so that adding a format is a
+// method there rather than a layout string in an exporter, which is one
+// character away from being a clock reading again.
+//
 // # Reviewing a change
 //
 // Every rule above constrains one revision. Some things are suspicious only as
