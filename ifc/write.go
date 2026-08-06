@@ -94,6 +94,9 @@ const (
 	entityContext    Entity = "IFCGEOMETRICREPRESENTATIONCONTEXT"
 	entityUnits      Entity = "IFCUNITASSIGNMENT"
 	entitySIUnit     Entity = "IFCSIUNIT"
+	entityConversion Entity = "IFCCONVERSIONBASEDUNIT"
+	entityMeasure    Entity = "IFCMEASUREWITHUNIT"
+	entityExponents  Entity = "IFCDIMENSIONALEXPONENTS"
 	entityLocal      Entity = "IFCLOCALPLACEMENT"
 	entityAxis       Entity = "IFCAXIS2PLACEMENT3D"
 	entityPoint      Entity = "IFCCARTESIANPOINT"
@@ -286,13 +289,8 @@ func (w *writer) units(assignment UnitAssignment) (reference, error) {
 	}
 
 	written := make(list, 0, len(assignment.Units))
-	for _, unit := range assignment.Units {
-		at, err := w.add(entitySIUnit, []value{
-			derived{}, // Dimensions, which the schema derives
-			enumeration(unit.Type),
-			optionalEnumeration(unit.Prefix),
-			enumeration(unit.Name),
-		})
+	for _, assigned := range assignment.Units {
+		at, err := w.unit(assigned)
 		if err != nil {
 			return 0, err
 		}
@@ -300,6 +298,85 @@ func (w *writer) units(assignment UnitAssignment) (reference, error) {
 	}
 
 	return w.add(entityUnits, []value{written})
+}
+
+// unit writes one unit of an assignment, whichever of the two it is.
+//
+// The refusal at the end is unreachable through the exported API — [Unit] is
+// closed by an unexported method — and it is here for the case it is reachable
+// from: a unit added to this package and not added here would otherwise be
+// written as nothing at all. A nil in the slice reaches it too, which is the
+// one way a caller can get here.
+func (w *writer) unit(assigned Unit) (reference, error) {
+	switch held := assigned.(type) {
+	case SIUnit:
+		return w.si(held)
+	case ConversionBasedUnit:
+		return w.conversion(held)
+	default:
+		return 0, UnknownUnitError{Unit: fmt.Sprintf("%T", assigned)}
+	}
+}
+
+// si writes one IfcSIUnit.
+func (w *writer) si(unit SIUnit) (reference, error) {
+	return w.add(entitySIUnit, []value{
+		derived{}, // Dimensions, which the schema derives
+		enumeration(unit.Type),
+		optionalEnumeration(unit.Prefix),
+		enumeration(unit.Name),
+	})
+}
+
+// conversion writes one IfcConversionBasedUnit and the three entities beneath
+// it: its dimensional exponents, the SI unit its factor is over, and the
+// factor itself.
+//
+// They are written in that order because each is referenced by the one after
+// it, which is the same rule the whole traversal follows.
+func (w *writer) conversion(unit ConversionBasedUnit) (reference, error) {
+	exponents, err := w.exponents(unit.Dimensions)
+	if err != nil {
+		return 0, err
+	}
+
+	factor, err := w.measure(unit.Factor)
+	if err != nil {
+		return 0, err
+	}
+
+	return w.add(entityConversion, []value{
+		exponents,
+		enumeration(unit.Type),
+		text(unit.Name),
+		factor,
+	})
+}
+
+// exponents writes one IfcDimensionalExponents.
+func (w *writer) exponents(dimensions DimensionalExponents) (reference, error) {
+	return w.add(entityExponents, []value{
+		integer(dimensions.Length),
+		integer(dimensions.Mass),
+		integer(dimensions.Time),
+		integer(dimensions.ElectricCurrent),
+		integer(dimensions.ThermodynamicTemperature),
+		integer(dimensions.AmountOfSubstance),
+		integer(dimensions.LuminousIntensity),
+	})
+}
+
+// measure writes one IfcMeasureWithUnit and the unit it is over.
+func (w *writer) measure(factor MeasureWithUnit) (reference, error) {
+	over, err := w.unit(factor.Unit)
+	if err != nil {
+		return 0, err
+	}
+
+	return w.add(entityMeasure, []value{
+		typedReal{measure: factor.Measure, value: factor.Value},
+		over,
+	})
 }
 
 // context writes the geometric representation context and returns the

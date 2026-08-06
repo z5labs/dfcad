@@ -127,6 +127,16 @@ written on any frame but the root is refused for the same reason — every other
 frame reaches the root through a measured transform, and a second georeference
 beside it would be a second answer nothing reconciles.
 
+The units are the frames' own, and the frames have to agree on one: a file
+states one set of units, and a model whose frames declare two is refused rather
+than exported in whichever was found first. A model authored in feet is written
+in feet. Each foot is an IfcConversionBasedUnit stating its factor over the
+metre — the international foot and the US survey foot under names which tell
+them apart, because they differ by two parts per million and a reader keying
+off the name rather than the factor would otherwise read one as the other.
+Nothing is converted: a coordinate written in the source is that coordinate in
+the file.
+
 Where a body is written, the claim behind its height goes into the file beside
 it as a property set: the predicate, the value, the source, the method, the
 accuracy, the date and which step of the resolution rule chose it. That is what
@@ -164,11 +174,11 @@ and reproducible, so there is nothing for a dry run to protect and no diff for
 it to show.
 
 Exit code 1 is a model no artefact could be made of — one which pins no URL to
-derive identifiers from, one authored in a unit this schema has no SI spelling
-for, or a space whose shape was asked for and could not be drawn: a ring which
-does not close, a corner nothing states the position of, a boundary which does
-not lie at one level, a height which is not a distance or is not positive. The
-object still comes back, with "derived" false and no files, so a caller reads
+derive identifiers from, one whose frames disagree about the linear unit, or a
+space whose shape was asked for and could not be drawn: a ring which does not
+close, a corner nothing states the position of, a boundary which does not lie
+at one level, a height which is not a distance or is not positive. The object
+still comes back, with "derived" false and no files, so a caller reads
 why from the diagnostics on stderr rather than from an empty stream. Exit code
 3 is a destination inside the authored tree, which is refused before anything
 is read.
@@ -963,6 +973,15 @@ func (e *exporter) identifiers() []exportedIdentifier {
 // are perfectly sound — a survey grid in metres beside a fabrication grid in
 // millimetres — and there is nothing here which could choose between them, so
 // that is a refusal rather than a guess.
+//
+// The unit they agree on is written as it was authored, whichever it is.
+// Nothing is converted here: a foot is an IfcConversionBasedUnit, which states
+// the factor beside the numbers rather than applying it to them, and that is
+// the whole of what [0005](docs/decisions/0005-one-linear-unit-per-frame.md)
+// means by conversion happening at an export boundary. Converting the
+// coordinates instead would round every one of them — 1200/3937 does not
+// terminate in decimal — and the file would stop carrying the numbers the
+// survey published.
 func exportedUnits(registry *dfcad.Registry) (ifc.UnitAssignment, *dfcad.Diagnostic) {
 	var declared []dfcad.Unit
 	var span dfcad.Span
@@ -993,39 +1012,139 @@ func exportedUnits(registry *dfcad.Registry) (ifc.UnitAssignment, *dfcad.Diagnos
 		}
 	}
 
+	// A foot has no SI spelling and IFC4 has a first-class form for exactly
+	// that: the file names the conversion instead of applying it, so the
+	// coordinates stay the numbers the survey published.
+	if converted, held := conversions[unit]; held {
+		return converted.assignment(), nil
+	}
+
 	prefix, held := siPrefixes[unit]
 	if !held {
 		return ifc.UnitAssignment{}, &dfcad.Diagnostic{
 			Severity: dfcad.SeverityError,
 			Span:     span,
 			Message: fmt.Sprintf(
-				"expected a unit this schema has an SI spelling for, found %s: IFC writes a foot as a conversion from the "+
-					"metre, which this exporter does not write",
+				"expected a unit this exporter writes, found %s: it is neither one of the metre's spellings nor a "+
+					"conversion over the metre",
 				unit),
-			Hint: "author the frame in a metric unit, or convert the model before exporting it",
+			Hint: "author the frame in one of the units the engine defines",
 		}
 	}
 
-	return ifc.UnitAssignment{Units: []ifc.SIUnit{
-		{Type: "LENGTHUNIT", Prefix: prefix, Name: "METRE"},
-		{Type: "AREAUNIT", Prefix: prefix, Name: "SQUARE_METRE"},
-		{Type: "VOLUMEUNIT", Prefix: prefix, Name: "CUBIC_METRE"},
-		{Type: "PLANEANGLEUNIT", Name: "RADIAN"},
+	return ifc.UnitAssignment{Units: []ifc.Unit{
+		ifc.SIUnit{Type: "LENGTHUNIT", Prefix: prefix, Name: "METRE"},
+		ifc.SIUnit{Type: "AREAUNIT", Prefix: prefix, Name: "SQUARE_METRE"},
+		ifc.SIUnit{Type: "VOLUMEUNIT", Prefix: prefix, Name: "CUBIC_METRE"},
+		ifc.SIUnit{Type: "PLANEANGLEUNIT", Name: "RADIAN"},
 	}}, nil
 }
 
 // siPrefixes is the IfcSIPrefix each of the engine's metric units is written
 // with.
 //
-// The two feet are absent, which is what makes the refusal above a lookup
-// rather than a list of special cases: IFC writes a foot as an
-// IfcConversionBasedUnit over the metre, and a table entry pretending
-// otherwise would produce a file whose lengths are wrong by a factor of three.
+// The two feet are absent, which is what keeps this a table of prefixes rather
+// than a list of special cases: IFC writes a foot as an IfcConversionBasedUnit
+// over the metre, [conversions] is where that is written, and an entry here
+// pretending otherwise would produce a file whose lengths are wrong by a factor
+// of three.
 var siPrefixes = map[dfcad.Unit]string{
 	dfcad.UnitMillimetre: "MILLI",
 	dfcad.UnitCentimetre: "CENTI",
 	dfcad.UnitMetre:      "",
 	dfcad.UnitKilometre:  "KILO",
+}
+
+// The two feet in metres, exactly as [SPEC §4.5](SPEC.md#45-units) pins them
+// and [0005](docs/decisions/0005-one-linear-unit-per-frame.md) refuses to
+// conflate them.
+//
+// They are untyped constants restating the engine's rather than a call to
+// [dfcad.Unit.Metres], because the square and the cube below have to be one
+// rounding of exact arithmetic and not the product of a number already
+// rounded: a foot cubed is 0.028316846592, and the same product over float64s
+// is 0.028316846592000004. A test asserts these are the engine's numbers, so
+// restating them cannot mean disagreeing with them.
+const (
+	foot       = 0.3048
+	surveyFoot = 1200.0 / 3937.0
+)
+
+// conversion is how one unit the SI has no name for is written: the name it is
+// known by, and how much of the SI unit one of it, its square and its cube are.
+type conversion struct {
+	name   string
+	length float64
+	area   float64
+	volume float64
+}
+
+// conversions is the IfcConversionBasedUnit each of the engine's feet is
+// written as.
+//
+// The names are the two feet's own and they are deliberately unalike. A reader
+// which keys off the name rather than the factor — IfcOpenShell's table holds
+// `foot` at 0.3048 and has no entry for the survey foot at all — puts a model
+// four feet out at a state plane false easting if both are called the same
+// thing. The factor is what states the unit; a distinguishing name costs
+// nothing and stops a careless reader from being confidently wrong.
+var conversions = map[dfcad.Unit]conversion{
+	dfcad.UnitFoot: {
+		name:   "foot",
+		length: foot,
+		area:   foot * foot,
+		volume: foot * foot * foot,
+	},
+	dfcad.UnitSurveyFoot: {
+		name:   "US survey foot",
+		length: surveyFoot,
+		area:   surveyFoot * surveyFoot,
+		volume: surveyFoot * surveyFoot * surveyFoot,
+	},
+}
+
+// assignment is the four units a model authored in this one assigns.
+//
+// Three of them are conversions rather than one, because a length, an area and
+// a volume are three units in an assignment and the factor between a square
+// foot and a square metre is not the factor between a foot and a metre. What
+// distinguishes them in the file is the dimensional exponent each carries. The
+// plane angle stays an IfcSIUnit: a radian is a radian in every unit a model
+// is authored in.
+func (c conversion) assignment() ifc.UnitAssignment {
+	return ifc.UnitAssignment{Units: []ifc.Unit{
+		ifc.ConversionBasedUnit{
+			Type:       "LENGTHUNIT",
+			Dimensions: ifc.DimensionalExponents{Length: 1},
+			Name:       c.name,
+			Factor: ifc.MeasureWithUnit{
+				Measure: "LENGTHMEASURE",
+				Value:   c.length,
+				Unit:    ifc.SIUnit{Type: "LENGTHUNIT", Name: "METRE"},
+			},
+		},
+		ifc.ConversionBasedUnit{
+			Type:       "AREAUNIT",
+			Dimensions: ifc.DimensionalExponents{Length: 2},
+			Name:       "square " + c.name,
+			Factor: ifc.MeasureWithUnit{
+				Measure: "AREAMEASURE",
+				Value:   c.area,
+				Unit:    ifc.SIUnit{Type: "AREAUNIT", Name: "SQUARE_METRE"},
+			},
+		},
+		ifc.ConversionBasedUnit{
+			Type:       "VOLUMEUNIT",
+			Dimensions: ifc.DimensionalExponents{Length: 3},
+			Name:       "cubic " + c.name,
+			Factor: ifc.MeasureWithUnit{
+				Measure: "VOLUMEMEASURE",
+				Value:   c.volume,
+				Unit:    ifc.SIUnit{Type: "VOLUMEUNIT", Name: "CUBIC_METRE"},
+			},
+		},
+		ifc.SIUnit{Type: "PLANEANGLEUNIT", Name: "RADIAN"},
+	}}
 }
 
 // spatialEntity is the IFC entity a kind is written as, and is empty for a

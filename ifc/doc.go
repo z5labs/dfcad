@@ -51,6 +51,12 @@
 // IfcRelContainedInSpatialStructure for the products, and
 // IfcRelAssignsToGroup for the zones.
 //
+// A [Unit] of that assignment is either an [SIUnit] or a
+// [ConversionBasedUnit], which is IFC4's own answer to a unit the SI has no
+// name for: a factor over an SI unit, written beside the numbers rather than
+// applied to them. A model authored in feet is written in feet, and the file
+// says what a foot is.
+//
 // A model may also carry a [Georeference], which says where that coordinate
 // space sits on the earth: an IfcProjectedCRS naming the system, and an
 // IfcMapConversion out of the representation context into it. Both are written

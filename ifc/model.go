@@ -431,10 +431,20 @@ type Direction struct {
 // requires it. A model with no units at all is an [EmptyUnitsError] rather
 // than a file whose numbers mean nothing in particular.
 type UnitAssignment struct {
-	// Units are the SI units the file assigns, in the order they are
-	// written. The order is the caller's and is preserved, because it is one
-	// of the things a golden fixture of the file is holding still.
-	Units []SIUnit
+	// Units are the units the file assigns, in the order they are written.
+	// The order is the caller's and is preserved, because it is one of the
+	// things a golden fixture of the file is holding still.
+	Units []Unit
+}
+
+// Unit is one unit a [UnitAssignment] assigns.
+//
+// The set is closed and always will be, exactly as [Item] is and for the same
+// reason: a unit this package has no attribute list for cannot be assigned, so
+// an assignment which compiles is one which can be written.
+type Unit interface {
+	// unit is unexported so that the set stays this package's.
+	unit()
 }
 
 // SIUnit is one IfcSIUnit: a quantity, the SI unit it is measured in, and the
@@ -451,6 +461,80 @@ type SIUnit struct {
 	// Name is the IfcSIUnitName, spelled as IFC spells it: METRE,
 	// SQUARE_METRE, CUBIC_METRE, RADIAN.
 	Name string
+}
+
+func (SIUnit) unit() {}
+
+// ConversionBasedUnit is one IfcConversionBasedUnit: a named unit stated as a
+// factor over an SI one.
+//
+// It is how IFC4 writes a unit the SI has no name for — a foot, an inch, a
+// degree — and it names the conversion rather than applying it: the file's
+// numbers stay in the unit they were authored in, and the factor beside them
+// says what one of that unit is. A reader multiplies by [ConversionBasedUnit]'s
+// factor to get metres, which is what makes exporting a model nobody measured
+// in metres lossless.
+//
+// The name is written for a human and the factor is written for a reader, and
+// the two must not disagree: readers exist which key off the name and hold
+// their own table of factors for it, so two units which differ have to be named
+// differently. Writing one name over two factors is how a model ends up read at
+// the wrong scale by a tool which never looked at the number.
+type ConversionBasedUnit struct {
+	// Type is the IfcUnitEnum member the unit measures, spelled as IFC
+	// spells it: LENGTHUNIT, AREAUNIT, VOLUMEUNIT.
+	Type string
+
+	// Dimensions are the exponents of the base quantities the unit is
+	// composed of. A length is (1,0,0,0,0,0,0), the area of it (2,0,…) and
+	// the volume (3,0,…): the exponent is the thing which makes one
+	// conversion unit a length and the next the square of that length.
+	Dimensions DimensionalExponents
+
+	// Name is the IfcLabel the unit is known by, which is what a reader shows
+	// and what a careless one keys off.
+	Name string
+
+	// Factor is how much of the SI unit one of this unit is.
+	Factor MeasureWithUnit
+}
+
+func (ConversionBasedUnit) unit() {}
+
+// DimensionalExponents is IfcDimensionalExponents: the exponent of each SI
+// base quantity in a derived one.
+//
+// The seven are the SI's own, in the schema's order. Everything this package
+// writes one for is a length, an area or a volume, so only the first is ever
+// other than nought — but the entity takes all seven and a file which wrote
+// fewer would not load.
+type DimensionalExponents struct {
+	Length                   int
+	Mass                     int
+	Time                     int
+	ElectricCurrent          int
+	ThermodynamicTemperature int
+	AmountOfSubstance        int
+	LuminousIntensity        int
+}
+
+// MeasureWithUnit is IfcMeasureWithUnit: a number and the unit it is in.
+type MeasureWithUnit struct {
+	// Measure is the IfcValue member the number is written as, spelled as IFC
+	// spells it without its prefix: LENGTHMEASURE, AREAMEASURE,
+	// VOLUMEMEASURE.
+	//
+	// It has to be given because the attribute is declared as a select over
+	// every measure type in the schema, so the value carries its own type
+	// rather than taking one from the attribute. A bare number there is a
+	// file readers reject.
+	Measure string
+
+	// Value is the number.
+	Value float64
+
+	// Unit is what that number is in.
+	Unit Unit
 }
 
 // RepresentationContext is IfcGeometricRepresentationContext: the coordinate

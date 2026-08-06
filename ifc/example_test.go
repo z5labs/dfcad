@@ -25,8 +25,8 @@ func ExampleWrite() {
 			Preprocessor: "dfcad",
 			Originating:  "dfcad",
 		},
-		Units: ifc.UnitAssignment{Units: []ifc.SIUnit{
-			{Type: "LENGTHUNIT", Name: "METRE"},
+		Units: ifc.UnitAssignment{Units: []ifc.Unit{
+			ifc.SIUnit{Type: "LENGTHUNIT", Name: "METRE"},
 		}},
 		Context: ifc.RepresentationContext{Type: "Model", Dimension: 3},
 		Project: ifc.Project{
@@ -105,7 +105,7 @@ func ExampleRepresentation() {
 
 	model := ifc.Model{
 		Header: ifc.Header{Name: "model.ifc", TimeStamp: "1970-01-01T00:00:00"},
-		Units:  ifc.UnitAssignment{Units: []ifc.SIUnit{{Type: "LENGTHUNIT", Name: "METRE"}}},
+		Units:  ifc.UnitAssignment{Units: []ifc.Unit{ifc.SIUnit{Type: "LENGTHUNIT", Name: "METRE"}}},
 		Context: ifc.RepresentationContext{
 			Type:      "Model",
 			Dimension: 3,
@@ -190,8 +190,8 @@ func ExampleRepresentation() {
 func ExampleGeoreference() {
 	model := ifc.Model{
 		Header: ifc.Header{Name: "model.ifc", TimeStamp: "1970-01-01T00:00:00"},
-		Units: ifc.UnitAssignment{Units: []ifc.SIUnit{
-			{Type: "LENGTHUNIT", Name: "METRE"},
+		Units: ifc.UnitAssignment{Units: []ifc.Unit{
+			ifc.SIUnit{Type: "LENGTHUNIT", Name: "METRE"},
 		}},
 		Context: ifc.RepresentationContext{Type: "Model", Dimension: 3},
 		Georeference: &ifc.Georeference{
