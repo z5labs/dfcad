@@ -1056,6 +1056,7 @@ the one a permanent structure gets placed against.
 |-------|------|---------|
 | `subject` | string | The id the derivation was asked about. |
 | `derived` | bool | Whether there is a region below. Written whatever the outcome, so a parcel whose setbacks left nothing of it (`derived` true, `region.empty` true) reads differently from one whose setbacks could not be read (`derived` false). |
+| `digest` | string, optional | The digest of the source tree the region was derived from, lower-case hex, so a caller can check the derivation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
 | `frame` | string, optional | The frame the boundary and the answer are expressed in. |
 | `unit` | string, optional | That frame's linear unit. Every distance here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
@@ -1128,6 +1129,7 @@ involved to the final budget.
 | `subject` | string | The id which was sited. |
 | `within` | string | The id it had to sit inside. |
 | `sited` | bool | Whether there is an answer below. Written whatever the outcome, so a subject which does not fit (`sited` true, `verdict` `does-not-fit`) reads differently from a question which could not be asked (`sited` false). |
+| `digest` | string, optional | The digest of the source tree the answer was computed against, lower-case hex, so a caller can check the computation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
 | `frame` | string, optional | The frame the answer is expressed in, which is the envelope's. |
 | `declared-in` | string, optional | The frame the subject was written in. |
 | `carried` | bool | Whether a frame chain was walked to compare the two, which is what says whether a georeference is in the budget at all. |

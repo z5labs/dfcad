@@ -6,11 +6,14 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // siting is the question every invocation below asks: whether Room C, outlined
@@ -98,6 +101,61 @@ func TestRunSite(t *testing.T) {
 		assert.NotEmpty(t, term.Contributors)
 	}
 	assert.Empty(t, result.Budget.From, "this budget is a computation rather than a route between frames")
+}
+
+// TestRunSiteReportsTheDigestItWasComputedAgainst is its own function because it
+// is about the provenance of a computation rather than about a fit: a derived
+// value which cannot say which tree it came from is one nobody can check against
+// the tree in front of them
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+func TestRunSiteReportsTheDigestItWasComputedAgainst(t *testing.T) {
+	files := model()
+	root := tree(t, files)
+
+	stdout, _ := invoke(t, exitSuccess, root, siting("site:S-103")...)
+	result := listed[siteResult](t, stdout)
+
+	t.Run("names the digest of the source tree", func(t *testing.T) {
+		digest, err := dfcad.DigestOf(root)
+		require.NoError(t, err)
+		require.True(t, digest.Known())
+
+		assert.Equal(t, digest.String(), result.Digest)
+	})
+
+	t.Run("names a different one for a tree which moved", func(t *testing.T) {
+		// The room is carried a metre across the plot, which moves the room's
+		// nearest edge and so the clearance the verdict is decided on.
+		moved := model()
+		moved["entities/geometry.dfc"] = strings.NewReplacer(
+			"203.0 0.0) m)", "204.0 0.0) m)",
+			"209.0 0.0) m)", "210.0 0.0) m)",
+		).Replace(moved["entities/geometry.dfc"])
+
+		stdout, _ := invoke(t, exitSuccess, tree(t, moved), siting("site:S-103")...)
+		after := listed[siteResult](t, stdout)
+
+		assert.NotEqual(t, result.Digest, after.Digest)
+		require.NotNil(t, after.Clearance)
+		assert.NotEqual(t, result.Clearance.Actual, after.Clearance.Actual,
+			"the answer moved with the tree, which is what the digest is of")
+	})
+}
+
+// TestAFitOfATreeWithNoDigestWritesNoDigestField is its own function because it
+// asserts about the bytes rather than about a figure: a digest of nothing would
+// key an answer to a tree nobody could produce, so where there is none the field
+// is absent rather than empty.
+func TestAFitOfATreeWithNoDigestWritesNoDigestField(t *testing.T) {
+	// A graph assembled from no tree at all has no digest, which is the state a
+	// model that was never read from disk leaves behind.
+	result := reportSite(command{name: "site"}, nil, "site:S-103", "site:P-01", dfcad.Fit{}, false)
+
+	assert.Empty(t, result.Digest)
+
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), `"digest"`)
 }
 
 // TestRunSiteAnswersNoAsASuccessfulRun is its own function because it asserts
@@ -266,6 +324,7 @@ func TestRunSiteRefusals(t *testing.T) {
 			// than from an empty stream.
 			result := listed[siteResult](t, stdout)
 			assert.False(t, result.Sited)
+			assert.NotEmpty(t, result.Digest, "and which tree it was asked of")
 			assert.Empty(t, result.Verdict)
 			assert.Nil(t, result.Clearance)
 		})

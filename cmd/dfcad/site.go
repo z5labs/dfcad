@@ -73,8 +73,9 @@ number; only the verdict tells them apart.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
-The object site writes carries "subject" and "within", the "frame" the answer
-is expressed in and the "declared-in" frame the subject was written in, the
+The object site writes carries "subject" and "within", "sited" and the
+"digest" of the source tree it was computed against, the "frame" the answer is
+expressed in and the "declared-in" frame the subject was written in, the
 "unit" and the "tolerance" it was judged against, the "verdict" and whether it
 "decided", the "clearance" — required, actual, margin and the uncertainty of
 the margin — the "envelope", "proposal", "needed", "shared" and "spill"
@@ -122,6 +123,16 @@ type siteResult struct {
 	// a question which could not be asked: the first is sited with a verdict of
 	// does-not-fit, the second is not sited at all.
 	Sited bool `json:"sited"`
+
+	// Digest is the digest of the source tree the fit was computed against,
+	// which is what lets a caller check the answer against the model in front
+	// of them rather than taking it on trust. It is written on a refusal too: a
+	// refusal is still about a tree, and saying which one is the point.
+	//
+	// Absent for a model which was not read from disk, or one a file of which
+	// could not be read at all, because there is then nothing anything may be
+	// keyed by.
+	Digest string `json:"digest,omitempty"`
 
 	// Frame is the coordinate frame the answer is expressed in, which is the
 	// envelope's, and DeclaredIn the frame the subject was written in. They are
@@ -279,7 +290,7 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportSite(cmd, subject, envelope, answer, !refused)
+	result := reportSite(cmd, graph, subject, envelope, answer, !refused)
 
 	reportSiteFor(result, answer, globals, stderr)
 
@@ -301,12 +312,22 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 // answer carries, because a refused fit carries none: a caller collecting
 // results has to be able to say which question this object answers, and a
 // refusal is exactly the object it most needs that of.
-func reportSite(cmd command, subject, envelope dfcad.ID, answer dfcad.Fit, ok bool) siteResult {
+func reportSite(
+	cmd command,
+	graph *dfcad.Graph,
+	subject, envelope dfcad.ID,
+	answer dfcad.Fit,
+	ok bool,
+) siteResult {
 	result := siteResult{
 		envelope: newEnvelope(cmd.name),
 		Subject:  string(subject),
 		Within:   string(envelope),
 		Sited:    ok,
+	}
+
+	if digest, known := graph.Digest(); known {
+		result.Digest = digest.String()
 	}
 
 	if !ok {
