@@ -229,14 +229,16 @@ func (d CheckDeclaration) PermitsGeometry(geometry Geometry) bool {
 	return len(d.Geometries) == 0 || slices.Contains(d.Geometries, geometry)
 }
 
-// predicateParameter returns the parameter which names the predicate the check
-// is about, and whether it declares one.
+// namedPredicate returns the parameter which names the predicate the check is
+// about, and whether it declares one.
 //
-// A check declares at most one. The predicate is what says which quantity of
-// the subject the check is looking at, so a second one would be a check about
-// two quantities and neither the restatement rule nor a reader could say which
-// of them a value belonged to.
-func (d CheckDeclaration) predicateParameter() (CheckParameter, bool) {
+// It is what the restatement rule reads, and a check which carries a value of
+// the subject's own declares exactly one predicate beside it — the registry
+// refuses one which declares two — so the answer there is never a choice between
+// them. A check which restates nothing may name a second predicate for a
+// quantity of something other than its subject, and this returns the first it
+// declares.
+func (d CheckDeclaration) namedPredicate() (CheckParameter, bool) {
 	for _, parameter := range d.Parameters {
 		if parameter.Type == ParameterPredicate {
 			return parameter, true
@@ -415,10 +417,18 @@ func validCheck(d CheckDeclaration) error {
 		}
 	}
 
-	if predicates > 1 {
+	// Two predicates are ordinary where they are about two different things: a
+	// check which reads a subject's claimed area and reads its corners'
+	// positions to compute the area names one predicate of the subject and one
+	// of the corners, and neither reading is ambiguous. What cannot be written
+	// is a check which also carries a value of the subject's own, because the
+	// restatement rule then has to say which of the two quantities that value
+	// belongs to and nothing tells it.
+	if predicates > 1 && restating > 0 {
 		return invalidCheckError{
-			Check:  d.Name,
-			Reason: "names two predicates: a check is about one quantity of its subject, and the restatement rule cannot say which of two a value belongs to",
+			Check: d.Name,
+			Reason: "carries a value of the subject's own and names two predicates: the restatement rule cannot say " +
+				"which of the two that value belongs to",
 		}
 	}
 

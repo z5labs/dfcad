@@ -214,9 +214,9 @@ func TestValidateAssertionHints(t *testing.T) {
 			name:    "lists the registered checks when nothing written is close to one",
 			written: "(assert everything-is-fine)",
 			expected: "the check registry is closed and compiled into the engine; the registered checks are " +
-				"boundary-loops-close, contained-areas-do-not-overlap, contained-areas-sum, cross-frame-budget-holds, " +
-				"edge-backing-resolves, edge-endpoints-differ, required-claim, stays-clear-of-zone, within-resolves " +
-				"and zone-members-resolve",
+				"boundary-loops-close, claim-agrees-with-geometry, contained-areas-do-not-overlap, " +
+				"contained-areas-sum, cross-frame-budget-holds, edge-backing-resolves, edge-endpoints-differ, " +
+				"required-claim, stays-clear-of-zone, within-resolves and zone-members-resolve",
 		},
 		{
 			name:     "offers the nearest parameter the check does take",
@@ -399,6 +399,7 @@ func TestChecks(t *testing.T) {
 
 		assert.Equal(t, []string{
 			"boundary-loops-close",
+			"claim-agrees-with-geometry",
 			"contained-areas-do-not-overlap",
 			"contained-areas-sum",
 			"cross-frame-budget-holds",

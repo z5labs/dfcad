@@ -1,0 +1,61 @@
+; The vocabulary the model beside it is checked against.
+;
+; Two discrepancies rather than one, because the check judges two quantities: how
+; far a claimed area and a computed one may differ is an area, and how far a
+; claimed length and a computed one may differ is a length. One number could not
+; be both, and a rule which reused one would be comparing a width against an
+; area.
+(project
+  (label "Claim agreement fixture")
+  (globalid-namespace "https://example.org/models/agreement"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate area
+  (unit m2)
+  (shape scalar)
+  (description "How much floor a space has."))
+
+(predicate length
+  (unit m)
+  (shape scalar)
+  (description "How far a run of wall reaches."))
+
+(predicate remark
+  (shape text)
+  (description "A note somebody left on a thing."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, and how close two corners are one corner."))
+
+(tolerance area-discrepancy
+  (value 0.05 m2)
+  (description "How far a claimed area and the shape it describes may differ before they disagree."))
+
+(tolerance length-discrepancy
+  (value 0.01 m)
+  (description "How far a claimed length and the run it describes may differ before they disagree."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A wall between two spaces."))

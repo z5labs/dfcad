@@ -186,13 +186,24 @@
 // first file: that the loops bounding a thing close, that what a node contains
 // covers no ground twice and adds up to the whole, that what an edge says
 // physically realises it is a node the model holds, that expressing something in
-// another frame stays inside a stated error budget, and that a shape stays out
-// of a zone it is to keep clear of. Each takes its tolerance by name from the
-// registry, and each which measures is told which predicate carries a position,
-// because neither of those is the engine's to assume. A check the registry
-// declares and nothing implements binds, lists and validates exactly as one
-// which does and decides nothing, which [Rule.Runs] is how to tell apart — and
-// "nothing decided this" is a different answer from "this holds".
+// another frame stays inside a stated error budget, that a shape stays out of a
+// zone it is to keep clear of, and that a measurement written down still matches
+// the shape it describes. Each takes its tolerance by name from the registry,
+// and each which measures is told which predicate carries a position, because
+// neither of those is the engine's to assume. A check the registry declares and
+// nothing implements binds, lists and validates exactly as one which does and
+// decides nothing, which [Rule.Runs] is how to tell apart — and "nothing decided
+// this" is a different answer from "this holds".
+//
+// The last of them is the one the rest of the engine cannot state on its own.
+// The conflict register compares claims with each other and has nothing to say
+// about a claim disagreeing with the geometry, because the geometry is not a
+// claim — so a node carrying an area whose boundary computes to something else
+// loads, formats, resolves and passes every other rule the model states.
+// `claim-agrees-with-geometry` is that comparison, and what makes it a rule
+// rather than a subtraction is uncertainty: two figures which differ by less
+// than their combined uncertainty do not disagree, so the declared discrepancy
+// is the floor under the comparison rather than the whole of it.
 //
 // # Assertions
 //

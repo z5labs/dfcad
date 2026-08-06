@@ -1,0 +1,305 @@
+; A model whose written-down measurements are checked against the shapes they
+; describe.
+;
+; Every node below shares one outline or one run of wall, so the shape is the
+; same in every case and what differs is the claim written about it. That is the
+; point: the failure this fixture is about is a number which stopped matching a
+; boundary nobody touched afterwards, and holding the geometry still is what
+; makes the claim the only variable.
+
+; The room outline: four by three, so twelve square metres enclosed by fourteen
+; metres of wall. Each corner is known to 0.004 m, which puts the area it
+; computes to within about 0.11 m² — wider than the declared discrepancy, and
+; that difference is what the uncertainty rule is for.
+(vertex geom:V-01 (label "Room, south-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Room, south-east corner") (frame frame:building)
+  (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "Room, north-east corner") (frame frame:building)
+  (position (value (4.0 3.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "Room, north-west corner") (frame frame:building)
+  (position (value (0.0 3.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01 (label "Room, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Room, east wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Room, north wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Room, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01 (label "Room outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; The run of wall: four metres and then three, seven in total. It is drawn as a
+; line and not as a ring, which is what a wall is: the two ends do not meet, and
+; nothing here is a gap somebody has to close.
+(vertex geom:V-10 (label "Partition, west end") (frame frame:building)
+  (position (value (6.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-11 (label "Partition, turn") (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-12 (label "Partition, north end") (frame frame:building)
+  (position (value (10.0 3.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-10 (label "Partition, west run") (frame frame:building) (vertices geom:V-10 geom:V-11))
+(edge geom:E-11 (label "Partition, north run") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(loop geom:L-02 (label "Partition run") (frame frame:building)
+  (edges geom:E-10 geom:E-11))
+
+; The number and the shape agree.
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 12.0 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; The number is larger than the shape: the room was written down before a wall
+; came in, and nothing moved the claim.
+(node site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 14.0 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.1 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; The number is smaller than the shape, which is the other mistake and reads
+; differently: ground the model draws and the schedule does not account for.
+(node site:S-103
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 10.0 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.1 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; Measured and not yet drawn. There is a number and no shape to compare it
+; against, which is an ordinary state of a model being written.
+(node site:S-104
+  (label "Meeting Room D")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (area
+    (value 12.0 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; Drawn and not yet measured, which is the same state from the other side.
+(node site:S-105
+  (label "Meeting Room E")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; The stale number is still in the file and is retracted. A deprecated claim is
+; never resolved to, so what is compared is the one which replaced it — and a
+; retracted number is not a disagreement.
+(node site:S-106
+  (label "Meeting Room F")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (id survey:A-0106)
+    (value 14.0 m2)
+    (source "Area schedule AS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.1 m2))
+    (date "2026-01-12")
+    (rank deprecated)
+    (superseded-by survey:A-0107))
+  (area
+    (id survey:A-0107)
+    (value 12.0 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; The two differ by 0.2 m², which is four times the declared discrepancy and
+; still inside what the evidence can tell apart: the claim is good to 0.25 m²
+; and the shape to about 0.11 m². Two figures which differ by less than that do
+; not disagree, and a rule which compared against the declared figure alone
+; would report this one.
+(node site:S-107
+  (label "Meeting Room G")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 12.2 m2)
+    (source "Tape survey TS-2026-002, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.25 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; A number nobody said how good it is. An unstated accuracy is unknown rather
+; than zero, so nothing on the claim's side can narrow the band and the declared
+; discrepancy is what decides it — which this one is inside.
+(node site:S-109
+  (label "Meeting Room I")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 12.02 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:tape)
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; The same unstated accuracy, and a gap the shape's own uncertainty cannot
+; account for either. A claim which says nothing about how good it is does not
+; buy an unlimited band.
+(node site:S-110
+  (label "Meeting Room J")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 12.5 m2)
+    (source "Area schedule AS-2026-011, Acme Surveys")
+    (method method:tape)
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; A predicate which carries no number at all. The rule as written could never
+; decide either way, which is a mistake in the rule rather than in the room.
+(node site:S-108
+  (label "Meeting Room H")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (remark
+    (value "Handed over with the fit-out outstanding.")
+    (source "Handover note HN-2026-003")
+    (method method:tape)
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate remark)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+
+; A length rather than an area, judged against the run of wall it is written on
+; and against a discrepancy declared in metres.
+(node site:W-01
+  (label "Partition, west range")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (boundary geom:L-02)
+  (length
+    (value 7.0 m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.01 m))
+    (date "2026-02-18"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; The same run of wall with a metre missing from what was written down.
+(node site:W-02
+  (label "Partition, east range")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (boundary geom:L-02)
+  (length
+    (value 6.0 m)
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-02-18"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
