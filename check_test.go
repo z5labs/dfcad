@@ -216,7 +216,7 @@ func TestValidateAssertionHints(t *testing.T) {
 			expected: "the check registry is closed and compiled into the engine; the registered checks are " +
 				"boundary-loops-close, claim-agrees-with-geometry, contained-areas-do-not-overlap, " +
 				"contained-areas-sum, cross-frame-budget-holds, edge-backing-resolves, edge-endpoints-differ, " +
-				"required-claim, stays-clear-of-zone, within-resolves and zone-members-resolve",
+				"ground-to-grid-stated, required-claim, stays-clear-of-zone, within-resolves and zone-members-resolve",
 		},
 		{
 			name:     "offers the nearest parameter the check does take",
@@ -405,6 +405,7 @@ func TestChecks(t *testing.T) {
 			"cross-frame-budget-holds",
 			"edge-backing-resolves",
 			"edge-endpoints-differ",
+			"ground-to-grid-stated",
 			"required-claim",
 			"stays-clear-of-zone",
 			"within-resolves",

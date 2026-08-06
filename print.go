@@ -620,6 +620,20 @@ func decimal(v float64) string {
 	return s
 }
 
+// proportional is how a rate far smaller than anything it is a rate of is
+// written: in full, without an exponent.
+//
+// It is not how a value is printed into a file — [decimal] is, and the shortest
+// round-tripping form is what a file wants. This is for a diagnostic, where
+// 2e-05 m is a figure the reader has to decode before they can act on it, and
+// 0.00002 m is one they can put beside a tolerance and see immediately.
+func proportional(v float64) string {
+	if math.IsInf(v, 0) || math.IsNaN(v) {
+		return fmt.Sprint(v)
+	}
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
 // quoteText is how a string is written: double-quoted, escaping exactly what
 // has to be escaped for the same text to read back.
 //
