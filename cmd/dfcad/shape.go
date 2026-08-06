@@ -201,10 +201,18 @@ func shapeVocabularyOf(drawn shapes) error {
 // shaped is the geometry of one space: the footprint its boundary states, the
 // body a height makes of that footprint, and where the height came from.
 //
+// The drawing comes back as well as the shapes because it is what attributes
+// them: [dfcad.RegionTessellation.Segments] says which edge produced each run
+// of the outline, which is what a space boundary's connection geometry is cut
+// from. Re-drawing the room to answer that would be drawing it twice and
+// hoping the two agreed.
+//
 // A space which references no loop is drawn as nothing at all rather than as
 // an empty shape. That is an answer: a room nobody has bounded has no outline,
 // and a representation holding no shapes is a file IFC refuses.
-func (e *exporter) shaped(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.PropertySet) {
+func (e *exporter) shaped(
+	node *dfcad.SemanticNode,
+) (*ifc.Representation, []ifc.PropertySet, dfcad.RegionTessellation) {
 	drawn, diags := e.graph.Topology().TessellateRegion(
 		node,
 		e.graph.Boundaries(),
@@ -215,12 +223,12 @@ func (e *exporter) shaped(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.
 
 	pieces := drawn.Pieces()
 	if len(pieces) == 0 {
-		return nil, nil
+		return nil, nil, drawn
 	}
 
 	elevation, level := e.level(node, drawn)
 	if !level {
-		return nil, nil
+		return nil, nil, drawn
 	}
 
 	// The outline is what the model states and is written whatever else is
@@ -243,7 +251,7 @@ func (e *exporter) shaped(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.
 
 	height, resolution, resolved := e.height(node, drawn)
 	if !resolved {
-		return representation, nil
+		return representation, nil, drawn
 	}
 
 	solids := make([]ifc.Item, 0, len(pieces))
@@ -276,7 +284,7 @@ func (e *exporter) shaped(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.
 		Items:      solids,
 	})
 
-	return representation, e.provenance(node, drawn, height, resolution)
+	return representation, e.provenance(node, drawn, height, resolution), drawn
 }
 
 // height is the height a body is swept through, the resolution it came from,

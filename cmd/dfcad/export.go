@@ -105,6 +105,25 @@ accuracy, the date and which step of the resolution rule chose it. That is what
 lets whoever opens the file tell a surveyed height from an assumed one without
 holding the model it came from.
 
+A space's boundaries reach the file as relationships, drawn or not. Every edge
+of a room's outline which names the element realising it is written as an
+IfcRelSpaceBoundary between the two, classified physical because something
+backs it and internal or external from the containment the model already
+states: an element in the same building as the room is between it and another
+room, and one anywhere else is between it and the outside. Where the run drew
+the room, each relationship also carries the run of the outline that edge
+produced as its connection geometry — the same drawing the footprint holds,
+curves included — and where it drew nothing, the relationship is written
+without one, which the schema allows and a topological model should prefer.
+
+Two rooms with nothing built between them are reported rather than written.
+The relationship's element is mandatory, IFC's answer to a boundary with no
+element is one which is not there, and inventing it would put a thing into the
+artefact which the model does not hold. The same is said of an edge backed by
+an element outside the spatial structure, which is written nowhere for a
+relationship to point at. Both are warnings: the file is still produced, and a
+gap somebody is told about is one they can close.
+
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object export writes carries "derived", the "digest" of the source tree the
@@ -545,10 +564,19 @@ type exporter struct {
 	// which asked for none.
 	shapes shapes
 
-	// diags is everything which stopped a shape being drawn, in the order the
-	// traversal met it. They are errors, so an export which collected any
-	// writes no file at all: an artefact is all or nothing, and a model file
-	// with one room's solid quietly missing is worse than none.
+	// diags is everything the traversal had to say about the model, in the
+	// order it met it.
+	//
+	// An error is something which stopped a shape being drawn, and an export
+	// which collected one writes no file at all: an artefact is all or
+	// nothing, and a model file with one room's solid quietly missing is worse
+	// than none.
+	//
+	// A warning is something this format cannot carry, which the file is
+	// written without. A boundary with no element between the two sides is the
+	// one there is: leaving it out is the only thing IFC allows, and saying so
+	// is what makes the gap a stated one rather than a difference somebody
+	// finds by counting walls in the receiving system.
 	diags []dfcad.Diagnostic
 
 	// roots are the spatial nodes nothing spatial contains, which hang off the
@@ -568,8 +596,15 @@ type exporter struct {
 	// from. It is what makes deriving one twice cost nothing and report once.
 	derived map[dfcad.ID]ifc.GlobalID
 
-	// written is the ids of the nodes which reached the file, which is what a
-	// zone's members are resolved against.
+	// written is the ids of the nodes which reach the file, which is what a
+	// zone's members and a space's boundaries are resolved against.
+	//
+	// It is settled by [exporter.collect], before anything is written, rather
+	// than filled in as the walk reaches each node. A boundary names the
+	// element which realises it and that element stands wherever the model put
+	// it — which may be a storey the walk has not come to yet — so a set which
+	// grew as the walk went would report a wall in the next storey as absent
+	// from a file it is in.
 	written map[dfcad.ID]bool
 }
 
@@ -628,6 +663,35 @@ func (e *exporter) collect() {
 			e.members[zone] = append(e.members[zone], node)
 		}
 	}
+
+	// What the file will hold is decided here rather than during the walk,
+	// because a reference across the decomposition — a zone assigning
+	// something, a boundary naming the wall which realises it — has to be
+	// answerable before the thing it names has been reached.
+	e.hold(e.roots)
+	for _, node := range e.zoned {
+		e.written[node.ID()] = true
+	}
+}
+
+// hold records the spatial elements beneath nodes, and the products standing
+// in each, as things the file will hold.
+//
+// It walks exactly what [exporter.decompose] walks, so the answer is the set
+// which will actually be written and not a superset of it: a node nothing
+// reachable contains is written nowhere, and saying otherwise would leave a
+// reference to it in the file.
+func (e *exporter) hold(nodes []*dfcad.SemanticNode) {
+	for _, node := range nodes {
+		id := node.ID()
+		e.written[id] = true
+
+		for _, product := range e.products[id] {
+			e.written[product.ID()] = true
+		}
+
+		e.hold(e.children[id])
+	}
 }
 
 // spatialParent is the nearest spatial ancestor of node, and whether it has
@@ -671,7 +735,6 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 
 	for _, node := range nodes {
 		id := node.ID()
-		e.written[id] = true
 
 		element := ifc.Spatial{
 			Entity:      spatialEntity(node.Kind()),
@@ -694,8 +757,17 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 		// A space is the one thing drawn here, because it is the one thing a
 		// boundary is written of: a storey and a site are decompositions, and
 		// the outline of either is the outline of what it holds.
+		var drawn dfcad.RegionTessellation
 		if e.shapes.complete() && node.Kind() == dfcad.KindSpace {
-			element.Representation, element.Properties = e.shaped(node)
+			element.Representation, element.Properties, drawn = e.shaped(node)
+		}
+
+		// The boundaries are relationships rather than geometry, so they are
+		// written for a space whether or not the run drew one. What the
+		// drawing adds is the curve each of them ran along, and a run which
+		// drew nothing writes the relationships without it.
+		if node.Kind() == dfcad.KindSpace {
+			element.Boundaries = e.bounding(node, drawn)
 		}
 
 		if len(element.Children) > 0 {
@@ -717,7 +789,6 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode) []ifc.Product {
 
 	for _, node := range nodes {
 		entity, objectType := e.productEntity(node)
-		e.written[node.ID()] = true
 
 		out = append(out, ifc.Product{
 			Entity:      entity,
@@ -735,13 +806,6 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode) []ifc.Product {
 // zones is every zone the model declares, with the members assigned to it.
 func (e *exporter) zones() []ifc.Group {
 	out := make([]ifc.Group, 0, len(e.zoned))
-
-	// Every zone is recorded as written before any of them resolves its
-	// members, so that a zone belonging to another zone works whichever order
-	// the two were written in.
-	for _, node := range e.zoned {
-		e.written[node.ID()] = true
-	}
 
 	for _, node := range e.zoned {
 		id := node.ID()

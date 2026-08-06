@@ -88,6 +88,8 @@ const (
 	entityAggregates Entity = "IFCRELAGGREGATES"
 	entityContains   Entity = "IFCRELCONTAINEDINSPATIALSTRUCTURE"
 	entityAssigns    Entity = "IFCRELASSIGNSTOGROUP"
+	entityBoundary   Entity = "IFCRELSPACEBOUNDARY"
+	entityConnection Entity = "IFCCONNECTIONCURVEGEOMETRY"
 	entityProject    Entity = "IFCPROJECT"
 	entityContext    Entity = "IFCGEOMETRICREPRESENTATIONCONTEXT"
 	entityUnits      Entity = "IFCUNITASSIGNMENT"
@@ -191,6 +193,28 @@ type writer struct {
 	// subcontexts are the subcontext identifiers in the order they were
 	// declared, which is what a refusal lists as the alternatives.
 	subcontexts []string
+
+	// boundaries are the space boundaries met during the spatial walk, in the
+	// order they were met, held until every product has been written.
+	//
+	// They are deferred for the reason a group's members are: a boundary names
+	// the element by its identifier, that element stands in whichever spatial
+	// element contains it, and the walk may not have reached it yet. Resolving
+	// as they are met would refuse a wall in the next storey for not existing.
+	boundaries []pending
+}
+
+// pending is one space boundary and the space which stated it, waiting for the
+// walk to finish.
+type pending struct {
+	// space is the instance of the space the boundary belongs to.
+	space reference
+
+	// of is the identifier of that space, which a refusal names.
+	of GlobalID
+
+	// boundary is what was written on it.
+	boundary SpaceBoundary
 }
 
 // model serialises the whole model into instances.
@@ -199,7 +223,8 @@ type writer struct {
 // first because the project references them, then the context for the same
 // reason, then the project, then the spatial decomposition depth first in the
 // order the caller wrote it, then the groups, which may assign anything above
-// them and so are last.
+// them, and last the space boundaries, which may name any element the walk
+// wrote.
 func (w *writer) model(model Model) error {
 	units, err := w.units(model.Units)
 	if err != nil {
@@ -237,7 +262,11 @@ func (w *writer) model(model Model) error {
 		return err
 	}
 
-	return w.groups(project.Groups)
+	if err := w.groups(project.Groups); err != nil {
+		return err
+	}
+
+	return w.spaceBoundaries()
 }
 
 // units writes the unit assignment and returns the reference to it.
@@ -418,6 +447,10 @@ func (w *writer) spatial(elements []Spatial, under reference) ([]value, error) {
 			return nil, err
 		}
 
+		if err := w.bounded(element, at); err != nil {
+			return nil, err
+		}
+
 		written = append(written, at)
 	}
 
@@ -509,6 +542,115 @@ func (w *writer) aggregates(id GlobalID, of reference, children []value) error {
 	})
 
 	return err
+}
+
+// bounded records the space boundaries one spatial element states, refusing
+// any written on something which is not a space.
+//
+// Nothing is written here. The relationship names an element which may stand
+// anywhere in the decomposition, so it is held until the walk has finished and
+// written by [writer.spaceBoundaries].
+func (w *writer) bounded(element Spatial, at reference) error {
+	if len(element.Boundaries) == 0 {
+		return nil
+	}
+
+	if element.Entity != EntitySpace {
+		return BoundaryOnNonSpaceError{Entity: element.Entity, Of: element.GlobalID}
+	}
+
+	for _, boundary := range element.Boundaries {
+		w.boundaries = append(w.boundaries, pending{space: at, of: element.GlobalID, boundary: boundary})
+	}
+
+	return nil
+}
+
+// spaceBoundaries writes the relationships between the spaces and the elements
+// bounding them.
+//
+// They come last so that every element one of them may name has been written,
+// which is what lets a boundary be stated on the space alone: a room does not
+// have to know where in the decomposition the wall beside it was put.
+func (w *writer) spaceBoundaries() error {
+	for _, held := range w.boundaries {
+		boundary := held.boundary
+
+		if boundary.Element == "" {
+			return MissingBoundaryElementError{Space: held.of, Boundary: boundary.GlobalID}
+		}
+
+		element, known := w.objects[boundary.Element]
+		if !known {
+			return UnknownBoundaryElementError{
+				Space:    held.of,
+				Boundary: boundary.GlobalID,
+				Element:  boundary.Element,
+			}
+		}
+
+		if boundary.Physical == "" {
+			return UnclassifiedBoundaryError{
+				Space:     held.of,
+				Boundary:  boundary.GlobalID,
+				Attribute: "PhysicalOrVirtualBoundary",
+			}
+		}
+		if boundary.Internal == "" {
+			return UnclassifiedBoundaryError{
+				Space:     held.of,
+				Boundary:  boundary.GlobalID,
+				Attribute: "InternalOrExternalBoundary",
+			}
+		}
+
+		// The geometry comes before the relationship which carries it, because
+		// an instance may only reference one already written.
+		connection, err := w.connection(boundary.Connection)
+		if err != nil {
+			return err
+		}
+
+		if _, err := w.rooted(entityBoundary, boundary.GlobalID, []value{
+			text(boundary.GlobalID),
+			absent{}, // OwnerHistory
+			optionalText(boundary.Name),
+			optionalText(boundary.Description),
+			held.space,
+			element,
+			connection,
+			enumeration(string(boundary.Physical)),
+			enumeration(string(boundary.Internal)),
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// connection writes an IfcConnectionCurveGeometry, and is absent for a
+// boundary the caller holds no geometry for.
+func (w *writer) connection(curve *ConnectionCurve) (value, error) {
+	if curve == nil {
+		return absent{}, nil
+	}
+
+	relating, err := w.polyline(curve.OnRelating)
+	if err != nil {
+		return nil, err
+	}
+
+	related := value(absent{})
+	if curve.OnRelated != nil {
+		at, err := w.polyline(*curve.OnRelated)
+		if err != nil {
+			return nil, err
+		}
+		related = at
+	}
+
+	return w.add(entityConnection, []value{relating, related})
 }
 
 // groups writes the zones and the assignments which give them their members.

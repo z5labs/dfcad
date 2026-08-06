@@ -2475,9 +2475,9 @@ somebody else's vocabulary rather than naming an entity in this file's.
 [0004](./decisions/0004-globalid-derives-from-a-pinned-namespace.md) derives**, from the URL
 the project pins and the node's id. The relationships are rooted objects too, and theirs are
 derived from a name no id could collide with — `ifc/aggregates/<id>`, `ifc/contains/<id>`,
-`ifc/assigns/<id>`, and `ifc/project` for the project itself — because an id is written
-`namespace:local` and a namespace never contains a slash. Under `--evidence` the manifest
-accounts for all of them.
+`ifc/assigns/<id>`, `ifc/boundary/<space>/<edge>/<element>`, and `ifc/project` for the project
+itself — because an id is written `namespace:local` and a namespace never contains a slash.
+Under `--evidence` the manifest accounts for all of them.
 
 **A retired node is not written.** A thing which stopped existing must not reach a receiving
 system as a live one, and what a retirement means for an exchange — a delete, or nothing at
@@ -2512,6 +2512,41 @@ accuracy, its date, its id, and which step of the resolution rule chose it. That
 surveyed height is told from an assumed one without holding the model — a claim nothing
 rankable was said about reads as `unranked`, and is still used, because it is what the model
 says.
+
+**A space's boundaries cross as relationships, drawn or not.** Every edge of a room's outline
+which names the element realising it is written as an `IfcRelSpaceBoundary` between the two —
+one per space and element, so a party wall two rooms reach is two relationships and not one.
+This is the place where the engine already holds something a receiving system usually has to
+guess at: the wall between two rooms is one node both of them reference, so the fact that it
+separates them is stated rather than recovered by comparing outlines and hoping the arithmetic
+agrees.
+
+`PhysicalOrVirtualBoundary` is the classification [SPEC §6.3](../SPEC.md#63-edge) computes,
+carried through and re-derived nowhere:
+an edge something backs is `.PHYSICAL.`, and nothing in the model stores that answer,
+so adding a wall changes it with no second edit.
+`InternalOrExternalBoundary` is read off the containment the model already states — an element
+in the same building as the room is `.INTERNAL.`, one anywhere else, including on the site
+rather than in a building, is `.EXTERNAL.` — and off nothing else, because a type name or a
+geometry would be a second source for an answer the containment already gives.
+`ConnectionGeometry` is written where the run drew the room and omitted where it did not: the
+curve is the run of the footprint that edge produced, taken from the segment attribution, so
+it is made of the corners the outline already holds and a curved wall's chords come through as
+the chords the outline has. A run naming no drawing vocabulary writes the relationships
+without any geometry at all, which the schema allows and a topological model should prefer.
+
+**A boundary this schema cannot express is reported and left out, and the export still
+succeeds.** `RelatedBuildingElement` is mandatory, so two rooms with nothing built between
+them have no relationship to be written as; IFC's own answer is an `IfcVirtualElement`, and
+writing one would be this command putting a thing into the artefact which the model does not
+hold. The same goes for an edge backed by an element outside the spatial structure, which is
+written nowhere for a relationship to point at. Both are warnings on stderr naming the space
+and the edge, because a gap somebody is told about is one they can close and a silently
+missing boundary is not. An edge which bounds one room and nothing else is not reported: the
+model has said nothing about what runs along it, so there is no boundary between two things to
+leave out. And an edge naming a backing element the model does not hold is a load error
+already, reported when the model is read; the exporter does not reclassify it as a boundary
+with nothing along it.
 
 **A model which pins no URL, or whose frames disagree about the linear unit, is a refusal**:
 `derived` false, no files, the digest written, and the reason on stderr. The second is a

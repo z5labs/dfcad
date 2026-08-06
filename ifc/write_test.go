@@ -467,7 +467,7 @@ func rooted(held simple) bool {
 		"IFCLOCALPLACEMENT", "IFCAXIS2PLACEMENT3D", "IFCCARTESIANPOINT", "IFCDIRECTION",
 		"IFCPRODUCTDEFINITIONSHAPE", "IFCSHAPEREPRESENTATION", "IFCPOLYLINE",
 		"IFCARBITRARYCLOSEDPROFILEDEF", "IFCARBITRARYPROFILEDEFWITHVOIDS",
-		"IFCEXTRUDEDAREASOLID", "IFCPROPERTYSINGLEVALUE",
+		"IFCEXTRUDEDAREASOLID", "IFCPROPERTYSINGLEVALUE", "IFCCONNECTIONCURVEGEOMETRY",
 	}
 	return !slices.Contains(unrooted, held.keyword)
 }
@@ -1228,3 +1228,337 @@ func body(model *Model) *ExtrudedArea {
 type unwritable struct{}
 
 func (unwritable) item() {}
+
+// partyWall is the run of the room's outline the wall beside it stands along,
+// which is the connection geometry of the boundary between the two.
+//
+// It is two dimensional for the reason a footprint is: the curve is expressed
+// in the plane the space is drawn in, and repeating an elevation on every
+// point of it would be a third statement of something the placement already
+// carries.
+func partyWall() Polyline {
+	return Polyline{Points: []Point2D{{X: 0, Y: 0}, {X: 6, Y: 0}}}
+}
+
+// bounded is the fixture above with the room's boundaries stated: which
+// element bounds it, on which side of the envelope, and where the two meet.
+//
+// The two boundaries are deliberately unalike. One names the wall, is internal
+// and carries the curve the two share; the other names the proxy, is external
+// and carries no geometry at all — which is the ordinary case for an exporter
+// with nothing drawn, and is what makes the connection optional worth having.
+func bounded() Model {
+	model := fixture()
+
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+
+	space.Boundaries = []SpaceBoundary{{
+		GlobalID:   "EIg1S2wRr2WQeQMwAKN3aq",
+		Name:       "geom:E-101-AB",
+		Element:    "AIg1S2wRr2WQeQMwAKN3aq",
+		Physical:   PhysicalBoundary,
+		Internal:   BoundaryInternal,
+		Connection: &ConnectionCurve{OnRelating: partyWall()},
+	}, {
+		GlobalID: "FIg1S2wRr2WQeQMwAKN3aq",
+		Name:     "geom:E-101-BC",
+		Element:  "BIg1S2wRr2WQeQMwAKN3aq",
+		Physical: PhysicalBoundary,
+		Internal: BoundaryExternal,
+	}}
+
+	return model
+}
+
+func TestWriteSpaceBoundaries(t *testing.T) {
+	got := written(t, bounded())
+
+	assert.Equal(t, golden(t, "bounded.ifc", got), got,
+		"the emitted file is stale; regenerate it with: go test ./ifc -update")
+}
+
+// TestWriteSpaceBoundariesIsAFunctionOfTheModel is the byte-identity property
+// over the relationships, which the golden cannot hold on its own for the
+// reason the spatial one cannot: a writer which ranged a map into them would
+// be stale in one run out of many rather than in all of them.
+func TestWriteSpaceBoundariesIsAFunctionOfTheModel(t *testing.T) {
+	first := written(t, bounded())
+
+	for range 8 {
+		assert.Equal(t, first, written(t, bounded()))
+	}
+}
+
+func TestWriteSpaceBoundariesReadsBackUnderAnIndependentReader(t *testing.T) {
+	source := written(t, bounded())
+
+	parsed, err := read(source)
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	t.Run("writes each entity with the attribute count IFC4 fixes for it", func(t *testing.T) {
+		// Transcribed from IFC4 rather than read off the writer's own tables,
+		// which is the whole point of a second opinion.
+		counts := map[string]int{
+			"IFCRELSPACEBOUNDARY":        9,
+			"IFCCONNECTIONCURVEGEOMETRY": 2,
+			"IFCPOLYLINE":                1,
+		}
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+
+			want, known := counts[held.keyword]
+			if !known {
+				continue
+			}
+
+			assert.Len(t, held.attributes, want, "#%d=%s", number, held.keyword)
+		}
+	})
+
+	t.Run("resolves every reference it writes", func(t *testing.T) {
+		var walk func(items []item)
+		walk = func(items []item) {
+			for _, one := range items {
+				switch one.form {
+				case itemReference:
+					_, held := parsed.instance(one.at)
+					assert.True(t, held, "#%d is referenced and not written", one.at)
+				case itemList:
+					walk(one.items)
+				}
+			}
+		}
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			walk(held.attributes)
+		}
+	})
+
+	t.Run("relates the space to the element on either side of it", func(t *testing.T) {
+		relationships := boundaries(parsed)
+		require.Len(t, relationships, 2)
+
+		space, held := parsed.instance(relationships[0].attributes[4].at)
+		require.True(t, held)
+		assert.Equal(t, "IFCSPACE", space.keyword)
+
+		element, held := parsed.instance(relationships[0].attributes[5].at)
+		require.True(t, held)
+		assert.Equal(t, "IFCWALL", element.keyword)
+	})
+
+	t.Run("carries the classification it was given as a schema enumeration", func(t *testing.T) {
+		relationships := boundaries(parsed)
+		require.Len(t, relationships, 2)
+
+		for _, at := range []int{7, 8} {
+			for _, held := range relationships {
+				assert.Equal(t, itemEnum, held.attributes[at].form)
+			}
+		}
+
+		assert.Equal(t, "PHYSICAL", relationships[0].attributes[7].text)
+		assert.Equal(t, "INTERNAL", relationships[0].attributes[8].text)
+		assert.Equal(t, "EXTERNAL", relationships[1].attributes[8].text)
+	})
+
+	t.Run("writes the connection geometry it was given and omits the one it was not", func(t *testing.T) {
+		relationships := boundaries(parsed)
+		require.Len(t, relationships, 2)
+
+		curve, held := parsed.instance(relationships[0].attributes[6].at)
+		require.True(t, held, "the first boundary carries a connection")
+		assert.Equal(t, "IFCCONNECTIONCURVEGEOMETRY", curve.keyword)
+
+		// The curve on the related element is the one the caller did not hold,
+		// which is absent rather than a copy of the other.
+		assert.Equal(t, itemAbsent, curve.attributes[1].form)
+
+		assert.Equal(t, itemAbsent, relationships[1].attributes[6].form,
+			"a boundary with no geometry writes none rather than approximating one")
+	})
+
+	t.Run("writes every boundary after every element one of them may name", func(t *testing.T) {
+		last := 0
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword == "IFCWALL" || held.keyword == "IFCBUILDINGELEMENTPROXY" {
+				last = number
+			}
+		}
+
+		require.NotZero(t, last)
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCRELSPACEBOUNDARY" {
+				continue
+			}
+			assert.Greater(t, number, last,
+				"a boundary may name any element in the file, so it is written after all of them")
+		}
+	})
+}
+
+// boundaries is every space boundary a parsed file holds, in the order it
+// writes them.
+func boundaries(parsed *file) []simple {
+	var out []simple
+
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword == "IFCRELSPACEBOUNDARY" {
+			out = append(out, held)
+		}
+	}
+
+	return out
+}
+
+func TestWriteRefusesASpaceBoundaryItCannotWrite(t *testing.T) {
+	testCases := []struct {
+		name     string
+		model    func(model *Model)
+		expected error
+	}{
+		{
+			name: "a boundary on something which is not a space",
+			model: func(model *Model) {
+				storey := &model.Project.Sites[0].Children[0].Children[0]
+				storey.Boundaries = space(model).Boundaries
+			},
+			expected: BoundaryOnNonSpaceError{},
+		},
+		{
+			name:     "a boundary naming no element at all",
+			model:    func(model *Model) { space(model).Boundaries[0].Element = "" },
+			expected: MissingBoundaryElementError{},
+		},
+		{
+			name: "a boundary naming an element the model does not write",
+			model: func(model *Model) {
+				space(model).Boundaries[0].Element = "ZZg1S2wRr2WQeQMwAKN3aq"
+			},
+			expected: UnknownBoundaryElementError{},
+		},
+		{
+			name:     "a boundary which does not say whether it is physical",
+			model:    func(model *Model) { space(model).Boundaries[0].Physical = "" },
+			expected: UnclassifiedBoundaryError{},
+		},
+		{
+			name:     "a boundary which does not say whether it is internal",
+			model:    func(model *Model) { space(model).Boundaries[0].Internal = "" },
+			expected: UnclassifiedBoundaryError{},
+		},
+		{
+			name:     "a boundary with no identifier of its own",
+			model:    func(model *Model) { space(model).Boundaries[0].GlobalID = "" },
+			expected: MissingGlobalIDError{},
+		},
+		{
+			name: "a connection curve through one point",
+			model: func(model *Model) {
+				space(model).Boundaries[0].Connection = &ConnectionCurve{
+					OnRelating: Polyline{Points: []Point2D{{X: 1, Y: 1}}},
+				}
+			},
+			expected: ShortPolylineError{},
+		},
+		{
+			name: "a connection curve through a coordinate which is not a number",
+			model: func(model *Model) {
+				space(model).Boundaries[0].Connection = &ConnectionCurve{
+					OnRelating: Polyline{Points: []Point2D{{X: math.NaN()}, {X: 1}}},
+				}
+			},
+			expected: UnrepresentableRealError{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := bounded()
+			testCase.model(&model)
+
+			var out strings.Builder
+			err := Write(&out, model)
+
+			require.Error(t, err)
+			assert.IsType(t, testCase.expected, err)
+
+			// An artefact is all or nothing: a refusal leaves nothing behind
+			// which a later run would read as the export of this model.
+			assert.Empty(t, out.String())
+		})
+	}
+}
+
+// space is the one space of the fixture, which every case above reaches into.
+func space(model *Model) *Spatial {
+	return &model.Project.Sites[0].Children[0].Children[0].Children[0]
+}
+
+// TestSpaceBoundaryRefusalsCarryWhatMadeThem is its own function because it
+// asserts on the fields of each error rather than on which error it is, which
+// is a different set of assertions from the table above.
+func TestSpaceBoundaryRefusalsCarryWhatMadeThem(t *testing.T) {
+	t.Run("a boundary on the wrong thing names it and what it was written as", func(t *testing.T) {
+		model := bounded()
+		storey := &model.Project.Sites[0].Children[0].Children[0]
+		storey.Boundaries = space(&model).Boundaries
+
+		var got BoundaryOnNonSpaceError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.Equal(t, EntityBuildingStorey, got.Entity)
+		assert.Equal(t, GlobalID("6Ig1S2wRr2WQeQMwAKN3aq"), got.Of)
+	})
+
+	t.Run("a boundary with no element names the space which stated it", func(t *testing.T) {
+		model := bounded()
+		space(&model).Boundaries[0].Element = ""
+
+		var got MissingBoundaryElementError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.Equal(t, GlobalID("8Ig1S2wRr2WQeQMwAKN3aq"), got.Space)
+		assert.Equal(t, GlobalID("EIg1S2wRr2WQeQMwAKN3aq"), got.Boundary)
+	})
+
+	t.Run("an unknown element names the identifier it could not find", func(t *testing.T) {
+		model := bounded()
+		space(&model).Boundaries[0].Element = "ZZg1S2wRr2WQeQMwAKN3aq"
+
+		var got UnknownBoundaryElementError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.Equal(t, GlobalID("8Ig1S2wRr2WQeQMwAKN3aq"), got.Space)
+		assert.Equal(t, GlobalID("EIg1S2wRr2WQeQMwAKN3aq"), got.Boundary)
+		assert.Equal(t, GlobalID("ZZg1S2wRr2WQeQMwAKN3aq"), got.Element)
+	})
+
+	t.Run("an unclassified boundary names the attribute the schema wanted", func(t *testing.T) {
+		model := bounded()
+		space(&model).Boundaries[0].Internal = ""
+
+		var got UnclassifiedBoundaryError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.Equal(t, GlobalID("EIg1S2wRr2WQeQMwAKN3aq"), got.Boundary)
+		assert.Equal(t, "InternalOrExternalBoundary", got.Attribute)
+	})
+}
+
+// TestWriteBoundsNothingWhereTheCallerStatedNoBoundary is its own function
+// because what it asserts is an absence over a whole file: the relationship is
+// written for a caller which states one and for nobody else, so a model
+// unchanged from before this existed is unchanged in its bytes.
+func TestWriteBoundsNothingWhereTheCallerStatedNoBoundary(t *testing.T) {
+	source := written(t, fixture())
+
+	assert.NotContains(t, source, "IFCRELSPACEBOUNDARY")
+	assert.NotContains(t, source, "IFCCONNECTIONCURVEGEOMETRY")
+}
