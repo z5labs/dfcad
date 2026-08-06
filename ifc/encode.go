@@ -60,6 +60,29 @@ func optionalText(written string) value {
 	return text(written)
 }
 
+// typedText is a string attribute whose type has to be named: `IFCTEXT('a')`.
+//
+// An attribute declared as a SELECT over the schema's measure types carries no
+// type of its own, so the value has to say which member it is. A bare string
+// where one of those is expected is a file readers reject, because there is
+// nothing in it to say whether the characters are a label, a text or an
+// identifier.
+type typedText string
+
+func (t typedText) encode(dst []byte) ([]byte, error) {
+	dst = append(dst, "IFCTEXT("...)
+	dst = appendString(dst, string(t))
+	return append(dst, ')'), nil
+}
+
+// optionalTypedText is a [typedText] which is absent when it is empty.
+func optionalTypedText(written string) value {
+	if written == "" {
+		return absent{}
+	}
+	return typedText(written)
+}
+
 // real is a floating point attribute.
 type real float64
 

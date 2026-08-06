@@ -110,6 +110,12 @@ const (
 	itemList      = "list"
 	itemAbsent    = "absent"
 	itemDerived   = "derived"
+
+	// itemTyped is a typed parameter: a keyword naming a type, and the value
+	// of that type in parentheses. It is what an attribute declared as a
+	// select over the schema's measure types is written as, because the
+	// characters on their own would not say which member they are.
+	itemTyped = "typed"
 )
 
 // item is one attribute value.
@@ -323,9 +329,36 @@ func (s *scanner) item() (item, error) {
 	case char == '-' || char == '+' || unicode.IsDigit(rune(char)):
 		return s.numeric()
 
+	case unicode.IsLetter(rune(char)):
+		return s.typed()
+
 	default:
 		return item{}, SyntaxError{Offset: s.at, Want: "an attribute", Found: s.rest()}
 	}
+}
+
+// typed parses a typed parameter: `IFCTEXT('a')`.
+//
+// The keyword goes in text and what it wraps goes in items, which keeps the
+// two readable apart. A reader which threw the keyword away would report a
+// text and a label as the same attribute, and those are the two an attribute
+// written without its type is ambiguous between.
+func (s *scanner) typed() (item, error) {
+	keyword, err := s.keyword()
+	if err != nil {
+		return item{}, err
+	}
+
+	items, err := s.arguments()
+	if err != nil {
+		return item{}, err
+	}
+
+	if len(items) != 1 {
+		return item{}, SyntaxError{Offset: s.at, Want: "one value inside a typed parameter", Found: keyword}
+	}
+
+	return item{form: itemTyped, text: keyword, items: items}, nil
 }
 
 // string parses a quoted string, undoubling the doubled quotes.

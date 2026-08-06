@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -462,7 +463,11 @@ func TestWriteReadsBackUnderAnIndependentReader(t *testing.T) {
 func rooted(held simple) bool {
 	unrooted := []string{
 		"IFCSIUNIT", "IFCUNITASSIGNMENT", "IFCGEOMETRICREPRESENTATIONCONTEXT",
+		"IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
 		"IFCLOCALPLACEMENT", "IFCAXIS2PLACEMENT3D", "IFCCARTESIANPOINT", "IFCDIRECTION",
+		"IFCPRODUCTDEFINITIONSHAPE", "IFCSHAPEREPRESENTATION", "IFCPOLYLINE",
+		"IFCARBITRARYCLOSEDPROFILEDEF", "IFCARBITRARYPROFILEDEFWITHVOIDS",
+		"IFCEXTRUDEDAREASOLID", "IFCPROPERTYSINGLEVALUE",
 	}
 	return !slices.Contains(unrooted, held.keyword)
 }
@@ -698,3 +703,528 @@ func TestWritePlacesEachElementInsideItsParent(t *testing.T) {
 
 	assert.Equal(t, 1, unplaced, "exactly one placement is relative to the world")
 }
+
+// footprint is the outline of the room in the shaped fixture below, closed by
+// repeating its first point as its last.
+func footprint() Polyline {
+	return Polyline{Points: []Point2D{
+		{X: 0, Y: 0}, {X: 6, Y: 0}, {X: 6, Y: 4}, {X: 0, Y: 4}, {X: 0, Y: 0},
+	}}
+}
+
+// lightWell is the hole taken out of it, wound the other way round.
+func lightWell() Polyline {
+	return Polyline{Points: []Point2D{
+		{X: 2, Y: 1}, {X: 2, Y: 3}, {X: 4, Y: 3}, {X: 4, Y: 1}, {X: 2, Y: 1},
+	}}
+}
+
+// shaped is the fixture above with the space drawn: the outline its model
+// states, the solid a viewer can draw, and where the height behind that solid
+// came from.
+//
+// The two shapes sit in two subcontexts of one context and in one shape
+// definition, which is the arrangement the whole of this geometry exists to
+// make: one object, seen two ways, with nothing saying the second is the
+// object's own statement about itself.
+func shaped() Model {
+	model := fixture()
+
+	model.Context.Subcontexts = []Subcontext{
+		{Identifier: "Body", Type: "Model", TargetView: "MODEL_VIEW"},
+		{Identifier: "FootPrint", Type: "Model", TargetView: "PLAN_VIEW"},
+	}
+
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+
+	space.Representation = &Representation{
+		Shapes: []Shape{{
+			Context:    "FootPrint",
+			Identifier: "FootPrint",
+			Type:       "Curve2D",
+			Items:      []Item{footprint(), lightWell()},
+		}, {
+			Context:    "Body",
+			Identifier: "Body",
+			Type:       "SweptSolid",
+			Items: []Item{ExtrudedArea{
+				Profile:   ArbitraryProfile{Outer: footprint(), Inner: []Polyline{lightWell()}},
+				Position:  Placement{Location: Point{Z: 3}},
+				Direction: Direction{Z: 1},
+				Depth:     2.7,
+			}},
+		}},
+	}
+
+	space.Properties = []PropertySet{{
+		GlobalID:    "EIg1S2wRr2WQeQMwAKN3aq",
+		Defines:     "FIg1S2wRr2WQeQMwAKN3aq",
+		Name:        "dfcad_HeightProvenance",
+		Description: "Where the height the body was swept through came from.",
+		Properties: []Property{
+			{Name: "Predicate", Value: "clear-height"},
+			{Name: "Source", Value: "Survey SR-2026-011, Acme Surveys"},
+			{Name: "Method", Description: "The method the claim names.", Value: "method:total-station"},
+		},
+	}}
+
+	return model
+}
+
+func TestWriteShapes(t *testing.T) {
+	got := written(t, shaped())
+
+	assert.Equal(t, golden(t, "shaped.ifc", got), got,
+		"the emitted file is stale; regenerate it with: go test ./ifc -update")
+}
+
+// TestWriteShapesIsAFunctionOfTheModel is the byte-identity property over the
+// geometry, which the golden above cannot hold on its own for the reason the
+// spatial one cannot: a writer which ranged a map into a polyline would be
+// stale in one run out of many rather than in all of them.
+func TestWriteShapesIsAFunctionOfTheModel(t *testing.T) {
+	first := written(t, shaped())
+
+	for range 8 {
+		assert.Equal(t, first, written(t, shaped()))
+	}
+}
+
+func TestWriteShapesReadsBackUnderAnIndependentReader(t *testing.T) {
+	source := written(t, shaped())
+
+	parsed, err := read(source)
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	t.Run("writes each entity with the attribute count IFC4 fixes for it", func(t *testing.T) {
+		// Transcribed from IFC4 rather than read off the writer's own tables,
+		// which is the whole point of a second opinion.
+		counts := map[string]int{
+			"IFCGEOMETRICREPRESENTATIONSUBCONTEXT": 10,
+			"IFCPRODUCTDEFINITIONSHAPE":            3,
+			"IFCSHAPEREPRESENTATION":               4,
+			"IFCPOLYLINE":                          1,
+			"IFCARBITRARYPROFILEDEFWITHVOIDS":      4,
+			"IFCEXTRUDEDAREASOLID":                 4,
+			"IFCPROPERTYSET":                       5,
+			"IFCPROPERTYSINGLEVALUE":               4,
+			"IFCRELDEFINESBYPROPERTIES":            6,
+		}
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+
+			want, known := counts[held.keyword]
+			if !known {
+				continue
+			}
+
+			assert.Len(t, held.attributes, want, "#%d=%s", number, held.keyword)
+		}
+	})
+
+	t.Run("resolves every reference it writes", func(t *testing.T) {
+		var walk func(items []item)
+		walk = func(items []item) {
+			for _, one := range items {
+				switch one.form {
+				case itemReference:
+					_, held := parsed.instance(one.at)
+					assert.True(t, held, "#%d is referenced and not written", one.at)
+				case itemList, itemTyped:
+					walk(one.items)
+				}
+			}
+		}
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			walk(held.attributes)
+		}
+	})
+
+	t.Run("inherits the four attributes a subcontext takes from its parent", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCGEOMETRICREPRESENTATIONSUBCONTEXT" {
+				continue
+			}
+			found++
+
+			for _, at := range []int{2, 3, 4, 5} {
+				assert.Equal(t, itemDerived, held.attributes[at].form,
+					"attribute %d of a subcontext is derived, not absent", at+1)
+			}
+
+			assert.Equal(t, itemReference, held.attributes[6].form, "ParentContext")
+		}
+
+		assert.Equal(t, 2, found)
+	})
+
+	t.Run("holds both shapes of the space in one shape definition", func(t *testing.T) {
+		definitions := 0
+		var shapes []int
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCPRODUCTDEFINITIONSHAPE" {
+				continue
+			}
+			definitions++
+
+			require.Equal(t, itemList, held.attributes[2].form)
+			for _, one := range held.attributes[2].items {
+				require.Equal(t, itemReference, one.form)
+				shapes = append(shapes, one.at)
+			}
+		}
+
+		require.Equal(t, 1, definitions)
+		require.Len(t, shapes, 2)
+
+		identifiers := make([]string, 0, len(shapes))
+		for _, at := range shapes {
+			held, ok := parsed.instance(at)
+			require.True(t, ok)
+			require.Equal(t, "IFCSHAPEREPRESENTATION", held.keyword)
+			identifiers = append(identifiers, held.attributes[1].text)
+		}
+
+		assert.Equal(t, []string{"FootPrint", "Body"}, identifiers)
+	})
+
+	t.Run("draws the hole as an inner curve of the profile the body is swept from", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCARBITRARYPROFILEDEFWITHVOIDS" {
+				continue
+			}
+			found++
+
+			assert.Equal(t, itemEnum, held.attributes[0].form)
+			assert.Equal(t, "AREA", held.attributes[0].text)
+			assert.Equal(t, itemReference, held.attributes[2].form, "OuterCurve")
+
+			require.Equal(t, itemList, held.attributes[3].form, "InnerCurves")
+			assert.Len(t, held.attributes[3].items, 1)
+		}
+
+		assert.Equal(t, 1, found)
+	})
+
+	t.Run("sweeps the profile through a positive depth along a direction", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCEXTRUDEDAREASOLID" {
+				continue
+			}
+			found++
+
+			assert.Equal(t, itemReference, held.attributes[0].form, "SweptArea")
+			assert.Equal(t, itemReference, held.attributes[1].form, "Position")
+			assert.Equal(t, itemReference, held.attributes[2].form, "ExtrudedDirection")
+
+			require.Equal(t, itemReal, held.attributes[3].form, "Depth")
+			depth, err := strconv.ParseFloat(held.attributes[3].text, 64)
+			require.NoError(t, err)
+			assert.Positive(t, depth)
+		}
+
+		assert.Equal(t, 1, found)
+	})
+
+	t.Run("writes every point of a curve with two coordinates", func(t *testing.T) {
+		planar := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCPOLYLINE" {
+				continue
+			}
+
+			require.Equal(t, itemList, held.attributes[0].form)
+			require.GreaterOrEqual(t, len(held.attributes[0].items), 2)
+
+			for _, one := range held.attributes[0].items {
+				require.Equal(t, itemReference, one.form)
+
+				point, ok := parsed.instance(one.at)
+				require.True(t, ok)
+				require.Equal(t, "IFCCARTESIANPOINT", point.keyword)
+				require.Equal(t, itemList, point.attributes[0].form)
+				assert.Len(t, point.attributes[0].items, 2)
+				planar++
+			}
+		}
+
+		assert.Positive(t, planar)
+	})
+
+	t.Run("names the type of every property value it writes", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCPROPERTYSINGLEVALUE" {
+				continue
+			}
+			found++
+
+			assert.Equal(t, itemString, held.attributes[0].form, "Name")
+			require.Equal(t, itemTyped, held.attributes[2].form, "NominalValue")
+			assert.Equal(t, "IFCTEXT", held.attributes[2].text)
+			assert.Equal(t, itemAbsent, held.attributes[3].form, "Unit")
+		}
+
+		assert.Equal(t, 3, found)
+	})
+
+	t.Run("attaches the property set to the space it was written on", func(t *testing.T) {
+		sets := map[int]bool{}
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword == "IFCPROPERTYSET" {
+				sets[number] = true
+			}
+		}
+
+		require.Len(t, sets, 1)
+
+		found := 0
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCRELDEFINESBYPROPERTIES" {
+				continue
+			}
+			found++
+
+			require.Equal(t, itemList, held.attributes[4].form, "RelatedObjects")
+			require.Len(t, held.attributes[4].items, 1)
+
+			related, ok := parsed.instance(held.attributes[4].items[0].at)
+			require.True(t, ok)
+			assert.Equal(t, "IFCSPACE", related.keyword)
+
+			require.Equal(t, itemReference, held.attributes[5].form, "RelatingPropertyDefinition")
+			assert.True(t, sets[held.attributes[5].at])
+		}
+
+		assert.Equal(t, 1, found)
+	})
+}
+
+func TestWriteRefusesGeometryItCannotWrite(t *testing.T) {
+	testCases := []struct {
+		name     string
+		model    func(model *Model)
+		expected error
+	}{
+		{
+			name:     "a subcontext with no identifier",
+			model:    func(model *Model) { model.Context.Subcontexts[0].Identifier = "" },
+			expected: UnnamedSubcontextError{},
+		},
+		{
+			name: "one identifier on two subcontexts",
+			model: func(model *Model) {
+				model.Context.Subcontexts[1].Identifier = model.Context.Subcontexts[0].Identifier
+			},
+			expected: DuplicateSubcontextError{},
+		},
+		{
+			name: "a shape in a subcontext the file does not declare",
+			model: func(model *Model) {
+				shapedSpace(model).Representation.Shapes[0].Context = "Axis"
+			},
+			expected: UnknownSubcontextError{},
+		},
+		{
+			name: "a representation holding no shapes",
+			model: func(model *Model) {
+				shapedSpace(model).Representation.Shapes = nil
+			},
+			expected: EmptyRepresentationError{},
+		},
+		{
+			name: "a shape holding no items",
+			model: func(model *Model) {
+				shapedSpace(model).Representation.Shapes[0].Items = nil
+			},
+			expected: EmptyShapeError{},
+		},
+		{
+			name: "a geometry this package has no attribute list for",
+			model: func(model *Model) {
+				shapedSpace(model).Representation.Shapes[0].Items = []Item{unwritable{}}
+			},
+			expected: UnknownItemError{},
+		},
+		{
+			name: "a polyline through one point",
+			model: func(model *Model) {
+				shapedSpace(model).Representation.Shapes[0].Items = []Item{
+					Polyline{Points: []Point2D{{X: 1, Y: 1}}},
+				}
+			},
+			expected: ShortPolylineError{},
+		},
+		{
+			name: "a profile whose outer curve does not close",
+			model: func(model *Model) {
+				solid := body(model)
+				solid.Profile.Outer.Points = solid.Profile.Outer.Points[:len(solid.Profile.Outer.Points)-1]
+				shapedSpace(model).Representation.Shapes[1].Items[0] = *solid
+			},
+			expected: OpenCurveError{},
+		},
+		{
+			name: "a profile whose inner curve does not close",
+			model: func(model *Model) {
+				solid := body(model)
+				solid.Profile.Inner[0].Points = solid.Profile.Inner[0].Points[:len(solid.Profile.Inner[0].Points)-1]
+				shapedSpace(model).Representation.Shapes[1].Items[0] = *solid
+			},
+			expected: OpenCurveError{},
+		},
+		{
+			name: "a solid swept through no depth at all",
+			model: func(model *Model) {
+				solid := body(model)
+				solid.Depth = 0
+				shapedSpace(model).Representation.Shapes[1].Items[0] = *solid
+			},
+			expected: NonPositiveDepthError{},
+		},
+		{
+			name: "a solid swept through a depth which is not a number",
+			model: func(model *Model) {
+				solid := body(model)
+				solid.Depth = math.NaN()
+				shapedSpace(model).Representation.Shapes[1].Items[0] = *solid
+			},
+			expected: NonPositiveDepthError{},
+		},
+		{
+			name: "a property set holding no properties",
+			model: func(model *Model) {
+				shapedSpace(model).Properties[0].Properties = nil
+			},
+			expected: EmptyPropertySetError{},
+		},
+		{
+			name: "a property with no name",
+			model: func(model *Model) {
+				shapedSpace(model).Properties[0].Properties[0].Name = ""
+			},
+			expected: UnnamedPropertyError{},
+		},
+		{
+			name: "a property set with no identifier",
+			model: func(model *Model) {
+				shapedSpace(model).Properties[0].GlobalID = ""
+			},
+			expected: MissingGlobalIDError{},
+		},
+		{
+			name: "a property set nothing attaches to an object",
+			model: func(model *Model) {
+				shapedSpace(model).Properties[0].Defines = ""
+			},
+			expected: MissingGlobalIDError{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := shaped()
+			testCase.model(&model)
+
+			var out strings.Builder
+			err := Write(&out, model)
+
+			require.Error(t, err)
+			assert.IsType(t, testCase.expected, err)
+
+			// An artefact is all or nothing: a refusal leaves nothing behind
+			// which a later run would read as the export of this model.
+			assert.Empty(t, out.String())
+		})
+	}
+}
+
+// TestGeometryRefusalsCarryWhatMadeThem is its own function because it asserts
+// on the fields of each error rather than on which error it is, which is a
+// different set of assertions from the table above.
+func TestGeometryRefusalsCarryWhatMadeThem(t *testing.T) {
+	t.Run("an unknown subcontext names it and what could have been named instead", func(t *testing.T) {
+		model := shaped()
+		shapedSpace(&model).Representation.Shapes[0].Context = "Axis"
+
+		var got UnknownSubcontextError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.Equal(t, "Axis", got.Context)
+		assert.Equal(t, []string{"Body", "FootPrint"}, got.Known)
+	})
+
+	t.Run("an open curve names the two ends which do not meet", func(t *testing.T) {
+		model := shaped()
+		solid := body(&model)
+		solid.Profile.Outer.Points = solid.Profile.Outer.Points[:4]
+		shapedSpace(&model).Representation.Shapes[1].Items[0] = *solid
+
+		var got OpenCurveError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.Equal(t, Point2D{X: 0, Y: 0}, got.First)
+		assert.Equal(t, Point2D{X: 0, Y: 4}, got.Last)
+		assert.False(t, got.Inner)
+	})
+
+	t.Run("a non-positive depth carries the depth", func(t *testing.T) {
+		model := shaped()
+		solid := body(&model)
+		solid.Depth = -2.7
+		shapedSpace(&model).Representation.Shapes[1].Items[0] = *solid
+
+		var got NonPositiveDepthError
+		require.ErrorAs(t, Write(&strings.Builder{}, model), &got)
+
+		assert.InDelta(t, -2.7, got.Depth, 0)
+	})
+}
+
+// shapedSpace is the one space the shaped fixture draws.
+func shapedSpace(model *Model) *Spatial {
+	return &model.Project.Sites[0].Children[0].Children[0].Children[0]
+}
+
+// body is a copy of the solid that space is drawn as, for a case which changes
+// one field of it.
+func body(model *Model) *ExtrudedArea {
+	solid := shapedSpace(model).Representation.Shapes[1].Items[0].(ExtrudedArea)
+
+	solid.Profile.Outer.Points = slices.Clone(solid.Profile.Outer.Points)
+	solid.Profile.Inner = slices.Clone(solid.Profile.Inner)
+	for i := range solid.Profile.Inner {
+		solid.Profile.Inner[i].Points = slices.Clone(solid.Profile.Inner[i].Points)
+	}
+
+	return &solid
+}
+
+// unwritable is a geometry this package has no attribute list for.
+//
+// It is here because [Item] is closed by an unexported method rather than by
+// the compiler: nothing outside this package can write one, and something
+// inside it can, which is exactly the mistake the refusal it provokes is for.
+type unwritable struct{}
+
+func (unwritable) item() {}

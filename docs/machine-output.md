@@ -2454,7 +2454,8 @@ its own.
 Everything else — `derived`, `digest`, `files[]`, `identifiers` under `--evidence` — is the
 shared shape, with the meanings documented there.
 
-**What crosses the boundary is the spatial structure and the identifiers, not the geometry.**
+**The spatial structure crosses the boundary always, and the geometry only when the run says
+what to read it under.**
 The project, and every node whose kind is `Site`, `Building`, `Storey` or `Space`, is written
 as the IFC entity that kind is — the two vocabularies are one for one — nested by `within`
 through `IfcRelAggregates`, each with a local placement relative to its parent's. A node whose
@@ -2482,6 +2483,36 @@ accounts for all of them.
 system as a live one, and what a retirement means for an exchange — a delete, or nothing at
 all — is the receiving system's question rather than this command's.
 
+**A space carries the outline its model states, and the solid a viewer can draw, as two
+representations of one shape definition.** `--position`, `--tolerance` and `--chord` are the
+vocabulary a boundary is read under; they go together or not at all, and a run naming none of
+them writes the spatial structure and no shape, which is a correct IFC file and is what this
+command wrote before it could draw anything. A run naming all three gives every `IfcSpace`
+whose boundary it can read a `FootPrint` / `Curve2D` representation built from the rings
+bounding it, holes included, drawn to the named chord tolerance — so a curved wall reaches the
+file as the curve it is rather than as the straight line between its ends. Arcs are read only
+where `--arc-centre` and `--arc-through` name the vocabulary they are written in, exactly as
+in [`tessellate`](#tessellate).
+
+**`--height <predicate>` is what adds a body, and it has no default.** Where it names a
+predicate and a space's height resolves under it, the space additionally carries a `Body` /
+`SweptSolid` representation: the footprint extruded upwards through that height, with the
+holes carried through as the profile's `InnerCurves`, so the even-odd nesting the region
+derivation computed reaches the file rather than being worked out again from a heap of curves.
+The two live in one `IfcProductDefinitionShape`. They are two representations rather than one
+because they are not the same statement: the footprint is what the model says, and the body is
+a convenience built from a claim. A run naming no predicate, and a space nothing claims a
+height of, both export as footprints — a two dimensional file is correct, and it is what an
+author who has drawn plans and measured nothing should get.
+
+**The claim behind a body travels into the file beside it**, as an `IfcPropertySet` named
+`dfcad_HeightProvenance` attached through `IfcRelDefinesByProperties`. It carries the
+predicate, the height and its unit, and whatever the claim states: its source, its method, its
+accuracy, its date, its id, and which step of the resolution rule chose it. That last is how a
+surveyed height is told from an assumed one without holding the model — a claim nothing
+rankable was said about reads as `unranked`, and is still used, because it is what the model
+says.
+
 **A model which pins no URL, or whose frames disagree about the linear unit, is a refusal**:
 `derived` false, no files, the digest written, and the reason on stderr. The second is a
 refusal over something correct — a survey grid in metres beside a fabrication grid in
@@ -2489,6 +2520,15 @@ millimetres is an ordinary model — because an exchange file states one set of 
 nothing here could choose between them. A unit with no SI spelling, which is either foot, is
 refused for the same kind of reason: IFC writes one as a conversion from the metre, and this
 exporter does not write conversions.
+
+**A shape which was asked for and cannot be drawn is a refusal too**, and for the same reason
+an artefact is all or nothing: a file with one room's solid quietly missing is worse than no
+file. A boundary which does not close, a corner nothing states the position of, a boundary
+lying in a plane which is not level, two equally current heights, a height which is not a
+distance, one written in another unit than the boundary, and one which is nought or less are
+each named on stderr against the claim or the corner which caused it. A height of nought is
+refused rather than drawn flat because the depth a profile is swept through is a positive
+length measure and there is no zero-height solid.
 
 **Nothing here reads a clock.** `IfcOwnerHistory` is absent throughout, which is what removes
 the only mandatory creation time in the schema, and the part 21 header's time stamp is the
