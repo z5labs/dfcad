@@ -89,6 +89,107 @@ in id order, each with its id, its label, the type and kind it declares and the
 frame it is expressed in.
 `
 
+const listGeometryUsage = `dfcad list-geometry — list the geometric nodes which carry a claim under a predicate.
+
+Usage:
+
+	dfcad list-geometry [flags]
+
+Every vertex, edge and loop the model states something about under the named
+predicate, with the family it belongs to, the frame it is expressed in and where
+it was written. It is the geometric sibling of "dfcad list-instances", which
+reports the type and the kind a vertex, an edge and a loop do not have.
+
+This is how "which dimensions does this level carry" is asked. A measured span
+between two corners is an ordinary edge carrying a claim — it need belong to no
+loop and bound nothing — and without this the only way to reach one is to
+already know its id, which means keeping a second list of them by hand.
+
+Flags:
+
+	--predicate <name>   the predicate the node carries; required
+	--family <family>    only nodes of this family: vertex, edge or loop
+
+--predicate has no default and never will, for the reason "dfcad buildable" has
+none: which predicate carries a position, a setback or a span is something the
+project wrote down, and a name compiled in here would be the engine deciding a
+project's vocabulary on its behalf.
+
+A node is listed when a live claim is written on it under that predicate. A
+deprecated claim is a statement somebody withdrew, and a listing of what the
+model records is not a listing of what it used to; "dfcad claims" is the audit
+view which reports those, on one node at a time.
+
+An edge names its two vertices in the order they were authored. The order is the
+data — an edge is directed, and the region on the other side of it traverses it
+the other way — so it is reported as written and is never sorted.
+
+Nodes come back in id order, so the list does not change when a node moves
+between files, and two runs over one model diff against each other.
+
+A predicate no geometric node carries is an empty list and exit zero. A model
+which records no spans is an ordinary model, and answering it with a failure
+would make a caller parse a message to tell nothing-there from something-wrong.
+
+A predicate the registry does not declare is a usage error naming it, rather
+than an empty list: a predicate nobody declared and a predicate nothing is
+written under are different answers, and a caller which cannot tell them apart
+retries a misspelling forever. The same holds for a family which is none of the
+three.
+
+` + globalFlagsHelp + `
+` + outputContractHelp + `
+The object list-geometry writes carries "predicate", the predicate it was asked
+about, and "nodes": one entry per geometric node carrying a live claim under it,
+in id order, each with its id, its family, its frame, the span it was written
+at, and — for an edge — the two vertices it runs between, in the authored order.
+`
+
+// The flags list-geometry takes beyond the global ones, named here because the
+// errors which refuse them name them.
+const (
+	flagPredicate = "predicate"
+	flagFamily    = "family"
+)
+
+// families are the families of geometric node, in the order the usage lists
+// them.
+//
+// They are the tags the forms are written with, which is what [familyVertex]
+// and its siblings hold, so a filter names a family the way the file does and
+// the answer reports it the way "dfcad get" does.
+var families = []string{familyVertex, familyEdge, familyLoop}
+
+// familyPlurals is how a count of each family is spelled for a person.
+//
+// It is written down rather than derived because a vertex is the one noun in
+// this command line interface whose plural is not itself with an s on the end,
+// and "0 vertexs" in a summary is the sort of thing a reader stops at.
+var familyPlurals = map[string]string{
+	familyVertex: "vertices",
+	familyEdge:   "edges",
+	familyLoop:   "loops",
+}
+
+// UnknownFamilyError is a --family which names none of the three.
+//
+// The known set is listed in the message rather than pointed at, unlike a type,
+// because there are three of them and there will never be more: the families
+// are the closed set the format is written in, so printing them costs a line
+// and saves a lookup.
+type UnknownFamilyError struct {
+	// Family is what was asked for.
+	Family string
+
+	// Known is every family there is, in the order the usage lists them.
+	Known []string
+}
+
+// Error implements [error].
+func (e UnknownFamilyError) Error() string {
+	return fmt.Sprintf("unknown family %s: want one of %s", e.Family, strings.Join(e.Known, ", "))
+}
+
 // UnknownTypeError is a type argument no registry file declares.
 //
 // It carries the declared set rather than only the name, so that a caller can
@@ -241,6 +342,76 @@ type listedInstance struct {
 	Retired bool `json:"retired,omitempty"`
 }
 
+// listGeometryResult is the object list-geometry writes to stdout.
+type listGeometryResult struct {
+	envelope
+
+	// Predicate is the predicate the nodes below carry, which is the one asked
+	// for.
+	//
+	// It travels with the answer because the answer means nothing without it: a
+	// caller collecting the listings of a level under three predicates has to be
+	// able to say which object answers which question, and an empty list is
+	// exactly the object it most needs that of.
+	Predicate string `json:"predicate"`
+
+	// Nodes is one entry per geometric node carrying a live claim under it, in
+	// id order. Empty rather than null when nothing does.
+	Nodes []listedGeometry `json:"nodes"`
+}
+
+// listedGeometry is one geometric node as the discovery path reports it.
+//
+// It is one shape for all three families rather than one per family, with
+// "family" saying which came back, for the reason [getEntity] is one shape for
+// all four: a caller reading a listing it did not filter by family would
+// otherwise have to probe each entry's top-level key before it could read it.
+//
+// Every reference is an id and never the thing it names, which is what keeps
+// the answer the size of the question: an edge names its two vertices, and
+// where each of those is written is one more entry of this listing rather than
+// a nesting inside this one.
+type listedGeometry struct {
+	// ID is the id the model holds it under, which is what every other command
+	// takes.
+	ID string `json:"id"`
+
+	// Family is which family holds it: vertex, edge or loop. It is reported
+	// whether or not it was filtered on, so that a listing read whole is
+	// readable on its own.
+	Family string `json:"family"`
+
+	// Label is its name for a person reading it. Absent when it was not
+	// written, which is the ordinary case for geometry.
+	//
+	// It is here for the reason a listed instance carries one — a listing is
+	// read by a person as often as by a caller — and it costs nothing on the
+	// model which wrote none.
+	Label string `json:"label,omitempty"`
+
+	// Frame is the coordinate frame it is expressed in. Absent only when it
+	// declares none, which is a diagnostic rather than an ordinary node: a
+	// geometric node is always in exactly one frame.
+	Frame string `json:"frame,omitempty"`
+
+	// Start and End are the ids of the vertices an edge runs between, in the
+	// order they were authored. Absent for a vertex and for a loop.
+	//
+	// The order is the data and is never sorted: an edge is directed, and the
+	// region on the other side of it traverses it the other way.
+	Start string `json:"start,omitempty"`
+	End   string `json:"end,omitempty"`
+
+	// Span is where it was written: the file, the line and the column, which is
+	// what sends a reader to the definition rather than to a search.
+	//
+	// It is in the default answer rather than behind a flag because the whole
+	// point of this listing is to reach nodes nothing else names: an id which
+	// came back from a query nobody could have guessed is one whose next
+	// question is where it is written.
+	Span dfcad.Span `json:"span"`
+}
+
 // runListTypes is the list-types command.
 func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
@@ -376,6 +547,167 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 	}
 
 	return exitSuccess
+}
+
+// runListGeometry is the list-geometry command.
+func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	predicate := flags.String(flagPredicate, "", "")
+	family := flags.String(flagFamily, "", "")
+
+	extra, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	if len(extra) > 0 {
+		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
+	}
+
+	// The vocabulary is checked before the model is read, which is the one
+	// order-of-checks difference from list-instances. A run which did not say
+	// which predicate to ask about has not asked a question yet, and no registry
+	// can supply the word it left out — so reporting a whole model's diagnostics
+	// first would bury the one thing wrong with the invocation.
+	if err := vocabularyOf(given{flag: flagPredicate, value: *predicate}); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	// A family is checked before the load too, for the same reason: the three
+	// are a closed set compiled in, so nothing in the tree makes `--family
+	// vertexes` any more of a family.
+	if err := checkFamily(*family); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	// The predicate, in contrast, is registry data, and the registry is the
+	// model. Its diagnostics reach stderr either way, so a predicate which is
+	// unknown because a registry file did not parse is reported beside the
+	// reason it did not.
+	graph := loadModel(cmd, globals, stderr)
+
+	if err := checkPredicate(graph.Registry(), *predicate); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	result := listGeometryResult{
+		envelope:  newEnvelope(cmd.name),
+		Predicate: *predicate,
+
+		// Made rather than declared so that a predicate nothing carries writes an
+		// empty list rather than a null, and a caller indexing it needs no
+		// special case for the model which records no spans.
+		Nodes: make([]listedGeometry, 0),
+	}
+
+	topology := graph.Topology()
+
+	if wanted(*family, familyVertex) {
+		for vertex := range topology.Vertices() {
+			if !carries(graph, vertex.ID(), *predicate) {
+				continue
+			}
+
+			result.Nodes = append(result.Nodes, listedGeometry{
+				ID:     string(vertex.ID()),
+				Family: familyVertex,
+				Label:  vertex.Label(),
+				Frame:  string(vertex.Frame()),
+				Span:   vertex.Span(),
+			})
+		}
+	}
+
+	if wanted(*family, familyEdge) {
+		for edge := range topology.Edges() {
+			if !carries(graph, edge.ID(), *predicate) {
+				continue
+			}
+
+			start, end := edge.Vertices()
+
+			result.Nodes = append(result.Nodes, listedGeometry{
+				ID:     string(edge.ID()),
+				Family: familyEdge,
+				Label:  edge.Label(),
+				Frame:  string(edge.Frame()),
+				Start:  string(start),
+				End:    string(end),
+				Span:   edge.Span(),
+			})
+		}
+	}
+
+	if wanted(*family, familyLoop) {
+		for loop := range topology.Loops() {
+			if !carries(graph, loop.ID(), *predicate) {
+				continue
+			}
+
+			result.Nodes = append(result.Nodes, listedGeometry{
+				ID:     string(loop.ID()),
+				Family: familyLoop,
+				Label:  loop.Label(),
+				Frame:  string(loop.Frame()),
+				Span:   loop.Span(),
+			})
+		}
+	}
+
+	// Id order rather than family order or walk order, for the reason a listing
+	// of instances is in id order: an id is what a caller asks about next and is
+	// the one thing about a node which does not change. Grouping by family would
+	// reorder the whole answer the day an edge was given a claim it did not have
+	// before.
+	//
+	// Stable, so that the walk order breaks the tie between the nodes whose id
+	// could not be read at all — they share the empty id, and the load already
+	// reported each of them.
+	slices.SortStableFunc(result.Nodes, func(a, b listedGeometry) int {
+		return strings.Compare(a.ID, b.ID)
+	})
+
+	reportGeometry(result, globals, stderr)
+
+	if err := emit(stdout, result); err != nil {
+		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	return exitSuccess
+}
+
+// wanted reports whether a family is asked for, where the empty filter asks for
+// all three.
+func wanted(filter, family string) bool {
+	return filter == "" || filter == family
+}
+
+// carries reports whether a live claim is written on the subject under the
+// predicate.
+//
+// A deprecated claim does not count. It is retracted rather than out-ranked, and
+// resolution never considers one, so a node whose only statement under the
+// predicate was withdrawn records nothing under it — listing it would answer
+// "which spans does this level record" with a span nobody stands behind.
+func carries(graph *dfcad.Graph, subject dfcad.ID, predicate string) bool {
+	for claim := range graph.Claims().Under(subject, predicate) {
+		if claim.Rank() != dfcad.RankDeprecated {
+			return true
+		}
+	}
+	return false
+}
+
+// checkFamily reports a --family which is none of the three, and accepts the
+// empty one, which is no filter at all.
+func checkFamily(family string) error {
+	if family == "" || slices.Contains(families, family) {
+		return nil
+	}
+	return UnknownFamilyError{Family: family, Known: families}
 }
 
 // checkFilters reports the first filter which names something the model has no
@@ -567,6 +899,45 @@ func reportInstances(instances []listedInstance, globals *globals, stderr io.Wri
 	}
 
 	fmt.Fprintf(stderr, "%s of %s\n", plural(len(instances), "instance"), plural(len(types), "type"))
+}
+
+// reportGeometry renders a list-geometry result for a person, on stderr.
+//
+// Nothing here reaches stdout, in any format and at any verbosity: stdout is
+// the same bytes whether or not anybody asked to read the run.
+func reportGeometry(result listGeometryResult, globals *globals, stderr io.Writer) {
+	if !globals.human() {
+		return
+	}
+
+	counted := make(map[string]int, len(families))
+
+	for _, node := range result.Nodes {
+		counted[node.Family]++
+
+		// The nodes themselves are already the result, on stdout, so the reading
+		// of them is progress rather than result.
+		if globals.Verbosity >= verbosityProgress {
+			fmt.Fprintf(stderr, "%s: %s%s in %s\n", node.ID, node.Family, between(node), node.Frame)
+		}
+	}
+
+	spread := make([]string, 0, len(families))
+	for _, family := range families {
+		spread = append(spread, pluralOf(counted[family], family, familyPlurals[family]))
+	}
+
+	fmt.Fprintf(stderr, "%s under %s: %s\n",
+		plural(len(result.Nodes), "geometric node"), result.Predicate, join(spread))
+}
+
+// between is the ends of an edge for a person, and nothing at all for a family
+// which does not run between anything.
+func between(node listedGeometry) string {
+	if node.Family != familyEdge {
+		return ""
+	}
+	return fmt.Sprintf(" %s -> %s", node.Start, node.End)
 }
 
 // join writes a set for a person, which is a comma-separated list and nothing

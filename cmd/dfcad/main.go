@@ -81,6 +81,12 @@ var commands = []command{
 		run:     runListInstances,
 	},
 	{
+		name:    "list-geometry",
+		summary: "list the geometric nodes which carry a claim under a predicate",
+		usage:   listGeometryUsage,
+		run:     runListGeometry,
+	},
+	{
 		name:    "get",
 		summary: "retrieve one thing by its id, with its claims",
 		usage:   getUsage,

@@ -362,6 +362,101 @@ seven, which are a closed set compiled into the engine and are not in `list-type
 An unknown **frame** lists the frames the registry declares, which `list-types` does not
 list either.
 
+### `list-geometry`
+
+The geometric nodes — vertices, edges and loops — which carry a claim under one predicate.
+It takes no arguments and two flags.
+
+| Flag | Meaning |
+|------|---------|
+| `--predicate <name>` | The predicate the node carries. **Required**, and it has no default. |
+| `--family <family>` | Only nodes of this family: `vertex`, `edge` or `loop`. |
+
+It is the geometric sibling of `list-instances`, which reports the `type` and the `kind` a
+vertex, an edge and a loop do not have. Without it a geometric node is reachable only by its
+id: `claims` takes one id, and `traverse` refuses geometry by design, so a measured span
+between two corners — an ordinary edge carrying a claim, belonging to no loop and bounding
+nothing — could be found only by somebody who already knew its name.
+
+`--predicate` has no default and never will, for the reason `buildable` has none: which
+predicate carries a position, a setback or a span is something the project wrote down, and a
+name compiled into the engine would be it deciding a project's vocabulary on its behalf. A
+run which names none is a **usage error** — exit `3`, with nothing on stdout.
+
+A node is listed when a **live** claim is written on it under that predicate. A deprecated
+claim is retracted rather than out-ranked, and resolution never considers one, so a corner
+whose only surveyed position was withdrawn records nothing under it. `claims` is the audit
+view which reports those, one subject at a time.
+
+```json
+{
+  "version": 2,
+  "command": "list-geometry",
+  "predicate": "setback",
+  "nodes": [
+    {
+      "id": "geom:E-11",
+      "family": "edge",
+      "label": "Plot one, road frontage",
+      "frame": "frame:building",
+      "start": "geom:V-11",
+      "end": "geom:V-12",
+      "span": "entities/geometry.dfc:90:1-96:26"
+    },
+    {
+      "id": "geom:E-14",
+      "family": "edge",
+      "label": "Plot one, west flank",
+      "frame": "frame:building",
+      "start": "geom:V-14",
+      "end": "geom:V-11",
+      "span": "entities/geometry.dfc:114:1-120:26"
+    }
+  ]
+}
+```
+
+A vertex and a loop carry the same shape without `start` and `end`:
+
+```json
+{
+  "id": "geom:V-11",
+  "family": "vertex",
+  "label": "Plot one, south-west corner",
+  "frame": "frame:building",
+  "span": "entities/geometry.dfc:50:1-58:26"
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `predicate` | string | The predicate the nodes below carry, which is the one asked for. It travels with the answer because an empty list means nothing without it. |
+| `nodes` | array | One entry per geometric node carrying a live claim under that predicate, in id order. Empty rather than null when nothing does. |
+| `nodes[].id` | string | The id the model holds it under, which is what every other command takes. |
+| `nodes[].family` | string | Which family holds it: `vertex`, `edge` or `loop`. Reported whether or not a family was filtered on, so a listing read whole is readable on its own. |
+| `nodes[].label` | string, optional | Its name for a person reading it. Absent when it was not written, which is the ordinary case for geometry. |
+| `nodes[].frame` | string, optional | The coordinate frame it is expressed in. Absent only when it declares none, which is a diagnostic rather than an ordinary node. |
+| `nodes[].start` | string, optional | The vertex an edge runs **from**. Absent for a vertex and for a loop. |
+| `nodes[].end` | string, optional | The vertex an edge runs **to**. Absent for a vertex and for a loop. |
+| `nodes[].span` | string | Where it was written, as `path:line:col-line:col`. |
+
+An edge names its two vertices **in the order they were authored**. The order is the data —
+an edge is directed, and the region on the other side of it traverses it the other way — so
+it is reported as written and is never sorted.
+
+Nodes come back in **id order** rather than grouped by family, so the listing does not change
+when a node moves between files, and grouping does not reorder the whole answer the day an
+edge is given a claim it did not have before.
+
+A predicate no geometric node carries is an **empty list and exit `0`**. A model which
+records no spans is an ordinary model, and answering it with a failure would make a caller
+parse a message to tell nothing-there from something-wrong.
+
+A predicate the registry does not declare is a **usage error** naming it and listing the
+predicates that are declared, and so is a `--family` which is none of the three. A predicate
+nobody declared and a predicate nothing is written under are different answers, and a caller
+that cannot tell them apart retries a misspelling forever.
+
 ### `get`
 
 One thing, by its id, with the claims written on it. It takes one id argument and three

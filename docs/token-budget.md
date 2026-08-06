@@ -161,6 +161,17 @@ Answering: how big is Meeting Room B on level 1 by the corners it is drawn on, s
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 960 tokens.
 
+## The cost of finding the geometry which carries a measurement
+
+Answering: which corners of this model anybody has surveyed a position for.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad list-geometry --predicate position --family vertex` | 2427 | 2370 |
+| **the whole path** | **2427** | **2370** |
+
+No target: nothing asked this path to cost anything in particular. Regression ceiling 2500 tokens.
+
 ## Where the tokens go
 
 What each answer costs with one field removed. Both figures in a cell are of the
@@ -193,6 +204,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | the same question once the vocabulary is known | 81.1×, 82.8× | 14.4×, 14.7× |
 | the same question by way of a whole retrieval | 26.6×, 27.9× | 4.7×, 5.0× |
 | the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.2× |
+| finding the geometry which carries a measurement | 8.5×, 8.7× | 1.5×, 1.6× |
 
 One figure per encoding, in the order of the table above.
 
