@@ -1,5 +1,10 @@
-; The vocabulary of a model rooted at a projected coordinate reference system,
-; and the one thing it does not say.
+; The vocabulary of a model rooted at no projection at all, which is the case
+; the rule does not apply to.
+;
+; Every predicate the rule names is declared here and the root frame writes
+; neither. That is the point: a declared vocabulary nobody used is what an
+; ordinary local model looks like, and the rule has to stay quiet about it
+; rather than report every model drawn on a builder's grid.
 ;
 ; Both predicates the rule names are declared here and neither is the engine's.
 ; Which spelling a project writes its coordinate reference system under, and

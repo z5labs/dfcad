@@ -1,5 +1,5 @@
 ; The vocabulary of a model rooted at a projected coordinate reference system,
-; and the one thing it does not say.
+; which says what its distances are.
 ;
 ; Both predicates the rule names are declared here and neither is the engine's.
 ; Which spelling a project writes its coordinate reference system under, and

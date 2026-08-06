@@ -1383,7 +1383,7 @@ func dangling(graph *Graph, edge *Edge, element ID, message string) Failure {
 // This is a diagnostic and not a computation. The factor depends on the
 // project's height, which no coordinate reference system carries, so nothing
 // here derives it, consults a geodetic parameter for it, or offers a default —
-// all it can do is notice that nobody said
+// all it can do is notice that nobody has said what it is
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
 type groundToGridStated struct{}
 
@@ -1564,7 +1564,7 @@ func groundToGridHint(graph *Graph, position string, root Frame, factor string) 
 func modelExtent(graph *Graph, position string, root Frame) (float64, bool) {
 	survey := positionSurvey(graph, "", position, graph.Topology().Vertices())
 
-	var points []Point
+	points := make([]Point, 0, len(survey.Positions))
 	for vertex := range graph.Topology().Vertices() {
 		value, placed := survey.Positions[vertex.ID()]
 		if !placed {
