@@ -10,9 +10,9 @@ import (
 	"time"
 )
 
-// DerivationEpoch is the instant an artefact derived from the tree named by of
-// carries, wherever the format it is written in demands a creation or a
-// modification time.
+// DerivationEpoch is the instant an artefact carries wherever the format it is
+// written in demands a creation or a modification time, for an artefact derived
+// from the tree the given digest names.
 //
 // It is the single derivation of that instant. Every command whose product is a
 // file reads the value from here and no exporter reads a clock, because a clock

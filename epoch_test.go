@@ -103,7 +103,6 @@ func TestDerivationEpochIsAFunctionOfTheSource(t *testing.T) {
 
 		assert.Equal(t, int64(0), epoch.Seconds())
 		assert.Equal(t, time.Unix(0, 0).UTC(), epoch.Time())
-		assert.True(t, epoch.Time().Before(time.Now()), "no run of this test happened in 1970")
 	})
 }
 
