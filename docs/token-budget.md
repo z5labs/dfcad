@@ -94,8 +94,8 @@ Counted with `github.com/tiktoken-go/tokenizer`, at the version go.mod pins:
 | `entities/level-02.dfc` | 10868 | 465 |
 | `geometry/level-01.dfc` | 15202 | 496 |
 | `geometry/level-02.dfc` | 15234 | 496 |
-| `registry.dfc` | 3483 | 124 |
-| **the model** | **57031** | **2100** |
+| `registry.dfc` | 3885 | 134 |
+| **the model** | **57433** | **2110** |
 
 ## The cost of discovery
 
@@ -156,8 +156,8 @@ Answering: how big is Meeting Room B on level 1 by the corners it is drawn on, s
 |------|-------|-------|
 | `dfcad list-types` | 245 | 224 |
 | `dfcad list-instances MeetingRoom` | 183 | 182 |
-| `dfcad measure site:S-111` | 501 | 479 |
-| **the whole path** | **929** | **885** |
+| `dfcad measure site:S-111` | 496 | 475 |
+| **the whole path** | **924** | **881** |
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 960 tokens.
 
@@ -182,29 +182,30 @@ from" figure differs by a token or two from the same call in the tables above.
 | Field | Answer | `o200k_base` without it | `cl100k_base` without it |
 |-------|--------|--------|--------|
 | the descriptions `--describe` adds | `dfcad list-types --describe` | 245, down from 336 | 224, down from 315 |
+| the classifications `--classification` adds | `dfcad list-types --classification` | 245, down from 411 | 224, down from 389 |
 | the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 72, down from 180 | 68, down from 174 |
 | the spans in `get` | `dfcad get site:S-111` | 211, down from 277 | 206, down from 269 |
 | the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 72 | 49, down from 68 |
-| the error budget in `measure` | `dfcad measure site:S-111` | 169, down from 499 | 166, down from 475 |
-| the claims named under each budget term in `measure` | `dfcad measure site:S-111` | 348, down from 499 | 337, down from 475 |
+| the error budget in `measure` | `dfcad measure site:S-111` | 164, down from 494 | 162, down from 471 |
+| the claims named under each budget term in `measure` | `dfcad measure site:S-111` | 343, down from 494 | 333, down from 471 |
 
 ## The cost of reading the files instead
 
 | What is read | `o200k_base` | `cl100k_base` |
 |--------------|-------|-------|
-| the whole model | 20600 | 20702 |
+| the whole model | 20724 | 20834 |
 | `entities/level-01.dfc` alone, the file the answer is written in | 3669 | 3683 |
 
 ## The ratio
 
 | Path | Against the whole model | Against the one file |
 |------|-------------------------|----------------------|
-| discovery | 48.1×, 51.0× | 8.6×, 9.1× |
-| a dimensional question from a cold start | 41.3×, 43.7× | 7.4×, 7.8× |
-| the same question once the vocabulary is known | 81.1×, 82.8× | 14.4×, 14.7× |
-| the same question by way of a whole retrieval | 26.6×, 27.9× | 4.7×, 5.0× |
-| the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.2× |
-| finding the geometry which carries a measurement | 8.5×, 8.7× | 1.5×, 1.6× |
+| discovery | 48.4×, 51.3× | 8.6×, 9.1× |
+| a dimensional question from a cold start | 41.5×, 44.0× | 7.4×, 7.8× |
+| the same question once the vocabulary is known | 81.6×, 83.3× | 14.4×, 14.7× |
+| the same question by way of a whole retrieval | 26.8×, 28.0× | 4.7×, 5.0× |
+| the same question answered from the geometry rather than from a claim | 22.4×, 23.6× | 4.0×, 4.2× |
+| finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
 
 One figure per encoding, in the order of the table above.
 

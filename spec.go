@@ -18,4 +18,4 @@ package dfcad
 // It moves under the rules SPEC.md section 10 states, and it moves independently
 // of the version of the tool and of the version of the machine output contract.
 // docs/versioning.md is the relationship between the three.
-const SpecVersion = "1.1"
+const SpecVersion = "1.2"

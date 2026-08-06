@@ -1,9 +1,13 @@
 ; Specification section 7.3. A type entry with one permitted kind and one
 ; permitted geometry, and one which permits several of each including absent.
+; The first also says how two schemes outside this model name it: opaque pairs
+; the engine copies and interprets nowhere.
 (type MeetingRoom
   (description "An enclosed room used for meetings.")
   (kind Space)
   (geometry area)
+  (classification "Uniclass2015" "SL_25_10_50")
+  (classification "IFC4" "IfcSpace")
   (invariant boundary-loops-close (tolerance boundary-closure)))
 
 (type OccupancyZone

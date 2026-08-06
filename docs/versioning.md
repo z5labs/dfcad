@@ -17,7 +17,7 @@ to move.
   },
   "contracts": {
     "output": 2,
-    "entity-format": "1.1"
+    "entity-format": "1.2"
   }
 }
 ```

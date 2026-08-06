@@ -289,6 +289,11 @@ type Type struct {
 	// Description is the one line the registry gives the type.
 	Description string
 
+	// Classifications are how schemes outside this model name the type, in the
+	// order they were written. At most one per system, and none is the ordinary
+	// case.
+	Classifications []ExternalClassification
+
 	// Invariants are the checks which apply to every instance.
 	Invariants []Invariant
 
@@ -298,6 +303,23 @@ type Type struct {
 
 // PermitsKind reports whether an instance of the type may declare kind.
 func (t Type) PermitsKind(kind Kind) bool { return slices.Contains(t.Kinds, kind) }
+
+// ClassifiedAs returns the code this type carries in system, and whether it
+// carries one at all.
+//
+// The comparison is exact. A system is an opaque string the registry wrote, so
+// two spellings of what somebody meant as one scheme are two schemes here — the
+// engine has no list of systems to fold them against, and inventing one would
+// be the domain knowledge this child exists to keep out
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+func (t Type) ClassifiedAs(system string) (string, bool) {
+	for _, classification := range t.Classifications {
+		if classification.System == system {
+			return classification.Code, true
+		}
+	}
+	return "", false
+}
 
 // PermitsGeometry reports whether an instance of the type may declare geometry.
 func (t Type) PermitsGeometry(geometry Geometry) bool {
@@ -319,6 +341,33 @@ func (t Type) permittedGeometry() string {
 		return "no geometry form"
 	}
 	return join(permitted, "and")
+}
+
+// ExternalClassification is how a scheme outside this model names a type, per
+// specification section 7.3.
+//
+// It is a pair of opaque strings and the engine interprets neither. There is no
+// list of known systems, no syntax a code is held to, and no behaviour anywhere
+// which reads either value: the pair is carried, printed and reported, and what
+// it means is the business of whoever reads the model against that scheme. That
+// is the whole point of the slot — a mapping from this project's vocabulary to a
+// foreign one is a line of registry data somebody reviews, rather than a table
+// compiled into the engine
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+//
+// It is named for the classification of a *type* rather than spelled
+// Classification, which this package already uses for what an edge of a region's
+// boundary separates it by. The two are unrelated and sharing an identifier
+// would be the only thing suggesting otherwise.
+type ExternalClassification struct {
+	// System names the scheme, exactly as it was written.
+	System string
+
+	// Code names this type within that scheme, exactly as it was written.
+	Code string
+
+	// Span is where the classification was written.
+	Span Span
 }
 
 // Invariant is a check the type registry applies to every instance of a type,

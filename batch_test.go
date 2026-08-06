@@ -114,7 +114,9 @@ func touched(t *testing.T, root string, commit Commit) []string {
 func spelledEffects(effects []Effect) []string {
 	out := make([]string, 0, len(effects))
 	for _, effect := range effects {
-		out = append(out, string(effect.Op)+" "+effect.Tag+" "+string(effect.ID))
+		// One of the two names an effect can carry is always empty: an entity
+		// has an id and a registry entry has a name.
+		out = append(out, string(effect.Op)+" "+effect.Tag+" "+string(effect.ID)+effect.Name)
 	}
 	return out
 }
@@ -219,6 +221,11 @@ func TestParseBatchReadsEveryOperationsAxes(t *testing.T) {
 				Namespace: "geom", Frame: "frame:building", Predicate: "position", Tolerance: "boundary-closure",
 				Corners: []string{"0 0 0", "1 0 0", "0 0 0"}, NoSnap: true,
 			},
+		},
+		{
+			name:     "reads a classification as the opaque pair it is",
+			written:  `{"op": "classify-type", "type": "Campus", "system": "IFC4", "code": "IfcZone"}`,
+			expected: &ClassifyTypeOperation{Type: "Campus", System: "IFC4", Code: "IfcZone"},
 		},
 		{
 			name:     "reads a retirement with the node which stands in its place",
@@ -515,6 +522,20 @@ func TestTxApply(t *testing.T) {
 				{"modified node site:S-103"},
 			},
 			expectedFiles: []string{"entities/site.dfc"},
+		},
+		{
+			// The one operation whose subject is registry data rather than a
+			// node, which is why it lands in a file no other operation touches.
+			name: "applies a batch which classifies a type in two schemes",
+			written: `{"operations": [
+				{"op": "classify-type", "type": "MeetingRoom", "system": "IFC4", "code": "IfcSpace"},
+				{"op": "classify-type", "type": "MeetingRoom", "system": "Uniclass2015", "code": "SL_25_10_50"}
+			]}`,
+			expectedEffects: [][]string{
+				{"modified type MeetingRoom"},
+				{"modified type MeetingRoom"},
+			},
+			expectedFiles: []string{"registry.dfc"},
 		},
 		{
 			name: "applies a batch which corrects one measurement and retracts another",

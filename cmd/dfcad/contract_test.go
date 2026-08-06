@@ -145,8 +145,12 @@ var samples = map[string][]string{
 		"--corner", "10.0 3.0 0.0",
 		"--corner", "10.0 0.0 0.0",
 	},
-	"set-label": {"site:S-101", "Meeting Room One"},
-	"retire":    {"--reason", "The floor plate it was on was never built.", "site:S-103"},
+	// A system nothing in the fixture already carries, so the sample is a change
+	// rather than a refusal: the fixture's types are classified in IFC4, and a
+	// second scheme beside it is the ordinary case this command exists for.
+	"classify-type": {"MeetingRoom", "OmniClass", "13-51 31 00"},
+	"set-label":     {"site:S-101", "Meeting Room One"},
+	"retire":        {"--reason", "The floor plate it was on was never built.", "site:S-103"},
 	"add-claim": {
 		"--value", "18.0", "--unit", "m2",
 		"--source", "As-built check AB-2026-012, Acme Surveys",

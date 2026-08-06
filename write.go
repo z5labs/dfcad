@@ -174,6 +174,17 @@ type Effect struct {
 	// or whose id could not be read. A form which names nothing is still an
 	// effect: it changed the file.
 	ID ID `json:"id,omitempty"`
+
+	// Name is the plain symbol a registry entry is declared under — a type
+	// name, a predicate name — and is empty for every form which names itself
+	// with an id instead.
+	//
+	// It is a second field rather than a widening of ID because the two are not
+	// the same thing: an id is namespaced, is never reissued and resolves to a
+	// node, and a registry name is none of those. A caller which read either
+	// into one field would resolve a type called `site` against the id
+	// `site:S-101`.
+	Name string `json:"name,omitempty"`
 }
 
 // FileStatus is what a commit did to one file.
@@ -706,7 +717,13 @@ func (s *staged) record(op Op, form *Node) {
 	s.touched = true
 
 	tag, _ := formTag(form)
-	s.effects = append(s.effects, Effect{Op: op, Tag: tag, ID: subjectID(form)})
+
+	effect := Effect{Op: op, Tag: tag, ID: subjectID(form)}
+	if effect.ID == "" && registrySorts[tag] != "" {
+		effect.Name = declaredName(form)
+	}
+
+	s.effects = append(s.effects, effect)
 }
 
 // Commit validates the change and writes it.

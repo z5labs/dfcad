@@ -5,6 +5,8 @@
   (geometry area)
   (geometry absent)
   (description "An enclosed room used for meetings.")
+  (classification "IFC4" "IfcSpace")
+  (classification "Uniclass2015" "SL_25_10_50")
   (invariant boundary-loops-close (tolerance boundary-closure)))
 
 (type Partition

@@ -154,11 +154,20 @@ func TestClassifyBoundaryEdges(t *testing.T) {
 // Walking the form tables is what makes it a rule rather than a comment. A form
 // which gained a child storing the answer would fail here, which is where
 // somebody adding one is looking.
+//
+// The walk is over the entity forms and not over the registry ones. A boundary
+// classification is a property of one edge of one region's boundary, so an
+// entity form is the only place a file could state one — and the registry's
+// `classification` of specification section 7.3 is a different word for a
+// different thing entirely: how a scheme outside this model names a *type*, a
+// pair of opaque strings which says nothing about any edge. Sweeping the
+// registry in as well would make this test refuse that spelling for no reason
+// but the letters in it.
 func TestClassificationIsNeverStored(t *testing.T) {
 	stores := []string{"physical", "virtual", "classification"}
 
-	// Every child tag of every form, plus the reserved set the tables produce,
-	// which is the whole of what a file may write.
+	// Every child tag of every entity form, plus the reserved set the tables
+	// produce, which is the whole of what an entity file may write.
 	tags := slices.Sorted(maps.Keys(forms().reserved))
 
 	seen := make(map[*form]bool)
@@ -175,7 +184,9 @@ func TestClassificationIsNeverStored(t *testing.T) {
 		}
 		walk(f.claims)
 	}
-	walk(topLevelForm)
+	for _, entity := range []*form{nodeForm, vertexForm, edgeForm, loopForm} {
+		walk(entity)
+	}
 
 	for _, tag := range tags {
 		for _, word := range stores {

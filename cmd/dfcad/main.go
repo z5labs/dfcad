@@ -201,6 +201,13 @@ var commands = []command{
 		writes:  true,
 	},
 	{
+		name:    "classify-type",
+		summary: "say how a scheme outside this model names a type",
+		usage:   classifyTypeUsage,
+		run:     runClassifyType,
+		writes:  true,
+	},
+	{
 		name:    "set-label",
 		summary: "change what a thing is called, and nothing else",
 		usage:   setLabelUsage,

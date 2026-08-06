@@ -107,6 +107,10 @@ func TestLoadRegistry(t *testing.T) {
 			name:    "names a check an invariant could apply to no instance of its type with",
 			fixture: "invariants",
 		},
+		{
+			name:    "names both entries when a type is classified twice in one system",
+			fixture: "classifications",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -164,6 +168,32 @@ func TestRegistryDeclarations(t *testing.T) {
 		require.Len(t, declared.Invariants, 1)
 		assert.Equal(t, "boundary-loops-close", declared.Invariants[0].Check)
 		assert.Len(t, declared.Invariants[0].Parameters, 1)
+	})
+
+	t.Run("declares how schemes outside the model name a type", func(t *testing.T) {
+		declared, ok := registry.Type("MeetingRoom")
+
+		require.True(t, ok)
+		require.Len(t, declared.Classifications, 2)
+
+		assert.Equal(t, "IFC4", declared.Classifications[0].System)
+		assert.Equal(t, "IfcSpace", declared.Classifications[0].Code)
+		assert.Equal(t, "Uniclass2015", declared.Classifications[1].System)
+		assert.Equal(t, "SL_25_10_50", declared.Classifications[1].Code)
+
+		code, ok := declared.ClassifiedAs("Uniclass2015")
+		require.True(t, ok)
+		assert.Equal(t, "SL_25_10_50", code)
+
+		// The comparison is exact and the engine knows no scheme, so a system
+		// spelled any other way is a system this type is not classified in.
+		_, ok = declared.ClassifiedAs("ifc4")
+		assert.False(t, ok)
+
+		unclassified, ok := registry.Type("Partition")
+
+		require.True(t, ok)
+		assert.Empty(t, unclassified.Classifications, "a type maps into no foreign scheme unless it says so")
 	})
 
 	t.Run("reports which kind and which geometry form a type permits", func(t *testing.T) {

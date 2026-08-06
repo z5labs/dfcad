@@ -169,6 +169,19 @@ A room's corners, walls and outline in one operation.
 | `noSnap` | Write a new vertex at every corner, even where one is already there. Every corner that would have been reused is still reported. |
 | `claim` | The evidence every position claim is written with. Its `value` is not read: a corner's value is the corner. |
 
+### `classify-type`
+
+How a scheme outside this model names a declared type.
+
+| Member | Meaning |
+|--------|---------|
+| `type` | The declared type being classified. Required. |
+| `system` | The scheme's name. Required, and opaque: no scheme is known here. |
+| `code` | What the type is called within that scheme. Required, and opaque for the same reason. |
+
+A type carries at most one code per system, so classifying it in a system it already carries
+is refused naming the code it already has. Several systems on one type is the ordinary case.
+
 ### `set-label`
 
 What a thing is called, and nothing else.

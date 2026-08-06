@@ -360,6 +360,8 @@ func (l *registryLoader) declareType(node *Node) {
 		declared.Description, _ = l.text(arg, "a string")
 	}
 
+	l.classify(&declared, node)
+
 	var invariants []typeInvariant
 	for _, child := range childForms(node, "invariant") {
 		check, _, ok := l.name(child, "a check name")
@@ -384,6 +386,94 @@ func (l *registryLoader) declareType(node *Node) {
 
 	l.registry.types[name] = declared
 	l.invariants = append(l.invariants, invariants...)
+}
+
+// classificationChild is the tag a type's external classification is written
+// with, per specification section 7.3.
+const classificationChild = "classification"
+
+// classify reads the `classification` children of a type declaration.
+//
+// Everything checked here is structure: that both halves of the pair were
+// written as strings, that neither is blank, and that no system is given twice.
+// Nothing is checked about what either string says. There is no list of known
+// systems and no syntax a code is held to, because a system the engine had an
+// opinion about would be a scheme compiled into it, which is the table this
+// child exists to keep out of the engine
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+func (l *registryLoader) classify(declared *Type, node *Node) {
+	systems := make(map[string]Span)
+
+	for _, child := range childForms(node, classificationChild) {
+		system, ok := l.classificationField(child, 0, "a classification system")
+		if !ok {
+			continue
+		}
+
+		code, ok := l.classificationField(child, 1, "a classification code")
+		if !ok {
+			continue
+		}
+
+		if first, written := systems[system]; written {
+			l.reclassified(child.Span, system, first)
+			continue
+		}
+
+		systems[system] = child.Span
+		declared.Classifications = append(declared.Classifications, ExternalClassification{
+			System: system,
+			Code:   code,
+			Span:   child.Span,
+		})
+	}
+}
+
+// classificationField reads one string argument of a classification, refusing a
+// blank one.
+//
+// A blank half is refused rather than carried because the child's whole content
+// is the pair: a classification with no system names no scheme and still takes a
+// scheme's place in the uniqueness rule, and one with no code says that the type
+// is in a scheme without saying what it is called there. Neither is a mapping
+// anybody can act on, and both read as an unfinished edit.
+func (l *registryLoader) classificationField(child *Node, index int, what string) (string, bool) {
+	arg, ok := argument(child, index)
+	if !ok {
+		return "", false
+	}
+
+	written, ok := l.text(arg, what)
+	if !ok {
+		return "", false
+	}
+
+	if written == "" {
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     arg.Span,
+			Message:  fmt.Sprintf("expected %s, found an empty string", what),
+			Hint:     "a classification is a system and a code, and neither half is optional",
+		})
+		return "", false
+	}
+
+	return written, true
+}
+
+// reclassified reports a second classification in a system the type is already
+// classified in, naming both.
+func (l *registryLoader) reclassified(span Span, system string, first Span) {
+	l.add(Diagnostic{
+		Severity: SeverityError,
+		Span:     span,
+		Message: fmt.Sprintf(
+			"expected a classification system this type is not already classified in, found %q",
+			system,
+		),
+		Hint:    "a type carries at most one code per system; several systems on one type is the ordinary case",
+		Related: []RelatedLocation{{Span: first, Message: "first classified in this system here"}},
+	})
 }
 
 // declarePredicate reads specification section 7.4.

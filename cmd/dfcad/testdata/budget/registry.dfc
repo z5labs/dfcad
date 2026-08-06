@@ -15,17 +15,21 @@
   Corridor
   (kind Space)
   (geometry area)
-  (description "A circulation space between rooms."))
+  (description "A circulation space between rooms.")
+  (classification "IFC4" "IfcSpace"))
 (type
   Doorway
   (kind Element)
   (geometry line)
-  (description "An opening formed through a partition."))
+  (description "An opening formed through a partition.")
+  (classification "IFC4" "IfcDoor"))
 (type
   MeetingRoom
   (kind Space)
   (geometry area)
   (description "An enclosed room used for meetings.")
+  (classification "IFC4" "IfcSpace")
+  (classification "Uniclass2015" "SL_25_10_50")
   (invariant boundary-loops-close (tolerance boundary-closure)))
 (type
   OccupancyZone
@@ -38,33 +42,39 @@
   (kind Space)
   (geometry area)
   (description "An enclosed room used as workspace.")
+  (classification "IFC4" "IfcSpace")
   (invariant boundary-loops-close (tolerance boundary-closure)))
 (type
   OfficeBuilding
   (kind Building)
   (geometry solid)
-  (description "A building let as offices."))
+  (description "A building let as offices.")
+  (classification "IFC4" "IfcBuilding"))
 (type
   OfficeStorey
   (kind Storey)
   (geometry absent)
   (geometry solid)
-  (description "One occupied level of a building."))
+  (description "One occupied level of a building.")
+  (classification "IFC4" "IfcBuildingStorey"))
 (type
   Partition
   (kind Element)
   (geometry line)
-  (description "A non-loadbearing wall between spaces."))
+  (description "A non-loadbearing wall between spaces.")
+  (classification "IFC4" "IfcWall"))
 (type
   ServiceRiser
   (kind Space)
   (geometry area)
-  (description "A shaft carrying services between storeys."))
+  (description "A shaft carrying services between storeys.")
+  (classification "IFC4" "IfcSpace"))
 (type
   Threshold
   (kind Interface)
   (geometry line)
-  (description "Where two spaces meet at a doorway."))
+  (description "Where two spaces meet at a doorway.")
+  (classification "IFC4" "IfcRelSpaceBoundary"))
 (predicate
   area
   (unit m2)
