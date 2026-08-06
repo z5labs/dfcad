@@ -1512,6 +1512,7 @@ below.
 | 0014   | [10](#10-versioning-of-this-specification): the version a consumer reads comes from the output contract, not from a file stamp. |
 | 0015   | [8](#8-canonical-form): exactly one canonical printing, which is what makes the two authors of a file converge. |
 | 0016   | [8.3](#83-ordering): whole-file printing from an in-memory graph is why sorting was chosen over preserving authored order. |
+| 0020   | [1](#1-scope): export is out of this document's scope and has its own specification, and the closed `kind` set fixed there is the whole of what an exporter reads for meaning. [7.1](#71-project): the pinned URL is the other half of the export contract, and there is still no `GlobalId` field. |
 
 **One open reading, resolved here.** Record 0008 says the remedy for not knowing a claim's
 provenance is to state it "using the vocabulary the registry provides for it", while record
