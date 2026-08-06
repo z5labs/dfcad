@@ -2086,8 +2086,7 @@ An **artefact command** is one whose product is a file this contract does not de
 export, or anything else that writes a build output outside the authored tree. What it writes
 to stdout is not the artefact and never can be: it is the account of one, and it has the same
 shape whichever command wrote it, so it is documented once here rather than repeated per
-command
-([0022](./decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md)).
+command ([0022](./decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md)).
 
 **No command in this version produces an artefact.** `export` below is illustrative, and the
 shape is fixed here so that the first such command does not invent one.
