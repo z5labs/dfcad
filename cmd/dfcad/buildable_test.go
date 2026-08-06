@@ -6,11 +6,14 @@
 package main
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // deriving is the vocabulary every invocation below is asked in: which
@@ -101,6 +104,55 @@ func TestRunBuildableFollowsTheClaim(t *testing.T) {
 	assert.InDelta(t, before.Parcel.Area, after.Parcel.Area, 0.25, "and the plot itself did not move")
 }
 
+// TestRunBuildableReportsTheDigestItWasDerivedFrom is its own function because
+// it is about the provenance of a derivation rather than about a region: a
+// derived value which cannot say which tree it came from is one nobody can
+// check against the tree in front of them
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+func TestRunBuildableReportsTheDigestItWasDerivedFrom(t *testing.T) {
+	files := model()
+	root := tree(t, files)
+
+	stdout, _ := invoke(t, exitSuccess, root, deriving("site:P-01")...)
+	result := listed[buildableResult](t, stdout)
+
+	t.Run("names the digest of the source tree", func(t *testing.T) {
+		digest, err := dfcad.DigestOf(root)
+		require.NoError(t, err)
+		require.True(t, digest.Known())
+
+		assert.Equal(t, digest.String(), result.Digest)
+	})
+
+	t.Run("names a different one for a tree which moved", func(t *testing.T) {
+		moved := model()
+		moved["entities/geometry.dfc"] = strings.Replace(
+			moved["entities/geometry.dfc"], "(value 5.0 m)", "(value 7.0 m)", 1)
+
+		after, _ := derived(t, exitSuccess, moved, "site:P-01")
+
+		assert.NotEqual(t, result.Digest, after.Digest)
+		assert.NotEqual(t, result.Region.Area, after.Region.Area,
+			"the answer moved with the tree, which is what the digest is of")
+	})
+}
+
+// TestABuildableOfATreeWithNoDigestWritesNoDigestField is its own function
+// because it asserts about the bytes rather than about a figure: a digest of
+// nothing would key a derivation to a tree nobody could produce, so where there
+// is none the field is absent rather than empty.
+func TestABuildableOfATreeWithNoDigestWritesNoDigestField(t *testing.T) {
+	// A graph assembled from no tree at all has no digest, which is the state a
+	// model that was never read from disk leaves behind.
+	result := reportBuildable(command{name: "buildable"}, nil, "site:P-01", dfcad.Buildable{}, false)
+
+	assert.Empty(t, result.Digest)
+
+	encoded, err := json.Marshal(result)
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), `"digest"`)
+}
+
 // TestRunBuildableConsumedByItsSetbacks is its own function because it is the
 // one successful run which answers with nothing: an empty region is the answer
 // to the question rather than a failure to answer it.
@@ -161,6 +213,7 @@ func TestRunBuildableRefusesWhatItCannotRead(t *testing.T) {
 
 			assert.False(t, result.Derived)
 			assert.Equal(t, "site:P-01", result.Subject, "a refusal still says which question it answers")
+			assert.NotEmpty(t, result.Digest, "and which tree it was asked of")
 			assert.Nil(t, result.Region, "a derivation which was not made carries no region")
 			assert.Empty(t, result.Setbacks)
 

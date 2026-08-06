@@ -60,8 +60,9 @@ cross over each other.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
-The object buildable writes carries "subject", the "frame" and "unit" it is
-expressed in, the "tolerance" it was judged against, the "parcel" it was
+The object buildable writes carries "subject", "derived" and the "digest" of
+the source tree it was derived from, the "frame" and "unit" it is expressed
+in, the "tolerance" it was judged against, the "parcel" it was
 derived from, the "setbacks" applied one per edge, the "region" left buildable
 with the ring of every piece of it, and the "budget": the accuracy of the
 answer broken out by term, over the position claims and the setback claims
@@ -131,6 +132,16 @@ type buildableResult struct {
 	// nothing of it from one whose setbacks could not be read: the first is
 	// derived and empty, the second is neither.
 	Derived bool `json:"derived"`
+
+	// Digest is the digest of the source tree the region was derived from,
+	// which is what lets a caller check the derivation against the model in
+	// front of them rather than taking it on trust. It is written on a refusal
+	// too: a refusal is still about a tree, and saying which one is the point.
+	//
+	// Absent for a model which was not read from disk, or one a file of which
+	// could not be read at all, because there is then nothing anything may be
+	// keyed by.
+	Digest string `json:"digest,omitempty"`
 
 	// Frame is the coordinate frame the boundary and the answer are expressed
 	// in, and Unit that frame's linear unit, which every distance here is in
@@ -277,7 +288,7 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportBuildable(cmd, subject, derived, !refused)
+	result := reportBuildable(cmd, graph, subject, derived, !refused)
 
 	reportBuildableFor(result, derived, globals, stderr)
 
@@ -321,11 +332,21 @@ func vocabularyOf(asked ...given) error {
 // carries, because a refused derivation carries none: a caller collecting
 // results has to be able to say which question this object answers, and a
 // refusal is exactly the object it most needs that of.
-func reportBuildable(cmd command, subject dfcad.ID, derived dfcad.Buildable, ok bool) buildableResult {
+func reportBuildable(
+	cmd command,
+	graph *dfcad.Graph,
+	subject dfcad.ID,
+	derived dfcad.Buildable,
+	ok bool,
+) buildableResult {
 	result := buildableResult{
 		envelope: newEnvelope(cmd.name),
 		Subject:  string(subject),
 		Derived:  ok,
+	}
+
+	if digest, known := graph.Digest(); known {
+		result.Digest = digest.String()
 	}
 
 	if !ok {
