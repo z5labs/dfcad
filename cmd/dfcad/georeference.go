@@ -113,6 +113,23 @@ func (s *recordedCRS) projected() *ifc.Georeference {
 	}
 }
 
+// srsName is the record as a vector format holds it: the identifier, and
+// nothing else.
+//
+// The definition has nowhere to go and is dropped rather than folded in
+// somewhere it would not be read. GML names a system and does not carry a
+// register's text about it, so a definition written into an attribute or a
+// property would be a field this format's readers do not look at — and a
+// caller which found it there would have to decide whether it was the
+// authority on anything, which is exactly the question a name answers.
+func (s *recordedCRS) srsName() string {
+	if s == nil {
+		return ""
+	}
+
+	return s.Identifier
+}
+
 // georeferenced is where the model says it sits on the earth, and whatever
 // stopped it saying so.
 //

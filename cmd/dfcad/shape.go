@@ -421,36 +421,77 @@ func current(resolution dfcad.Resolution) (*dfcad.Claim, bool) {
 // How far apart two corners may be and still be at one level is the tolerance
 // the run named, which is the same figure the boundary was assembled under.
 func (e *exporter) level(node *dfcad.SemanticNode, drawn dfcad.RegionTessellation) (float64, bool) {
-	tolerance := drawn.Region().Tolerance().Value
+	lies := levelOf(drawn.Pieces(), drawn.Region().Tolerance().Value)
 
-	var elevation float64
-	first := true
+	if !lies.level {
+		e.refuse(node, fmt.Sprintf(
+			"expected the boundary of %s to lie at one level to draw it in plan and sweep it upwards, "+
+				"found corners at %s and %s",
+			node.ID(), figure(lies.elevation), figure(lies.offending)),
+			"a footprint is a plan and a body is that plan swept upwards; a boundary which is not level "+
+				"has neither, and the projection which would give it one is not this command's to choose")
+		return 0, false
+	}
 
-	for _, piece := range drawn.Pieces() {
+	return lies.elevation, lies.bounded
+}
+
+// levels is what a set of rings says about the horizontal plane it lies in.
+type levels struct {
+	// elevation is the level the first corner sits at.
+	elevation float64
+
+	// offending is the first corner found at another level, where there is
+	// one.
+	offending float64
+
+	// level says whether every corner agreed.
+	level bool
+
+	// bounded says whether there was a corner at all, which is what tells a
+	// shape lying at one level from no shape.
+	bounded bool
+}
+
+// levelOf reports whether every corner of a set of pieces lies at one level,
+// and which level that is.
+//
+// It is shared by the two exports because it is a fact about a set of rings
+// rather than about either format, and both of them are about to draw a plan:
+// a footprint is one, and so is a map. What is not shared is the refusal,
+// because what each was going to do with the plan is what makes an unlevel
+// boundary worth refusing, and the two commands say that differently.
+//
+// How far apart two corners may be and still be at one level is the tolerance
+// the boundary was assembled under, which is passed in for the same reason.
+func levelOf(pieces []dfcad.Piece, tolerance float64) levels {
+	// Nothing has disagreed yet, so a set of rings holding no corner at all
+	// lies at one level vacuously. What it does not do is lie at an elevation,
+	// which is what `bounded` is for and what a caller wanting one reads.
+	lies := levels{level: true}
+
+	for _, piece := range pieces {
 		rings := append([][]dfcad.Point{piece.Outer()}, piece.Holes()...)
 
 		for _, ring := range rings {
 			for _, at := range ring {
-				if first {
-					elevation = at[2]
-					first = false
+				if !lies.bounded {
+					lies.elevation = at[2]
+					lies.bounded = true
 					continue
 				}
 
-				if math.Abs(at[2]-elevation) > tolerance {
-					e.refuse(node, fmt.Sprintf(
-						"expected the boundary of %s to lie at one level to draw it in plan and sweep it upwards, "+
-							"found corners at %s and %s",
-						node.ID(), figure(elevation), figure(at[2])),
-						"a footprint is a plan and a body is that plan swept upwards; a boundary which is not level "+
-							"has neither, and the projection which would give it one is not this command's to choose")
-					return 0, false
+				if math.Abs(at[2]-lies.elevation) > tolerance {
+					lies.offending = at[2]
+					lies.level = false
+
+					return lies
 				}
 			}
 		}
 	}
 
-	return elevation, !first
+	return lies
 }
 
 // provenance is the property set which carries the height claim into the file.

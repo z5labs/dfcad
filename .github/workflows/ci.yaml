@@ -142,10 +142,10 @@ jobs:
       - name: Check the golden files are what the code produces
         run: |
           go test ./... -update
-          if ! git diff --quiet -- testdata cmd/dfcad/testdata ifc/testdata docs/token-budget.md; then
+          if ! git diff --quiet -- testdata cmd/dfcad/testdata ifc/testdata gml/testdata docs/token-budget.md; then
             echo "::error::these golden files are stale; regenerate them with: go test ./... -update"
-            git diff --stat -- testdata cmd/dfcad/testdata ifc/testdata docs/token-budget.md
-            git diff -- testdata cmd/dfcad/testdata ifc/testdata docs/token-budget.md
+            git diff --stat -- testdata cmd/dfcad/testdata ifc/testdata gml/testdata docs/token-budget.md
+            git diff -- testdata cmd/dfcad/testdata ifc/testdata gml/testdata docs/token-budget.md
             exit 1
           fi
 
