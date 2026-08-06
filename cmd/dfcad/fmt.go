@@ -196,10 +196,16 @@ func report(formatted []dfcad.Formatted, globals *globals, stderr io.Writer) {
 // plural is a count and its noun, so that a summary meant for a person does
 // not say "1 files".
 func plural(count int, noun string) string {
+	return pluralOf(count, noun, noun+"s")
+}
+
+// pluralOf is the same for a noun whose plural is not itself with an s on the
+// end, which "vertex" is and every noun [plural] is called with is not.
+func pluralOf(count int, one, many string) string {
 	if count == 1 {
-		return fmt.Sprintf("%d %s", count, noun)
+		return fmt.Sprintf("%d %s", count, one)
 	}
-	return fmt.Sprintf("%d %ss", count, noun)
+	return fmt.Sprintf("%d %s", count, many)
 }
 
 // result is the object a run writes to stdout.

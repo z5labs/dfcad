@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -933,7 +934,11 @@ func TestRunListStillAnswersOnAModelWithDiagnostics(t *testing.T) {
 	files := model()
 	files["entities/broken.dfc"] = unparseable
 
-	for _, args := range [][]string{{"list-types"}, {"list-instances"}} {
+	for _, args := range [][]string{
+		{"list-types"},
+		{"list-instances"},
+		{"list-geometry", "--predicate", "position"},
+	} {
 		t.Run(args[0]+" lists what loaded and reports the rest on stderr", func(t *testing.T) {
 			t.Chdir(tree(t, files))
 
@@ -1033,6 +1038,19 @@ func TestRunListHumanOutputNeverChangesStdout(t *testing.T) {
 	assert.Contains(t, instancesReport, "site:S-101: Meeting Room A, Space MeetingRoom")
 	assert.Contains(t, instancesReport, "site:S-103: (no label), Space MeetingRoom")
 	assert.NotEmpty(t, listed[listInstancesResult](t, instances).Instances)
+
+	geometry, geometryReport := listing(t, "list-geometry", "--predicate", "setback", "--format", formatHuman, "-v")
+	assert.Contains(t, geometryReport, "4 geometric nodes under setback: 0 vertices, 4 edges, 0 loops")
+
+	// An edge is the one family which runs between two things, so it is the one
+	// whose line says which two and in which direction.
+	assert.Contains(t, geometryReport, "geom:E-14: edge geom:V-14 -> geom:V-11 in frame:building")
+	assert.NotEmpty(t, listed[listGeometryResult](t, geometry).Nodes)
+
+	corners, cornersReport := listing(t, "list-geometry", "--predicate", "position", "--format", formatHuman, "-v")
+	assert.Contains(t, cornersReport, "12 geometric nodes under position: 12 vertices, 0 edges, 0 loops")
+	assert.Contains(t, cornersReport, "geom:V-01: vertex in frame:building")
+	assert.NotEmpty(t, listed[listGeometryResult](t, corners).Nodes)
 }
 
 // TestRunListUsage checks that help goes to stderr and exits zero, which is the
@@ -1072,7 +1090,11 @@ func TestRunListUsage(t *testing.T) {
 // TestListErrorsAreNotSwallowed checks that a stdout which cannot be written
 // reports a failure rather than an unexplained success.
 func TestListErrorsAreNotSwallowed(t *testing.T) {
-	for _, args := range [][]string{{"list-types"}, {"list-instances"}} {
+	for _, args := range [][]string{
+		{"list-types"},
+		{"list-instances"},
+		{"list-geometry", "--predicate", "position"},
+	} {
 		t.Run(args[0]+" reports a stdout it cannot write", func(t *testing.T) {
 			t.Chdir(tree(t, model()))
 
@@ -1082,4 +1104,344 @@ func TestListErrorsAreNotSwallowed(t *testing.T) {
 			assert.Contains(t, stderr.String(), "dfcad "+args[0]+":")
 		})
 	}
+}
+
+// geometryIDs is the id of each listed geometric node.
+func geometryIDs(result listGeometryResult) []string {
+	out := make([]string, 0, len(result.Nodes))
+	for _, node := range result.Nodes {
+		out = append(out, node.ID)
+	}
+	return out
+}
+
+// listGeometry runs list-geometry against the fixture tree and returns what it
+// wrote, failing the test on anything but a success.
+func listGeometryOf(t *testing.T, args ...string) listGeometryResult {
+	t.Helper()
+
+	t.Chdir(tree(t, model()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"list-geometry"}, args...), &stdout, &stderr), stderr.String())
+
+	result := listed[listGeometryResult](t, stdout.String())
+	require.Equal(t, outputVersion, result.Version)
+	require.Equal(t, "list-geometry", result.Command)
+
+	return result
+}
+
+func TestRunListGeometry(t *testing.T) {
+	testCases := []struct {
+		name        string
+		args        []string
+		expectedIDs []string
+	}{
+		{
+			name: "reports every geometric node carrying the predicate",
+			args: []string{"--predicate", "position"},
+			expectedIDs: []string{
+				"geom:V-01", "geom:V-02", "geom:V-03", "geom:V-04",
+				"geom:V-11", "geom:V-12", "geom:V-13", "geom:V-14",
+				"geom:V-21", "geom:V-22", "geom:V-23", "geom:V-24",
+			},
+		},
+		{
+			// The question the story is about: the edges of a plot carry a
+			// setback and nothing else in the model does, so naming the
+			// predicate is the whole of the query.
+			name:        "reports the edges a predicate only edges carry",
+			args:        []string{"--predicate", "setback"},
+			expectedIDs: []string{"geom:E-11", "geom:E-12", "geom:E-13", "geom:E-14"},
+		},
+		{
+			name: "narrows to one family",
+			args: []string{"--predicate", "position", "--family", "vertex"},
+			expectedIDs: []string{
+				"geom:V-01", "geom:V-02", "geom:V-03", "geom:V-04",
+				"geom:V-11", "geom:V-12", "geom:V-13", "geom:V-14",
+				"geom:V-21", "geom:V-22", "geom:V-23", "geom:V-24",
+			},
+		},
+		{
+			name:        "reports nothing when the family carries none of them",
+			args:        []string{"--predicate", "setback", "--family", "loop"},
+			expectedIDs: []string{},
+		},
+		{
+			// A declared predicate nothing geometric is written under. It is an
+			// answer rather than a failure: this model states areas of rooms
+			// and no area of a corner, which is an ordinary model.
+			name:        "reports a declared predicate no geometric node carries as an empty list",
+			args:        []string{"--predicate", "area"},
+			expectedIDs: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := listGeometryOf(t, testCase.args...)
+
+			assert.Equal(t, testCase.expectedIDs, geometryIDs(result))
+		})
+	}
+}
+
+// TestRunListGeometryReportsThePredicateItWasAskedAbout is its own function
+// because it is about the field which makes an empty answer readable: a caller
+// collecting the listings of one level under three predicates has to be able to
+// say which object answers which question.
+func TestRunListGeometryReportsThePredicateItWasAskedAbout(t *testing.T) {
+	assert.Equal(t, "setback", listGeometryOf(t, "--predicate", "setback").Predicate)
+	assert.Equal(t, "area", listGeometryOf(t, "--predicate", "area").Predicate)
+}
+
+// TestRunListGeometryOnAPredicateNothingCarries is its own function because it
+// asserts about the bytes rather than about the decoded answer: an empty
+// collection is a list rather than a null, so a caller indexing it needs no
+// special case for the model which records no spans.
+func TestRunListGeometryOnAPredicateNothingCarries(t *testing.T) {
+	t.Chdir(tree(t, model()))
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(t, exitSuccess, run([]string{"list-geometry", "--predicate", "area"}, &stdout, &stderr),
+		stderr.String())
+
+	assert.Contains(t, stdout.String(), `"nodes":[]`)
+}
+
+// TestRunListGeometryNamesTheEndsOfAnEdgeInTheAuthoredOrder is its own function
+// because it asserts about the whole of one entry rather than about which
+// entries came back.
+//
+// The order of the two ends is the data: an edge is directed, and the region on
+// the other side of it traverses it the other way. The west flank runs from the
+// north-west corner back to the south-west one, which is the case a listing
+// which sorted the pair would report the wrong way round.
+func TestRunListGeometryNamesTheEndsOfAnEdgeInTheAuthoredOrder(t *testing.T) {
+	result := listGeometryOf(t, "--predicate", "setback")
+
+	assert.Equal(t, []listedGeometry{
+		{
+			ID:     "geom:E-11",
+			Family: "edge",
+			Label:  "Plot one, road frontage",
+			Frame:  "frame:building",
+			Start:  "geom:V-11",
+			End:    "geom:V-12",
+			Span:   result.Nodes[0].Span,
+		},
+		{
+			ID:     "geom:E-12",
+			Family: "edge",
+			Label:  "Plot one, east flank",
+			Frame:  "frame:building",
+			Start:  "geom:V-12",
+			End:    "geom:V-13",
+			Span:   result.Nodes[1].Span,
+		},
+		{
+			ID:     "geom:E-13",
+			Family: "edge",
+			Label:  "Plot one, rear",
+			Frame:  "frame:building",
+			Start:  "geom:V-13",
+			End:    "geom:V-14",
+			Span:   result.Nodes[2].Span,
+		},
+		{
+			ID:     "geom:E-14",
+			Family: "edge",
+			Label:  "Plot one, west flank",
+			Frame:  "frame:building",
+			Start:  "geom:V-14",
+			End:    "geom:V-11",
+			Span:   result.Nodes[3].Span,
+		},
+	}, result.Nodes)
+}
+
+// TestRunListGeometryReportsWhereEachNodeWasWritten is its own function because
+// the span is what makes this listing usable at all: an id which came back from
+// a query nobody could have guessed is one whose next question is where it is
+// written.
+func TestRunListGeometryReportsWhereEachNodeWasWritten(t *testing.T) {
+	result := listGeometryOf(t, "--predicate", "setback")
+
+	require.NotEmpty(t, result.Nodes)
+	for _, node := range result.Nodes {
+		assert.Equal(t, "entities/geometry.dfc", filepath.ToSlash(node.Span.Start.Path), node.ID)
+		assert.Positive(t, node.Span.Start.Line, node.ID)
+		assert.Positive(t, node.Span.Start.Column, node.ID)
+	}
+}
+
+// TestRunListGeometryOrdersByID is its own function because it asserts about
+// the order of the whole list rather than about what one entry says.
+//
+// Id order rather than family order: grouping by family would reorder the whole
+// answer the day an edge was given a claim it did not have before, and an id is
+// the one thing about a node which does not change.
+func TestRunListGeometryOrdersByID(t *testing.T) {
+	ordered := geometryIDs(listGeometryOf(t, "--predicate", "position"))
+
+	require.NotEmpty(t, ordered)
+	assert.True(t, sortedStrings(ordered))
+}
+
+// listRetractedRegistry is the vocabulary [listRetractedGeometry] is judged
+// against.
+const listRetractedRegistry = `(project
+  (label "Retraction fixture")
+  (globalid-namespace "https://example.org/models/retracted"))
+
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey (description "Claim ids issued by the surveyor."))
+
+(frame frame:site-grid (label "Site survey grid") (unit m))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+`
+
+// listRetractedGeometry is a model whose only statement about one corner was
+// withdrawn.
+//
+// It is a fixture of its own rather than an addition to [model] because it is a
+// different shape of question: every other assertion here is about which nodes
+// carry a predicate, and this is about which claims count as carrying one.
+const listRetractedGeometry = `(vertex geom:V-01
+  (frame frame:site-grid)
+  (position
+    (id survey:P-01a)
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:P-01b))
+  (position
+    (id survey:P-01b)
+    (value (0.012 0.0 0.0) m)
+    (source "As-built check AB-2026-029, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))
+
+(vertex geom:V-02
+  (frame frame:site-grid)
+  (position
+    (id survey:P-02a)
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")
+    (rank deprecated)
+    (superseded-by survey:P-01b)))
+`
+
+// TestRunListGeometryLeavesOutARetractedClaim is its own function because it
+// asserts about which claims count as carrying a predicate rather than about
+// which nodes carry one.
+//
+// A deprecated claim is retracted rather than out-ranked, and resolution never
+// considers one. Listing the corner whose only position was withdrawn would
+// answer "which corners does this model record a position for" with a corner
+// nobody stands behind; `dfcad claims` is the audit view which reports it.
+func TestRunListGeometryLeavesOutARetractedClaim(t *testing.T) {
+	t.Chdir(tree(t, map[string]string{
+		"registry.dfc":          listRetractedRegistry,
+		"entities/geometry.dfc": listRetractedGeometry,
+	}))
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(t, exitSuccess, run([]string{"list-geometry", "--predicate", "position"}, &stdout, &stderr),
+		stderr.String())
+
+	result := listed[listGeometryResult](t, stdout.String())
+
+	// V-01 was re-surveyed and still records where it is. V-02's one statement
+	// was withdrawn and replaced by nothing, so the model records nothing about
+	// where it is.
+	assert.Equal(t, []string{"geom:V-01"}, geometryIDs(result))
+}
+
+// TestRunListGeometryRejectsWhatItCannotAskAbout walks the ways an invocation
+// can fail to be a question.
+//
+// Each is a usage error rather than an empty list, and stdout stays empty
+// because the run produced no result.
+func TestRunListGeometryRejectsWhatItCannotAskAbout(t *testing.T) {
+	declaredPredicates := []string{"area", "frame-transform", "position", "setback"}
+
+	testCases := []struct {
+		name           string
+		args           []string
+		expectedStderr string
+	}{
+		{
+			// Which predicate carries what is project data, so there is nothing
+			// to default to and the run has not asked a question yet.
+			name: "refuses a run which named no predicate",
+			args: []string{"list-geometry"},
+			expectedStderr: "dfcad list-geometry: " +
+				MissingVocabularyError{Flags: []string{flagPredicate}}.Error() + "\n\n" + listGeometryUsage,
+		},
+		{
+			name: "names a predicate the registry does not declare",
+			args: []string{"list-geometry", "--predicate", "setbackk"},
+			expectedStderr: "dfcad list-geometry: " +
+				UnknownPredicateError{Predicate: "setbackk", Declared: declaredPredicates}.Error() + "\n",
+		},
+		{
+			name: "names a family which is none of the three",
+			args: []string{"list-geometry", "--predicate", "position", "--family", "vertices"},
+			expectedStderr: "dfcad list-geometry: " +
+				UnknownFamilyError{Family: "vertices", Known: families}.Error() + "\n",
+		},
+		{
+			name: "rejects an argument, which it takes none of",
+			args: []string{"list-geometry", "--predicate", "position", "geom:V-01"},
+			expectedStderr: "dfcad list-geometry: " +
+				UnexpectedArgumentsError{Extra: []string{"geom:V-01"}}.Error() + "\n\n" + listGeometryUsage,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, model()))
+
+			var stdout, stderr bytes.Buffer
+
+			require.Equal(t, exitUsage, run(testCase.args, &stdout, &stderr))
+
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, testCase.expectedStderr, stderr.String())
+		})
+	}
+}
+
+// TestCheckFamilyAcceptsTheThreeFamilies is the other half of the rejection
+// table: every family the format has passes, so the check is not simply
+// refusing everything.
+func TestCheckFamilyAcceptsTheThreeFamilies(t *testing.T) {
+	assert.NoError(t, checkFamily(""))
+
+	for _, family := range families {
+		assert.NoError(t, checkFamily(family))
+	}
+
+	var unknown UnknownFamilyError
+	require.ErrorAs(t, checkFamily("node"), &unknown)
+	assert.Equal(t, "node", unknown.Family)
+	assert.Equal(t, []string{"vertex", "edge", "loop"}, unknown.Known)
 }

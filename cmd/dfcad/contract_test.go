@@ -54,12 +54,16 @@ var samples = map[string][]string{
 	"fmt":            {},
 	"list-types":     {},
 	"list-instances": {},
-	"get":            {"site:S-101"},
-	"resolve":        {"site:S-101", "area"},
-	"traverse":       {"contains", "site:S-101"},
-	"claims":         {"site:S-101"},
-	"conflicts":      {},
-	"check":          {},
+	// A geometric listing is asked in the project's own words for which
+	// predicate the nodes carry, so the predicate is named rather than
+	// defaulted.
+	"list-geometry": {"--predicate", "position"},
+	"get":           {"site:S-101"},
+	"resolve":       {"site:S-101", "area"},
+	"traverse":      {"contains", "site:S-101"},
+	"claims":        {"site:S-101"},
+	"conflicts":     {},
+	"check":         {},
 	// A measurement is read out of the corners, so it is asked in the project's
 	// own words for what a position is and how close two corners are one corner.
 	"measure": {

@@ -209,6 +209,14 @@ var (
 			"--root", budgetRoot,
 		},
 	}
+	listCorners = call{
+		name: "dfcad list-geometry --predicate position --family vertex",
+		args: []string{
+			"list-geometry",
+			"--predicate", "position", "--family", "vertex",
+			"--root", budgetRoot,
+		},
+	}
 )
 
 var (
@@ -254,7 +262,25 @@ var (
 		calls:   []call{listTypes, listRooms, measureRoom},
 	}
 
-	paths = []path{discovery, coldQuestion, warmQuestion, wholeRetrieval, derivedQuestion}
+	geometricDiscovery = path{
+		name: "finding the geometry which carries a measurement",
+		what: "which corners of this model anybody has surveyed a position for",
+		// No target, and it could not honestly have one. The two gated paths
+		// answer a question about one named thing, and their cost does not grow
+		// with the model; this enumerates a family across the whole tree, so
+		// what it costs is the size of the answer rather than of the
+		// arrangement. A budget written for the first would be a gate on the
+		// second for reasons nobody argued.
+		//
+		// It is measured because the alternative to asking it is reading both
+		// geometry files, and because the per-entry payload is the thing which
+		// drifts: a field added to a listed geometric node is paid once per
+		// corner, which is fifty-six times here and once in `get`.
+		ceiling: 2500,
+		calls:   []call{listCorners},
+	}
+
+	paths = []path{discovery, coldQuestion, warmQuestion, wholeRetrieval, derivedQuestion, geometricDiscovery}
 )
 
 // answer runs one call and returns what it wrote to stdout, which is the whole
@@ -398,6 +424,10 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 		{
 			name: "computes the answer from the corners instead of reading a claim",
 			path: derivedQuestion,
+		},
+		{
+			name: "finds the corners a position was ever surveyed for",
+			path: geometricDiscovery,
 		},
 	}
 
