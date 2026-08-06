@@ -319,6 +319,94 @@ func (e UnnamedPropertyError) Error() string {
 	return fmt.Sprintf("expected a name on every property of the set %s, found one with none", e.Set)
 }
 
+// BoundaryOnNonSpaceError reports a [SpaceBoundary] written on a spatial
+// element which is not a space.
+//
+// IfcRelSpaceBoundary's RelatingSpace is an IfcSpaceBoundarySelect, and a
+// site, a building and a storey are none of them. Writing one anyway produces
+// an instance whose first reference is of a type the schema forbids there,
+// which a checking reader rejects and a lenient one silently ignores.
+type BoundaryOnNonSpaceError struct {
+	// Entity is what the element was being written as.
+	Entity Entity
+
+	// Of is the identifier of that element.
+	Of GlobalID
+}
+
+// Error implements the [error] interface.
+func (e BoundaryOnNonSpaceError) Error() string {
+	return fmt.Sprintf("expected a space boundary on an %s, found one on %s, which is an %s",
+		EntitySpace, e.Of, e.Entity)
+}
+
+// MissingBoundaryElementError reports a [SpaceBoundary] naming no element.
+//
+// RelatedBuildingElement is mandatory, so there is nothing to write for a
+// boundary with no element between the two sides. A caller holding one says so
+// rather than writing a relationship with half of itself missing.
+type MissingBoundaryElementError struct {
+	// Space is the identifier of the space which stated it.
+	Space GlobalID
+
+	// Boundary is the identifier of the relationship.
+	Boundary GlobalID
+}
+
+// Error implements the [error] interface.
+func (e MissingBoundaryElementError) Error() string {
+	return fmt.Sprintf("expected an element on the boundary %s of space %s, found none: the related building element is "+
+		"mandatory and a boundary with nothing between the two sides is not writable", e.Boundary, e.Space)
+}
+
+// UnknownBoundaryElementError reports a [SpaceBoundary] naming an element no
+// object in the model carries.
+//
+// It is [UnknownMemberError] one relationship over, and it is caught here for
+// the same reason: a reference to an object which is not in the file is one
+// some readers follow to nothing and others refuse outright.
+type UnknownBoundaryElementError struct {
+	// Space is the identifier of the space which stated it.
+	Space GlobalID
+
+	// Boundary is the identifier of the relationship.
+	Boundary GlobalID
+
+	// Element is the identifier which named nothing.
+	Element GlobalID
+}
+
+// Error implements the [error] interface.
+func (e UnknownBoundaryElementError) Error() string {
+	return fmt.Sprintf("expected the boundary %s of space %s to name an object this model writes, found %s, which it "+
+		"does not", e.Boundary, e.Space, e.Element)
+}
+
+// UnclassifiedBoundaryError reports a [SpaceBoundary] which did not say
+// whether it is physical or virtual, or whether it is internal or external.
+//
+// Neither attribute is optional, and neither has a defensible default: whether
+// something is built between two rooms and whether a wall faces the weather
+// are facts about the model, and a writer which guessed at either would be
+// stating one it was never told.
+type UnclassifiedBoundaryError struct {
+	// Space is the identifier of the space which stated it.
+	Space GlobalID
+
+	// Boundary is the identifier of the relationship.
+	Boundary GlobalID
+
+	// Attribute is the one which was not given, spelled as the schema spells
+	// it.
+	Attribute string
+}
+
+// Error implements the [error] interface.
+func (e UnclassifiedBoundaryError) Error() string {
+	return fmt.Sprintf("expected a %s on the boundary %s of space %s, found none: the attribute is mandatory and there "+
+		"is nothing here which could choose it", e.Attribute, e.Boundary, e.Space)
+}
+
 // spelled lists entities the way a message wants them.
 func spelled(entities []Entity) string {
 	written := make([]string, 0, len(entities))

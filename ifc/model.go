@@ -217,6 +217,20 @@ type Spatial struct {
 	// a storey is part of a building, and a wall is a thing standing in a
 	// storey.
 	Products []Product
+
+	// Boundaries are the space boundary relationships this element is the
+	// space of, in the order they are written.
+	//
+	// Only an [EntitySpace] may carry any. IfcRelSpaceBoundary's RelatingSpace
+	// is an IfcSpaceBoundarySelect, and a storey is not one — a boundary
+	// written on anything else is [BoundaryOnNonSpaceError] rather than an
+	// instance a reader has to decide what to do with.
+	//
+	// Each names a [Product] written elsewhere in the same model, by the
+	// identifier that product carries, exactly as a [Group]'s members do. One
+	// which names an object this model does not hold is
+	// [UnknownBoundaryElementError].
+	Boundaries []SpaceBoundary
 }
 
 // Product is one thing standing in a spatial element.
@@ -240,6 +254,107 @@ type Product struct {
 	// Placement is where the product sits inside the spatial element which
 	// contains it.
 	Placement *Placement
+}
+
+// SpaceBoundary is IfcRelSpaceBoundary: the relationship between a space and
+// one of the elements bounding it.
+//
+// It is a relationship rather than a geometry, and that is what it is for. A
+// wall between two rooms is one element which both of them reach, so the fact
+// that they share it is a fact about the three objects and not about any
+// coordinates — and a receiving system given the relationship does not have to
+// recover it by comparing outlines and hoping the arithmetic agrees.
+//
+// [SpaceBoundary.Element] is mandatory in the schema, which is the constraint
+// the whole type turns on: there is no space boundary without an element to
+// name. A caller holding a boundary with nothing between the two sides has
+// nothing to write here, and saying so is its business rather than this
+// package's.
+type SpaceBoundary struct {
+	// GlobalID is the identifier of the relationship itself, which is a rooted
+	// object like any other.
+	GlobalID GlobalID
+
+	// Name and Description are the relationship's text attributes. An empty
+	// one is written as absent.
+	Name        string
+	Description string
+
+	// Element is the identifier of the building element the space is bounded
+	// by, and is required: [MissingBoundaryElementError] otherwise.
+	Element GlobalID
+
+	// Physical is whether the boundary is realised by something built or is
+	// the open line between two rooms. It is required, because the schema does
+	// not make it optional and a reader cannot tell the two apart from
+	// anything else in the file.
+	Physical PhysicalOrVirtual
+
+	// Internal is whether the space is bounded by the element from the inside
+	// of the building or from the outside of it. It is required for the reason
+	// Physical is.
+	Internal InternalOrExternal
+
+	// Connection is where the two meet, and is nil where the caller holds no
+	// geometry for it.
+	//
+	// The attribute is optional in the schema, which is what makes a purely
+	// logical export a complete one: the relationship says which space is
+	// bounded by which element, and a caller with no curve to draw for it says
+	// nothing rather than drawing an approximation nobody asked for.
+	Connection *ConnectionCurve
+}
+
+// PhysicalOrVirtual is IfcPhysicalOrVirtualEnum: whether a boundary is
+// realised by something built.
+type PhysicalOrVirtual string
+
+// The members IFC defines.
+//
+// [BoundaryVirtual] is here because the schema has it, not because every
+// caller can produce one: IFC writes a virtual boundary by naming an
+// IfcVirtualElement, so a caller with no element at all has no boundary to
+// write either way. Which of these a boundary is is the caller's to decide and
+// never this package's to infer.
+const (
+	PhysicalBoundary   PhysicalOrVirtual = "PHYSICAL"
+	BoundaryVirtual    PhysicalOrVirtual = "VIRTUAL"
+	BoundaryNotDefined PhysicalOrVirtual = "NOTDEFINED"
+)
+
+// InternalOrExternal is IfcInternalOrExternalEnum: which side of the building
+// envelope a boundary is on.
+type InternalOrExternal string
+
+// The members IFC defines.
+//
+// The three qualified external ones say what is on the far side of the
+// boundary — the ground, water, or a fire compartment — and each is external.
+const (
+	BoundaryInternal      InternalOrExternal = "INTERNAL"
+	BoundaryExternal      InternalOrExternal = "EXTERNAL"
+	BoundaryExternalEarth InternalOrExternal = "EXTERNAL_EARTH"
+	BoundaryExternalWater InternalOrExternal = "EXTERNAL_WATER"
+	BoundaryExternalFire  InternalOrExternal = "EXTERNAL_FIRE"
+	BoundaryUndecided     InternalOrExternal = "NOTDEFINED"
+)
+
+// ConnectionCurve is IfcConnectionCurveGeometry: where two things meet, as
+// each of them holds it.
+//
+// There are two curves rather than one because the two objects have coordinate
+// systems of their own, and the line where a room meets a wall is a different
+// run of numbers in each. A caller which holds only one of them writes only
+// that one, which is the ordinary case and is what the second being optional
+// is for.
+type ConnectionCurve struct {
+	// OnRelating is the curve in the coordinate system of the space, and is
+	// required.
+	OnRelating Polyline
+
+	// OnRelated is the same curve in the coordinate system of the element, and
+	// is nil where the caller holds no second expression of it.
+	OnRelated *Polyline
 }
 
 // Group is IfcZone: a set of things administered together, which has members
