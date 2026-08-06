@@ -79,6 +79,11 @@ segments, so an arc which needs two and a bit gets three and follows the curve
 more closely than it had to. It is reported so that a caller can check the
 approximation it got against the one it asked for.
 
+A node which references no loop — a campus, a warranty — has no outline to
+draw, and that is an answer rather than a failure: the region comes back empty
+and neither the chord tolerance nor the deviation is written, because nothing
+was drawn for it.
+
 Exit code 1 is a drawing which could not be made — a ring which does not close,
 a corner nothing states the position of, a shape which crosses itself, a chord
 tolerance the registry does not declare in the unit of the frame, or an arc a
@@ -349,10 +354,17 @@ func reportTessellate(
 		result.Tolerance = &entry
 	}
 
-	chord := declared(drawn.ChordTolerance())
-	result.Chord = &chord
+	// Both are properties of a drawing, and a node which references no loop had
+	// none made: there was no curve to follow, so the tolerance was never read.
+	// Writing them anyway would put a tolerance with no name and a deviation
+	// from nothing into the answer, which reads as a drawing rather than as the
+	// absence of one.
+	if drawn.ChordTolerance().Name != "" {
+		chord := declared(drawn.ChordTolerance())
+		result.Chord = &chord
 
-	result.Deviation = &measuredValue{Value: drawn.Deviation(), Unit: unit}
+		result.Deviation = &measuredValue{Value: drawn.Deviation(), Unit: unit}
+	}
 
 	region := regionOf(drawn.Region())
 	result.Region = &region

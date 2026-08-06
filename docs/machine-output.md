@@ -1165,8 +1165,8 @@ model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
 | `frame` | string, optional | The frame the boundary and the drawing are expressed in. |
 | `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
-| `chord` | object, optional | The tolerance the curves were drawn to, same shape. It travels with the answer because a list of points that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. |
-| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. |
+| `chord` | object, optional | The tolerance the curves were drawn to, same shape. It travels with the answer because a list of points that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. Absent, with `deviation`, for a node which references no loop: nothing was drawn for one, so there is no tolerance it was drawn to. |
+| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. Absent with `chord`. |
 | `deviation.unit` | string, optional | The frame's linear unit. |
 | `region` | object, optional | What the drawing came to. Written for a drawing that succeeded whether or not it covers anything. Same shape as [`buildable`](#buildable)'s `region`. |
 | `region.area` | number | What it covers, holes taken away, in the square of `unit`. It is the area of the segments and not of the curves — `measure` is what computes the exact figure, from the arcs themselves. |
@@ -1185,7 +1185,10 @@ against the one it asked for rather than assuming the bound was met exactly.
 **A boundary with nothing curved in it is drawn to itself, unchanged** — the same rings, the
 same orientation, `deviation` zero — so this is one command rather than one for curved
 outlines and another for straight ones. `chord` is still reported for such a run, because
-what a caller asked for is part of what it got.
+what a caller asked for is part of what it got. A node which references **no loop** is the
+other case and reads differently: it is **exit `0`** with `derived` true and an empty
+`region`, and neither `chord` nor `deviation` is written, because nothing was drawn. A campus
+and a warranty have no outline, which is not a fault in either of them.
 
 **The rings are nested and wound the way every other region's are.** A ring inside an odd
 number of others is a hole and runs the other way round from the ring holding it, which is the

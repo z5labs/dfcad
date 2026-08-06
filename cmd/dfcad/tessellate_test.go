@@ -35,6 +35,11 @@ const curvedRegistry = `(project
   (geometry area)
   (description "An enclosed room used for meetings."))
 
+(type Campus
+  (kind Zone)
+  (geometry absent)
+  (description "A group of things administered together, which has no shape."))
+
 (predicate position
   (unit m)
   (shape coordinate)
@@ -186,6 +191,12 @@ const curvedModel = `(vertex geom:V-01
   (frame frame:building)
   (boundary geom:L-01)
   (boundary geom:L-11))
+
+(node site:Z-01
+  (label "The estate the plate is part of")
+  (kind Zone)
+  (type Campus)
+  (geometry absent))
 `
 
 // curved is the fixture tree the drawings below are read out of.
@@ -340,6 +351,28 @@ func TestRunTessellateReportsTheDigestItWasDrawnFrom(t *testing.T) {
 
 	assert.NotEqual(t, result.Digest, moved.Digest, "a model which changed anywhere is a different tree")
 	assert.Equal(t, result.Region.Area, moved.Region.Area, "and the shape it was asked about did not move")
+}
+
+// TestRunTessellateANodeWithNoOutline is its own function because a node which
+// bounds nothing is an answer rather than a refusal, and what it asserts is
+// which fields are absent from that answer.
+//
+// A campus and a warranty have no outline, which is not a fault in either of
+// them. Nothing was drawn for one, so there is no tolerance it was drawn to and
+// no deviation from anything — and writing either of them anyway would put a
+// tolerance with no name and a deviation from nothing into the result, which
+// reads as a drawing rather than as the absence of one.
+func TestRunTessellateANodeWithNoOutline(t *testing.T) {
+	result, _ := drawn(t, exitSuccess, curved(), "--chord", "chord-deviation", "site:Z-01")
+
+	assert.True(t, result.Derived, "a node with no outline is an answer rather than a failure")
+
+	require.NotNil(t, result.Region)
+	assert.True(t, result.Region.Empty)
+	assert.Empty(t, result.Region.Pieces)
+
+	assert.Nil(t, result.Chord, "nothing was drawn, so there is no tolerance it was drawn to")
+	assert.Nil(t, result.Deviation, "and nothing to have departed from anything")
 }
 
 func TestRunTessellateRefusesWhatItCannotDraw(t *testing.T) {
