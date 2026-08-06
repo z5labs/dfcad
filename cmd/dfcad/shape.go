@@ -111,13 +111,20 @@ type shapes struct {
 	height string
 }
 
-// drawing reports whether the run named the vocabulary a boundary is read
-// under, which is what decides whether anything is drawn at all.
+// drawing reports whether the run asked for geometry at all.
+//
+// Every flag which is only of use to a drawing counts, and not just the three
+// a boundary is read under. A run which named the vocabulary an arc is written
+// in and nothing else meant to draw curves; treating it as a spatial export
+// would answer that with a file holding no geometry and no reason for it,
+// which the caller would have to find out by opening the file.
 func (s shapes) drawing() bool {
-	return s.position != "" || s.tolerance != "" || s.chord != ""
+	return s.position != "" || s.tolerance != "" || s.chord != "" ||
+		s.arcCentre != "" || s.arcThrough != ""
 }
 
-// complete reports whether it named all three of them.
+// complete reports whether it named all three of the flags a boundary is read
+// under, which is what decides whether anything is drawn.
 func (s shapes) complete() bool {
 	return s.position != "" && s.tolerance != "" && s.chord != ""
 }

@@ -606,6 +606,11 @@ func TestRunExportRefusesAnIncompleteDrawingVocabulary(t *testing.T) {
 			expected: "swept upwards",
 		},
 		{
+			name:     "an arc vocabulary with no boundary to bend",
+			args:     []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through"},
+			expected: "--position",
+		},
+		{
 			name: "an arc centre with no point on the curve",
 			args: []string{
 				"--position", "position", "--tolerance", "corner", "--chord", "facet",
