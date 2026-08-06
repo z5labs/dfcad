@@ -129,6 +129,12 @@ var commands = []command{
 		run:     runMeasure,
 	},
 	{
+		name:    "tessellate",
+		summary: "draw the boundary of one thing as straight segments, to a chord tolerance you name",
+		usage:   tessellateUsage,
+		run:     runTessellate,
+	},
+	{
 		name:    "buildable",
 		summary: "derive what may be built inside a boundary once its setbacks are taken off",
 		usage:   buildableUsage,

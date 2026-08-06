@@ -332,6 +332,17 @@
 // curved boundary and says to draw it deliberately rather than drawing it for
 // you.
 //
+// [Topology.TessellateRegion] is the same for a whole semantic node, and is what
+// an export goes through: it draws every ring bounding the node at once and
+// returns a [RegionTessellation] whose outer rings and holes are nested by the
+// same even-odd rule a measurement uses, wound the same way round, and readable
+// as an ordinary [Region]. Doing it a ring at a time is not the same thing,
+// because which ring is a hole is a property of the region and not of any ring
+// in it. A boundary with nothing curved in it is drawn to itself, unchanged, so
+// a caller has one path rather than a curved one and a straight one. An arc
+// which the named tolerance would take more segments to follow than anything can
+// use is refused, naming the edge, rather than truncated.
+//
 // # Offsetting and overlaying
 //
 // How big something is answers one question. Whether it fits answers the other,

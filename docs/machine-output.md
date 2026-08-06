@@ -1123,6 +1123,98 @@ from an empty stream.
 A node which references no loop is **exit `0`** with `derived` true and no figures. A circuit
 group and a warranty have no outline, which is not a fault in either of them.
 
+### `tessellate`
+
+The outline of one thing as rings of straight segments, drawn to a chord tolerance the run
+names. It takes the id of the thing to draw and five flags, three of which are required.
+
+| Flag | Meaning |
+|------|---------|
+| `--position <predicate>` | The predicate a corner's position is claimed under, which the boundary is read from. Required. |
+| `--tolerance <name>` | The tolerance corners are judged coincident against and rings judged planar against. Required. |
+| `--chord <name>` | The tolerance a straight segment standing in for a curve may fall from it by. Required. |
+| `--arc-centre <predicate>` | The predicate a curved edge's centre is claimed under. |
+| `--arc-through <predicate>` | The predicate the point a curved edge passes through is claimed under. |
+
+None of the first three has a default and none of them ever will
+([0012](decisions/0012-tolerances-are-registry-data.md)). How closely a curve has to be
+followed is a decision a project makes — a millimetre for a setting-out drawing, a hundred
+millimetres for an area take-off — and a value compiled into the command would be the engine
+choosing the resolution of somebody else's drawing. A run that names none of the three is a
+**usage error** naming every flag it was not given at once.
+
+The last two are the vocabulary an arc is written in, and **they are a pair**: a centre with
+no point on the curve beside it leaves two arcs between the same two ends — the short way
+round and the long way round — and does not say which was meant, so naming one and not the
+other is a **usage error**. A run that names neither reads every edge as straight, which is
+what almost every edge is and what every edge of a model nobody has claimed an arc in is; the
+engine carries no domain vocabulary, so which predicate holds a centre is never something it
+knows ([0010](decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+
+**This is the one place a curve becomes segments.** Nothing else in the engine tessellates on
+the way to an answer: an area, a length, a centroid and a bounding box are computed from the
+arc itself, so the resolution of a drawing never leaks into a figure somebody reports. What
+this writes is a drawing, it says what it was drawn to, and nothing is written back into the
+model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the drawing was asked about. Written whatever the outcome. |
+| `derived` | bool | Whether there is a region below. Written whatever the outcome, so a node with no outline to draw (`derived` true, `region.empty` true) reads differently from one whose outline could not be read (`derived` false). |
+| `digest` | string, optional | The digest of the source tree the drawing was derived from, lower-case hex, so a caller can check the drawing against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `frame` | string, optional | The frame the boundary and the drawing are expressed in. |
+| `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
+| `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
+| `chord` | object, optional | The tolerance the curves were drawn to, same shape. It travels with the answer because a list of points that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. Absent, with `deviation`, for a node which references no loop: nothing was drawn for one, so there is no tolerance it was drawn to. |
+| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. Absent with `chord`. |
+| `deviation.unit` | string, optional | The frame's linear unit. |
+| `region` | object, optional | What the drawing came to. Written for a drawing that succeeded whether or not it covers anything. Same shape as [`buildable`](#buildable)'s `region`. |
+| `region.area` | number | What it covers, holes taken away, in the square of `unit`. It is the area of the segments and not of the curves — `measure` is what computes the exact figure, from the arcs themselves. |
+| `region.empty` | bool | Whether it covers nothing. |
+| `region.pieces[].area` | number | What one connected part encloses once its holes are taken away. |
+| `region.pieces[].outer` | array | The ring bounding that part, closed without repeating its first corner, each corner as its components. |
+| `region.pieces[].holes` | array, optional | The rings taken out of it. Absent where there are none. |
+| `budget` | object, optional | The accuracy of the corners the drawing was read from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. |
+
+**`deviation` is what was achieved and `chord` is what was asked for,** and the two differ
+because a curve is divided into a whole number of segments: an arc that needs two and a bit
+gets three, and follows the curve more closely than it had to. The deviation is always within
+the chord tolerance, and it is reported so that a caller can check the approximation it got
+against the one it asked for rather than assuming the bound was met exactly.
+
+**A boundary with nothing curved in it is drawn to itself, unchanged** — the same rings, the
+same orientation, `deviation` zero — so this is one command rather than one for curved
+outlines and another for straight ones. `chord` is still reported for such a run, because
+what a caller asked for is part of what it got. A node which references **no loop** is the
+other case and reads differently: it is **exit `0`** with `derived` true and an empty
+`region`, and neither `chord` nor `deviation` is written, because nothing was drawn. A campus
+and a warranty have no outline, which is not a fault in either of them.
+
+**The rings are nested and wound the way every other region's are.** A ring inside an odd
+number of others is a hole and runs the other way round from the ring holding it, which is the
+same even-odd rule `measure` takes a courtyard's area away by; nothing in the model declares
+which loop is the outside one. A region drawn here and a region read by any other command are
+therefore interchangeable downstream. Drawing each loop separately is **not** the same thing:
+which ring is a hole is a property of the region and not of any ring in it.
+
+Nesting is decided at the segments here rather than at the corners, and that is what makes a
+curved outline nestable at all. A courtyard whose wall bows out past a corner of the plate
+around it is inside the plate and outside the polygon of its chords, so a count taken at the
+corners would flip on which side of a bulge a corner happened to fall — a region wrong by a
+whole ring rather than by a sag. That is the shape `measure` refuses to nest rather than
+answer wrongly about, and drawing the curve is the caller deciding to answer it, to a
+resolution they named.
+
+**Exit `1`** is a drawing which could not be made: everything that refuses a region refuses
+this — a ring which does not close, a corner nothing states the position of, corners which are
+not in one plane, a ring which crosses itself, one whose corners are collinear, a tolerance
+the registry does not declare in the unit of the frame. So is an arc which the named chord
+tolerance would take more segments to follow than anything can use: that is refused with a
+diagnostic naming the edge, rather than truncated, because a tolerance far finer than the
+coordinates the arc was surveyed to draws a curve to a resolution nothing behind it supports.
+The result object still comes back with `derived` false, so a caller reads why from the
+diagnostics on stderr rather than from an empty stream.
+
 ### `buildable`
 
 What may be built inside a boundary once the setback claimed on each of its edges has been

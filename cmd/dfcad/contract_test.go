@@ -71,6 +71,15 @@ var samples = map[string][]string{
 		"--tolerance", "coincident",
 		"site:S-103",
 	},
+	// A drawing says how closely it follows the curve, so the chord tolerance
+	// is named beside the two a boundary is read with. The fixture's parcel has
+	// nothing curved in it, which is drawn to itself.
+	"tessellate": {
+		"--position", "position",
+		"--tolerance", "coincident",
+		"--chord", "chord-deviation",
+		"site:P-01",
+	},
 	// A derivation is asked in the project's own vocabulary, so the three
 	// predicates and the tolerance are named rather than defaulted.
 	"buildable": {

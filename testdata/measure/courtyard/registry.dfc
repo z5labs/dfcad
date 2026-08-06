@@ -30,3 +30,7 @@
 (tolerance boundary-closure
   (value 0.005 m)
   (description "How far a loop may fail to close, and how far out of one plane its corners may lie."))
+
+(tolerance chord-deviation
+  (value 0.01 m)
+  (description "How far a straight segment standing in for a curve may fall from it. Nothing here bends, which is what makes this the tolerance a drawing of this model has nothing to spend."))

@@ -317,30 +317,19 @@ func (t *Topology) TessellateLoop(loop *Loop, survey Survey, chord string) (Tess
 		return Tessellation{}, m.diags
 	}
 
+	points, deviation, ok := m.drawnRing(out, tolerance)
+	if !ok {
+		return Tessellation{}, m.diags
+	}
+
 	drawn := Tessellation{
 		subject:   loop.id,
 		unit:      m.unit,
 		tolerance: tolerance,
 		closed:    out.closed,
 		dimension: out.dimension,
-	}
-
-	for i, point := range out.points {
-		curve := out.bends[i]
-		if curve == nil {
-			drawn.points = append(drawn.points, point)
-			continue
-		}
-
-		segment := Tessellation{}
-		if !m.draw(curve, tolerance, &segment) {
-			return Tessellation{}, m.diags
-		}
-
-		// The last point of one arc is the first corner of the next step, so it
-		// is written once, by the step it begins.
-		drawn.points = append(drawn.points, segment.points[:len(segment.points)-1]...)
-		drawn.deviation = math.Max(drawn.deviation, segment.deviation)
+		points:    points,
+		deviation: deviation,
 	}
 
 	if out.closed {
@@ -365,6 +354,212 @@ func (t *Topology) TessellateLoop(loop *Loop, survey Survey, chord string) (Tess
 	drawn.points = append(drawn.points, out.finish)
 
 	return drawn, m.diags
+}
+
+// RegionTessellation is the area a semantic node covers with every curve in its
+// boundary replaced by the straight segments which stand in for it, together
+// with the chord tolerance that was decided to and the deviation achieved.
+//
+// It is [Tessellation] one dimension up. An edge and a loop each become one run
+// of points; a region becomes a set of rings — an outer ring per connected part
+// and the rings taken out of it — because that is what a region is, and a result
+// which could only carry one ring would have to be unable to represent a floor
+// plate with a courtyard in it.
+//
+// [RegionTessellation.Region] is the drawn figure as an ordinary [Region], and
+// it is the point of the type. Every operation over regions is over straight
+// segments, so a curved boundary has nothing they can be run against until it is
+// drawn; once it is, the result is the same kind of value a straight boundary
+// reads as and goes the same places. A region with nothing curved in it comes
+// back exactly as [Topology.RegionOf] reads it, so a caller has one path rather
+// than a curved one and a straight one.
+//
+// Nothing here is ever written back
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)). The
+// arcs in the model are untouched and stay exact; this is computed at the moment
+// something needs straight lines and thrown away after.
+//
+// The zero RegionTessellation covers nothing and was drawn to nothing, which is
+// what tessellating a node with no outline yields.
+type RegionTessellation struct {
+	// region is the drawn figure, read the way every other region is.
+	region Region
+
+	// tolerance is the declared chord tolerance it was drawn to.
+	tolerance Tolerance
+
+	// deviation is the furthest any segment of it falls from the curve it
+	// stands in for, which is at most the tolerance.
+	deviation float64
+}
+
+// Subject returns the id of the node whose boundary was drawn.
+func (t RegionTessellation) Subject() ID { return t.region.Subject() }
+
+// Frame returns the frame it was drawn in.
+func (t RegionTessellation) Frame() ID { return t.region.Frame() }
+
+// Unit returns the linear unit of that frame, which its points and its
+// deviation are in and which its area is in the square of.
+func (t RegionTessellation) Unit() Unit { return t.region.Unit() }
+
+// ChordTolerance returns the declared tolerance the curves were drawn to: how
+// far a segment standing in for a curve was allowed to fall from it.
+//
+// It is a tolerance the registry declares and never a number this package chose
+// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)), for the reason
+// [Tessellation.ChordTolerance] is.
+func (t RegionTessellation) ChordTolerance() Tolerance { return t.tolerance }
+
+// Deviation returns the furthest any segment falls from the curve it stands in
+// for, in [RegionTessellation.Unit].
+//
+// It is what was achieved rather than what was asked for, and is always within
+// [RegionTessellation.ChordTolerance]. A region with nothing curved in it
+// deviates from itself by nothing.
+func (t RegionTessellation) Deviation() float64 { return t.deviation }
+
+// Region returns the drawn figure as an ordinary region, which every operation
+// over regions takes.
+func (t RegionTessellation) Region() Region { return t.region }
+
+// Pieces returns the connected parts the drawn figure covers, each with the
+// ring bounding it and the rings taken out of it.
+//
+// The outer ring of a piece runs one way and its holes the other, exactly as
+// they do for a region which was never drawn, so the two are interchangeable
+// downstream.
+func (t RegionTessellation) Pieces() []Piece { return t.region.Pieces() }
+
+// Empty reports whether the drawn figure covers nothing.
+func (t RegionTessellation) Empty() bool { return t.region.Empty() }
+
+// Area returns the total area the drawn figure covers, holes taken away, in the
+// square of [RegionTessellation.Unit].
+//
+// It is the area of the segments and not of the curves, which is what makes it
+// the wrong number to report a region's size with: [Topology.MeasureRegion]
+// computes that from the arcs themselves and is exact. This is what the drawn
+// figure encloses, which is what a consumer of the drawn figure will compute.
+func (t RegionTessellation) Area() float64 { return t.region.Area() }
+
+// Budget returns the accumulated accuracy of the position claims behind it.
+func (t RegionTessellation) Budget() Budget { return t.region.Budget() }
+
+// String writes how much of a shape the drawing came to and how closely it
+// follows the boundary it was drawn from.
+func (t RegionTessellation) String() string {
+	if t.region.subject == "" {
+		return "nothing tessellated"
+	}
+
+	if t.region.Empty() {
+		return fmt.Sprintf("%s: nothing tessellated", t.region.subject)
+	}
+
+	var holes int
+	for _, piece := range t.region.pieces {
+		holes += len(piece.holes)
+	}
+
+	parts := []string{plural(len(t.region.pieces), "piece")}
+	if holes > 0 {
+		parts = append(parts, plural(holes, "hole"))
+	}
+
+	parts = append(parts,
+		fmt.Sprintf("%s%s", decimal(t.region.Area()), squareSuffix(t.region.Unit())),
+		fmt.Sprintf("within %s%s of the boundary", decimal(t.deviation), unitSuffix(t.region.Unit())),
+	)
+	if t.tolerance.Name != "" {
+		parts = append(parts, fmt.Sprintf("drawn to %s", t.tolerance.Name))
+	}
+
+	return fmt.Sprintf("%s: %s", t.region.subject, strings.Join(parts, ", "))
+}
+
+// TessellateRegion replaces the boundary of a semantic node with the straight
+// segments which stand in for it, no further from it than the named chord
+// tolerance allows.
+//
+// It is [Topology.TessellateLoop] over every ring bounding a node at once, and
+// the reason it is one call rather than a loop a caller writes is the nesting.
+// Which ring is a hole is not written in the model — it is worked out by asking
+// which rings hold which, by the even-odd rule
+// ([Topology.MeasureRegion]) — and a caller drawing each loop on its own gets
+// rings with no answer to that and no way to compute one, because the drawn
+// rings are points and the nesting is over the region they came from.
+//
+// The nesting is taken at the segments here rather than at the corners. That is
+// what makes a curved region nestable at all: a courtyard whose wall bows out
+// past a corner of the plate around it is inside the plate and outside the
+// polygon of its chords, which is the shape [Topology.MeasureRegion] refuses to
+// nest rather than answer wrongly about. Drawing the curve is the caller
+// deciding to answer it, to a resolution they named.
+//
+// A region with nothing curved in it is drawn to itself, unchanged: the same
+// rings, the same orientation, the same pieces and a deviation of nothing. It is
+// not a case a caller has to avoid, and [Topology.RegionOf] and this give back
+// the same region for it.
+//
+// The tolerance is named and the registry declares it, in the unit of the node's
+// frame. There is no default and no fallback
+// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)), and a run which
+// named none is refused rather than given one.
+//
+// Everything which refuses a region refuses this: a ring which does not close,
+// corners which are not in one plane, rings in two planes, a ring which crosses
+// itself, a ring whose corners are collinear. An arc which the tolerance would
+// take more segments to follow than anything can use is refused too, naming that
+// edge — see [maxChordDivisions].
+func (t *Topology) TessellateRegion(
+	node *SemanticNode,
+	boundaries *Boundaries,
+	survey Survey,
+	chord string,
+) (RegionTessellation, []Diagnostic) {
+	if node == nil {
+		return RegionTessellation{}, nil
+	}
+
+	region, drew, diags := t.regionOf(node, boundaries, survey, chord, true)
+
+	return RegionTessellation{region: region, tolerance: drew.tolerance, deviation: drew.deviation}, diags
+}
+
+// drawnRing is an assembled ring with every arc in it replaced by the segments
+// which stand in for it, and how far the worst of those segments falls from the
+// curve it stands in for.
+//
+// It covers the steps of the traversal and no more: a ring which closes is
+// complete, and a traversal which does not close ends at a corner no step of it
+// begins at, which the caller which has one adds. A ring with nothing curved in
+// it comes back as its own corners, exactly as they were surveyed and in the
+// order the traversal ran through them, which is what makes a straight ring and
+// a drawn one the same kind of value.
+func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, float64, bool) {
+	var points []Point
+	var deviation float64
+
+	for i, point := range out.points {
+		curve := out.bends[i]
+		if curve == nil {
+			points = append(points, point)
+			continue
+		}
+
+		segment := Tessellation{}
+		if !m.draw(curve, tolerance, &segment) {
+			return nil, 0, false
+		}
+
+		// The last point of one arc is the first corner of the next step, so it
+		// is written once, by the step it begins.
+		points = append(points, segment.points[:len(segment.points)-1]...)
+		deviation = math.Max(deviation, segment.deviation)
+	}
+
+	return points, deviation, true
 }
 
 // maxChordDivisions is the most segments one arc is allowed to become.
