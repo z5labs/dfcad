@@ -7,6 +7,7 @@ package ifc
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 	"slices"
 	"strconv"
@@ -97,6 +98,29 @@ const (
 	entityDirection  Entity = "IFCDIRECTION"
 )
 
+// The shape and property entities, named here for the reason the ones above
+// are.
+const (
+	entitySubcontext    Entity = "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"
+	entityProductShape  Entity = "IFCPRODUCTDEFINITIONSHAPE"
+	entityShape         Entity = "IFCSHAPEREPRESENTATION"
+	entityPolyline      Entity = "IFCPOLYLINE"
+	entityClosedProfile Entity = "IFCARBITRARYCLOSEDPROFILEDEF"
+	entityVoidedProfile Entity = "IFCARBITRARYPROFILEDEFWITHVOIDS"
+	entityExtruded      Entity = "IFCEXTRUDEDAREASOLID"
+	entityPropertySet   Entity = "IFCPROPERTYSET"
+	entityProperty      Entity = "IFCPROPERTYSINGLEVALUE"
+	entityDefines       Entity = "IFCRELDEFINESBYPROPERTIES"
+)
+
+// profileArea is the IfcProfileTypeEnum member every profile this package
+// writes is.
+//
+// A profile is an area rather than a curve because it is swept into a solid.
+// The other member, CURVE, is for a profile swept into a shell, which is a
+// solid this package does not write.
+const profileArea = "AREA"
+
 // Write serialises model as an ISO 10303-21 exchange file.
 //
 // The bytes are a pure function of the model. Two calls with equal models
@@ -108,7 +132,11 @@ const (
 // later run would find on disk and read as the export of that model, and the
 // refusals below are exactly the cases where that would be wrong.
 func Write(w io.Writer, model Model) error {
-	out := &writer{interned: make(map[string]reference), objects: make(map[GlobalID]reference)}
+	out := &writer{
+		interned: make(map[string]reference),
+		objects:  make(map[GlobalID]reference),
+		contexts: make(map[string]reference),
+	}
 
 	if err := out.model(model); err != nil {
 		return err
@@ -142,7 +170,7 @@ type writer struct {
 
 	// interned maps an instance's rendered form to the instance which already
 	// holds it, for the types where sharing is the convention: points,
-	// directions and the placements over them.
+	// directions, the placements over them and the polylines through them.
 	//
 	// Rooted objects are never interned. Two spaces with the same name and
 	// the same placement are two spaces, and merging them would be this
@@ -153,6 +181,16 @@ type writer struct {
 	// it. It is what resolves a group's members, and what catches an
 	// identifier written on two objects.
 	objects map[GlobalID]reference
+
+	// contexts maps a representation context's identifier to the instance
+	// which holds it. The model's own context is under the empty string, so a
+	// shape which names no subcontext resolves through the same lookup as one
+	// which does.
+	contexts map[string]reference
+
+	// subcontexts are the subcontext identifiers in the order they were
+	// declared, which is what a refusal lists as the alternatives.
+	subcontexts []string
 }
 
 // model serialises the whole model into instances.
@@ -247,7 +285,7 @@ func (w *writer) context(context RepresentationContext) (reference, error) {
 		precision = real(context.Precision)
 	}
 
-	return w.add(entityContext, []value{
+	at, err := w.add(entityContext, []value{
 		optionalText(context.Identifier),
 		optionalText(context.Type),
 		integer(context.Dimension),
@@ -255,6 +293,56 @@ func (w *writer) context(context RepresentationContext) (reference, error) {
 		world,
 		north,
 	})
+	if err != nil {
+		return 0, err
+	}
+
+	w.contexts[""] = at
+
+	for _, subcontext := range context.Subcontexts {
+		if err := w.subcontext(subcontext, at); err != nil {
+			return 0, err
+		}
+	}
+
+	return at, nil
+}
+
+// subcontext writes one view of the context above and records it under its
+// identifier, which is what a shape names to be written in it.
+//
+// The four attributes it inherits are written as derived rather than as
+// absent. They are not values which were left out: the dimension, the
+// precision, the world coordinate system and true north of a subcontext are
+// the parent's, and the schema says so by redeclaring them.
+func (w *writer) subcontext(subcontext Subcontext, parent reference) error {
+	if subcontext.Identifier == "" {
+		return UnnamedSubcontextError{}
+	}
+	if _, held := w.contexts[subcontext.Identifier]; held {
+		return DuplicateSubcontextError{Identifier: subcontext.Identifier}
+	}
+
+	at, err := w.add(entitySubcontext, []value{
+		text(subcontext.Identifier),
+		optionalText(subcontext.Type),
+		derived{}, // CoordinateSpaceDimension
+		derived{}, // Precision
+		derived{}, // WorldCoordinateSystem
+		derived{}, // TrueNorth
+		parent,
+		absent{}, // TargetScale
+		optionalEnumeration(subcontext.TargetView),
+		optionalText(subcontext.UserDefinedTargetView),
+	})
+	if err != nil {
+		return err
+	}
+
+	w.contexts[subcontext.Identifier] = at
+	w.subcontexts = append(w.subcontexts, subcontext.Identifier)
+
+	return nil
 }
 
 // spatial writes a list of sibling spatial elements beneath the placement
@@ -283,6 +371,13 @@ func (w *writer) spatial(elements []Spatial, under reference) ([]value, error) {
 			return nil, err
 		}
 
+		// The shape comes before the element which carries it, because an
+		// instance may only reference one already written.
+		representation, err := w.representation(element.Representation, element.GlobalID)
+		if err != nil {
+			return nil, err
+		}
+
 		attributes := []value{
 			text(element.GlobalID),
 			absent{}, // OwnerHistory
@@ -290,7 +385,7 @@ func (w *writer) spatial(elements []Spatial, under reference) ([]value, error) {
 			optionalText(element.Description),
 			optionalText(element.ObjectType),
 			placement,
-			absent{}, // Representation
+			representation,
 			optionalText(element.LongName),
 			optionalEnumeration(string(element.Composition)),
 		}
@@ -316,6 +411,10 @@ func (w *writer) spatial(elements []Spatial, under reference) ([]value, error) {
 		}
 
 		if err := w.products(element, at, below); err != nil {
+			return nil, err
+		}
+
+		if err := w.properties(element.Properties, at); err != nil {
 			return nil, err
 		}
 
@@ -541,6 +640,238 @@ func (w *writer) optionalDirection(along *Direction) (value, error) {
 		return absent{}, nil
 	}
 	return w.direction(*along)
+}
+
+// representation writes an IfcProductDefinitionShape and everything beneath
+// it, and is absent for an object nobody has drawn.
+func (w *writer) representation(representation *Representation, of GlobalID) (value, error) {
+	if representation == nil {
+		return absent{}, nil
+	}
+
+	if len(representation.Shapes) == 0 {
+		return nil, EmptyRepresentationError{Of: of}
+	}
+
+	shapes := make(list, 0, len(representation.Shapes))
+	for _, shape := range representation.Shapes {
+		at, err := w.shape(shape)
+		if err != nil {
+			return nil, err
+		}
+		shapes = append(shapes, at)
+	}
+
+	return w.add(entityProductShape, []value{
+		optionalText(representation.Name),
+		optionalText(representation.Description),
+		shapes,
+	})
+}
+
+// shape writes one IfcShapeRepresentation and the geometry it holds.
+func (w *writer) shape(shape Shape) (reference, error) {
+	context, held := w.contexts[shape.Context]
+	if !held {
+		return 0, UnknownSubcontextError{Context: shape.Context, Known: slices.Clone(w.subcontexts)}
+	}
+
+	if len(shape.Items) == 0 {
+		return 0, EmptyShapeError{Identifier: shape.Identifier}
+	}
+
+	items := make(list, 0, len(shape.Items))
+	for _, item := range shape.Items {
+		at, err := w.item(item)
+		if err != nil {
+			return 0, err
+		}
+		items = append(items, at)
+	}
+
+	return w.add(entityShape, []value{
+		context,
+		optionalText(shape.Identifier),
+		optionalText(shape.Type),
+		items,
+	})
+}
+
+// item writes one piece of a shape's geometry.
+//
+// The refusal at the end is unreachable through the exported API — [Item] is
+// closed by an unexported method — and it is here for the case it is
+// reachable from: a geometry added to this package and not added here would
+// otherwise be written as nothing at all.
+func (w *writer) item(item Item) (reference, error) {
+	switch held := item.(type) {
+	case Polyline:
+		return w.polyline(held)
+	case ExtrudedArea:
+		return w.extruded(held)
+	default:
+		return 0, UnknownItemError{Item: fmt.Sprintf("%T", item)}
+	}
+}
+
+// polyline writes an IfcPolyline and the points beneath it.
+//
+// It is interned like the points it runs through, which is what makes the
+// outline of a room and the curve bounding the profile it is swept from one
+// instance rather than two identical ones. A polyline carries no identity in
+// the model — it is a run of coordinates — so two which encode the same way
+// are the same curve wherever each is referenced from.
+func (w *writer) polyline(line Polyline) (reference, error) {
+	if len(line.Points) < 2 {
+		return 0, ShortPolylineError{Points: len(line.Points)}
+	}
+
+	points := make(list, 0, len(line.Points))
+	for _, at := range line.Points {
+		held, err := w.point2D(at)
+		if err != nil {
+			return 0, err
+		}
+		points = append(points, held)
+	}
+
+	return w.intern(entityPolyline, []value{points})
+}
+
+// point2D writes an IfcCartesianPoint in the plane.
+func (w *writer) point2D(at Point2D) (reference, error) {
+	return w.intern(entityPoint, []value{list{real(at.X), real(at.Y)}})
+}
+
+// profile writes the cross section a solid is swept from, as whichever of the
+// two arbitrary profile entities its holes make it.
+func (w *writer) profile(profile ArbitraryProfile) (reference, error) {
+	outer, err := w.closed(profile.Outer, false)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(profile.Inner) == 0 {
+		return w.add(entityClosedProfile, []value{
+			enumeration(profileArea),
+			optionalText(profile.Name),
+			outer,
+		})
+	}
+
+	inner := make(list, 0, len(profile.Inner))
+	for _, curve := range profile.Inner {
+		at, err := w.closed(curve, true)
+		if err != nil {
+			return 0, err
+		}
+		inner = append(inner, at)
+	}
+
+	return w.add(entityVoidedProfile, []value{
+		enumeration(profileArea),
+		optionalText(profile.Name),
+		outer,
+		inner,
+	})
+}
+
+// closed writes one curve of a profile, refusing one which does not close.
+func (w *writer) closed(curve Polyline, inner bool) (reference, error) {
+	if len(curve.Points) < 2 {
+		return 0, ShortPolylineError{Points: len(curve.Points)}
+	}
+
+	first, last := curve.Points[0], curve.Points[len(curve.Points)-1]
+	if first != last {
+		return 0, OpenCurveError{First: first, Last: last, Inner: inner}
+	}
+
+	return w.polyline(curve)
+}
+
+// extruded writes an IfcExtrudedAreaSolid: a profile swept along a direction.
+func (w *writer) extruded(solid ExtrudedArea) (reference, error) {
+	// Written as a comparison against zero rather than as `<=` so that a depth
+	// which is not a number is refused here, naming the depth, rather than
+	// reaching the encoder as a real with no part 21 spelling.
+	if !(solid.Depth > 0) {
+		return 0, NonPositiveDepthError{Depth: solid.Depth}
+	}
+
+	profile, err := w.profile(solid.Profile)
+	if err != nil {
+		return 0, err
+	}
+
+	position, err := w.axis(solid.Position)
+	if err != nil {
+		return 0, err
+	}
+
+	along, err := w.direction(solid.Direction)
+	if err != nil {
+		return 0, err
+	}
+
+	return w.add(entityExtruded, []value{profile, position, along, real(solid.Depth)})
+}
+
+// properties writes the property sets attached to one object, and the
+// relationships which attach them.
+func (w *writer) properties(sets []PropertySet, of reference) error {
+	for _, set := range sets {
+		if len(set.Properties) == 0 {
+			return EmptyPropertySetError{GlobalID: set.GlobalID}
+		}
+
+		written := make(list, 0, len(set.Properties))
+		for _, property := range set.Properties {
+			if property.Name == "" {
+				return UnnamedPropertyError{Set: set.GlobalID}
+			}
+
+			at, err := w.add(entityProperty, []value{
+				text(property.Name),
+				optionalText(property.Description),
+				optionalTypedText(property.Value),
+				absent{}, // Unit
+			})
+			if err != nil {
+				return err
+			}
+
+			written = append(written, at)
+		}
+
+		at, err := w.rooted(entityPropertySet, set.GlobalID, []value{
+			text(set.GlobalID),
+			absent{}, // OwnerHistory
+			optionalText(set.Name),
+			optionalText(set.Description),
+			written,
+		})
+		if err != nil {
+			return err
+		}
+
+		if set.Defines == "" {
+			return MissingGlobalIDError{Entity: entityDefines, Of: set.GlobalID}
+		}
+
+		if _, err := w.rooted(entityDefines, set.Defines, []value{
+			text(set.Defines),
+			absent{}, // OwnerHistory
+			absent{}, // Name
+			absent{}, // Description
+			list{of},
+			at,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // rooted adds an instance of a rooted object: one which carries a GlobalId,

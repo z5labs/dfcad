@@ -90,3 +90,91 @@ func ExampleEncodeGlobalID() {
 	// Output:
 	// 2XQ$n5SLP5MBLyL442paFx
 }
+
+// A space carries the outline its model states and the solid a viewer can
+// draw, as two representations of one shape definition.
+//
+// The footprint is a plan and carries no elevation; the body is that plan
+// swept upwards, and the level it sits at is the placement of the extrusion.
+// Both curves close by repeating their first point, which is what IFC asks of
+// a profile's curves.
+func ExampleRepresentation() {
+	outline := ifc.Polyline{Points: []ifc.Point2D{
+		{X: 0, Y: 0}, {X: 4, Y: 0}, {X: 4, Y: 3}, {X: 0, Y: 3}, {X: 0, Y: 0},
+	}}
+
+	model := ifc.Model{
+		Header: ifc.Header{Name: "model.ifc", TimeStamp: "1970-01-01T00:00:00"},
+		Units:  ifc.UnitAssignment{Units: []ifc.SIUnit{{Type: "LENGTHUNIT", Name: "METRE"}}},
+		Context: ifc.RepresentationContext{
+			Type:      "Model",
+			Dimension: 3,
+			Subcontexts: []ifc.Subcontext{
+				{Identifier: "Body", Type: "Model", TargetView: "MODEL_VIEW"},
+				{Identifier: "FootPrint", Type: "Model", TargetView: "PLAN_VIEW"},
+			},
+		},
+		Project: ifc.Project{
+			GlobalID:   "0Ig1S2wRr2WQeQMwAKN3aq",
+			Aggregates: "1Ig1S2wRr2WQeQMwAKN3aq",
+			Sites: []ifc.Spatial{{
+				Entity:    ifc.EntitySpace,
+				GlobalID:  "2Ig1S2wRr2WQeQMwAKN3aq",
+				Name:      "Meeting Room A",
+				Placement: &ifc.Placement{},
+				Representation: &ifc.Representation{Shapes: []ifc.Shape{{
+					Context:    "FootPrint",
+					Identifier: "FootPrint",
+					Type:       "Curve2D",
+					Items:      []ifc.Item{outline},
+				}, {
+					Context:    "Body",
+					Identifier: "Body",
+					Type:       "SweptSolid",
+					Items: []ifc.Item{ifc.ExtrudedArea{
+						Profile:   ifc.ArbitraryProfile{Outer: outline},
+						Direction: ifc.Direction{Z: 1},
+						Depth:     2.7,
+					}},
+				}}},
+			}},
+		},
+	}
+
+	if err := ifc.Write(os.Stdout, model); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// ISO-10303-21;
+	// HEADER;
+	// FILE_DESCRIPTION((),'2;1');
+	// FILE_NAME('model.ifc','1970-01-01T00:00:00',(),(),'','','');
+	// FILE_SCHEMA(('IFC4'));
+	// ENDSEC;
+	// DATA;
+	// #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+	// #2=IFCUNITASSIGNMENT((#1));
+	// #3=IFCCARTESIANPOINT((0.,0.,0.));
+	// #4=IFCAXIS2PLACEMENT3D(#3,$,$);
+	// #5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,$,#4,$);
+	// #6=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#5,$,.MODEL_VIEW.,$);
+	// #7=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('FootPrint','Model',*,*,*,*,#5,$,.PLAN_VIEW.,$);
+	// #8=IFCPROJECT('0Ig1S2wRr2WQeQMwAKN3aq',$,$,$,$,$,$,(#5),#2);
+	// #9=IFCLOCALPLACEMENT($,#4);
+	// #10=IFCCARTESIANPOINT((0.,0.));
+	// #11=IFCCARTESIANPOINT((4.,0.));
+	// #12=IFCCARTESIANPOINT((4.,3.));
+	// #13=IFCCARTESIANPOINT((0.,3.));
+	// #14=IFCPOLYLINE((#10,#11,#12,#13,#10));
+	// #15=IFCSHAPEREPRESENTATION(#7,'FootPrint','Curve2D',(#14));
+	// #16=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#14);
+	// #17=IFCDIRECTION((0.,0.,1.));
+	// #18=IFCEXTRUDEDAREASOLID(#16,#4,#17,2.7);
+	// #19=IFCSHAPEREPRESENTATION(#6,'Body','SweptSolid',(#18));
+	// #20=IFCPRODUCTDEFINITIONSHAPE($,$,(#15,#19));
+	// #21=IFCSPACE('2Ig1S2wRr2WQeQMwAKN3aq',$,'Meeting Room A',$,$,#9,#20,$,$,$,$);
+	// #22=IFCRELAGGREGATES('1Ig1S2wRr2WQeQMwAKN3aq',$,$,$,#8,(#21));
+	// ENDSEC;
+	// END-ISO-10303-21;
+}

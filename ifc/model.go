@@ -186,6 +186,21 @@ type Spatial struct {
 	// what an element nobody has located yet has.
 	Placement *Placement
 
+	// Representation is the element's shape, expressed in the coordinate
+	// system Placement establishes. A nil representation writes an absent
+	// Representation, which is what an element nobody has drawn has.
+	Representation *Representation
+
+	// Properties are the property sets attached to the element, each with the
+	// IfcRelDefinesByProperties which attaches it.
+	//
+	// They are where anything which is not geometry and not one of IFC's own
+	// attributes goes: where a number came from, who measured it and how well
+	// it is known. A receiving system surfaces them beside the object, which
+	// is what makes a value in one distinguishable from a value somebody
+	// assumed.
+	Properties []PropertySet
+
 	// Aggregates is the identifier of the IfcRelAggregates joining this
 	// element to Children, and is required when there are any.
 	Aggregates GlobalID
@@ -341,4 +356,206 @@ type RepresentationContext struct {
 	// TrueNorth is where north is in that coordinate system, and is absent
 	// far more often than not.
 	TrueNorth *Direction
+
+	// Subcontexts are the views of this context a shape may be expressed in,
+	// in the order they are written. A shape names one of them by its
+	// identifier, and one which names an identifier no subcontext here carries
+	// is [UnknownSubcontextError].
+	//
+	// They are not a formality. The plan outline of a room and the solid a
+	// viewer draws it as are the same object seen two ways, and it is the
+	// subcontext which says which of the two a shape is for — so a reader
+	// which wants outlines can take them without also taking the solids.
+	Subcontexts []Subcontext
+}
+
+// Subcontext is IfcGeometricRepresentationSubContext: one view of the
+// coordinate space its parent context establishes.
+//
+// It inherits the dimension, the precision, the world coordinate system and
+// true north from that parent, which the schema writes as derived rather than
+// as absent — the values exist and are simply not this instance's to state.
+type Subcontext struct {
+	// Identifier is the context identifier, which is what a [Shape] names to
+	// be written in it: conventionally "Body", "FootPrint", "Axis". It is
+	// required, and a subcontext without one is [UnnamedSubcontextError].
+	Identifier string
+
+	// Type is the context type, which is "Model" for anything this package
+	// writes.
+	Type string
+
+	// TargetView is the IfcGeometricProjectionEnum member the view is for,
+	// spelled as IFC spells it: MODEL_VIEW, PLAN_VIEW, and the rest. The
+	// empty value writes an absent attribute.
+	TargetView string
+
+	// UserDefinedTargetView is the name of the view where TargetView is
+	// USERDEFINED, and is absent otherwise.
+	UserDefinedTargetView string
+}
+
+// Representation is IfcProductDefinitionShape: every shape one product has.
+//
+// It is one definition holding several shapes rather than one shape, because
+// an object is drawn more than one way and the alternatives are not
+// interchangeable. A room's plan outline is what its model states; the solid
+// beside it is what a viewer can draw. Keeping them in one definition is what
+// says they are the same object, and keeping them apart is what says which is
+// which.
+type Representation struct {
+	// Name and Description are the definition's text attributes. An empty one
+	// is written as absent.
+	Name        string
+	Description string
+
+	// Shapes are the representations the definition holds. There is at least
+	// one: a definition holding none is [EmptyRepresentationError] rather
+	// than an object with an empty shape.
+	Shapes []Shape
+}
+
+// Shape is IfcShapeRepresentation: one way of drawing a product, in one view
+// of the coordinate space.
+type Shape struct {
+	// Context is the identifier of the [Subcontext] the shape is expressed
+	// in. The empty string is the model's own [RepresentationContext], which
+	// is what a file declaring no subcontext has.
+	Context string
+
+	// Identifier is the RepresentationIdentifier: what this drawing of the
+	// product is, spelled as IFC spells it — "Body", "FootPrint", "Axis".
+	Identifier string
+
+	// Type is the RepresentationType: what the items below are, spelled as
+	// IFC spells it — "SweptSolid", "Curve2D", "Brep".
+	Type string
+
+	// Items are the geometry the shape is made of. There is at least one: a
+	// shape holding none is [EmptyShapeError].
+	Items []Item
+}
+
+// Item is one piece of geometry a [Shape] is made of.
+//
+// The set is closed and always will be. Every implementation is in this
+// package, which is what the unexported method fixes: a caller cannot add a
+// geometry this package has no attribute list for, so a shape which compiles
+// is a shape which can be written.
+type Item interface {
+	// item is unexported so that the set stays this package's.
+	item()
+}
+
+// Polyline is IfcPolyline: a run of straight segments through points in the
+// plane.
+//
+// It carries two dimensional points because that is what the profiles and the
+// plan outlines this package writes are made of. A polyline is closed by
+// repeating its first point as its last, which is what an
+// [ArbitraryProfile]'s curves have to do and what a plan outline of an area
+// conventionally does.
+type Polyline struct {
+	// Points are the points it runs through, in order. There are at least
+	// two: a polyline through fewer is [ShortPolylineError].
+	Points []Point2D
+}
+
+func (Polyline) item() {}
+
+// Point2D is an IfcCartesianPoint in the plane.
+//
+// It is a separate type from [Point] rather than a [Point] with its z ignored,
+// because the two are different instances in the file and a reader tells them
+// apart: a point with two coordinates is in a curve of a profile or a plan,
+// and one with three is somewhere in the model. Points are interned exactly as
+// [Point] is.
+type Point2D struct {
+	X, Y float64
+}
+
+// ArbitraryProfile is the cross section a solid is swept from:
+// IfcArbitraryClosedProfileDef, or IfcArbitraryProfileDefWithVoids where it
+// has holes in it.
+//
+// Which of the two entities is written is decided by whether there are inner
+// curves, rather than by the caller naming one. They are the same profile with
+// and without holes, and a caller which had to pick would be picking a schema
+// entity rather than describing a shape.
+type ArbitraryProfile struct {
+	// Name is the profile's name, which is absent far more often than not.
+	Name string
+
+	// Outer is the curve bounding the profile. It has to be closed, and one
+	// which is not is [OpenCurveError].
+	Outer Polyline
+
+	// Inner are the curves taken out of it, each closed for the same reason.
+	// They are IFC's InnerCurves, and they are what a courtyard, a lift core
+	// or a light well is.
+	Inner []Polyline
+}
+
+// ExtrudedArea is IfcExtrudedAreaSolid: a profile swept along a direction for
+// a depth.
+type ExtrudedArea struct {
+	// Profile is the cross section which is swept.
+	Profile ArbitraryProfile
+
+	// Position is where the profile's own plane sits in the coordinate system
+	// of whatever the shape belongs to. The profile is drawn in that plane's
+	// xy, so this is where a floor level goes.
+	Position Placement
+
+	// Direction is the direction the profile is swept along, expressed in
+	// Position's coordinate system.
+	Direction Direction
+
+	// Depth is how far it is swept, in the file's length unit. It is strictly
+	// positive: [NonPositiveDepthError] otherwise, because a solid of no
+	// thickness is not a solid and IFC's own measure for it is a positive
+	// length.
+	Depth float64
+}
+
+func (ExtrudedArea) item() {}
+
+// PropertySet is IfcPropertySet: named properties attached to one object.
+type PropertySet struct {
+	// GlobalID is the identifier of the property set itself.
+	GlobalID GlobalID
+
+	// Defines is the identifier of the IfcRelDefinesByProperties which
+	// attaches the set to the object holding it. It is required, because a
+	// property set nothing attaches is a set no reader reaches.
+	Defines GlobalID
+
+	// Name and Description are the set's text attributes. The name is what a
+	// reader shows the set under.
+	Name        string
+	Description string
+
+	// Properties are what the set holds. There is at least one: a set holding
+	// none is [EmptyPropertySetError].
+	Properties []Property
+}
+
+// Property is IfcPropertySingleValue whose value is an IfcText.
+//
+// Text rather than a choice of measure types because what these carry is
+// provenance — a source, a method, a date — and a number written as text is
+// still readable while a source written as a length is not writable at all. A
+// property whose value is a measurement belongs in a quantity set, which is a
+// different entity and a different story.
+type Property struct {
+	// Name is what the property is called, and is required:
+	// [UnnamedPropertyError] otherwise.
+	Name string
+
+	// Description is the property's description, absent when empty.
+	Description string
+
+	// Value is the property's nominal value. An empty one writes an absent
+	// NominalValue, which is a property which is present and says nothing.
+	Value string
 }

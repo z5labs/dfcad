@@ -48,21 +48,62 @@ What a node is written as comes from its kind, which is IFC's spatial
 decomposition one for one. A node whose kind has no spatial entity — an element
 or an interface — is written as the entity its type declares a classification
 under in the "IFC4" system, and as an IfcBuildingElementProxy naming its type in
-ObjectType where the type declares none, which is what that entity is for. No
-shape is exported: what crosses this boundary is the spatial structure and the
-identifiers, not the geometry.
+ObjectType where the type declares none, which is what that entity is for.
 
 Flags:
 
-	--out <path>   where to write the file (default: beneath .dfcad/export,
-	               in a directory named for the digest of the source tree)
-	--evidence     add the identifier manifest: every node and the GlobalId
-	               derived for it
+	--out <path>               where to write the file (default: beneath
+	                           .dfcad/export, in a directory named for the
+	                           digest of the source tree)
+	--evidence                 add the identifier manifest: every node and the
+	                           GlobalId derived for it
+	--position <predicate>     the predicate a corner's position is claimed
+	                           under, which a space's outline is read from
+	--tolerance <name>         the tolerance corners are judged coincident
+	                           against and rings judged planar against
+	--chord <name>             the tolerance a segment standing in for a curve
+	                           may fall from it by
+	--arc-centre <predicate>   the predicate a curved edge's centre is claimed
+	                           under
+	--arc-through <predicate>  the predicate the point a curved edge passes
+	                           through is claimed under
+	--height <predicate>       the predicate a space's height is claimed under,
+	                           which is what a body is swept through
 
 The manifest is asked for rather than sent by default because it grows one
 entry per node on a call whose answer is four fields, and because every entry
 of it is recomputable exactly, by anybody holding the model, from the node's id
 and the URL the project pins.
+
+The first three geometry flags go together or not at all. A run which names
+none exports the spatial structure and the identifiers and no shape, which is
+a correct IFC file and is what this command did before it could draw anything.
+A run which names all three draws every space it can: an IfcSpace carries a
+FootPrint representation built from the rings bounding it, holes and all, drawn
+to the chord tolerance named so a curved wall reaches the file as the curve it
+is rather than as a straight line nobody asked for.
+
+--height is what adds a body. Where it names a predicate and a space's height
+resolves under it, the space additionally carries a SweptSolid representation —
+the footprint extruded upwards, holes carried through as the profile's inner
+curves — and the two live in one shape definition. The footprint is what the
+model states and the body is a convenience built from a claim, which is why
+they are two representations rather than one: a reader wanting what the model
+says takes the FootPrint and never has to guess which of the two that was.
+
+There is no default height and there never will be. Which predicate carries a
+room's height is project vocabulary, and a run which names none exports
+footprints rather than failing — a two dimensional export is correct, and it is
+the one an author who has drawn plans and measured nothing should get. A space
+nothing claims a height of is exported the same way. A height which resolves to
+nought or less is refused naming the claim, because the depth a profile is
+swept through is a positive length measure and there is no zero-height solid.
+
+Where a body is written, the claim behind its height goes into the file beside
+it as a property set: the predicate, the value, the source, the method, the
+accuracy, the date and which step of the resolution rule chose it. That is what
+lets whoever opens the file tell a surveyed height from an assumed one without
+holding the model it came from.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -76,11 +117,14 @@ and reproducible, so there is nothing for a dry run to protect and no diff for
 it to show.
 
 Exit code 1 is a model no artefact could be made of — one which pins no URL to
-derive identifiers from, or which is authored in a unit this schema has no SI
-spelling for. The object still comes back, with "derived" false and no files,
-so a caller reads why from the diagnostics on stderr rather than from an empty
-stream. Exit code 3 is a destination inside the authored tree, which is refused
-before anything is read.
+derive identifiers from, one authored in a unit this schema has no SI spelling
+for, or a space whose shape was asked for and could not be drawn: a ring which
+does not close, a corner nothing states the position of, a boundary which does
+not lie at one level, a height which is not a distance or is not positive. The
+object still comes back, with "derived" false and no files, so a caller reads
+why from the diagnostics on stderr rather than from an empty stream. Exit code
+3 is a destination inside the authored tree, which is refused before anything
+is read.
 `
 
 // The flags export takes beyond the global ones.
@@ -197,6 +241,13 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	out := flags.String(flagOut, "", "")
 	evidencing := flags.Bool(flagEvidence, false, "")
 
+	position := flags.String(flagPosition, "", "")
+	tolerance := flags.String(flagTolerance, "", "")
+	chord := flags.String(flagChord, "", "")
+	centre := flags.String(flagArcCentre, "", "")
+	through := flags.String(flagArcThrough, "", "")
+	height := flags.String(flagHeight, "", "")
+
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
 		return exit
@@ -204,6 +255,23 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	if len(arguments) > 0 {
 		return usageError(cmd, UnexpectedArgumentsError{Extra: arguments}, stderr, true)
+	}
+
+	drawn := shapes{
+		position:   *position,
+		tolerance:  *tolerance,
+		chord:      *chord,
+		arcCentre:  *centre,
+		arcThrough: *through,
+		height:     *height,
+	}
+
+	if err := shapeVocabularyOf(drawn); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	if err := arcVocabularyOf(*centre, *through); err != nil {
+		return usageError(cmd, err, stderr, true)
 	}
 
 	// The destination is settled before the model is read, so a mistake in the
@@ -233,7 +301,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		result.Digest = digest.String()
 	}
 
-	model, manifest, diags := exported(graph, dfcad.DerivationEpoch(digest))
+	model, manifest, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn)
 
 	if destination == "" {
 		destination = filepath.Join(dfcad.ExportDir(globals.Root), digest.String(), exportFile)
@@ -391,7 +459,11 @@ func reportExport(result exportResult, globals *globals, stderr io.Writer) {
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)) —
 // and a serialiser which knew it would be usable only by the one program whose
 // opinion it held.
-func exported(graph *dfcad.Graph, epoch dfcad.Epoch) (ifc.Model, []exportedIdentifier, []dfcad.Diagnostic) {
+func exported(
+	graph *dfcad.Graph,
+	epoch dfcad.Epoch,
+	drawn shapes,
+) (ifc.Model, []exportedIdentifier, []dfcad.Diagnostic) {
 	registry := graph.Registry()
 
 	project, held := registry.Project()
@@ -414,6 +486,7 @@ func exported(graph *dfcad.Graph, epoch dfcad.Epoch) (ifc.Model, []exportedIdent
 		graph:    graph,
 		registry: registry,
 		url:      project.GlobalIDNamespace,
+		shapes:   drawn,
 		derived:  make(map[dfcad.ID]ifc.GlobalID),
 		written:  make(map[dfcad.ID]bool),
 	}
@@ -444,9 +517,10 @@ func exported(graph *dfcad.Graph, epoch dfcad.Epoch) (ifc.Model, []exportedIdent
 		},
 		Units: units,
 		Context: ifc.RepresentationContext{
-			Type:      "Model",
-			Dimension: 3,
-			World:     ifc.Placement{},
+			Type:        contextType,
+			Dimension:   3,
+			World:       ifc.Placement{},
+			Subcontexts: drawn.subcontexts(),
 		},
 		Project: ifc.Project{
 			GlobalID:   out.identify(dfcad.ID("ifc/project")),
@@ -458,7 +532,7 @@ func exported(graph *dfcad.Graph, epoch dfcad.Epoch) (ifc.Model, []exportedIdent
 		},
 	}
 
-	return model, out.identifiers(), nil
+	return model, out.identifiers(), out.diags
 }
 
 // exporter is one traversal of the graph into IFC's shape.
@@ -466,6 +540,16 @@ type exporter struct {
 	graph    *dfcad.Graph
 	registry *dfcad.Registry
 	url      string
+
+	// shapes is the vocabulary geometry is read under, and is empty for a run
+	// which asked for none.
+	shapes shapes
+
+	// diags is everything which stopped a shape being drawn, in the order the
+	// traversal met it. They are errors, so an export which collected any
+	// writes no file at all: an artefact is all or nothing, and a model file
+	// with one room's solid quietly missing is worse than none.
+	diags []dfcad.Diagnostic
 
 	// roots are the spatial nodes nothing spatial contains, which hang off the
 	// project.
@@ -605,6 +689,13 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 			Placement: &ifc.Placement{},
 			Children:  e.decompose(e.children[id]),
 			Products:  e.contained(e.products[id]),
+		}
+
+		// A space is the one thing drawn here, because it is the one thing a
+		// boundary is written of: a storey and a site are decompositions, and
+		// the outline of either is the outline of what it holds.
+		if e.shapes.complete() && node.Kind() == dfcad.KindSpace {
+			element.Representation, element.Properties = e.shaped(node)
 		}
 
 		if len(element.Children) > 0 {

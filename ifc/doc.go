@@ -27,9 +27,9 @@
 //
 //   - Instance numbers come from one fixed traversal of the model, so #14 is
 //     the same entity in two runs over the same input.
-//   - Shared points and directions are interned in the order that traversal
-//     first reaches them, so a coordinate written twice is one instance and
-//     the instance it is does not move.
+//   - Shared points, directions and the polylines through them are interned in
+//     the order that traversal first reaches them, so a coordinate written
+//     twice is one instance and the instance it is does not move.
 //   - Reals are written in one canonical form, always with a decimal point.
 //   - The header's time stamp is a field of [Header], supplied by the caller,
 //     rather than a value this package reads from the system clock.
@@ -50,6 +50,16 @@
 // relationships are IFC's own: IfcRelAggregates for the decomposition,
 // IfcRelContainedInSpatialStructure for the products, and
 // IfcRelAssignsToGroup for the zones.
+//
+// A spatial element may carry a [Representation], which is its shape, and any
+// number of property sets, which are everything about it which is neither
+// geometry nor one of IFC's own attributes. A representation holds more than
+// one [Shape] because an object is drawn more than one way: the plan outline
+// of a room and the solid a viewer draws it as are the same object seen
+// through two [Subcontext] views of one coordinate space, and which of them a
+// reader takes is the reader's to choose. The geometry a shape is made of is a
+// closed set — [Polyline] and [ExtrudedArea] — fixed by an unexported method
+// on [Item], so a shape which compiles is a shape this package can write.
 //
 // Every rooted object carries a [GlobalID], which the caller supplies. This
 // package neither derives one nor invents one, because a derived identifier is
