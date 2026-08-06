@@ -11,6 +11,7 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
@@ -124,6 +125,10 @@ func check(collection Collection) error {
 		}
 	}
 
+	if err := checkPrefix(collection.Prefix); err != nil {
+		return err
+	}
+
 	// Every identifier the document will carry, whether it was supplied or
 	// derived, so that the two cannot collide unnoticed.
 	written := map[string]bool{collection.ID: true}
@@ -132,6 +137,24 @@ func check(collection Collection) error {
 		if err := checkFeature(feature, written); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// checkPrefix is the caller's prefix against the two it may not be.
+//
+// The comparison against the reserved family is over lower case, because the
+// specification reserves the letters and not the spelling: `XML`, `Xml` and
+// `xMl` are each of them reserved, and a document which bound one of those
+// would be refused by a parser rather than by this.
+func checkPrefix(prefix string) error {
+	if prefix == Prefix {
+		return ReservedPrefixError{Prefix: prefix, Bound: Namespace}
+	}
+
+	if strings.HasPrefix(strings.ToLower(prefix), "xml") {
+		return ReservedPrefixError{Prefix: prefix}
 	}
 
 	return nil

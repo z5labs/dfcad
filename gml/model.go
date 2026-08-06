@@ -135,6 +135,10 @@ type Collection struct {
 	// Prefix is the prefix that namespace is bound to in the document. Like
 	// [Prefix] it is a spelling rather than a meaning, but it is a field here
 	// because it is the caller's namespace being spelled.
+	//
+	// It may not be [Prefix] itself, and it may not be one of the prefixes XML
+	// reserves; see [ReservedPrefixError] for why either would produce a
+	// document rather than a document with a mistake in it.
 	Prefix string
 
 	// Type is the element name every feature is written as, which is the layer

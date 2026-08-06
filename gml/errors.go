@@ -45,6 +45,43 @@ func (e NotAnNCNameError) Error() string {
 	return fmt.Sprintf("expected %s to be an XML name, found %s", e.What, strconv.Quote(e.Name))
 }
 
+// ReservedPrefixError is a collection whose namespace was to be bound to a
+// prefix which is not the caller's to bind.
+//
+// Two of these exist. [Prefix] is bound to GML's own namespace in every
+// document this package writes, so a caller asking for it would produce two
+// bindings of one prefix in one start tag — which is not a document with a
+// duplicate in it, it is not a document: an XML parser refuses a repeated
+// attribute name outright. And the XML Namespaces specification reserves every
+// prefix beginning with the letters `x`, `m` and `l` in any case, so `xml` and
+// `xmlns` are spoken for whatever a caller means by them.
+//
+// It is a refusal rather than a rename because a prefix is the caller's
+// spelling of the caller's namespace, and picking a different one on their
+// behalf would put a document into the world under a name they did not choose.
+type ReservedPrefixError struct {
+	// Prefix is the prefix which was asked for.
+	Prefix string
+
+	// Bound is the namespace it is already bound to, and is empty where the
+	// prefix is one the specification reserves outright rather than one this
+	// package has already used.
+	Bound string
+}
+
+// Error implements [error].
+func (e ReservedPrefixError) Error() string {
+	if e.Bound == "" {
+		return fmt.Sprintf(
+			"expected a prefix the XML Namespaces specification does not reserve, found %s",
+			strconv.Quote(e.Prefix))
+	}
+
+	return fmt.Sprintf(
+		"expected a prefix which is not already bound in this document, found %s, which is bound to %s",
+		strconv.Quote(e.Prefix), strconv.Quote(e.Bound))
+}
+
 // MissingNamespaceError is a collection which named no application namespace.
 //
 // The collection element, the feature elements and every property element are

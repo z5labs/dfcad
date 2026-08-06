@@ -335,6 +335,33 @@ func TestWriteRefusesADocumentNoReaderCouldRead(t *testing.T) {
 			expected: MissingNamespaceError{},
 		},
 		{
+			name: "a namespace bound to the prefix GML's own elements are written under",
+			collection: func() Collection {
+				collection := one(Polygon{Exterior: square()})
+				collection.Prefix = Prefix
+				return collection
+			},
+			expected: ReservedPrefixError{Prefix: "gml", Bound: Namespace},
+		},
+		{
+			name: "a namespace bound to a prefix the specification reserves",
+			collection: func() Collection {
+				collection := one(Polygon{Exterior: square()})
+				collection.Prefix = "xmlns"
+				return collection
+			},
+			expected: ReservedPrefixError{Prefix: "xmlns"},
+		},
+		{
+			name: "the same, spelled so that a comparison on the letters is the only one which catches it",
+			collection: func() Collection {
+				collection := one(Polygon{Exterior: square()})
+				collection.Prefix = "XmlSchema"
+				return collection
+			},
+			expected: ReservedPrefixError{Prefix: "XmlSchema"},
+		},
+		{
 			name: "a feature type XML cannot spell",
 			collection: func() Collection {
 				collection := one(Polygon{Exterior: square()})
