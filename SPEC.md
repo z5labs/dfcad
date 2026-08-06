@@ -1479,7 +1479,10 @@ Named so that their absence reads as a decision rather than an oversight.
   ([0004](./docs/decisions/0004-globalid-derives-from-a-pinned-namespace.md)).
 - **Derived values of any sort** — area, length, centroid, bounding box, tessellation,
   membership, propagated accuracy. None of them is a field, a comment or a sidecar inside the
-  source tree ([0009](./docs/decisions/0009-derived-values-are-never-written-back.md)).
+  source tree ([0009](./docs/decisions/0009-derived-values-are-never-written-back.md)). An
+  exported representation is one of them: it is a build output written under `.dfcad` and
+  keyed by the digest of these files, never a file beside them
+  ([0021](./docs/decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)).
 - **A scenario, variant or phase dimension.** Not deferred — excluded. A variant is a branch
   ([0013](./docs/decisions/0013-variants-are-branches.md)).
 - **A `preferred` rank, a priority or a weight.** Excluded, not deferred
@@ -1513,6 +1516,7 @@ below.
 | 0015   | [8](#8-canonical-form): exactly one canonical printing, which is what makes the two authors of a file converge. |
 | 0016   | [8.3](#83-ordering): whole-file printing from an in-memory graph is why sorting was chosen over preserving authored order. |
 | 0020   | [1](#1-scope): export is out of this document's scope and has its own specification, and the closed `kind` set fixed there is the whole of what an exporter reads for meaning. [7.1](#71-project): the pinned URL is the other half of the export contract, and there is still no `GlobalId` field. |
+| 0021   | [1](#1-scope): an exported representation is a build output rather than one of this document's two layers, which is why no form here writes one. [11](#11-not-in-this-version): an export is a derived value, so it is not a field, a comment or a sidecar in the source tree either — it is written under `.dfcad`, keyed by the tree digest this document's files produce. |
 
 **One open reading, resolved here.** Record 0008 says the remedy for not knowing a claim's
 provenance is to state it "using the vocabulary the registry provides for it", while record
