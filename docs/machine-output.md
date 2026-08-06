@@ -2548,6 +2548,42 @@ leave out. And an edge naming a backing element the model does not hold is a loa
 already, reported when the model is read; the exporter does not reclassify it as a boundary
 with nothing along it.
 
+**`--crs <predicate>` is what puts the project on the earth, and it has no default.** It names
+the predicate the root frame writes the identifier of its projected coordinate reference system
+under — a non-claim-bearing text predicate, `(crs "EPSG:6543")`, which needs no change to the
+format because a frame already collects any non-structural child verbatim. The file then
+carries an `IfcProjectedCRS` naming it and an `IfcMapConversion` into it. A run naming no
+predicate exports without a georeference, which is a correct file and is the one a model
+nobody has sited should get; so does a run which names one the model does not use.
+
+**The identifier is recorded and never interpreted.** It is checked for shape only — an
+authority and a code, `EPSG:6543` — and nothing here resolves it, converts it or looks it up.
+Interpreting it would mean a geodetic library, which means cgo, which breaks the static image
+this tool ships as, and a licensed parameter dataset besides — for a capability no answer here
+needs, because every cross-frame answer in this engine is a similarity transform in the plane
+the survey was already projected into.
+
+**`--crs-definition <predicate>` names the register's own definition where the project holds
+one**, and it is copied byte for byte into the entity's `Description`. Its linear unit token is
+checked against the unit the frame declares — the token, and never the conversion factor beside
+it, because the US survey foot is exactly 1200/3937 m and the registers spell that several ways
+which differ in their last digits. A definition stating no linear unit token this recognises is
+copied unchecked. The flag is of no use on its own: naming it without `--crs` is a usage error,
+because a definition is written beside an identifier and there would be nothing to write it
+beside.
+
+**The map conversion is the identity, always.** The root frame *is* the projected system the
+chain is rooted at [SPEC §7.5](../SPEC.md#75-frame), so the file's coordinates are already the
+system's: `Eastings`, `Northings` and `OrthogonalHeight` are nought because the schema requires
+them, and `XAxisAbscissa`, `XAxisOrdinate` and `Scale` are absent, which the schema reads as no
+rotation and unit scale. Writing a scale there would state a fit nobody measured.
+
+**A coordinate reference system on any frame but the root is a refusal**, as are an identifier
+which is not an authority and a code, two of them on one frame, and a definition whose unit
+contradicts the frame's. Every other frame reaches the root through a measured transform, so a
+system written on one would be a second georeference for the same model — and nothing here
+reconciles two.
+
 **A model which pins no URL, or whose frames disagree about the linear unit, is a refusal**:
 `derived` false, no files, the digest written, and the reason on stderr. The second is a
 refusal over something correct — a survey grid in metres beside a fabrication grid in

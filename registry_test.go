@@ -583,3 +583,149 @@ func TestLinearUnitDefinitions(t *testing.T) {
 		assert.Equal(t, UnitMillimetre, LinearUnits()[0])
 	})
 }
+
+// loadRegistrySource loads a registry written inline, which is the shape a test
+// about reading one declaration back wants: a fixture on disk is right where
+// the diagnostics beside the source are the subject, and wrong where the source
+// is one form and the assertion is what came of it.
+func loadRegistrySource(t *testing.T, source string) *Registry {
+	t.Helper()
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "registry"+Extension), []byte(source), 0o644))
+
+	registry, diags := LoadRegistry(root)
+	require.Empty(t, diags, "the written registry loads clean")
+
+	return registry
+}
+
+// plainFrames is a registry declaring one predicate of each spelling a plain
+// value takes, and one frame carrying them.
+const plainFrames = `(project (globalid-namespace "https://example.org/models/plain"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The projected coordinate reference system the chain is rooted at."))
+
+(predicate nominal-width
+  (unit m)
+  (shape scalar)
+  (claim-bearing #f)
+  (description "A width somebody specified rather than measured."))
+
+(predicate anchor
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (claim-bearing #f)
+  (description "A corner of the grid, as specified."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(frame frame:survey-grid
+  (label "Site survey grid")
+  (unit m)
+  (crs "EPSG:6543")
+  (nominal-width 8.5 m)
+  (anchor (1.0 2.0 3.0) m))
+
+(frame frame:building
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0031)
+  (crs "EPSG:6543")
+  (crs "EPSG:26982")
+  (frame-transform
+    (id survey:C-0031)
+    (value
+      (transform
+        (translation 1.0 2.0 3.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-11")))
+`
+
+func TestFramePlain(t *testing.T) {
+	registry := loadRegistrySource(t, plainFrames)
+
+	grid, ok := registry.Frame("frame:survey-grid")
+	require.True(t, ok)
+
+	t.Run("reads the text a non-claim-bearing predicate carries", func(t *testing.T) {
+		values := grid.Plain("crs")
+
+		require.Len(t, values, 1)
+		assert.Equal(t, ShapeText, values[0].Shape())
+
+		text, ok := values[0].Text()
+		require.True(t, ok)
+		assert.Equal(t, "EPSG:6543", text)
+	})
+
+	t.Run("reads a scalar together with the unit token written beside it", func(t *testing.T) {
+		values := grid.Plain("nominal-width")
+
+		require.Len(t, values, 1)
+
+		number, ok := values[0].Scalar()
+		require.True(t, ok)
+		assert.Equal(t, 8.5, number)
+		assert.Equal(t, UnitMetre, values[0].Unit())
+	})
+
+	t.Run("reads a coordinate's components in the order they were written", func(t *testing.T) {
+		values := grid.Plain("anchor")
+
+		require.Len(t, values, 1)
+
+		components, ok := values[0].Coordinate()
+		require.True(t, ok)
+		assert.Equal(t, []float64{1, 2, 3}, components)
+		assert.Equal(t, UnitMetre, values[0].Unit())
+	})
+
+	t.Run("says where the value was written", func(t *testing.T) {
+		values := grid.Plain("crs")
+
+		require.Len(t, values, 1)
+		assert.Positive(t, values[0].Span().Start.Line)
+	})
+
+	t.Run("reads nothing for a predicate the frame does not carry", func(t *testing.T) {
+		assert.Empty(t, grid.Plain("colour"))
+	})
+
+	t.Run("reads every value where a predicate is written more than once", func(t *testing.T) {
+		building, ok := registry.Frame("frame:building")
+		require.True(t, ok)
+
+		values := building.Plain("crs")
+
+		require.Len(t, values, 2)
+
+		first, _ := values[0].Text()
+		second, _ := values[1].Text()
+
+		assert.Equal(t, "EPSG:6543", first)
+		assert.Equal(t, "EPSG:26982", second)
+	})
+
+	t.Run("reads nothing for a claim, which is a value with provenance rather than a plain one", func(t *testing.T) {
+		building, ok := registry.Frame("frame:building")
+		require.True(t, ok)
+
+		assert.Empty(t, building.Plain("frame-transform"),
+			"a transform is read through the claim which measures it, with the source and the accuracy of the fit")
+	})
+}

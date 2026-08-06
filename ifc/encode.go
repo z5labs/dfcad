@@ -88,6 +88,19 @@ type real float64
 
 func (r real) encode(dst []byte) ([]byte, error) { return appendReal(dst, float64(r)) }
 
+// optionalReal is a floating point attribute which is absent when it was not
+// given.
+//
+// It takes a pointer rather than treating zero as absence, because zero is a
+// value an optional real genuinely takes: a rotation of no rotation is written
+// zero, and a factor nobody measured is written as nothing at all.
+func optionalReal(written *float64) value {
+	if written == nil {
+		return absent{}
+	}
+	return real(*written)
+}
+
 // integer is an integer attribute.
 type integer int
 

@@ -69,6 +69,10 @@ Flags:
 	                           through is claimed under
 	--height <predicate>       the predicate a space's height is claimed under,
 	                           which is what a body is swept through
+	--crs <predicate>          the predicate the identifier of the project's
+	                           coordinate reference system is written under
+	--crs-definition <pred>    the predicate its full definition is written
+	                           under, where the project holds one
 
 The manifest is asked for rather than sent by default because it grows one
 entry per node on a call whose answer is four fields, and because every entry
@@ -98,6 +102,29 @@ the one an author who has drawn plans and measured nothing should get. A space
 nothing claims a height of is exported the same way. A height which resolves to
 nought or less is refused naming the claim, because the depth a profile is
 swept through is a positive length measure and there is no zero-height solid.
+
+--crs is what puts the project on the earth, and it has no default either. It
+names the predicate the root frame carries the identifier of its projected
+coordinate reference system under — a non-claim-bearing text predicate, written
+(crs "EPSG:6543") — and the file then carries an IfcProjectedCRS naming it and
+an IfcMapConversion into it. Naming no predicate exports without a georeference,
+which is a correct file and is the one a model nobody has sited should get.
+
+The identifier is recorded and never interpreted: it is checked for shape only,
+an authority and a code, and nothing here resolves it, converts it or looks it
+up. --crs-definition names the predicate carrying the register's own definition
+of that system where the project holds one, and it is copied byte for byte. Its
+linear unit token is checked against the unit the frame declares — the token
+and never the factor beside it, because several correct spellings of one factor
+differ in their last digits.
+
+The map conversion is the identity, always. The root frame is the projected
+system the chain is rooted at, so the file's coordinates are already the
+system's: there is no offset between them, no rotation and no scale, and
+writing one would state a fit nobody measured. A coordinate reference system
+written on any frame but the root is refused for the same reason — every other
+frame reaches the root through a measured transform, and a second georeference
+beside it would be a second answer nothing reconciles.
 
 Where a body is written, the claim behind its height goes into the file beside
 it as a property set: the predicate, the value, the source, the method, the
@@ -267,6 +294,9 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	through := flags.String(flagArcThrough, "", "")
 	height := flags.String(flagHeight, "", "")
 
+	crs := flags.String(flagCRS, "", "")
+	crsDefinition := flags.String(flagCRSDefinition, "", "")
+
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
 		return exit
@@ -290,6 +320,12 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	if err := arcVocabularyOf(*centre, *through); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	sited := georeference{identifier: *crs, definition: *crsDefinition}
+
+	if err := crsVocabularyOf(sited); err != nil {
 		return usageError(cmd, err, stderr, true)
 	}
 
@@ -320,7 +356,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		result.Digest = digest.String()
 	}
 
-	model, manifest, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn)
+	model, manifest, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
 
 	if destination == "" {
 		destination = filepath.Join(dfcad.ExportDir(globals.Root), digest.String(), exportFile)
@@ -482,6 +518,7 @@ func exported(
 	graph *dfcad.Graph,
 	epoch dfcad.Epoch,
 	drawn shapes,
+	sited georeference,
 ) (ifc.Model, []exportedIdentifier, []dfcad.Diagnostic) {
 	registry := graph.Registry()
 
@@ -499,6 +536,14 @@ func exported(
 	units, diagnostic := exportedUnits(registry)
 	if diagnostic != nil {
 		return ifc.Model{}, nil, []dfcad.Diagnostic{*diagnostic}
+	}
+
+	// The georeference is settled before the walk because it is a fact about
+	// the registry rather than about any node, and a model which cannot say
+	// where it sits is refused before an artefact is built out of it.
+	placed, refused := georeferenced(registry, graph.Frames(), sited)
+	if len(refused) > 0 {
+		return ifc.Model{}, nil, refused
 	}
 
 	out := &exporter{
@@ -541,6 +586,7 @@ func exported(
 			World:       ifc.Placement{},
 			Subcontexts: drawn.subcontexts(),
 		},
+		Georeference: placed.projected(),
 		Project: ifc.Project{
 			GlobalID:   out.identify(dfcad.ID("ifc/project")),
 			Name:       project.Label,

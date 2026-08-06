@@ -619,7 +619,7 @@ func TestExportedRefusesAModelWhichPinsNoURL(t *testing.T) {
 
 	graph, _ := dfcad.LoadGraph(root)
 
-	_, manifest, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{})
+	_, manifest, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
 
 	assert.Empty(t, manifest)
 	require.Len(t, diags, 1)

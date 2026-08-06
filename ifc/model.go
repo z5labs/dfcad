@@ -87,6 +87,12 @@ type Model struct {
 	// shape, because IfcProject requires one.
 	Context RepresentationContext
 
+	// Georeference is where that coordinate space sits on the earth. A nil
+	// georeference writes nothing at all, which is what a file nobody has
+	// placed has, and is not the same as one placed at the origin of a
+	// coordinate reference system nobody named.
+	Georeference *Georeference
+
 	// Project is the root of the spatial decomposition. Exactly one is
 	// written: IFC allows one IfcProject per file and everything else hangs
 	// off it.
@@ -508,6 +514,83 @@ type Subcontext struct {
 	// UserDefinedTargetView is the name of the view where TargetView is
 	// USERDEFINED, and is absent otherwise.
 	UserDefinedTargetView string
+}
+
+// Georeference is where the file's coordinate space sits on the earth:
+// IfcMapConversion together with the IfcProjectedCRS it converts into.
+//
+// The two are one type because neither is writable without the other. A map
+// conversion with no target coordinate reference system converts into nothing,
+// and a projected coordinate reference system nothing converts into is a name
+// no reader can use.
+//
+// Nothing here interprets either of them. The identifier is a label and the
+// definition is text, and this package neither resolves an authority code nor
+// reads a projection definition — see [ProjectedCRS] for what follows from
+// that.
+type Georeference struct {
+	// CRS is the projected coordinate reference system the conversion targets.
+	CRS ProjectedCRS
+
+	// Conversion is how a coordinate in this file's space becomes one in that
+	// system.
+	Conversion MapConversion
+}
+
+// ProjectedCRS is IfcProjectedCRS: the projected coordinate reference system a
+// file's coordinates end up in.
+//
+// Every field is a string this package writes and never reads. An authority
+// code is an identifier in somebody else's register, and a definition is that
+// register's own text; resolving either would mean a geodetic dataset and the
+// arithmetic over it, which is a product rather than a field of a struct.
+type ProjectedCRS struct {
+	// Name is the identifier of the system, conventionally `EPSG:6543`. It is
+	// required: a coordinate reference system with no name is
+	// [UnnamedCRSError] rather than a georeference nobody can act on.
+	Name string
+
+	// Description is the full definition of the system where one is held —
+	// well known text, most often — written exactly as it was given. An empty
+	// one is written as absent.
+	Description string
+
+	// GeodeticDatum, VerticalDatum, MapProjection and MapZone are the
+	// remaining optional attributes IFC gives the entity. An empty one is
+	// written as absent.
+	GeodeticDatum string
+	VerticalDatum string
+	MapProjection string
+	MapZone       string
+}
+
+// MapConversion is IfcMapConversion: the transform from this file's engineering
+// coordinates into the coordinates of a [ProjectedCRS].
+//
+// The three offsets are required by the schema and the three factors are not.
+// The distinction is load bearing rather than a convenience: an absent factor
+// is the schema's own statement that there is no rotation and no scale, and a
+// factor written out is one somebody measured. A writer which filled them in
+// with the identity would be stating a fit nobody made.
+type MapConversion struct {
+	// Eastings, Northings and OrthogonalHeight are where this file's origin
+	// sits in the target system. All three are written, including zero, which
+	// is what the schema requires.
+	Eastings         float64
+	Northings        float64
+	OrthogonalHeight float64
+
+	// XAxisAbscissa and XAxisOrdinate are the direction of this file's X axis
+	// in the target system. A nil one is written as absent, which the schema
+	// reads as no rotation.
+	XAxisAbscissa *float64
+	XAxisOrdinate *float64
+
+	// Scale is the factor between a length in this file and a length in the
+	// target system. A nil one is written as absent, which the schema reads as
+	// unity — and is what a file whose coordinates are already in the target
+	// system has, because there is no scale in it to state.
+	Scale *float64
 }
 
 // Representation is IfcProductDefinitionShape: every shape one product has.

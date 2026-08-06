@@ -3405,3 +3405,32 @@ func ExampleParseObservationTime() {
 	// no-offset - 2026-05-06T09:14:22
 	// unknown-offset
 }
+
+// A predicate the registry declares non-claim-bearing carries a plain value,
+// and Frame.Plain is how one written on a frame is read back.
+//
+// It is what carries a fact about a frame which is not a measurement. The name
+// of the projected coordinate reference system the chain is rooted at is the
+// example: it names an entry in somebody else's register, so there is no
+// source, no method and no accuracy to put on it, and the engine records it
+// without ever resolving or converting it.
+func ExampleFrame_Plain() {
+	registry, _ := dfcad.LoadRegistry("testdata/frame/valid")
+
+	// The root of the chain is the frame declaring no parent, which is the
+	// projected system every other frame reaches through its parents.
+	root, _ := registry.Frame("frame:survey-grid")
+
+	for _, value := range root.Plain("crs") {
+		identifier, _ := value.Text()
+		fmt.Printf("%s is rooted at %s\n", root.ID, identifier)
+	}
+
+	// A transform is not among them: it is read through the claim which
+	// measures it, together with the source and the accuracy of that fit.
+	fmt.Println(len(root.Plain("frame-transform")))
+
+	// Output:
+	// frame:survey-grid is rooted at EPSG:25831
+	// 0
+}

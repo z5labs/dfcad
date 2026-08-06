@@ -111,6 +111,20 @@ func (EmptyUnitsError) Error() string {
 	return "expected at least one unit in the assignment, found none: a file which states no unit is one every reader guesses at"
 }
 
+// UnnamedCRSError reports a georeference whose projected coordinate reference
+// system has no name.
+//
+// The name is the whole of the georeference a file like this carries: nothing
+// here resolves it, so a map conversion pointing at an unnamed system says only
+// that the coordinates are somewhere, which every file already says.
+type UnnamedCRSError struct{}
+
+// Error implements the [error] interface.
+func (UnnamedCRSError) Error() string {
+	return "expected the projected coordinate reference system to be named, found none: the name is the whole of the " +
+		"georeference, because nothing here resolves it"
+}
+
 // UnrepresentableRealError reports a floating point value part 21 has no
 // spelling for.
 //

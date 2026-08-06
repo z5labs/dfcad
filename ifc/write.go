@@ -100,6 +100,12 @@ const (
 	entityDirection  Entity = "IFCDIRECTION"
 )
 
+// The georeference entities, named here for the reason the ones above are.
+const (
+	entityProjectedCRS  Entity = "IFCPROJECTEDCRS"
+	entityMapConversion Entity = "IFCMAPCONVERSION"
+)
+
 // The shape and property entities, named here for the reason the ones above
 // are.
 const (
@@ -221,10 +227,10 @@ type pending struct {
 //
 // The order is the traversal, and the traversal is the file's numbering: units
 // first because the project references them, then the context for the same
-// reason, then the project, then the spatial decomposition depth first in the
-// order the caller wrote it, then the groups, which may assign anything above
-// them, and last the space boundaries, which may name any element the walk
-// wrote.
+// reason, then the georeference, which converts out of that context, then the
+// project, then the spatial decomposition depth first in the order the caller
+// wrote it, then the groups, which may assign anything above them, and last the
+// space boundaries, which may name any element the walk wrote.
 func (w *writer) model(model Model) error {
 	units, err := w.units(model.Units)
 	if err != nil {
@@ -233,6 +239,10 @@ func (w *writer) model(model Model) error {
 
 	context, err := w.context(model.Context)
 	if err != nil {
+		return err
+	}
+
+	if err := w.georeference(model.Georeference, context); err != nil {
 		return err
 	}
 
@@ -372,6 +382,56 @@ func (w *writer) subcontext(subcontext Subcontext, parent reference) error {
 	w.subcontexts = append(w.subcontexts, subcontext.Identifier)
 
 	return nil
+}
+
+// georeference writes the projected coordinate reference system and the map
+// conversion out of context into it.
+//
+// A nil georeference writes nothing, which is the whole of what a file nobody
+// has placed on the earth needs. The conversion is written second because it
+// references the system, and neither is written at all unless the system is
+// named: the name is what a reader does something with, and the offsets on
+// their own say only that the coordinates are somewhere.
+func (w *writer) georeference(georeference *Georeference, context reference) error {
+	if georeference == nil {
+		return nil
+	}
+
+	crs := georeference.CRS
+	if crs.Name == "" {
+		return UnnamedCRSError{}
+	}
+
+	at, err := w.add(entityProjectedCRS, []value{
+		text(crs.Name),
+		optionalText(crs.Description),
+		optionalText(crs.GeodeticDatum),
+		optionalText(crs.VerticalDatum),
+		optionalText(crs.MapProjection),
+		optionalText(crs.MapZone),
+		// MapUnit, which the unit assignment already states for the whole
+		// file. Writing it a second time here is a second place for it to be
+		// wrong, and the two would not have to agree.
+		absent{},
+	})
+	if err != nil {
+		return err
+	}
+
+	conversion := georeference.Conversion
+
+	_, err = w.add(entityMapConversion, []value{
+		context,
+		at,
+		real(conversion.Eastings),
+		real(conversion.Northings),
+		real(conversion.OrthogonalHeight),
+		optionalReal(conversion.XAxisAbscissa),
+		optionalReal(conversion.XAxisOrdinate),
+		optionalReal(conversion.Scale),
+	})
+
+	return err
 }
 
 // spatial writes a list of sibling spatial elements beneath the placement

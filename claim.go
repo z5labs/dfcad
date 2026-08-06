@@ -1306,6 +1306,75 @@ func writtenShape(written, children []*Node) (Shape, bool) {
 	return "", false
 }
 
+// plainValue reads the value written directly in a form, with nothing to check
+// it against and nothing to say about it.
+//
+// It is the reader behind [Frame.Plain], and it is separate from
+// [claimLoader.value] because the two answer different questions. That one is
+// reading a claim's value against the declaration of its predicate and reports
+// every way the two disagree; this one is handed a form off a registry entry
+// long after the load has finished, has no registry and no diagnostic stream,
+// and its whole answer is the value or nothing.
+//
+// Nothing here widens what was written. An integer where the specification
+// spells a real is not read as one, for the reason section 4.3 keeps them
+// apart: the fraction is what tells a magnitude from a count in a format where
+// both are digits.
+func plainValue(form *Node) (Value, bool) {
+	written, children := split(elements(form))
+
+	shape, ok := writtenShape(written, children)
+	if !ok {
+		return Value{}, false
+	}
+
+	value := Value{shape: shape, span: form.Span}
+
+	switch shape {
+	case ShapeText:
+		datum, ok := written[0].Datum.(sexpr.String)
+		if !ok {
+			return Value{}, false
+		}
+		value.text = datum.Value
+
+	case ShapeScalar:
+		datum, ok := written[0].Datum.(sexpr.Float)
+		if !ok {
+			return Value{}, false
+		}
+		value.number = datum.Value
+
+	case ShapeCoordinate:
+		components := make([]float64, 0, len(written[0].Children))
+		for _, child := range written[0].Children {
+			datum, ok := child.Datum.(sexpr.Float)
+			if !ok {
+				return Value{}, false
+			}
+			components = append(components, datum.Value)
+		}
+		value.components = components
+
+	default:
+		// A transform is written as a child form and is read through the claim
+		// which measures it, together with the source and the accuracy of the
+		// fit. Handing one back stripped of those is the one thing this package
+		// is arranged to stop.
+		return Value{}, false
+	}
+
+	if len(written) > 1 {
+		datum, ok := written[1].Datum.(sexpr.Symbol)
+		if !ok {
+			return Value{}, false
+		}
+		value.unit = Unit(datum.Value)
+	}
+
+	return value, true
+}
+
 // spellMinimalClaim is the least a claim of this predicate may say, written
 // out.
 //
