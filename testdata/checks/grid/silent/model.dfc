@@ -1,0 +1,37 @@
+; A plot four hundred metres by three hundred, which is five hundred metres
+; corner to corner.
+;
+; The extent is the point of the fixture rather than a detail of it. A factor
+; nobody stated is an abstraction until it is multiplied by how far the model
+; reaches, and five hundred metres turns a hundred parts per million into fifty
+; millimetres — which is what the diagnostic has to be able to say.
+
+(vertex geom:V-01 (label "Plot, south-west corner") (frame frame:site)
+  (position (value (0.0 0.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:gnss-static) (accuracy (independent 0.015 m)) (date "2026-02-11")))
+(vertex geom:V-02 (label "Plot, south-east corner") (frame frame:site)
+  (position (value (400.0 0.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:gnss-static) (accuracy (independent 0.015 m)) (date "2026-02-11")))
+(vertex geom:V-03 (label "Plot, north-east corner") (frame frame:site)
+  (position (value (400.0 300.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:gnss-static) (accuracy (independent 0.015 m)) (date "2026-02-11")))
+(vertex geom:V-04 (label "Plot, north-west corner") (frame frame:site)
+  (position (value (0.0 300.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:gnss-static) (accuracy (independent 0.015 m)) (date "2026-02-11")))
+
+(edge geom:E-01 (label "Plot, south boundary") (frame frame:site) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Plot, east boundary") (frame frame:site) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Plot, north boundary") (frame frame:site) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Plot, west boundary") (frame frame:site) (vertices geom:V-04 geom:V-01))
+
+(loop geom:L-01 (label "Plot outline") (frame frame:site)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(node site:S-01
+  (label "Plot 1")
+  (kind Space)
+  (type Plot)
+  (geometry area)
+  (frame frame:site)
+  (boundary geom:L-01)
+  (assert ground-to-grid-stated (crs crs) (ground-to-grid ground-to-grid) (position position)))

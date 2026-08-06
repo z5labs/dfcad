@@ -416,6 +416,7 @@ func ExampleChecks() {
 	// cross-frame-budget-holds (frame <frame>) (limit <tolerance>)
 	// edge-backing-resolves
 	// edge-endpoints-differ
+	// ground-to-grid-stated (crs <predicate>) (ground-to-grid <predicate>) (position <predicate>)
 	// required-claim (predicate <predicate>)
 	// stays-clear-of-zone (zone <id>) (tolerance <tolerance>) (position <predicate>)
 	// within-resolves

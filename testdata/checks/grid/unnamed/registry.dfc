@@ -1,0 +1,78 @@
+; The vocabulary of a model rooted at no projection at all, which is the case
+; the rule does not apply to.
+;
+; Every predicate the rule names is declared here and the root frame writes
+; neither. That is the point: a declared vocabulary nobody used is what an
+; ordinary local model looks like, and the rule has to stay quiet about it
+; rather than report every model drawn on a builder's grid.
+;
+; Both predicates the rule names are declared here and neither is the engine's.
+; Which spelling a project writes its coordinate reference system under, and
+; which it states the ground-to-grid relationship under, is registry data like
+; every other name in a model; the check is told both and assumes neither.
+;
+; The identifier carries no provenance and is declared (claim-bearing #f): it
+; names an entry in somebody else's register, and this model neither resolves it
+; nor converts it. The factor does carry provenance, because it is a survey
+; result rather than a setting — which is why it is declared claim-bearing.
+(project
+  (label "Ground-to-grid fixture")
+  (globalid-namespace "https://example.org/models/grid"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The projected coordinate reference system the chain is rooted at."))
+
+(predicate ground-to-grid
+  (shape scalar)
+  (description "The combined ground-to-grid factor: the grid scale factor times the elevation factor."))
+
+; The root of the chain, and no projection. The model is drawn on a local grid
+; somebody set out with a tape and never tied to anything, so there is no
+; distortion to state: a ground distance and a grid distance are the same
+; distance, and the rule has nothing to be silent about.
+(frame frame:survey-grid
+  (label "Site survey grid")
+  (unit m))
+
+; The setting-out grid the plot is drawn on, fitted to the survey grid by a
+; georeference. The fit found no scale error and wrote 1.0 — which is a scale of
+; one and not a statement that ground equals grid.
+(frame frame:site
+  (label "Site setting-out grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 100.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-11")))
+
+(type Plot
+  (kind Space)
+  (geometry area)
+  (description "A parcel of ground set out on the site grid."))

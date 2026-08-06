@@ -42,6 +42,7 @@ var registeredChecks = newCheckSet(
 	crossFrameBudgetHolds{},
 	edgeBackingResolves{},
 	edgeEndpointsDiffer{},
+	groundToGridStated{},
 	requiredClaim{},
 	staysClearOfZone{},
 	withinResolves{},
@@ -79,6 +80,24 @@ const (
 	// kindParameter narrows a check over what a node contains to the contents of
 	// one kind.
 	kindParameter = "kind"
+
+	// crsParameter is the predicate the projected coordinate reference system a
+	// chain is rooted at is named under.
+	//
+	// The engine neither resolves the identifier nor interprets it. What it is
+	// used for here is a single question — does this model sit in a projection
+	// at all — because a projection is the one thing which makes the difference
+	// between a ground distance and a grid distance worth reporting.
+	crsParameter = "crs"
+
+	// groundToGridParameter is the predicate the combined ground-to-grid factor
+	// is stated under.
+	//
+	// It is the project's own vocabulary and never the engine's
+	// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)):
+	// the factor is the grid scale factor times the elevation factor, it depends
+	// on the project's height, and nothing here can derive it or default it.
+	groundToGridParameter = "ground-to-grid"
 
 	// areaParameter is how far two areas may differ, which is a second tolerance
 	// and not the one shapes are read against: coincidence is a distance and a
@@ -1348,6 +1367,291 @@ func dangling(graph *Graph, edge *Edge, element ID, message string) Failure {
 		Hint:    backedByHint,
 		Span:    span,
 	}
+}
+
+// groundToGridStated is the check that a model rooted at a projected coordinate
+// reference system says whether a distance in it is a ground distance or a grid
+// distance.
+//
+// A projection distorts distance, and the combined factor — the grid scale
+// factor times the elevation factor — is routinely the largest systematic term
+// in a model of a site. At a hundred parts per million a millimetre budget is
+// spent over ten metres, and across a three hundred metre site the same factor
+// is tens of millimetres, so a model which does not say what the factor is has a
+// term in it larger than everything it does say.
+//
+// This is a diagnostic and not a computation. The factor depends on the
+// project's height, which no coordinate reference system carries, so nothing
+// here derives it, consults a geodetic parameter for it, or offers a default —
+// all it can do is notice that nobody has said what it is
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+type groundToGridStated struct{}
+
+// Declare implements [Check].
+func (groundToGridStated) Declare() CheckDeclaration {
+	return CheckDeclaration{
+		Name: "ground-to-grid-stated",
+		Description: "The chain the subject is measured in says how a distance in it relates to the projected " +
+			"coordinate reference system it is rooted at: either the combined ground-to-grid factor is stated, " +
+			"or a transform on the chain already carries it.",
+		Parameters: []CheckParameter{
+			{
+				Name:        crsParameter,
+				Type:        ParameterPredicate,
+				Required:    true,
+				Description: "The predicate the coordinate reference system the chain is rooted at is named under.",
+			},
+			{
+				Name:     groundToGridParameter,
+				Type:     ParameterPredicate,
+				Required: true,
+				Description: "The predicate the combined ground-to-grid factor is stated under, which is what says " +
+					"a ground distance and a grid distance are the same thing or by how much they are not.",
+			},
+			{
+				Name:     positionParameter,
+				Type:     ParameterPredicate,
+				Required: true,
+				Description: "The predicate a corner's position is claimed under, which is what the extent an " +
+					"unstated factor would act over is read from.",
+			},
+		},
+		Forms: []SubjectForm{SubjectNode, SubjectVertex, SubjectEdge, SubjectLoop},
+	}
+}
+
+// Run implements [Runner].
+//
+// Passing takes an affirmative statement rather than the absence of a
+// contradiction. Silence is exactly the state this reports, so a chain which
+// says nothing about the factor and a chain which says the factor is one would
+// otherwise be the same answer — and they are the opposite answer: one is a
+// project which decided, and the other is a project which has not looked.
+//
+// The two ways of saying it are a statement under the named predicate anywhere
+// on the chain, and a transform on the chain whose scale is not one. The second
+// is a statement because a scale in this format is a scale and never a unit
+// conversion ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)): a fit
+// which wrote one found a distance discrepancy and wrote down what it was.
+//
+// A model rooted at a frame which names no coordinate reference system does not
+// apply. Ground and grid are the same thing outside a projection, so there is
+// nothing there to state and reporting it would be reporting every local model
+// ever drawn.
+func (groundToGridStated) Run(subject CheckSubject) []Failure {
+	crs, ok := symbolOf(subject, crsParameter)
+	if !ok {
+		return nil
+	}
+	factor, ok := symbolOf(subject, groundToGridParameter)
+	if !ok {
+		return nil
+	}
+	position, ok := symbolOf(subject, positionParameter)
+	if !ok {
+		return nil
+	}
+
+	graph := subject.Graph()
+	thing := subject.Subject()
+
+	from, declared := frameOf(thing)
+	if !declared {
+		return nil
+	}
+
+	chain := slices.Collect(graph.Frames().Chain(from))
+	if len(chain) == 0 {
+		return nil
+	}
+	root := chain[len(chain)-1]
+
+	identifier, at, rooted := namedSystem(graph, root, crs)
+	if !rooted {
+		return nil
+	}
+
+	for _, frame := range chain {
+		if statedOn(graph, frame, factor) {
+			return nil
+		}
+	}
+
+	// Every frame of the chain but the last, which is the root and is what the
+	// others are expressed relative to. A transform which did not resolve is a
+	// load error already reported, and it states nothing either way, so it is
+	// not counted among the ones which say the factor is one.
+	unscaled := 0
+	for _, frame := range chain[:len(chain)-1] {
+		transform, resolved := graph.Frames().Transform(frame.ID)
+		if !resolved {
+			continue
+		}
+		if statesScale(transform) {
+			return nil
+		}
+		unscaled++
+	}
+
+	return []Failure{{
+		Message: fmt.Sprintf(
+			"expected the chain %s is measured in, rooted at %s under %s, to state whether a ground distance is a "+
+				"grid distance, found %s and nothing written under %s",
+			thing.ID(), root.ID, identifier, unscaledText(unscaled), factor,
+		),
+		Hint: groundToGridHint(graph, position, root, factor),
+		Related: []RelatedLocation{
+			{Span: at, Message: "the coordinate reference system is named here"},
+			{Span: root.Span, Message: "the chain is rooted here"},
+		},
+	}}
+}
+
+// unscaledText says how many transforms between the subject and the root leave
+// the distance alone, which is what makes the silence a silence rather than an
+// omission.
+func unscaledText(unscaled int) string {
+	switch unscaled {
+	case 0:
+		return "no transform between it and the root to carry one"
+	case 1:
+		return "the one transform to it at a scale of exactly 1.0"
+	default:
+		return fmt.Sprintf("all %d transforms to it at a scale of exactly 1.0", unscaled)
+	}
+}
+
+// groundToGridHint says what the unstated factor is worth over this particular
+// model.
+//
+// It is a rate rather than an error, because the error cannot be computed: the
+// factor is what is missing. What can be computed is how far the model reaches,
+// and that turns the factor from a number in a geodetic table into the size of
+// the mistake it makes here — which is the whole difference between a warning
+// somebody acts on and one they scroll past.
+func groundToGridHint(graph *Graph, position string, root Frame, factor string) string {
+	remedy := fmt.Sprintf(
+		"the factor is the grid scale factor times the elevation factor and depends on the project's height, which "+
+			"no coordinate reference system carries, so nothing here derives it: state it as a claim under %s, or "+
+			"carry it on the transform which georeferences the model",
+		factor,
+	)
+
+	extent, sized := modelExtent(graph, position, root)
+	if !sized || extent <= 0 {
+		return remedy
+	}
+
+	return fmt.Sprintf(
+		"the model spans %s%s between its furthest corners, so every part per million of unstated factor is %s%s "+
+			"across it; %s",
+		decimal(extent), unitSuffix(root.Unit), proportional(extent/1e6), unitSuffix(root.Unit), remedy,
+	)
+}
+
+// modelExtent is how far apart the two furthest corners of the whole model are,
+// read in the frame the chain is rooted at, and whether there were two corners
+// to read it from.
+//
+// It is the whole model rather than the subject the rule is written on. A scale
+// error is a property of the projection and not of any one room in it, so the
+// figure worth reporting is the longest distance the factor would act over —
+// which is between the corners furthest apart, wherever in the model they are.
+//
+// Corners in other frames are carried into the root's before they are compared,
+// because a box assembled from coordinates in three frames measures nothing. One
+// which cannot be carried is left out rather than mixed in.
+func modelExtent(graph *Graph, position string, root Frame) (float64, bool) {
+	survey := positionSurvey(graph, "", position, graph.Topology().Vertices())
+
+	points := make([]Point, 0, len(survey.Positions))
+	for vertex := range graph.Topology().Vertices() {
+		value, placed := survey.Positions[vertex.ID()]
+		if !placed {
+			continue
+		}
+
+		components, isCoordinate := value.Coordinate()
+		if !isCoordinate {
+			continue
+		}
+
+		point := asPoint(components)
+		if vertex.Frame() != root.ID {
+			carried, err := graph.Frames().TransformPoint(point, vertex.Frame(), root.ID)
+			if err != nil {
+				continue
+			}
+			point = carried
+		}
+
+		points = append(points, point)
+	}
+
+	if len(points) < 2 {
+		return 0, false
+	}
+
+	size := boxOf(points).Size()
+
+	return math.Sqrt(size[0]*size[0] + size[1]*size[1] + size[2]*size[2]), true
+}
+
+// namedSystem is the coordinate reference system a frame names, where it was
+// written, and whether it names one at all.
+//
+// Both spellings are read. Which of them a project uses is its registry's
+// decision — an identifier carries no provenance and is ordinarily declared
+// (claim-bearing #f), but a project which records who georeferenced it writes a
+// claim — and a check which read only one would report half of them as sitting
+// in no projection.
+func namedSystem(graph *Graph, frame Frame, predicate string) (string, Span, bool) {
+	for _, value := range frame.Plain(predicate) {
+		if text, isText := value.Text(); isText {
+			return text, value.Span(), true
+		}
+	}
+
+	for claim := range graph.Claims().Under(frame.ID, predicate) {
+		if text, isText := claim.Value().Text(); isText {
+			return text, claim.Span(), true
+		}
+	}
+
+	return "", Span{}, false
+}
+
+// statedOn reports whether a frame says anything at all under predicate, in
+// either spelling.
+//
+// What was said is not read. The check is about silence, and a project which
+// wrote the factor down has stopped being silent whatever number it wrote:
+// judging the number would be the engine having an opinion about a geodetic
+// quantity it has no way to check.
+func statedOn(graph *Graph, frame Frame, predicate string) bool {
+	if len(frame.Plain(predicate)) > 0 {
+		return true
+	}
+
+	for range graph.Claims().Under(frame.ID, predicate) {
+		return true
+	}
+
+	return false
+}
+
+// statesScale reports whether a transform's scale says a distance through it is
+// not the distance it started as.
+//
+// A scale of zero is not a statement of anything. The form tables require the
+// child, so a transform which loaded carries a number; one carrying zero is
+// singular and is refused wherever it is used, and reading it here as "not one,
+// therefore stated" would let a broken transform silence the whole rule.
+func statesScale(transform Transform) bool {
+	if transform.Scale == 0 || math.IsNaN(transform.Scale) || math.IsInf(transform.Scale, 0) {
+		return false
+	}
+	return transform.Scale != 1.0
 }
 
 // staysClearOfZone is the check that a shape does not cross into a zone it is

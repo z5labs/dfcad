@@ -589,3 +589,89 @@ func TestEveryRegisteredCheckTakesRegistryDataRatherThanNumbers(t *testing.T) {
 		})
 	}
 }
+
+// TestGroundToGridStatedWantsAnAffirmation covers the one check whose passing
+// condition is that somebody said something rather than that nothing is wrong.
+//
+// The four fixtures are four states of one model which differ in one line each,
+// and the difference between the first two is the whole point of the rule: a
+// chain whose every transform is a scale of one and a chain whose factor was
+// determined to be one are the same geometry and the opposite answer. One is a
+// project which decided; the other is a project which has not looked.
+func TestGroundToGridStatedWantsAnAffirmation(t *testing.T) {
+	testCases := []struct {
+		name     string
+		fixture  string
+		expected []string
+	}{
+		{
+			name:    "reports a chain rooted at a projection which says nothing about ground and grid",
+			fixture: "grid/silent",
+			expected: []string{
+				"expected the chain site:S-01 is measured in, rooted at frame:survey-grid under EPSG:25831, to " +
+					"state whether a ground distance is a grid distance, found the one transform to it at a scale " +
+					"of exactly 1.0 and nothing written under ground-to-grid",
+			},
+		},
+		{
+			name:     "holds where a claim states the factor, which is the affirmation the silence is missing",
+			fixture:  "grid/affirmed",
+			expected: nil,
+		},
+		{
+			name:     "holds where a transform on the chain already carries the factor",
+			fixture:  "grid/stated",
+			expected: nil,
+		},
+		{
+			name:     "does not apply to a model rooted at no projection, where the two are the same distance",
+			fixture:  "grid/unnamed",
+			expected: nil,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			run := runCheckFixture(t, testCase.fixture)
+
+			assert.Equal(t, testCase.expected, reportedBy(run, "ground-to-grid-stated", "site:S-01"))
+		})
+	}
+}
+
+// TestGroundToGridStatedSizesTheSilence is its own function because it asserts
+// the hint rather than the message, and because the figure in it is the reason
+// the check exists.
+//
+// A factor nobody stated is an abstraction until it is multiplied by how far the
+// model reaches. The plot is four hundred metres by three hundred, so it is five
+// hundred corner to corner, and every part per million of unstated factor is
+// half a millimetre across it — which puts the hundred parts per million these
+// systems are designed to that the reader has to look up at fifty millimetres,
+// on this model, without the engine having an opinion about geodesy.
+func TestGroundToGridStatedSizesTheSilence(t *testing.T) {
+	run := runCheckFixture(t, "grid/silent")
+
+	var reported Violation
+	for _, violation := range run.Violations {
+		if violation.Check == "ground-to-grid-stated" {
+			reported = violation
+		}
+	}
+	require.NotEmpty(t, reported.Check, "the fixture reports the silence")
+
+	assert.Equal(t,
+		"the model spans 500.0 m between its furthest corners, so every part per million of unstated factor is "+
+			"0.0005 m across it; the factor is the grid scale factor times the elevation factor and depends on the "+
+			"project's height, which no coordinate reference system carries, so nothing here derives it: state it "+
+			"as a claim under ground-to-grid, or carry it on the transform which georeferences the model",
+		reported.Hint)
+
+	// Both places a reader has to see to act on it: the identifier which says
+	// the model is in a projection at all, and the frame that projection is the
+	// root of. Neither is where the rule was written, which is Declared.
+	require.Len(t, reported.Related, 2)
+	assert.Equal(t, "registry.dfc", filepath.Base(reported.Related[0].Span.Start.Path))
+	assert.Equal(t, "registry.dfc", filepath.Base(reported.Related[1].Span.Start.Path))
+	assert.NotEqual(t, reported.Related[0].Span, reported.Related[1].Span)
+}
