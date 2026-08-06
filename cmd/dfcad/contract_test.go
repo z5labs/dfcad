@@ -97,6 +97,16 @@ var samples = map[string][]string{
 		"--tolerance", "coincident",
 		"site:S-103",
 	},
+	// A plan is asked in the project's own words for what a position is, how
+	// close two corners are one corner, and which measurements belong on a
+	// sheet. The fixture's plot contains nothing, which is the empty answer
+	// this exercises here and the populated one plan_test.go's own model does.
+	"plan": {
+		"--annotate", "setback",
+		"--position", "position",
+		"--tolerance", "coincident",
+		"site:P-01",
+	},
 	// A review needs a revision to compare against, and the fixture tree is not
 	// a repository. Comparing the model with itself is the invocation which
 	// exercises the contract without one, and it finds nothing, which is what a

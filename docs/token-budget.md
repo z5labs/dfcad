@@ -107,7 +107,7 @@ Answering: what kinds of thing are in this model, and which meeting rooms exist.
 | `dfcad list-instances MeetingRoom` | 183 | 182 |
 | **the whole path** | **428** | **406** |
 
-Target 500 tokens: **met**. Regression ceiling 460 tokens.
+Target 500 tokens: **met**. Regression ceiling 460 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of a dimensional question from a cold start
 
@@ -120,7 +120,7 @@ Answering: how big is Meeting Room B on level 1, starting from nothing.
 | `dfcad resolve site:S-111 area` | 71 | 68 |
 | **the whole path** | **499** | **474** |
 
-Target 500 tokens: **met**. Regression ceiling 530 tokens.
+Target 500 tokens: **met**. Regression ceiling 530 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of the same question once the vocabulary is known
 
@@ -132,7 +132,7 @@ Answering: how big is Meeting Room B on level 1, for an agent which has already 
 | `dfcad resolve site:S-111 area` | 71 | 68 |
 | **the whole path** | **254** | **250** |
 
-Target 300 tokens: **met**. Regression ceiling 280 tokens.
+Target 300 tokens: **met**. Regression ceiling 280 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of the same question by way of a whole retrieval
 
@@ -146,7 +146,7 @@ Answering: how big is Meeting Room B on level 1, retrieving the thing itself on 
 | `dfcad resolve site:S-111 area` | 71 | 68 |
 | **the whole path** | **774** | **743** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 820 tokens.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 820 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of the same question answered from the geometry rather than from a claim
 
@@ -159,7 +159,7 @@ Answering: how big is Meeting Room B on level 1 by the corners it is drawn on, s
 | `dfcad measure site:S-111` | 496 | 475 |
 | **the whole path** | **924** | **881** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 960 tokens.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 960 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of finding the geometry which carries a measurement
 
@@ -170,7 +170,18 @@ Answering: which corners of this model anybody has surveyed a position for.
 | `dfcad list-geometry --predicate position --family vertex` | 2427 | 2370 |
 | **the whole path** | **2427** | **2370** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 2500 tokens.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 2500 tokens. Claimed at 4 times cheaper than reading the model.
+
+## The cost of reading a storey as an annotated plan
+
+Answering: what level 1 looks like in plan, with the area claimed on each room.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad plan site:L-01 --annotate area` | 7369 | 7236 |
+| **the whole path** | **7369** | **7236** |
+
+No target: nothing asked this path to cost anything in particular. Regression ceiling 7600 tokens. Claimed at 2 times cheaper than reading the model.
 
 ## Where the tokens go
 
@@ -206,6 +217,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | the same question by way of a whole retrieval | 26.8×, 28.0× | 4.7×, 5.0× |
 | the same question answered from the geometry rather than from a claim | 22.4×, 23.6× | 4.0×, 4.2× |
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
+| reading a storey as an annotated plan | 2.8×, 2.9× | 0.5×, 0.5× |
 
 One figure per encoding, in the order of the table above.
 
@@ -234,6 +246,26 @@ agent that already has the vocabulary, the same question costs 254.
 what makes the arrangement right — the ratio is — and the ceiling in
 `cmd/dfcad/budget_test.go` is what stops the next change spending it without anybody
 noticing.
+
+### The one path that is not a question about one thing
+
+`dfcad plan` is measured here and is not held to the same claim, and the reason is that it
+answers a different shape of question. Every other path above asks about one named thing, and
+its cost does not grow with the model; a plan enumerates a whole floor plate — every ring of
+every room, corner by corner, with the claims anchored to them — so what it costs is the size
+of the storey rather than of the arrangement. It costs 7,369 tokens against 20,724 to read
+the model, which is 2.8 times cheaper, and the `path.ratio` field in
+`cmd/dfcad/budget_test.go` is where that weaker claim is stated rather than dropped.
+
+The `0.5×` in the ratio table beside it is not a finding that reading a file is cheaper. That
+column divides by `entities/level-01.dfc` alone, which is the file the *dimensional* question's
+answer is written in and holds none of the geometry; a plan replaces that file and
+`geometry/level-01.dfc` together, and beats the two of them by a little under two.
+
+A third of the payload is `region.boundary`, a quarter the budget's terms and a quarter the
+claims themselves. None of the three is obviously the one to drop — the boundary is what
+pairs a wall with a run of the ring, which is the whole premise of an annotated plan — so the
+figure is recorded rather than tuned, and the ceiling is what stops it growing quietly.
 
 ### What the review changed
 

@@ -1387,6 +1387,108 @@ was. **Exit `1`** is a question which could not be answered — an outline which
 read, two frames with no measured chain between them, a clearance shorter than the tolerance,
 a clearance written as a distance outwards. The object still comes back with `sited` false.
 
+### `plan`
+
+What a spatial node contains, as rings, with the claims written on them. It takes the id of
+the thing to plan and three flags — none of which has a default.
+
+| Flag | Meaning |
+|------|---------|
+| `--annotate <predicate>` | A predicate whose claims are reported on every ring and on the edges bounding it. Repeatable, and at least one is required. |
+| `--position <predicate>` | The predicate a corner's position is claimed under, which the rings are read from. Required. |
+| `--tolerance <name>` | The tolerance corners are judged coincident against. Required. |
+
+**This is a query and not an export.** It writes no file
+([0022](decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md) is about the
+commands that do). It returns the rings the model already holds and the claims already
+written on the edges bounding them, under the same envelope, digest and budget every other
+answer carries, and it knows nothing about paper, scale, title blocks, text height or where a
+leader goes. Those are the consumer's, and this command is the boundary that keeps them so.
+
+**`--annotate` is the whole of the answer to "is this dimension worth drawing".** It is worth
+drawing if the caller asked for that predicate. Nothing else in the payload encodes a drawing
+judgement, which is what keeps the engine from acquiring a drawing convention every consuming
+project would then disagree with — the same rule that keeps domain vocabulary out of it
+([0010](decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `subject` | string | The id the plan was asked about. |
+| `planned` | bool | Whether every ring below could be read. Written whatever the outcome, so a storey nobody has outlined yet (`planned` true, `outlines` empty) reads differently from one a room of which could not be read (`planned` false). |
+| `digest` | string, optional | The digest of the source tree the rings and the claims were read from, lower-case hex, so a consumer can say which model a sheet was drawn from. Written on a refusal too. Absent for a model that was not read from disk. |
+| `frame` | string, optional | The coordinate frame the subject is declared in. |
+| `unit` | string, optional | That frame's linear unit. Every coordinate here is in it and every area in the square of it. |
+| `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
+| `annotating` | array | The predicates the run asked for, in the order it named them and with a repeat written once. |
+| `outlines` | array | One entry per contained node that has a ring, in id order. Empty rather than null for a subject that contains nothing drawable. |
+| `outlines[].node` | string | The id of the node the rings were read from, which is what names them. |
+| `outlines[].label` | string, optional | What it is called. Absent where it is called nothing. |
+| `outlines[].kind` | string, optional | The kind it declares. |
+| `outlines[].type` | string, optional | The type it declares. |
+| `outlines[].region` | object | The area it covers, with `area`, `empty`, `pieces` and `boundary` exactly as [`buildable`](#buildable) writes them. |
+| `outlines[].annotations` | array | The claims reported on it, the node's own first and then those of each edge of its boundary. Empty rather than null for a room nobody has written anything on. |
+| `outlines[].annotations[].anchor.kind` | string | Which family the claim is written on: `edge` for one written on an edge of a ring, `node` for one written on the node that ring bounds. |
+| `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
+| `outlines[].annotations[].anchor.vertices` | array, optional | The edge's two corners, in the order the edge was authored. Absent for a node anchor. |
+| `outlines[].annotations[].anchor.rings` | array, optional | The loops bounding the node, in the order it references them. Absent for an edge anchor. |
+| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is. Same shape as [`budget`](#budget), without `from` and `to`. |
+
+Beside `anchor`, every annotation carries the claim object `get` writes — `id`, `predicate`,
+`value`, `source`, `method`, `accuracy`, `date`, `rank` and `span` — so a claim on a plan
+reads exactly like a claim anywhere else in this contract. `resolution` is **never** written,
+because nothing here was resolved.
+
+**A rendered string is a claim, not a formatting of a number.** The whole claim comes back
+rather than a value and a unit, and that matters more on a sheet than anywhere else: the
+string a renderer prints against a wall is something somebody stated, from a source, by a
+method, on a date, to an accuracy, and printing it without them is how a design estimate comes
+to look like an as-built survey
+([0009](decisions/0009-derived-values-are-never-written-back.md)).
+
+**The anchor is what stops a consumer re-deriving the pairing.** A ring of coordinates and a
+list of claims beside it leaves whoever draws the sheet to work out which dimension belongs to
+which pair of corners, by matching ids or worse by matching coordinates — which is exactly the
+re-derivation `region.boundary` exists to prevent one layer down. So an edge anchor names its
+two vertices and a node anchor names its rings, and neither has to be looked up again.
+
+The vertices are the **edge's own order** and not the order any ring traverses them. Two rings
+either side of a party wall run through one edge opposite ways, and a claim written on the
+edge is written on the edge rather than on either traversal of it; a consumer that needs the
+traversal direction reads it from `region.boundary`, where that question is already answered.
+One edge therefore carries one anchor, identical from both rooms that reference it.
+
+**Nothing is resolved.** Where two live claims compete under one predicate on one anchor, both
+come back with the same anchor, and which of them a sheet prints is the caller's decision — a
+query that picked one would be making that decision invisibly and in the wrong place. A
+retracted claim is never reported, because resolution never considers one and a sheet printing
+a value somebody has withdrawn is the failure this refuses to make possible.
+
+**The budget is over the geometry and not over the annotations.** It answers the question a
+sheet has to carry — how well is the line I am drawing known — and each claim reported carries
+its own accuracy, because each is a separate statement about a separate quantity and combining
+a room's area with a wall's fire rating would produce a figure of nothing at all
+([0006](decisions/0006-accuracy-is-one-sigma.md)).
+
+Which nodes are drawn is every descendant of the subject that references at least one loop,
+however deep: a room inside a storey and an alcove inside that room are both places somebody
+draws. The subject itself is not drawn — the question is what is in it. A node with no
+boundary contributes nothing, because it has no ring: a doorway written as a line, a circuit
+group and a warranty are all ordinary and none of them is an outline.
+
+A subject that is not a place is a **usage error** — exit `3`, with nothing on stdout. A zone
+holds its members by membership and contains nothing, so answering "nothing is in here" for
+one would read as a zone whose members have no outlines, which is a quieter wrong answer than
+refusing the question. A predicate the registry does not declare is a usage error for the same
+reason it is one in `claims`.
+
+A storey containing nothing with an outline is **exit `0`** with `outlines` empty: that is the
+truthful answer to what it looks like in plan, and it is reported so that it cannot be read as
+a plan that was never computed. **Exit `1`** is a plan a ring of which could not be read — a
+boundary that does not close, corners that are not in one plane, a tolerance the registry does
+not declare in the frame's unit. The other rooms are still drawn and the object still comes
+back with `planned` false, because a sheet with one room missing is more use than no sheet and
+the diagnostics on stderr say which room to fix.
+
 ### `check`
 
 Every rule the model states, run: each type's invariants bound to each of its instances, and

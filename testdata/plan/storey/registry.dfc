@@ -1,0 +1,41 @@
+(project
+  (label "Plan fixture")
+  (globalid-namespace "https://example.org/models/plan"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type Campus (kind Zone) (geometry absent) (description "Things administered together."))
+(type OfficeBuilding (kind Building) (geometry solid) (description "A building let as offices."))
+(type OfficeStorey (kind Storey) (geometry solid) (description "One floor plate of a building."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room used for meetings."))
+(type Alcove (kind Space) (geometry area) (description "A recess off a room."))
+(type Doorway (kind Element) (geometry line) (description "An opening formed through a partition."))
+
+(predicate area
+  (unit m2)
+  (shape scalar)
+  (description "How much floor a space has."))
+
+(predicate caption
+  (shape text)
+  (description "What a sheet prints against a thing."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate wall-length
+  (unit m)
+  (shape scalar)
+  (description "How far a run of wall reaches."))
+
+(tolerance coincident
+  (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))

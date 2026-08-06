@@ -3043,6 +3043,71 @@ func ExampleTopology_BuildableOf() {
 	// nothing is buildable inside plan:P-02 warning
 }
 
+func ExampleGraph_PlanOf() {
+	graph, _ := dfcad.LoadGraph("testdata/plan/storey")
+
+	survey := dfcad.Survey{Tolerance: "coincident", Registry: graph.Registry()}
+	for vertex := range graph.Topology().Vertices() {
+		resolution, _ := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	level, _ := graph.Node("site:L-01")
+
+	// Which measurements belong on the sheet is stated here and nowhere else.
+	// The engine has no opinion about whether a wall length is worth drawing.
+	plan, _ := graph.PlanOf(level, survey, dfcad.Annotations{
+		Predicates: []string{"area", "caption", "wall-length"},
+	})
+
+	fmt.Println(plan)
+
+	for _, outline := range plan.Outlines() {
+		fmt.Printf("%s %s covers %.1f %s²\n",
+			outline.Node().Kind(), outline.Subject(), outline.Region().Area(), plan.Unit())
+	}
+
+	// Every claim says what it is written on. An edge anchor names its two
+	// corners in the order the edge was authored, so a dimension knows which
+	// pair of corners it runs between without anybody matching coordinates.
+	for _, annotation := range plan.Outlines()[1].Annotations() {
+		value := annotation.Claim().Value()
+
+		// A caption is a text claim and a dimension a scalar one. Both are
+		// claims: what a sheet prints against a room was stated by somebody,
+		// from a source, on a date, and is not a formatting of a number.
+		written := fmt.Sprintf("%s value", value.Shape())
+		if text, ok := value.Text(); ok {
+			written = fmt.Sprintf("%q", text)
+		}
+		if scalar, ok := value.Scalar(); ok {
+			written = fmt.Sprintf("%.2f %s", scalar, value.Unit())
+		}
+
+		fmt.Printf("  %s: %s — %s\n", annotation.Predicate(), written, annotation.Anchor())
+	}
+
+	// The budget is over the position claims behind the rings. Each claim above
+	// carries its own accuracy, because each is a statement about a different
+	// quantity.
+	combined, _ := plan.Budget().Combined()
+	fmt.Printf("the rings are known to ±%.3f %s\n", combined.Standard(), combined.Unit)
+
+	// Output:
+	// site:L-01: 3 outlines, 11 claims
+	// Space site:A-01 covers 1.0 m²
+	// Space site:R-01 covers 12.0 m²
+	// Space site:R-02 covers 12.0 m²
+	//   area: 12.00 m2 — node site:R-01, ring geom:L-01
+	//   caption: "Meeting Room A" — node site:R-01, ring geom:L-01
+	//   caption: "MR-A" — node site:R-01, ring geom:L-01
+	//   wall-length: 4.00 m — edge geom:E-01, geom:V-01 to geom:V-02
+	//   wall-length: 3.00 m — edge geom:E-02, geom:V-02 to geom:V-03
+	//   wall-length: 3.02 m — edge geom:E-02, geom:V-02 to geom:V-03
+	//   wall-length: 4.00 m — edge geom:E-03, geom:V-03 to geom:V-04
+	// the rings are known to ±0.013 m
+}
+
 func ExampleTopology_FitWithin() {
 	root := "testdata/siting/surveyed"
 

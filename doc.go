@@ -425,6 +425,40 @@
 // answer is accumulated over the position claims and the setback claims
 // together, so a control point reached through both is counted once.
 //
+// # Reading a storey as a plan
+//
+// [Graph.PlanOf] is the answer an annotated floor plan is drawn from: everything
+// a spatial node contains, as rings, each named by the node it came from and
+// each carrying the claims written on it and on the edges bounding it. It is a
+// [Plan] of [Outline] values, and it is a query rather than an export — nothing
+// is written anywhere, and everything in it is read out of the model every time
+// it is asked for.
+//
+// It knows nothing about paper. There is no scale here, no sheet size, no title
+// block and nowhere a leader goes, and there never will be: those are decisions
+// about a drawing, and the moment this package knows one of them it owns a
+// drawing convention that every consuming project disagrees about.
+//
+// Which claims come back is stated by the caller, as the predicates of an
+// [Annotations], with no default. That is the whole of the answer to "is this
+// dimension worth drawing" — it is worth drawing if the caller asked for that
+// predicate — and it is what keeps a domain judgement out of an engine which
+// carries no vocabulary of its own (see
+// docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md).
+//
+// Each claim comes back whole and carries its [Anchor]: an edge with its two
+// vertices in the order the edge was authored, or the node with the rings
+// bounding it. The pairing is what stops a renderer working out for itself
+// which claim belongs to which pair of corners, which is the re-derivation
+// [Region.Segments] exists to prevent one layer down.
+//
+// Nothing is resolved. Two live claims disagreeing about one wall both come
+// back under the same anchor, because which of them a sheet prints is a
+// decision about the sheet; a retracted claim never comes back at all. The
+// [Budget] of the plan is over the position claims behind the rings and not
+// over the claims reported, because each of those is a separate statement about
+// a separate quantity and carries its own accuracy.
+//
 // # Derived geometry, and where it is kept
 //
 // Everything above is computed on demand and none of it is stored in the model.
