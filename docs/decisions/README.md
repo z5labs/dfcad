@@ -72,3 +72,4 @@ the code in front of them and needs the part that is not in the code.
 | [0019](./0019-the-registry-is-the-distribution-channel.md) | The registry is the distribution channel, digests are authoritative, no `latest` | Accepted |
 | [0020](./0020-export-is-a-boundary-and-the-closed-set-is-what-crosses-it.md) | Export is a boundary, and the closed set is what crosses it | Accepted |
 | [0021](./0021-an-export-is-a-build-output-keyed-by-its-source-digest.md) | An export is a build output keyed by its source digest | Accepted |
+| [0022](./0022-a-command-whose-product-is-a-file-answers-on-stdout.md) | A command whose product is a file answers on stdout like every other command | Accepted |
