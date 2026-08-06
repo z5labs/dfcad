@@ -2364,6 +2364,27 @@ finish leaves nothing behind that a later run would read as the artefact for tha
 a destination outside the model root and reads the file; stdout stays one JSON object, as it is
 for every other command.
 
+**A clock-derived field inside the artefact carries the derivation epoch,
+`1970-01-01T00:00:00Z`.** Where the target format defines a field as a creation or a
+modification time — a part 21 header's time stamp, a PDF's `CreationDate`, a container
+manifest's `created` — the field is omitted where the schema permits it and written as that
+instant where the schema requires it. No exporter reads the system clock, so re-running an
+artefact command over an unchanged tree produces a byte-identical file and a `files[].status`
+of `unchanged` rather than a new artefact
+([0021](./decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)).
+
+It is one derivation — `dfcad.DerivationEpoch`, taking the digest of the tree the artefact was
+derived from — and one set of renderings, so a format's encoding is not each exporter's own
+business. A tree a file of which could not be read has no digest and still derives the same
+instant: a refusal is a diagnostic, and nothing about a time stamp is entitled to fail on the
+way to reporting one.
+
+There is no field on this payload for it and no flag which overrides it. The value is a
+constant, so reporting it would be noise; the provenance the field pretends to carry is the
+`digest` above, which is the thing that actually moves with the model. A caller who needs the
+real date of an export run attaches it outside the file, where it is visibly a fact about the
+run rather than a fact about the model.
+
 Exit codes:
 
 | Code | When |

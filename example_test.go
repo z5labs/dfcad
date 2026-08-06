@@ -2865,6 +2865,52 @@ func ExampleDigestOf() {
 	// true false
 }
 
+// ExampleDerivationEpoch is the instant an exported artefact carries wherever
+// its target format demands a creation time.
+//
+// It is derived from the tree rather than from a clock, so two exports of an
+// unchanged model are byte-identical and the provenance the timestamp field
+// pretends to carry is carried properly instead — by the digest.
+func ExampleDerivationEpoch() {
+	root, err := os.MkdirTemp("", "dfcad-model-")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	entities := filepath.Join(root, "model.dfc")
+	if err := os.WriteFile(entities, []byte("(node site:S-101 (label \"Meeting Room B\") (kind Space))\n"), 0o644); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	digest, err := dfcad.DigestOf(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	epoch := dfcad.DerivationEpoch(digest)
+
+	// Each format takes the encoding it demands, and no exporter writes its own.
+	fmt.Println(epoch.ISO8601())
+	fmt.Println(epoch.STEP())
+	fmt.Println(epoch.PDF())
+	fmt.Println(epoch.Seconds())
+
+	// A tree which could not be read still answers, so a refusal reaches its
+	// diagnostic rather than panicking on the way there.
+	fmt.Println(dfcad.DerivationEpoch(dfcad.Digest{}) == epoch)
+
+	// Output:
+	// 1970-01-01T00:00:00Z
+	// 1970-01-01T00:00:00
+	// D:19700101000000Z
+	// 0
+	// true
+}
+
 // ExampleTopology_BuildableOf derives what may be built on a plot from the
 // plot's boundary and the setback claimed on each of its edges.
 //
