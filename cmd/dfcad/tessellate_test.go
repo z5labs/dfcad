@@ -499,3 +499,49 @@ func TestRunTessellateSummarisesItselfForAPerson(t *testing.T) {
 	assert.Contains(t, stderr, "chord-deviation")
 	assert.Contains(t, stderr, "hole")
 }
+
+// TestRunTessellateAttributesEveryChordToTheEdgeItApproximates checks that a
+// drawing arrives saying where it came from.
+//
+// A drawing is the moment a boundary becomes points, and it is where an
+// attribution is most easily lost: thirty-two chords arrive where a round
+// courtyard was, and a consumer which could not say which wall they stand in for
+// has a polygon and nothing else.
+func TestRunTessellateAttributesEveryChordToTheEdgeItApproximates(t *testing.T) {
+	result, _ := drawn(t, exitSuccess, curved(), "--chord", "chord-deviation", "site:S-01")
+
+	require.NotNil(t, result.Region)
+	require.NotEmpty(t, result.Region.Boundary)
+
+	// One run per corner of the plate and one per chord of the courtyard, which
+	// is the whole of the drawing described exactly once.
+	assert.Len(t, result.Region.Boundary,
+		len(result.Region.Pieces[0].Outer)+len(result.Region.Pieces[0].Holes[0]))
+
+	arcs := map[string]int{}
+
+	// The plate is straight and is itself; the courtyard is two arcs, and each
+	// of the chords standing in for one names the edge which bends along it
+	// rather than being read back as a wall somebody drew straight.
+	expected := map[int]string{0: "edge", 1: "arc"}
+
+	for _, segment := range result.Region.Boundary {
+		assert.NotEmpty(t, segment.Edge, "every run of a drawn boundary names an edge")
+		assert.Len(t, segment.From, 3)
+		assert.Len(t, segment.To, 3)
+
+		assert.Equal(t, expected[segment.Ring], segment.Origin, "ring %d", segment.Ring)
+
+		if segment.Origin == "arc" {
+			arcs[segment.Edge]++
+		}
+	}
+
+	assert.Len(t, arcs, 2, "the courtyard is drawn from two arcs, and each chord names the one it stands in for")
+
+	var chords int
+	for _, count := range arcs {
+		chords += count
+	}
+	assert.Equal(t, len(result.Region.Pieces[0].Holes[0]), chords)
+}

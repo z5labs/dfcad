@@ -1040,3 +1040,125 @@ func TestTessellateAnOpenTraversal(t *testing.T) {
 	assert.NotEqual(t, points[len(points)-2], points[len(points)-1],
 		"the last segment has an extent; the end is not the corner before it written twice")
 }
+
+// TestTessellatedSegmentsNameTheEdgeTheyApproximate checks the attribution a
+// drawn boundary comes back with.
+//
+// A drawing is the moment a boundary stops being what somebody wrote and starts
+// being points, and it is exactly where an attribution is most needed and most
+// easily lost: sixteen chords arrive where one curved wall was, and a consumer
+// which could not say which wall they stand in for has a polygon and nothing
+// else. Each of them names the edge it approximates and says that it is a chord
+// of it — which is what stops the chord being read back as a wall somebody drew
+// straight.
+func TestTessellatedSegmentsNameTheEdgeTheyApproximate(t *testing.T) {
+	testCases := []struct {
+		name     string
+		region   ID
+		curved   ID
+		straight []ID
+		chords   int
+		reversed bool
+	}{
+		{
+			name:     "names the curved edge on every chord standing in for its arc",
+			region:   "site:S-01",
+			curved:   "geom:E-02",
+			straight: []ID{"geom:E-01", "geom:E-03", "geom:E-04"},
+			chords:   16,
+		},
+		{
+			name:     "says a ring which runs through its edges backwards did",
+			region:   "site:S-02",
+			curved:   "geom:E-02",
+			straight: []ID{"geom:E-04", "geom:E-03", "geom:E-01"},
+			chords:   16,
+			reversed: true,
+		},
+	}
+
+	model := loadMeasuredModel(t, "arcs")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node, ok := model.nodes.Node(testCase.region)
+			require.True(t, ok)
+
+			drawn, diags := model.topology.TessellateRegion(node, model.boundaries, model.survey, chordTolerance)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			segments := drawn.Segments()
+			require.NotEmpty(t, segments)
+
+			// One run per point of the ring, because the ring closes: the
+			// drawing is described exactly once, with nothing between two of its
+			// points left unattributed.
+			pieces := drawn.Pieces()
+			require.Len(t, pieces, 1)
+			assert.Len(t, segments, len(pieces[0].Outer()))
+
+			var chords int
+			var straight []ID
+
+			for _, segment := range segments {
+				require.NotNil(t, segment.Edge())
+				assert.Zero(t, segment.Ring())
+				assert.Equal(t, testCase.reversed, segment.Reversed())
+
+				switch segment.Origin() {
+				case SegmentOriginArc:
+					chords++
+					assert.Equal(t, testCase.curved, segment.Edge().ID(),
+						"a chord names the edge whose arc it stands in for")
+				case SegmentOriginEdge:
+					straight = append(straight, segment.Edge().ID())
+				default:
+					t.Errorf("a run of a drawn boundary is an edge or a chord of one, found %s", segment.Origin())
+				}
+			}
+
+			assert.Equal(t, testCase.chords, chords, "the arc became this many chords")
+			assert.Equal(t, testCase.straight, straight,
+				"the straight edges are themselves, in the order the loop traverses them")
+
+			assertRingsClose(t, segments)
+		})
+	}
+}
+
+// TestADrawnBoundaryIsAttributedAtEveryResolution is its own function because
+// what it asserts holds across two drawings rather than within one.
+//
+// How many chords an arc becomes is the chord tolerance's to decide. What must
+// not vary with it is whether they can be attributed: a coarser drawing is fewer
+// runs of the same edge, not a boundary which has stopped saying where it came
+// from.
+func TestADrawnBoundaryIsAttributedAtEveryResolution(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	node, ok := model.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	counts := make(map[string]int, 2)
+
+	for _, tolerance := range []string{chordTolerance, coarseChordTolerance} {
+		drawn, diags := model.topology.TessellateRegion(node, model.boundaries, model.survey, tolerance)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		var chords int
+		for _, segment := range drawn.Segments() {
+			require.NotNil(t, segment.Edge(), "every run of a drawn boundary names an edge")
+
+			if segment.Origin() == SegmentOriginArc {
+				chords++
+				assert.Equal(t, ID("geom:E-02"), segment.Edge().ID())
+			}
+		}
+
+		counts[tolerance] = chords
+	}
+
+	assert.Greater(t, counts[chordTolerance], counts[coarseChordTolerance],
+		"a finer tolerance draws the same arc in more chords")
+	assert.Positive(t, counts[coarseChordTolerance])
+}

@@ -2709,6 +2709,61 @@ func ExampleTopology_TessellateRegion() {
 	// (30.0 0.0 0.0) to (40.0 10.0 0.0) m
 }
 
+// ExampleRegion_Segments attributes a boundary back to the model it came from:
+// which edge produced each straight run of it, which way round the loop ran
+// through that edge, and what produced a run no edge did.
+//
+// It is what an exporter needs and what a polygon on its own cannot say. A ring
+// of coordinates can be drawn; it cannot say which segment is the party wall,
+// which element backs it, or which claim was written about it. The pairing is
+// known where the boundary is assembled, so it is reported from there rather
+// than re-derived downstream by matching coordinates.
+func ExampleRegion_Segments() {
+	root := "testdata/overlay/shapes"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	node, _ := nodes.Node("site:S-01")
+	room, _ := topology.RegionOf(node, boundaries, survey)
+
+	// Every run of the boundary of a region read from the model is an edge
+	// somebody wrote, and says which ring of the boundary it belongs to and
+	// which way round the loop ran through it.
+	for _, segment := range room.Segments() {
+		fmt.Printf("ring %d: %s\n", segment.Ring(), segment)
+	}
+
+	// An operation attributes none of its boundary, and says so rather than
+	// naming the edge which nearly produced a run: an offset corner is where the
+	// offset put it and no edge of the model runs there.
+	offset, _ := room.Buffer(1)
+
+	origins := map[dfcad.SegmentOrigin]int{}
+	for _, segment := range offset.Segments() {
+		origins[segment.Origin()]++
+	}
+
+	fmt.Printf("offset: %d runs, all %s, none of them an edge\n",
+		origins[dfcad.SegmentOriginOperation], dfcad.SegmentOriginOperation)
+
+	// Output:
+	// ring 0: (0.0 0.0 0.0) to (4.0 0.0 0.0): edge geom:E-011, forwards
+	// ring 0: (4.0 0.0 0.0) to (4.0 3.0 0.0): edge geom:E-012, forwards
+	// ring 0: (4.0 3.0 0.0) to (0.0 3.0 0.0): edge geom:E-013, forwards
+	// ring 0: (0.0 3.0 0.0) to (0.0 0.0 0.0): edge geom:E-014, forwards
+	// offset: 36 runs, all operation, none of them an edge
+}
+
 // ExampleGraph_Derive computes the derived geometry of a whole model — what each
 // thing covers, how big that is, where it is centred, how far it reaches and
 // which regions it lies inside — and keeps the answer in a build output

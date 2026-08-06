@@ -245,6 +245,10 @@ func (t *Topology) BuildableOf(
 // One edge is resolved once however many runs of the boundary it accounts for.
 // An edge written into two loops of one node is one edge with one setback on it,
 // and reporting it twice would be one missing claim read as two.
+//
+// Which edge produced which run is [Region.Segments] and is read from there
+// rather than worked out again here, so there is one answer to that question
+// and not one per derivation which needs it.
 func (r Region) setbacksOf(t *Topology, setbacks Setbacks) ([]Setback, []Diagnostic) {
 	if setbacks.Predicate == "" || setbacks.Claims == nil {
 		found := "no claims to read them from"
@@ -268,15 +272,17 @@ func (r Region) setbacksOf(t *Topology, setbacks Setbacks) ([]Setback, []Diagnos
 	var applied []Setback
 	var refused []Diagnostic
 
-	seen := make(map[ID]bool, len(r.segments))
+	segments := r.Segments()
+	seen := make(map[ID]bool, len(segments))
 
-	for _, segment := range r.segments {
-		if segment.edge == nil || seen[segment.edge.ID()] {
+	for _, segment := range segments {
+		edge := segment.Edge()
+		if edge == nil || seen[edge.ID()] {
 			continue
 		}
-		seen[segment.edge.ID()] = true
+		seen[edge.ID()] = true
 
-		setback, diagnostic, ok := r.setbackOf(t, segment.edge, setbacks)
+		setback, diagnostic, ok := r.setbackOf(t, edge, setbacks)
 		if !ok {
 			refused = append(refused, diagnostic)
 			continue
@@ -492,19 +498,20 @@ func (r Region) setBack(applied []Setback) Region {
 
 	var strips []contour
 
-	for _, segment := range r.segments {
-		if segment.edge == nil {
+	for _, segment := range r.Segments() {
+		edge := segment.Edge()
+		if edge == nil {
 			continue
 		}
 
-		distance, ok := distances[segment.edge.ID()]
+		distance, ok := distances[edge.ID()]
 		if !ok || distance == 0 {
 			// A setback of nought moves nothing, and drawing a strip of no width
 			// to say so would put a degenerate ring into the arrangement.
 			continue
 		}
 
-		from, to := r.basis.project(segment.from), r.basis.project(segment.to)
+		from, to := r.basis.project(segment.From()), r.basis.project(segment.To())
 
 		if strip, ok := slab(from, to, distance); ok {
 			strips = append(strips, strip)

@@ -379,6 +379,26 @@
 // area, and reporting it as an overlap would turn every pair of adjacent rooms
 // into a conflict.
 //
+// # Attributing a boundary
+//
+// A ring of coordinates can be drawn and cannot be attributed. [Region.Segments]
+// is the other half of the answer: one [BoundarySegment] per straight run of the
+// boundary, saying which ring it belongs to, which two corners it runs between,
+// which edge produced it and which way round the loop traversed that edge. With
+// it a segment can be named as the party wall, an element backing an edge
+// reaches the run that edge produced, and a claim written on an edge carries
+// through to the segment it is about — none of which a polygon on its own
+// supports, and all of which a consumer would otherwise re-derive by matching
+// coordinates.
+//
+// [BoundarySegment.Origin] is what keeps the attribution honest. A run of a
+// region read from the model is the edge itself ([SegmentOriginEdge]); a run of
+// a drawn boundary is one chord standing in for part of the arc an edge bends
+// along ([SegmentOriginArc]), which names that edge and is not it; and a run an
+// operation produced ([SegmentOriginOperation]) names no edge at all, because
+// the boundary of an intersection runs partly along each operand and partly
+// along where they cross and there is no edge which is the second kind.
+//
 // # The buildable region
 //
 // [Topology.BuildableOf] is the derivation those operations exist for: the area

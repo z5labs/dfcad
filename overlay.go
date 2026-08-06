@@ -158,7 +158,7 @@ type Region struct {
 	//
 	// They are what a derivation which has to treat one edge differently from
 	// another is computed from — a setback per edge is the case this exists for
-	// — and nothing else in this file reads them.
+	// — and they are what [Region.Segments] reports.
 	//
 	// A region an operation produced carries none, and that includes
 	// [Region.In]. The boundary of an intersection runs partly along each
@@ -166,29 +166,152 @@ type Region struct {
 	// edge somebody wrote would be a lie the next operation would act on; and a
 	// region carried into another frame has corners in that frame and edges
 	// whose coordinates were never in it, which is a pair that would drift the
-	// moment either was read on its own. Both are recovered the same way, by
-	// reading the region again with [Topology.RegionOf].
-	segments []boundarySegment
+	// moment either was read on its own. Neither is left unanswered:
+	// [Region.Segments] reports the runs of such a boundary as
+	// [SegmentOriginOperation], which says an operation produced them rather
+	// than naming an edge which did not.
+	segments []BoundarySegment
 
 	// budget is the accumulated accuracy of the position claims behind it.
 	budget Budget
 }
 
-// boundarySegment is one straight run of a region's boundary: the edge it was
-// written as and the two corners it runs between.
+// SegmentOrigin is what produced one straight run of a region's boundary.
+//
+// It is what stops an attribution being read as more than it is. A run which is
+// an edge and a run which is one chord of the drawing of an arc both name an
+// edge, and a consumer which carried the second back into the model as though it
+// were the first would be writing a straight wall where a curved one is.
+type SegmentOrigin string
+
+// The three things which produce a run of a boundary.
+const (
+	// SegmentOriginEdge is a run which is an edge, corner to corner as it was
+	// written. It is the case an attribution is wanted for: the segment is the
+	// edge, and a claim written on the edge is a claim about the segment.
+	SegmentOriginEdge SegmentOrigin = "edge"
+
+	// SegmentOriginArc is a chord standing in for part of the arc an edge bends
+	// along. It names that edge, which is what makes a drawn boundary
+	// attributable at all, and it is not the edge: the run is as close to the
+	// curve as the chord tolerance the drawing was made to allowed, and no
+	// closer.
+	SegmentOriginArc SegmentOrigin = "arc"
+
+	// SegmentOriginOperation is a run an operation produced, which no authored
+	// edge is behind. An offset, a union and a region carried into another frame
+	// are all this: the boundary is where the operation put it, and naming an
+	// edge for it would be a lie the next derivation acts on.
+	SegmentOriginOperation SegmentOrigin = "operation"
+)
+
+// String returns the origin as it is written.
+func (o SegmentOrigin) String() string { return string(o) }
+
+// BoundarySegment is one straight run of a region's boundary: which ring of the
+// boundary it belongs to, the two corners it runs between, and what produced it.
+//
+// It is what an exporter attributes a ring back to the model with. Without it a
+// polygon is anonymous coordinates and the correspondence has to be re-derived
+// by matching them, which is exactly the re-derivation this engine exists to
+// prevent: the pairing is known where the boundary is assembled, so it is
+// reported from there rather than reconstructed downstream.
 //
 // The corners are held as they were read rather than projected into the
 // region's plane, for the reason [Region.figure] projects rather than caching a
 // projection: one projection, done where it is used, cannot fall out of step
 // with the figure it has to line up with.
-type boundarySegment struct {
-	// edge is the edge the run was written as.
+//
+// The zero value is a run from nowhere to nowhere which no edge produced, and
+// [BoundarySegment.Origin] reports it as [SegmentOriginOperation].
+type BoundarySegment struct {
+	// ring is which ring of the boundary the run belongs to, counted from zero
+	// in the order the rings come back.
+	ring int
+
+	// edge is the edge the run was written as, or which it stands in for, and
+	// nil for a run an operation produced.
 	edge *Edge
+
+	// bent is whether the run is a chord of the drawing of an arc rather than
+	// the edge itself, which is what [BoundarySegment.Origin] tells the two
+	// apart by.
+	bent bool
+
+	// reversed is whether the run goes against the order the edge was written,
+	// which the traversal decides and not the edge.
+	reversed bool
 
 	// from and to are the corners it runs between, in the order the loop
 	// traversed them.
 	from Point
 	to   Point
+}
+
+// Ring returns which ring of the boundary the run belongs to, counted from zero
+// in the order the rings come back.
+//
+// It is what makes a flat list of runs a boundary: a plate with a courtyard in
+// it is two rings, and a consumer which could not tell where one ended and the
+// next began would close the outer ring through the hole.
+func (s BoundarySegment) Ring() int { return s.ring }
+
+// Edge returns the edge the run was written as, or whose arc it stands in for.
+//
+// It is nil for a run an operation produced, which
+// [BoundarySegment.Origin] reports as [SegmentOriginOperation].
+func (s BoundarySegment) Edge() *Edge { return s.edge }
+
+// From returns the corner the run leaves, and [BoundarySegment.To] the one it
+// arrives at, in the order the loop traversed them.
+func (s BoundarySegment) From() Point { return s.from }
+
+// To returns the corner the run arrives at.
+func (s BoundarySegment) To() Point { return s.to }
+
+// Reversed reports whether the run goes against the order the edge was written.
+//
+// The direction is stated because a loop traverses an edge in either order and
+// the answer differs: two rooms either side of a party wall name one edge, and
+// the boundary of the second runs through it the other way round. A caller
+// which read the edge's own vertices and assumed the run followed them would
+// draw one of the two rooms inside out.
+//
+// It is false for a run an operation produced, which no edge was written for.
+func (s BoundarySegment) Reversed() bool { return s.reversed }
+
+// Origin reports what produced the run.
+//
+// It is computed from what the segment holds rather than stored beside it, for
+// the reason [BoundaryEdge.Classification] is: one rule, and nowhere for a
+// second copy of the answer to go stale
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+func (s BoundarySegment) Origin() SegmentOrigin {
+	switch {
+	case s.edge == nil:
+		return SegmentOriginOperation
+	case s.bent:
+		return SegmentOriginArc
+	default:
+		return SegmentOriginEdge
+	}
+}
+
+// String renders the run as a person reads it: where it goes, what produced it
+// and which way round it ran through the edge.
+func (s BoundarySegment) String() string {
+	where := fmt.Sprintf("%s to %s", pointText(s.from, 3), pointText(s.to, 3))
+
+	if s.edge == nil {
+		return fmt.Sprintf("%s: %s", where, SegmentOriginOperation)
+	}
+
+	direction := "forwards"
+	if s.reversed {
+		direction = "reversed"
+	}
+
+	return fmt.Sprintf("%s: %s %s, %s", where, s.Origin(), s.edge.ID(), direction)
 }
 
 // RegionOf reads the area a semantic node covers out of the loops bounding it.
@@ -338,17 +461,20 @@ func (t *Topology) regionOf(
 		return region, drew, m.diags
 	}
 
+	var drawn []BoundarySegment
+
 	figure := make([]contour, 0, len(rings))
-	for _, one := range rings {
+	for i, one := range rings {
 		points := one.points
 
 		if bent {
-			drawn, deviation, ok := m.drawnRing(one, drew.tolerance)
+			ring, starts, deviation, ok := m.drawnRing(one, drew.tolerance)
 			if !ok {
 				return region, drawing{tolerance: drew.tolerance}, m.diags
 			}
 
-			points = drawn
+			points = ring
+			drawn = append(drawn, drawnSegmentsOf(one, i, ring, starts)...)
 			drew.deviation = math.Max(drew.deviation, deviation)
 		}
 
@@ -374,13 +500,16 @@ func (t *Topology) regionOf(
 	region.budget = m.result.budget
 	region.pieces = piecesOf(overlay(figure, nil, m.tolerance.Value, coveredAlone), basis)
 
+	// The straight runs are the edges they were written as, and a run of a drawn
+	// arc is a chord standing in for part of the edge it was written as rather
+	// than that edge. Both name the edge and [BoundarySegment.Origin] is what
+	// keeps them apart, which is what lets a drawn boundary be attributed at all
+	// without the chord being read back as a wall somebody wrote straight. A
+	// region with nothing curved in it comes back the same either way, which is
+	// what makes [Topology.RegionOf] and [Topology.TessellateRegion] the same
+	// value.
+	region.segments = drawn
 	if !bent {
-		// The straight runs are the edges they were written as, which they stop
-		// being the moment an arc becomes segments: the run from one corner to
-		// the next is then the chord across the curve and not the boundary, and
-		// attributing it to the edge anyway would be a lie the next derivation
-		// acts on. A region which drew nothing carries them exactly as
-		// [Topology.RegionOf] does, which is what makes the two the same value.
 		region.segments = segmentsOf(rings)
 	}
 
@@ -426,19 +555,61 @@ func (m *measurer) nestings(figure []contour, rings []*outline, bent bool) []int
 // corner. Reading the pair from the same index rather than from the edge's own
 // written direction is what makes a ring traversed backwards come out running
 // the way the ring does.
-func segmentsOf(rings []*outline) []boundarySegment {
-	var segments []boundarySegment
+func segmentsOf(rings []*outline) []BoundarySegment {
+	var segments []BoundarySegment
 
-	for _, one := range rings {
-		if len(one.points) != len(one.edges) {
+	for index, one := range rings {
+		if len(one.points) != len(one.edges) || len(one.reversed) != len(one.edges) {
 			continue
 		}
 
 		for i, edge := range one.edges {
-			segments = append(segments, boundarySegment{
-				edge: edge,
-				from: one.points[i],
-				to:   one.points[(i+1)%len(one.points)],
+			segments = append(segments, BoundarySegment{
+				ring:     index,
+				edge:     edge,
+				reversed: one.reversed[i],
+				from:     one.points[i],
+				to:       one.points[(i+1)%len(one.points)],
+			})
+		}
+	}
+
+	return segments
+}
+
+// drawnSegmentsOf is the straight runs of one drawn ring, each naming the edge
+// it was written as or whose arc it stands in for.
+//
+// The drawing is per step of the traversal — starts says where in the ring each
+// step's points begin — so a chord belongs to the step it was drawn for and to
+// no other. That is what keeps a curve attributable: sixteen chords of one arc
+// all name the edge which bends along it, and none of them is mistaken for the
+// straight edge on either side of it.
+//
+// The ring closes, so the last run of the last step arrives back at the first
+// corner. Only a closed ring reaches here: a ring which does not close encloses
+// no area, and [Topology.regionOf] has already refused it.
+func drawnSegmentsOf(one *outline, index int, points []Point, starts []int) []BoundarySegment {
+	if len(points) == 0 || len(starts) != len(one.edges) || len(one.reversed) != len(one.edges) {
+		return nil
+	}
+
+	var segments []BoundarySegment
+
+	for i, edge := range one.edges {
+		end := len(points)
+		if i+1 < len(starts) {
+			end = starts[i+1]
+		}
+
+		for at := starts[i]; at < end; at++ {
+			segments = append(segments, BoundarySegment{
+				ring:     index,
+				edge:     edge,
+				bent:     one.bends[i] != nil,
+				reversed: one.reversed[i],
+				from:     points[at],
+				to:       points[(at+1)%len(points)],
 			})
 		}
 	}
@@ -515,6 +686,68 @@ func (r Region) Pieces() []Piece { return slices.Clone(r.pieces) }
 
 // Empty reports whether the region covers nothing.
 func (r Region) Empty() bool { return len(r.pieces) == 0 }
+
+// Segments returns the straight runs of the region's boundary, in the order the
+// rings are traversed, each saying what produced it.
+//
+// It is the pairing the boundary was assembled from rather than a
+// correspondence worked back out of coordinates. A run of a region read from a
+// model is the edge it was written as, or a chord of the drawing of that edge's
+// arc, and [BoundarySegment.Reversed] says which way round the loop ran through
+// it. That is what lets a ring be attributed back to the model it came from: a
+// party wall can be named, an element backing an edge can be carried onto the
+// segment that edge produced, and a claim written on an edge reaches the run it
+// is about.
+//
+// A region an operation produced attributes none of its boundary, and says so:
+// every run of it comes back as [SegmentOriginOperation] with no edge. The
+// boundary of an intersection runs partly along each operand and partly along
+// where they cross, and there is no edge which is the second kind — so the
+// answer is that an operation put it there, and not the nearest edge which
+// nearly did.
+//
+// The runs are derived from the region every time they are asked for and are
+// stored nowhere else
+// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+func (r Region) Segments() []BoundarySegment {
+	if r.derived {
+		return r.produced()
+	}
+
+	return slices.Clone(r.segments)
+}
+
+// produced is the boundary of a region nothing authored: the rings an operation
+// left, run corner to corner, each saying that an operation is what produced
+// it.
+//
+// The rings are taken in the order they come back — each piece's outer ring and
+// then the rings taken out of it — which is the order [Region.Pieces] reports
+// them in, so a caller reading both sees one boundary described twice rather
+// than two orderings to reconcile.
+func (r Region) produced() []BoundarySegment {
+	var segments []BoundarySegment
+	var index int
+
+	for _, piece := range r.pieces {
+		rings := make([][]Point, 0, 1+len(piece.holes))
+		rings = append(rings, piece.outer)
+		rings = append(rings, piece.holes...)
+
+		for _, ring := range rings {
+			for i, from := range ring {
+				segments = append(segments, BoundarySegment{
+					ring: index,
+					from: from,
+					to:   ring[(i+1)%len(ring)],
+				})
+			}
+			index++
+		}
+	}
+
+	return segments
+}
 
 // Area returns the total area covered, holes taken away, in the square of
 // [Region.Unit].
