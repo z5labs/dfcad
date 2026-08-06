@@ -294,9 +294,11 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 // under the named predicate, are both left alone. There is nothing to compare in
 // either, and a room somebody has drawn and not yet measured — or measured and
 // not yet drawn — is an ordinary state of a model being written rather than a
-// disagreement. An edge whose ends nobody has surveyed under the named predicate
-// is the same state seen from the geometry's side: a span nothing can measure is
-// not a span which disagrees.
+// disagreement. An edge whose ends nobody has surveyed under the position
+// predicate is the same state seen from the geometry's side: a span nothing can
+// measure is not a span which disagrees. It is the corners' predicate and not
+// the claim's which decides that one — the number is there and what is missing
+// is somewhere to measure it against.
 func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 	graph := subject.Graph()
 
@@ -702,9 +704,10 @@ func measuredLine(graph *Graph, node *SemanticNode, survey Survey) (shape, []Fai
 // question the whole engine already answers in one place.
 //
 // An end nothing places is no figure rather than a failure. A corner nobody has
-// surveyed under the named predicate is an ordinary state of a model being
-// written — the same state as a room drawn and not yet measured — and a span
-// which cannot be measured is not a span which disagrees. What is reported is
+// surveyed under the position predicate — the one the survey is built from, and
+// never the predicate the claim is written under — is an ordinary state of a
+// model being written, the same state as a room drawn and not yet measured, and
+// a span which cannot be measured is not a span which disagrees. What is reported is
 // what stopped a span whose ends *are* placed being read: a position in a unit
 // the edge's frame is not in, two ends written with different numbers of
 // components, an edge whose ends are at one point.

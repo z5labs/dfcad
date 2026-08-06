@@ -1408,8 +1408,9 @@ moved is what a reader goes on to find out.
 Two states are **not** violations and report nothing. A subject carrying the claim and no
 shape, and one carrying a shape and no claim under the named predicate, have nothing to
 compare: a room drawn and not yet measured, or measured and not yet drawn, is an ordinary
-state of a model being written. An edge whose ends nobody has surveyed under the named
-predicate is the second of those seen from the geometry's side — a span nothing can measure
+state of a model being written. An edge whose ends nobody has surveyed under the `(position
+<name>)` predicate is the second of those seen from the geometry's side — the number is
+there and what is missing is somewhere to measure it against, and a span nothing can measure
 is not a span which disagrees. A `deprecated` claim is never compared either — it is
 retracted rather than out-ranked, and a retracted number is not a disagreement.
 
