@@ -212,6 +212,48 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 		return Region{}, nil
 	}
 
+	region, _, diags := t.regionOf(node, boundaries, survey, "", false)
+
+	return region, diags
+}
+
+// drawing is what a region's rings were drawn to on the way to reading it: the
+// chord tolerance named on the invocation and the furthest any segment of the
+// result falls from the curve it stands in for.
+//
+// Both are zero for a region read without a name, which is [Topology.RegionOf]:
+// nothing was drawn there, because a ring which bends is refused rather than
+// approximated.
+type drawing struct {
+	tolerance Tolerance
+	deviation float64
+}
+
+// regionOf reads the area a node covers, drawing every ring which bends to the
+// chord tolerance named and refusing one where no drawing was asked for.
+//
+// Not drawing is [Topology.RegionOf]: an overlay is computed over straight
+// segments, and picking a resolution for somebody's boundary on the way to
+// answering a question about it is the accident an arc kept as an arc exists to
+// prevent. Drawing is [Topology.TessellateRegion], where a caller has decided to
+// draw the curve and has said how closely — and a caller which asked to draw and
+// named nothing to draw to is refused by [measurer.chord] like any other name
+// the registry does not declare, rather than quietly falling back to the
+// refusing case.
+//
+// Everything else is the same pass, which is what makes the two interchangeable:
+// the same refusals, the same even-odd nesting, the same orientation and the
+// same assembly into pieces. A region with nothing curved in it comes back
+// identical whichever way it was asked for, down to the boundary segments.
+func (t *Topology) regionOf(
+	node *SemanticNode,
+	boundaries *Boundaries,
+	survey Survey,
+	chord string,
+	draw bool,
+) (Region, drawing, []Diagnostic) {
+	var drew drawing
+
 	loops := slices.Collect(boundaries.Loops(node))
 
 	frame := node.frame
@@ -230,7 +272,19 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 	}
 
 	if len(loops) == 0 {
-		return region, m.diags
+		// A node which references no loop covers no area and has no curve in it
+		// to draw, so the chord tolerance is not read at all: refusing a circuit
+		// group for the name of a tolerance nothing here would have applied
+		// would be a diagnostic about a model in which nothing is wrong.
+		return region, drew, m.diags
+	}
+
+	if draw {
+		tolerance, ok := m.chord(chord, t.namedAt(node.id, node.span))
+		if !ok {
+			return region, drew, m.diags
+		}
+		drew.tolerance = tolerance
 	}
 
 	var rings []*outline
@@ -247,58 +301,120 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 		// reason it is measured from all of them or none: an operation over the
 		// rings which happened to assemble is an answer about a shape with a
 		// piece missing, and nothing in the result says which piece.
-		return region, m.diags
+		return region, drew, m.diags
 	}
 
 	if !m.applicable() {
 		m.add(m.untolerated(node))
-		return region, m.diags
+		return region, drew, m.diags
 	}
 
+	var bent bool
 	for _, one := range rings {
 		if !one.hasArea {
 			// Why is already on a diagnostic from the ring itself, in the
 			// vocabulary of the shape rather than of the arithmetic over it.
-			return region, m.diags
+			return region, drew, m.diags
 		}
 
-		if one.curved {
-			m.add(m.undrawn(node, one))
-			return region, m.diags
+		if !one.curved {
+			continue
 		}
+
+		if !draw {
+			m.add(m.undrawn(node, one))
+			return region, drew, m.diags
+		}
+
+		bent = true
 	}
 
 	if !m.coplanar(node, rings) {
-		return region, m.diags
+		return region, drew, m.diags
 	}
 
 	basis, ok := planeOf(rings[0].normal, rings[0].points[0])
 	if !ok {
-		return region, m.diags
+		return region, drew, m.diags
 	}
 
 	figure := make([]contour, 0, len(rings))
-	for i, one := range rings {
-		projected := make(contour, 0, len(one.points))
-		for _, point := range one.points {
+	for _, one := range rings {
+		points := one.points
+
+		if bent {
+			drawn, deviation, ok := m.drawnRing(one, drew.tolerance)
+			if !ok {
+				return region, drawing{tolerance: drew.tolerance}, m.diags
+			}
+
+			points = drawn
+			drew.deviation = math.Max(drew.deviation, deviation)
+		}
+
+		projected := make(contour, 0, len(points))
+		for _, point := range points {
 			projected = append(projected, basis.project(point))
 		}
 
-		// A ring inside an odd number of others is a hole and is written
-		// clockwise, which is the same even-odd rule a measurement takes its
-		// area away by. Nothing in the model declares which ring is the outside
-		// one, and this is where that is worked out rather than asked for.
-		figure = append(figure, oriented(projected, m.nesting(rings, i)%2 == 0))
+		figure = append(figure, projected)
+	}
+
+	// A ring inside an odd number of others is a hole and is written clockwise,
+	// which is the same even-odd rule a measurement takes its area away by.
+	// Nothing in the model declares which ring is the outside one, and this is
+	// where that is worked out rather than asked for.
+	for i, depth := range m.nestings(figure, rings, bent) {
+		figure[i] = oriented(figure[i], depth%2 == 0)
 	}
 
 	region.basis = basis
 	region.ready = true
 	region.dimension = rings[0].dimension
 	region.budget = m.result.budget
-	region.segments = segmentsOf(rings)
 	region.pieces = piecesOf(overlay(figure, nil, m.tolerance.Value, coveredAlone), basis)
 
-	return region, m.diags
+	if !bent {
+		// The straight runs are the edges they were written as, which they stop
+		// being the moment an arc becomes segments: the run from one corner to
+		// the next is then the chord across the curve and not the boundary, and
+		// attributing it to the edge anyway would be a lie the next derivation
+		// acts on. A region which drew nothing carries them exactly as
+		// [Topology.RegionOf] does, which is what makes the two the same value.
+		region.segments = segmentsOf(rings)
+	}
+
+	return region, drew, m.diags
+}
+
+// nestings counts, for each ring of a region, how many of the others hold it.
+//
+// Where nothing bent the count is taken at the corners, which is
+// [measurer.nesting] and is the same count [Topology.MeasureRegion] nests by.
+// Where something bent it is taken at the segments the curve was drawn as, and
+// that is the whole reason a curved region has to be drawn before it can be
+// nested at all: a courtyard whose wall bows out past a corner of the plate
+// around it is inside the plate and outside the polygon of its chords, so a
+// count taken at the corners would flip on which side of a bulge a corner
+// happened to fall — a region wrong by a whole ring rather than by a sag, which
+// is what [measurer.straight] refuses rather than approximates.
+func (m *measurer) nestings(figure []contour, rings []*outline, bent bool) []int {
+	depths := make([]int, len(figure))
+
+	for i := range figure {
+		if !bent {
+			depths[i] = m.nesting(rings, i)
+			continue
+		}
+
+		for j, other := range figure {
+			if j != i && len(figure[i]) > 0 && other.holds(figure[i][0]) {
+				depths[i]++
+			}
+		}
+	}
+
+	return depths
 }
 
 // segmentsOf is the straight runs of every assembled ring, in the order the
@@ -371,7 +487,7 @@ func (m *measurer) undrawn(node *SemanticNode, one *outline) Diagnostic {
 			"expected every loop bounding %s to be straight to read it as a plane figure, found that %s bends along an arc",
 			nodeName(node), geometricName(loopTag, one.loop.id),
 		),
-		Hint: "an overlay is computed over straight segments; tessellate the loop to a chord tolerance you name and " +
+		Hint: "an overlay is computed over straight segments; tessellate the region to a chord tolerance you name and " +
 			"operate on that, rather than having a resolution chosen for you here",
 	}
 }

@@ -448,6 +448,325 @@ func TestATessellatedRingKeepsItsCorners(t *testing.T) {
 	}
 }
 
+func TestTessellateRegion(t *testing.T) {
+	testCases := []struct {
+		name      string
+		region    ID
+		tolerance string
+		outer     int
+		holes     []int
+		area      float64
+		delta     float64
+	}{
+		{
+			name:      "draws a region bounded by one curved ring as one piece with no holes",
+			region:    "site:S-01",
+			tolerance: chordTolerance,
+			outer:     3 + 16,
+			area:      16 + semicircle,
+			delta:     0.05,
+		},
+		{
+			name:      "draws the same region in fewer segments where half a metre will do",
+			region:    "site:S-01",
+			tolerance: coarseChordTolerance,
+			outer:     3 + 3,
+			area:      16 + semicircle,
+			delta:     1.2,
+		},
+		{
+			name:      "draws a floor plate with a round courtyard as a ring and a hole",
+			region:    "site:S-31",
+			tolerance: chordTolerance,
+			outer:     4,
+			holes:     []int{32},
+			area:      100 - 4*math.Pi,
+			delta:     0.1,
+		},
+		{
+			name:      "draws the same courtyard as a coarser hole where half a metre will do",
+			region:    "site:S-31",
+			tolerance: coarseChordTolerance,
+			outer:     4,
+			holes:     []int{6},
+			area:      100 - 4*math.Pi,
+			delta:     2.2,
+		},
+	}
+
+	model := loadMeasuredModel(t, "arcs")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node, ok := model.nodes.Node(testCase.region)
+			require.True(t, ok)
+
+			drawn, diags := model.topology.TessellateRegion(node, model.boundaries, model.survey, testCase.tolerance)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			assert.Equal(t, testCase.region, drawn.Subject())
+			assert.Equal(t, ID("frame:building"), drawn.Frame())
+			assert.Equal(t, Unit("m"), drawn.Unit())
+			assert.False(t, drawn.Empty())
+
+			// The tolerance the drawing was made to is on the result, so what it
+			// is good for can be read off it rather than remembered.
+			tolerance := drawn.ChordTolerance()
+			assert.Equal(t, testCase.tolerance, tolerance.Name)
+			assert.Equal(t, Unit("m"), tolerance.Unit)
+
+			assert.Greater(t, drawn.Deviation(), 0.0, "a curve drawn as straight segments does depart from it")
+			assert.LessOrEqual(t, drawn.Deviation(), tolerance.Value)
+
+			pieces := drawn.Pieces()
+			require.Len(t, pieces, 1)
+
+			assert.Len(t, pieces[0].Outer(), testCase.outer,
+				"a ring does not repeat its first point at the end")
+
+			holes := make([]int, 0, len(pieces[0].Holes()))
+			for _, hole := range pieces[0].Holes() {
+				holes = append(holes, len(hole))
+			}
+			assert.Equal(t, testCase.holes, nilWhenEmpty(holes))
+
+			// The area is of the segments and not of the curves, so it is the
+			// exact figure less whatever the sag came to. What is asserted is
+			// that it is that figure approached rather than a different one.
+			assert.InDelta(t, testCase.area, drawn.Area(), testCase.delta)
+			assert.Equal(t, drawn.Area(), drawn.Region().Area())
+		})
+	}
+}
+
+// nilWhenEmpty is a slice with nothing in it written as nothing, which is what a
+// table naming no holes says.
+func nilWhenEmpty[T any](values []T) []T {
+	if len(values) == 0 {
+		return nil
+	}
+	return values
+}
+
+// TestADrawingApproachesTheCurveItStandsInFor is its own function because what
+// it asserts is an ordering between two answers rather than either answer's
+// value.
+//
+// A finer chord tolerance has to leave less of the shape out than a coarser one.
+// An implementation which drew to a resolution of its own and reported the
+// tolerance it was handed would pass every assertion which read that number
+// back, and would fail this one.
+func TestADrawingApproachesTheCurveItStandsInFor(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	node, ok := model.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	fine, diags := model.topology.TessellateRegion(node, model.boundaries, model.survey, chordTolerance)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	coarse, diags := model.topology.TessellateRegion(node, model.boundaries, model.survey, coarseChordTolerance)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	exact := 16 + semicircle
+
+	assert.Less(t, fine.Deviation(), coarse.Deviation())
+	assert.Less(t, exact-fine.Area(), exact-coarse.Area(),
+		"the finer drawing leaves less of the bulge out than the coarser one")
+	assert.Less(t, fine.Area(), exact,
+		"a bulge drawn as chords across it encloses less than the curve does")
+}
+
+// TestARegionWithNoCurvatureIsDrawnToItself is its own function because what it
+// asserts is an equality between two answers rather than either answer's value,
+// and it is exact rather than within a tolerance.
+//
+// A region with nothing curved in it must not be a case a caller has to steer
+// around: asking for it drawn and asking for it read give back the same region,
+// down to the rings, the orientation, the pieces and the boundary segments each
+// was written as. An implementation which sent the straight case through a
+// drawing step of its own would come back with the same shape and a different
+// value, and every equality downstream would start failing for no reason a
+// reader could see.
+func TestARegionWithNoCurvatureIsDrawnToItself(t *testing.T) {
+	model := loadMeasuredModel(t, "courtyard")
+
+	node, ok := model.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	read, diags := model.topology.RegionOf(node, model.boundaries, model.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	drawn, diags := model.topology.TessellateRegion(node, model.boundaries, model.survey, chordTolerance)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	assert.Equal(t, read, drawn.Region(), "a region with no curve in it is drawn to itself")
+	assert.Equal(t, 0.0, drawn.Deviation(), "a straight boundary departs from itself by nothing")
+	assert.Equal(t, chordTolerance, drawn.ChordTolerance().Name,
+		"the tolerance it was asked for is still reported, so a caller can check what it got")
+}
+
+// TestATessellatedRegionKeepsTheOrientationOfAnUntessellatedOne is its own
+// function because what it asserts is a convention rather than a figure.
+//
+// The outer ring of a piece runs one way and the rings taken out of it run the
+// other, and that has to be the same way round whether the boundary bent or not.
+// A consumer of a drawn region reads the rings the way it reads any other
+// region's, and a hole which came back wound like an outer ring is a courtyard
+// that consumer fills in.
+func TestATessellatedRegionKeepsTheOrientationOfAnUntessellatedOne(t *testing.T) {
+	straight := loadMeasuredModel(t, "courtyard")
+
+	square, ok := straight.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	read, diags := straight.topology.RegionOf(square, straight.boundaries, straight.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	curved := loadMeasuredModel(t, "arcs")
+
+	round, ok := curved.nodes.Node("site:S-31")
+	require.True(t, ok)
+
+	drawn, diags := curved.topology.TessellateRegion(round, curved.boundaries, curved.survey, chordTolerance)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	// Both fixtures are floor plates with a courtyard in the middle, written the
+	// same way round in the same plane, so the two are directly comparable: the
+	// only difference between them is that one courtyard is round.
+	for _, one := range []struct {
+		what   string
+		pieces []Piece
+	}{
+		{what: "a boundary which was read", pieces: read.Pieces()},
+		{what: "a boundary which was drawn", pieces: drawn.Pieces()},
+	} {
+		require.Len(t, one.pieces, 1, one.what)
+
+		assert.Greater(t, windingOf(one.pieces[0].Outer()), 0.0,
+			"the outer ring of %s runs anticlockwise in plan", one.what)
+
+		require.Len(t, one.pieces[0].Holes(), 1, one.what)
+
+		assert.Less(t, windingOf(one.pieces[0].Holes()[0]), 0.0,
+			"the hole of %s runs the other way from the ring holding it", one.what)
+	}
+}
+
+// windingOf is twice the signed area of a ring seen in plan, which is positive
+// where it runs anticlockwise and negative where it runs clockwise.
+//
+// It is written here rather than taken from the package because what it checks
+// is the package's own convention: a helper which shared the arithmetic under
+// test would agree with it whatever that arithmetic did.
+func windingOf(points []Point) float64 {
+	var twice float64
+	for i, point := range points {
+		next := points[(i+1)%len(points)]
+		twice += point[0]*next[1] - next[0]*point[1]
+	}
+	return twice
+}
+
+// TestATessellatedRegionIsDeterministic is its own function because what it
+// asserts is an equality between two answers rather than either answer's value,
+// and it is exact rather than within a tolerance.
+//
+// A drawing which differed between two runs by a bit in the last place would
+// show up as a diff in whatever it was exported into, and as an argument about
+// which of the two runs was right.
+func TestATessellatedRegionIsDeterministic(t *testing.T) {
+	first := loadMeasuredModel(t, "arcs")
+	second := loadMeasuredModel(t, "arcs")
+
+	one, ok := first.nodes.Node("site:S-31")
+	require.True(t, ok)
+
+	other, ok := second.nodes.Node("site:S-31")
+	require.True(t, ok)
+
+	drawn, _ := first.topology.TessellateRegion(one, first.boundaries, first.survey, chordTolerance)
+	again, _ := second.topology.TessellateRegion(other, second.boundaries, second.survey, chordTolerance)
+
+	assert.Equal(t, drawn.Pieces(), again.Pieces())
+	assert.Equal(t, drawn.Deviation(), again.Deviation())
+}
+
+// TestTessellateRegionRefusesWhatItCannotDraw is its own function because every
+// case in it is an answer deliberately not given, and what is asserted is the
+// rendering of the refusal rather than a figure.
+func TestTessellateRegionRefusesWhatItCannotDraw(t *testing.T) {
+	testCases := []struct {
+		name      string
+		region    ID
+		tolerance string
+	}{
+		{
+			name:      "refuses a chord tolerance the registry does not declare",
+			region:    "site:S-01",
+			tolerance: "no-such-tolerance",
+		},
+		{
+			name:      "refuses a run which named no chord tolerance at all",
+			region:    "site:S-01",
+			tolerance: "",
+		},
+		{
+			name:      "refuses a chord tolerance which is not in the unit of the frame",
+			region:    "site:S-01",
+			tolerance: closureTolerance,
+		},
+		{
+			name:      "refuses a tolerance finer than anything behind the arc supports, naming the edge",
+			region:    "site:S-31",
+			tolerance: "hair-chord-deviation",
+		},
+	}
+
+	model := loadMeasuredModel(t, "arcs")
+
+	var rendered string
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node, ok := model.nodes.Node(testCase.region)
+			require.True(t, ok)
+
+			survey := model.survey
+			if testCase.tolerance == closureTolerance {
+				// The declared closure tolerance is in the frame's unit, so the
+				// case which needs one which is not asks for a frame with no
+				// unit at all: both are the same refusal, that the number and
+				// the geometry are not comparable.
+				survey.Registry = nil
+			}
+
+			drawn, diags := model.topology.TessellateRegion(node, model.boundaries, survey, testCase.tolerance)
+			require.NotEmpty(t, diags)
+
+			assert.True(t, drawn.Empty(), "no figure, rather than one drawn to a number nobody declared")
+			assert.Empty(t, drawn.Region().Pieces())
+
+			if survey.Registry != nil {
+				rendered += renderBoundaryDiagnostics(t, diags)
+			}
+		})
+	}
+
+	assert.Equal(t, expectedArcDiagnostics(t, "undrawable-region.txt", rendered), rendered)
+}
+
+// TestTessellatingNothingIsAnAnswerRatherThanARefusal is its own function
+// because what it asserts is an absence: there is no question in an entity of
+// no family, so there is nothing to report about it either.
+func TestTessellatingNothingIsAnAnswerRatherThanARefusal(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	drawn, diags := model.topology.TessellateRegion(nil, model.boundaries, model.survey, chordTolerance)
+	assert.Empty(t, diags)
+	assert.True(t, drawn.Empty())
+	assert.Equal(t, "nothing tessellated", drawn.String())
+}
+
 func TestDegenerateArcIsADiagnostic(t *testing.T) {
 	testCases := []struct {
 		name string

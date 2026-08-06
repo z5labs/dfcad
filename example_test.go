@@ -2653,6 +2653,62 @@ func ExampleSurvey_Bend() {
 	// geom:E-02 drawn as 16 segments, within 0.009631 m of the curve, to chord-deviation
 }
 
+// A boundary which curves is drawn to straight segments when something actually
+// needs them — an export, a plan ring, a polygon — and the tolerance it was
+// drawn to travels with it.
+func ExampleTopology_TessellateRegion() {
+	root := "testdata/measure/arcs"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	survey := dfcad.Survey{Tolerance: "boundary-closure", Registry: registry}
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	for edge := range topology.Edges() {
+		centre, _ := claims.Resolve(edge.ID(), "arc-centre", registry)
+		through, _ := claims.Resolve(edge.ID(), "arc-through", registry)
+		survey.Bend(edge.ID(), centre, through)
+	}
+
+	// A floor plate with a round courtyard in the middle of it. Nothing measures
+	// it as it stands: which of two rings is inside the other is decided at
+	// their corners, and a ring which bulges past a corner is not a question the
+	// corners answer. Drawing the curve is what makes it answerable, and the
+	// answer says how closely it was drawn.
+	plate, _ := nodes.Node("site:S-31")
+
+	drawn, diags := topology.TessellateRegion(plate, boundaries, survey, "chord-deviation")
+	for _, diagnostic := range diags {
+		fmt.Println(diagnostic)
+	}
+
+	piece := drawn.Pieces()[0]
+
+	fmt.Printf("%s: %.4f %s², %d piece with %d hole\n",
+		drawn.Subject(), drawn.Area(), drawn.Unit(), len(drawn.Pieces()), len(piece.Holes()))
+	fmt.Printf("bounded by %d corners around %d segments, within %.6f %s of the boundary, to %s\n",
+		len(piece.Outer()), len(piece.Holes()[0]), drawn.Deviation(), drawn.Unit(), drawn.ChordTolerance().Name)
+
+	// What comes back is an ordinary region, so everything which takes one takes
+	// this. A boundary which was never curved comes back from here exactly as
+	// Topology.RegionOf reads it, which is what makes that one path rather than
+	// two.
+	bounds, _ := drawn.Region().Bounds()
+	fmt.Println(bounds)
+
+	// Output:
+	// site:S-31: 87.5142 m², 1 piece with 1 hole
+	// bounded by 4 corners around 32 segments, within 0.009631 m of the boundary, to chord-deviation
+	// (30.0 0.0 0.0) to (40.0 10.0 0.0) m
+}
+
 // ExampleGraph_Derive computes the derived geometry of a whole model — what each
 // thing covers, how big that is, where it is centred, how far it reaches and
 // which regions it lies inside — and keeps the answer in a build output

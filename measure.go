@@ -1415,7 +1415,8 @@ func (m *measurer) straight(region *SemanticNode, rings []*outline) bool {
 				nodeName(region), geometricName(loopTag, one.loop.id),
 			),
 			Hint: "a ring inside another is a hole and is taken away, and which ring is inside which is decided at the " +
-				"corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag",
+				"corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag. " +
+				"tessellate the region to a chord tolerance you name to nest it at the segments instead",
 		})
 
 		return false

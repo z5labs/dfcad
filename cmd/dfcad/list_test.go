@@ -105,6 +105,10 @@ const listRegistry = `(project
   (value 0.005 m)
   (description "How far apart two corners may be and still be one point."))
 
+(tolerance chord-deviation
+  (value 0.01 m)
+  (description "How far a straight segment standing in for a curve may fall from it."))
+
 (route buildings
   (kind Building)
   (type OfficeBuilding)
