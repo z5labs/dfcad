@@ -203,7 +203,11 @@
 // `claim-agrees-with-geometry` is that comparison, and what makes it a rule
 // rather than a subtraction is uncertainty: two figures which differ by less
 // than their combined uncertainty do not disagree, so the declared discrepancy
-// is the floor under the comparison rather than the whole of it.
+// is the floor under the comparison rather than the whole of it. It is written
+// on a node, where the shape is the one its boundary encloses or the line it is
+// drawn as, and on an edge, where it is the distance between the two corners the
+// edge runs between — which is the most directly checkable measurement the
+// format can express, and the one an outline never reaches.
 //
 // # Assertions
 //

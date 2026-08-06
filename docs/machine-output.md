@@ -1379,6 +1379,14 @@ two corners are one corner; and `(discrepancy <name>)`, how far the two may diff
 written on a node whose geometry is `area` or `surface`, where the comparison is of areas, or
 `line`, where it is of lengths.
 
+It is also written **on an edge**, where the comparison is of the claimed length against the
+distance between the two corners the edge runs between. That is the most directly checkable
+measurement the format can express, because both ends are already in the model, and it is the
+one no node-bound rule reaches: an edge belongs to no loop unless something says so, and a
+span written on a loose edge has no boundary for a rule about an outline to be about. A
+schedule of recorded spans becomes checkable by writing each of them as a claim on the edge it
+was measured along.
+
 `discrepancy` is a **floor and not the whole test.** Two figures which differ by less than
 their combined uncertainty do not disagree, so the band is the wider of the declared
 discrepancy and the two figures' combined one-sigma uncertainty: the claim's own accuracy, and
@@ -1392,13 +1400,18 @@ than zero.
 
 The discrepancy in the message is **signed**: a claim larger than its shape and one smaller
 are two different mistakes, and the message says which way it runs. `subject` is the span of
-the claim that disagrees, not of the node, and `related` carries the boundary it was compared
-against — either of the two may be the one to change.
+the claim that disagrees, not of the node, and `related` carries the geometry it was compared
+against — the boundary, for a claim on a node, and both corners for a span on an edge. Either
+the number or the geometry may be the one to change, and on an edge which of the two ends
+moved is what a reader goes on to find out.
 
 Two states are **not** violations and report nothing. A subject carrying the claim and no
 shape, and one carrying a shape and no claim under the named predicate, have nothing to
 compare: a room drawn and not yet measured, or measured and not yet drawn, is an ordinary
-state of a model being written. A `deprecated` claim is never compared either — it is
+state of a model being written. An edge whose ends nobody has surveyed under the `(position
+<name>)` predicate is the second of those seen from the geometry's side — the number is
+there and what is missing is somewhere to measure it against, and a span nothing can measure
+is not a span which disagrees. A `deprecated` claim is never compared either — it is
 retracted rather than out-ranked, and a retracted number is not a disagreement.
 
 ### `review`
