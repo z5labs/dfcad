@@ -2080,6 +2080,73 @@ not have to reissue it once per mistake. What the *model* refuses is the first o
 refuses: the operations after it may depend on it, and the failures they would then have
 would bury the one that is real.
 
+### The shape every artefact command reports
+
+An **artefact command** is one whose product is a file this contract does not describe — an
+export, or anything else that writes a build output outside the authored tree. What it writes
+to stdout is not the artefact and never can be: it is the account of one, and it has the same
+shape whichever command wrote it, so it is documented once here rather than repeated per
+command ([0022](./decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md)).
+
+**No command in this version produces an artefact.** `export` below is illustrative, and the
+shape is fixed here so that the first such command does not invent one.
+
+```json
+{
+  "version": 2,
+  "command": "export",
+  "derived": true,
+  "digest": "9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a",
+  "files": [
+    {
+      "path": ".dfcad/export/9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a/model.ifc",
+      "status": "written"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `derived` | bool | Whether an artefact was produced. Written whatever the outcome, with the same meaning it has on [`measure`](#measure), [`buildable`](#buildable) and [`site`](#site): an artefact that was written reads as `derived` true, and a model no artefact could be made of reads as `derived` false. |
+| `digest` | string, optional | The digest of the source tree the artefact was derived from, lower-case hex, so a caller can check the artefact against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `files` | array | One entry per file the artefact consists of, ascending by `path` compared byte-wise. Empty rather than null when nothing was written. |
+| `files[].path` | string | Where the file is, exactly as it would be opened. An artefact under the build directory is written beneath a directory named for the key it was produced under ([0021](./decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)), which is a path a caller cannot predict — so this field is how what was just produced is found. |
+| `files[].status` | string | One of `written`, `unchanged`. |
+| `identifiers` | array, optional | Written only under `--evidence`. One entry per rooted object, ascending by `id`, each a node `id` and the `global-id` derived for it ([0004](./decisions/0004-globalid-derives-from-a-pinned-namespace.md)). It is left out by default because it grows one entry per node and because every entry is recomputable exactly from the model a caller already has ([0017](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md)). |
+
+Statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `written` | This run wrote the file. |
+| `unchanged` | The artefact for this key was already on disk and this run left it in place. Nothing was written for it. |
+
+**`files[]` describes files that are on disk, and never anything else.** There is no
+`--dry-run` on an artefact command and no `dryRun` field: what these commands write is
+disposable, ignored by git and reproducible, so there is nothing for a dry run to protect and
+no diff for it to show. There is also no `failed` status, because **an artefact is
+all-or-nothing** — one run produces its whole file set or none of it, and a run that could not
+finish leaves nothing behind that a later run would read as the artefact for that key.
+
+**The artefact is never written to stdout,** under any flag. A caller who wants the bytes names
+a destination outside the model root and reads the file; stdout stays one JSON object, as it is
+for every other command.
+
+Exit codes:
+
+| Code | When |
+|------|------|
+| `0` | The command answered. Either the artefact exists — `derived` true, with `files` naming it — or the model held nothing the format carries, which is `derived` true with `files` empty. |
+| `1` | The artefact could not be produced from the model that was read. `derived` false, `files` empty, and `digest` written, so a caller reads why from the diagnostics on stderr rather than from an empty stream. |
+| `2` | The model could not be read: the root is not there, the tree did not load, or a file of it could not be read. |
+| `3` | The invocation was wrong: a required flag missing, or a destination inside the authored tree, which is refused before anything is read. |
+
+A model that exports to nothing is **exit `0`**, and it is the same judgement `buildable`
+makes about a parcel its own setbacks consumed: the command answered, and the answer is that
+there is nothing. Whether a format has a meaningful empty artefact — a header with no contents
+— is that format's own business; where one is written it appears in `files[]` like any other.
+
 ### Diagnostics and the exit code of a read
 
 The listings, `get`, `traverse`, `claims` and `conflicts` exit `0` whenever they answered,
