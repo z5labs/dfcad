@@ -147,6 +147,12 @@ var commands = []command{
 		run:     runSite,
 	},
 	{
+		name:    "export",
+		summary: "write the model's spatial structure as an IFC4 file",
+		usage:   exportUsage,
+		run:     runExport,
+	},
+	{
 		name:    "check",
 		summary: "run every rule the model states and say whether it holds",
 		usage:   checkUsage,

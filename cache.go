@@ -45,6 +45,25 @@ const BuildDir = ".dfcad"
 // either of them impossible to do without reading the other's.
 func CacheDir(root string) string { return filepath.Join(root, BuildDir, "cache") }
 
+// ExportDir is where artefacts derived from the model beneath root are
+// written.
+//
+// It is a sibling of [CacheDir] and is laid out the same way: one directory
+// per key, named for the digest of the tree the artefact was derived from, so
+// a run against a new revision writes a new directory rather than replacing
+// anything
+// ([0021](docs/decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)).
+//
+// An export never lands in the authored tree. A `model.ifc` beside the entity
+// files would be invisible to every check the engine runs — a walk reads only
+// files whose extension is [Extension] — while looking exactly as
+// authoritative as the coordinates it may have stopped agreeing with. Give it
+// an extension a walk does read and the failure inverts rather than resolving:
+// the artefact becomes an input to the digest of the tree it was derived from,
+// so writing it changes the key it was written under and no export of that
+// tree is ever current again.
+func ExportDir(root string) string { return filepath.Join(root, BuildDir, "export") }
+
 // digestVersion is what the digest computation is, in the digest.
 //
 // It is hashed first, so a change to the rules below changes every key at once

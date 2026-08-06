@@ -134,15 +134,18 @@ jobs:
           cache: true
           cache-dependency-path: go.sum
 
-      # Only the root package is run, because -update is its flag: passing it to
-      # a test binary which does not define one is an error rather than a no-op.
+      # Every package which holds a recorded copy of something it produces
+      # defines -update, spelled the same way, so the whole module is
+      # regenerated in one command. A package which did not define the flag
+      # would fail here rather than ignore it, which is the reason it is one
+      # flag rather than a list of packages somebody has to remember to extend.
       - name: Check the golden files are what the code produces
         run: |
-          go test . -update
-          if ! git diff --quiet -- testdata; then
-            echo "::error::these golden files are stale; regenerate them with: go test . -update"
-            git diff --stat -- testdata
-            git diff -- testdata
+          go test ./... -update
+          if ! git diff --quiet -- testdata cmd/dfcad/testdata ifc/testdata docs/token-budget.md; then
+            echo "::error::these golden files are stale; regenerate them with: go test ./... -update"
+            git diff --stat -- testdata cmd/dfcad/testdata ifc/testdata docs/token-budget.md
+            git diff -- testdata cmd/dfcad/testdata ifc/testdata docs/token-budget.md
             exit 1
           fi
 

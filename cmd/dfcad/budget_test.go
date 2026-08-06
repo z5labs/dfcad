@@ -39,16 +39,20 @@ import (
 // [TestTheRecordedTokenBudgetIsCurrent], so the claim in the repository is the
 // measurement rather than a recollection of it.
 
-// updateBudget rewrites the measurements recorded in docs/token-budget.md from
-// what this package measured.
+// updateGolden rewrites everything this package holds a recorded copy of: the
+// measurements in docs/token-budget.md, and the golden artefacts under
+// testdata.
 //
 //	go test ./cmd/dfcad -update
 //
 // It is the same flag, spelled the same way, as the one the root package's
-// golden files are regenerated with. A measurement is a golden: it is derived
-// from committed inputs, it changes when the output of a command changes, and
-// the diff is what says the change was intended.
-var updateBudget = flag.Bool("update", false, "rewrite the measurements recorded in docs/token-budget.md")
+// golden files are regenerated with, and it is one flag rather than one per
+// kind of record for the same reason: a change to a command reaches all of
+// them at once, and regenerating half of them leaves a tree nobody can read a
+// diff of. A measurement is a golden too — it is derived from committed
+// inputs, it changes when the output of a command changes, and the diff is
+// what says the change was intended.
+var updateGolden = flag.Bool("update", false, "rewrite the golden files under testdata and the measurements in docs/token-budget.md")
 
 const (
 	// budgetRoot is the representative model everything here is measured
@@ -626,7 +630,7 @@ func TestTheRecordedTokenBudgetIsCurrent(t *testing.T) {
 	before, after := surrounding(t, string(src))
 	want := before + measured + after
 
-	if *updateBudget {
+	if *updateGolden {
 		require.NoError(t, os.WriteFile(budgetRecord, []byte(want), 0o644))
 		return
 	}

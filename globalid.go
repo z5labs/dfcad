@@ -8,6 +8,8 @@ package dfcad
 import (
 	"crypto/sha1"
 	"fmt"
+
+	"github.com/z5labs/dfcad/ifc"
 )
 
 // GlobalID is IFC's identifier for one rooted object: a 128-bit value written
@@ -35,19 +37,6 @@ type GlobalID string
 
 // String returns the 22 characters, which is the form an IFC file carries.
 func (g GlobalID) String() string { return string(g) }
-
-// globalIDLength is the character count IFC fixes for the encoded form: one
-// group of two characters and five of four.
-const globalIDLength = 22
-
-// globalIDAlphabet is IFC's base64 alphabet, which is not the one RFC 4648
-// fixes: the digits come first, and the last two characters are an underscore
-// and a dollar rather than a plus and a slash.
-//
-// Substituting the standard alphabet would produce 22 characters which look
-// like a GlobalId, decode to the right 128 bits under the wrong reader, and be
-// a different identifier to every IFC implementation there is.
-const globalIDAlphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_$"
 
 // uuidURLNamespace is the URL namespace RFC 4122 fixes, and the root of every
 // GlobalID this package derives.
@@ -179,36 +168,19 @@ func uuidV5(namespace uuid, name string) uuid {
 
 // globalID encodes the 128 bits in IFC's 22-character form.
 //
-// The grouping is IFC's and is not a base64 of the whole number: the first byte
-// is written as two characters, and the remaining fifteen as five groups of
-// three bytes in four characters each. Two characters hold twelve bits where
-// one byte needs eight, so the leading character of a GlobalID is never above
-// `3` — and encoding the 128 bits as one number instead would produce a
-// different string for every value but the smallest.
+// The encoding itself is [ifc.EncodeGlobalID] and is not written here, because
+// it is IFC's rather than this project's: the grouping, the alphabet and the
+// character count are properties of the exchange format, and everybody writing
+// that format needs them while nothing else does. What stays here is the
+// derivation above — which bits a node's identifier is made of — which is this
+// project's decision and is recorded as
+// [0004](docs/decisions/0004-globalid-derives-from-a-pinned-namespace.md).
+//
+// [GlobalID] keeps its own type rather than becoming [ifc.GlobalID]: it is
+// returned by this package's exported API, and moving that type across a
+// package boundary would change every signature which carries one.
 func (u uuid) globalID() GlobalID {
-	encoded := make([]byte, 0, globalIDLength)
-
-	encoded = appendBase64(encoded, uint32(u[0]), 2)
-	for i := 1; i < len(u); i += 3 {
-		group := uint32(u[i])<<16 | uint32(u[i+1])<<8 | uint32(u[i+2])
-		encoded = appendBase64(encoded, group, 4)
-	}
-
-	return GlobalID(encoded)
-}
-
-// appendBase64 writes value as exactly digits characters of IFC's alphabet,
-// most significant first.
-func appendBase64(dst []byte, value uint32, digits int) []byte {
-	at := len(dst)
-	dst = append(dst, make([]byte, digits)...)
-
-	for i := digits - 1; i >= 0; i-- {
-		dst[at+i] = globalIDAlphabet[value%64]
-		value /= 64
-	}
-
-	return dst
+	return GlobalID(ifc.EncodeGlobalID(u))
 }
 
 // String writes the UUID in the canonical 8-4-4-4-12 text, which is the form
