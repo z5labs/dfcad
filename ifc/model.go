@@ -1,0 +1,344 @@
+// Copyright (c) 2026 Z5Labs and Contributors
+//
+// This software is released under the MIT License.
+// https://opensource.org/licenses/MIT
+
+package ifc
+
+// Schema is the schema token an exchange file this package writes declares in
+// its header, spelled exactly as ISO 10303-21 requires it.
+//
+// It is a constant rather than a field of [Header] because it is not a choice
+// a caller makes: what this package writes is IFC4, attribute list by
+// attribute list, and a file which declared another schema while carrying
+// IFC4's entities would be read by a conforming reader as a file of a
+// different format.
+const Schema = "IFC4"
+
+// Entity is the name of an IFC entity type, spelled the way an exchange file
+// spells one: upper case, with no separators.
+//
+// Which entity a thing is is the caller's decision, so this is a string rather
+// than a closed enumeration of the ones this package has constants for. What
+// is closed is the set this package knows the attribute list of — see
+// [UnknownEntityError] — because an entity written with the wrong number of
+// attributes is a file no reader can load, and guessing is how that happens.
+type Entity string
+
+// The spatial structure entities, which are the ones a [Spatial] may be.
+//
+// They are IFC's spatial decomposition and they nest in this order: a site
+// holds buildings, a building holds storeys, a storey holds spaces, and a
+// space holds spaces. That nesting is the caller's to respect; this package
+// writes the tree it is given.
+const (
+	EntitySite           Entity = "IFCSITE"
+	EntityBuilding       Entity = "IFCBUILDING"
+	EntityBuildingStorey Entity = "IFCBUILDINGSTOREY"
+	EntitySpace          Entity = "IFCSPACE"
+)
+
+// EntityZone is the entity a [Group] is, and is the only one it may be.
+//
+// A zone is not part of the spatial decomposition: it is a group with members
+// assigned to it, which is what lets one thing belong to several zones while
+// sitting in exactly one storey.
+const EntityZone Entity = "IFCZONE"
+
+// EntityProxy is the entity a product whose type nothing better describes is
+// written as.
+//
+// The IFC specification blesses it for exactly that case: a proxy is "an
+// element which is not covered by a more specific entity", and its ObjectType
+// is where the name of what it actually is goes. A caller with no mapping for
+// something is meant to write one of these rather than to leave the thing out
+// or to force it into an entity which means something else.
+const EntityProxy Entity = "IFCBUILDINGELEMENTPROXY"
+
+// Composition is IfcElementCompositionEnum: whether a spatial element is a
+// thing, a part of one, or a collection of them.
+//
+// The empty value writes nothing, which is the encoding of an optional
+// attribute that was not given.
+type Composition string
+
+// The compositions IFC defines.
+const (
+	CompositionComplex Composition = "COMPLEX"
+	CompositionElement Composition = "ELEMENT"
+	CompositionPartial Composition = "PARTIAL"
+)
+
+// Model is one IFC4 exchange file: everything which will be written, and
+// nothing about how it is written.
+//
+// It is a value with no methods and no hidden state, so a caller can build one
+// in a single pass, compare two of them, and hand the same one to [Write]
+// twice for the same bytes.
+type Model struct {
+	// Header is what the file says about itself.
+	Header Header
+
+	// Units is what every measurement in the file is expressed in.
+	Units UnitAssignment
+
+	// Context is the geometric representation context every shape in the file
+	// would be placed in. It is written whether or not anything carries a
+	// shape, because IfcProject requires one.
+	Context RepresentationContext
+
+	// Project is the root of the spatial decomposition. Exactly one is
+	// written: IFC allows one IfcProject per file and everything else hangs
+	// off it.
+	Project Project
+}
+
+// Header is the ISO 10303-21 header of the file.
+//
+// Every field is written exactly as it is given, including [Header.TimeStamp],
+// which is a string rather than a time so that this package cannot be the
+// thing which reads a clock. A caller which wants a byte-identical file for an
+// unchanged model derives that stamp from the model rather than from the run.
+type Header struct {
+	// Description is the FILE_DESCRIPTION list, one entry per string.
+	Description []string
+
+	// Name is the FILE_NAME name: conventionally the file's own name, and
+	// never an absolute path, which would put the machine the export ran on
+	// into the artefact.
+	Name string
+
+	// TimeStamp is the FILE_NAME time stamp, in the zoneless ISO 8601 form
+	// part 21 spells one in: 1970-01-01T00:00:00.
+	TimeStamp string
+
+	// Author and Organisation are the FILE_NAME author and organisation
+	// lists, one entry per string.
+	Author       []string
+	Organisation []string
+
+	// Preprocessor is what wrote the file and Originating is the system it was
+	// written from. Both are free text and neither may carry a version which
+	// moves with a build, or two exports of an unchanged model stop being the
+	// same bytes.
+	Preprocessor string
+	Originating  string
+
+	// Authorisation is the FILE_NAME authorisation field.
+	Authorisation string
+}
+
+// Project is IfcProject: the root every other object in the file reaches.
+type Project struct {
+	// GlobalID is the identifier of the project itself.
+	GlobalID GlobalID
+
+	// Name, Description, LongName and Phase are IfcProject's text
+	// attributes. An empty one is written as absent.
+	Name        string
+	Description string
+	LongName    string
+	Phase       string
+
+	// Aggregates is the identifier of the IfcRelAggregates which joins the
+	// project to Sites. It is required when there is a site and unread when
+	// there is not: a relationship is a rooted object and carries an
+	// identifier of its own, which the caller derives like any other.
+	Aggregates GlobalID
+
+	// Sites are the spatial structure beneath the project.
+	Sites []Spatial
+
+	// Groups are the zones the file declares. They are written beneath the
+	// project because a group is not part of the spatial decomposition and
+	// has nowhere else to hang.
+	Groups []Group
+}
+
+// Spatial is one element of the spatial decomposition: a site, a building, a
+// storey or a space.
+//
+// The four are one type rather than four because they differ only in the name
+// they are written under and in the optional attributes which follow the ones
+// they share — and this package writes those as absent. A caller which needs
+// a storey's elevation is asking for a field here, not for a type of its own.
+type Spatial struct {
+	// Entity is which of the four this is. Anything else is
+	// [UnknownEntityError].
+	Entity Entity
+
+	// GlobalID is the identifier of the element.
+	GlobalID GlobalID
+
+	// Name, Description, ObjectType and LongName are the text attributes
+	// every spatial element carries. An empty one is written as absent.
+	Name        string
+	Description string
+	ObjectType  string
+	LongName    string
+
+	// Composition is the element's IfcElementCompositionEnum. The empty
+	// value writes an absent attribute.
+	Composition Composition
+
+	// Placement is where the element's own coordinate system sits inside its
+	// parent's. A nil placement writes an absent ObjectPlacement, which is
+	// what an element nobody has located yet has.
+	Placement *Placement
+
+	// Aggregates is the identifier of the IfcRelAggregates joining this
+	// element to Children, and is required when there are any.
+	Aggregates GlobalID
+
+	// Children are the spatial elements decomposed out of this one.
+	Children []Spatial
+
+	// Contains is the identifier of the IfcRelContainedInSpatialStructure
+	// joining this element to Products, and is required when there are any.
+	Contains GlobalID
+
+	// Products are the things contained in this element rather than
+	// decomposed out of it. The distinction is IFC's and it is not cosmetic:
+	// a storey is part of a building, and a wall is a thing standing in a
+	// storey.
+	Products []Product
+}
+
+// Product is one thing standing in a spatial element.
+//
+// It is written under whichever entity the caller names, out of the set this
+// package knows the attribute list of. A caller with nothing better to say
+// writes [EntityProxy] and names what the thing is in ObjectType.
+type Product struct {
+	// Entity is what the product is written as.
+	Entity Entity
+
+	// GlobalID is the identifier of the product.
+	GlobalID GlobalID
+
+	// Name, Description and ObjectType are the text attributes every product
+	// carries. An empty one is written as absent.
+	Name        string
+	Description string
+	ObjectType  string
+
+	// Placement is where the product sits inside the spatial element which
+	// contains it.
+	Placement *Placement
+}
+
+// Group is IfcZone: a set of things administered together, which has members
+// rather than contents.
+type Group struct {
+	// GlobalID is the identifier of the zone.
+	GlobalID GlobalID
+
+	// Name, Description, ObjectType and LongName are the zone's text
+	// attributes. An empty one is written as absent.
+	Name        string
+	Description string
+	ObjectType  string
+	LongName    string
+
+	// Assignment is the identifier of the IfcRelAssignsToGroup which assigns
+	// Members to the zone, and is required when there are any.
+	Assignment GlobalID
+
+	// Members are the identifiers of the objects assigned to the zone. Each
+	// has to be an object written elsewhere in the same model — a spatial
+	// element, a product or another zone — and one which is not is
+	// [UnknownMemberError] rather than a dangling reference in the file.
+	Members []GlobalID
+}
+
+// Placement is where one coordinate system sits inside another: IFC's
+// IfcLocalPlacement over an IfcAxis2Placement3D.
+//
+// A placement is relative to the placement of whatever contains the thing it
+// places, which is what makes moving a building move everything in it. The
+// placement of a thing nothing contains is relative to the world coordinate
+// system of the file.
+type Placement struct {
+	// Location is the origin of the placed coordinate system.
+	Location Point
+
+	// Axis is its z direction and RefDirection its x. Both are optional in
+	// IFC and both are absent together far more often than not: an element
+	// which is not rotated relative to its parent needs neither, and writing
+	// the two default directions on every element in a model is noise in
+	// every diff of it.
+	Axis         *Direction
+	RefDirection *Direction
+}
+
+// Point is an IfcCartesianPoint.
+//
+// Points are interned: two placements at the same coordinates are one instance
+// in the file, and which instance that is does not depend on which of them was
+// reached first in some other run.
+type Point struct {
+	X, Y, Z float64
+}
+
+// Direction is an IfcDirection.
+//
+// Directions are interned exactly as [Point] is, and for the same reason: a
+// model in which everything points the same way should say so once.
+type Direction struct {
+	X, Y, Z float64
+}
+
+// UnitAssignment is IfcUnitAssignment: what every measurement in the file is
+// expressed in.
+//
+// It is written whether or not anything is measured, because IfcProject
+// requires it. A model with no units at all is an [EmptyUnitsError] rather
+// than a file whose numbers mean nothing in particular.
+type UnitAssignment struct {
+	// Units are the SI units the file assigns, in the order they are
+	// written. The order is the caller's and is preserved, because it is one
+	// of the things a golden fixture of the file is holding still.
+	Units []SIUnit
+}
+
+// SIUnit is one IfcSIUnit: a quantity, the SI unit it is measured in, and the
+// prefix on that unit.
+type SIUnit struct {
+	// Type is the IfcUnitEnum member the unit measures, spelled as IFC
+	// spells it: LENGTHUNIT, AREAUNIT, VOLUMEUNIT, PLANEANGLEUNIT.
+	Type string
+
+	// Prefix is the IfcSIPrefix, spelled as IFC spells it: MILLI, KILO and
+	// the rest. Empty is no prefix, which is what a metre has.
+	Prefix string
+
+	// Name is the IfcSIUnitName, spelled as IFC spells it: METRE,
+	// SQUARE_METRE, CUBIC_METRE, RADIAN.
+	Name string
+}
+
+// RepresentationContext is IfcGeometricRepresentationContext: the coordinate
+// space every shape in the file is expressed in.
+type RepresentationContext struct {
+	// Identifier and Type are the context's identifier and type, which are
+	// conventionally absent and "Model" respectively.
+	Identifier string
+	Type       string
+
+	// Dimension is the coordinate space dimension, which is 3 for anything
+	// this package writes.
+	Dimension int
+
+	// Precision is how close two points have to be to be the same point, in
+	// the length unit of the assignment above. Zero writes an absent
+	// attribute rather than a precision of nothing.
+	Precision float64
+
+	// World is the world coordinate system: the placement everything
+	// unplaced is relative to.
+	World Placement
+
+	// TrueNorth is where north is in that coordinate system, and is absent
+	// far more often than not.
+	TrueNorth *Direction
+}

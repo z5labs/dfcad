@@ -25,6 +25,7 @@ The engine is a library first and a command second.
 |---------------------|-----------------------------------------------------------------------|
 | `.` (`package dfcad`) | The engine's public API. `doc.go` holds the package doc comment only. |
 | `cmd/dfcad`         | The command line interface. `package main`, and nothing reusable.      |
+| `ifc`               | The IFC4 writer: a file format library which imports nothing of this module. |
 
 Rules that hold as the tree grows:
 
@@ -37,7 +38,11 @@ Rules that hold as the tree grows:
   subprocess.
 - **Layers get their own package only once they have a boundary.** Format, model, query
   and authoring are layers of one engine, not four products. Split when the exported
-  surface justifies it, not in advance.
+  surface justifies it, not in advance. `ifc` is what a real boundary looks like: it is a
+  different product with its own specification, its own closed vocabulary and its own
+  fixtures, and the test of that is whether it could move to a repository of its own with
+  no edit to its source. A package like it imports nothing of this module — enforced by a
+  test rather than intended — and the arrow points one way, from the engine to it.
 - **`internal/` is for what must not be imported from outside.** Prefer an unexported
   identifier in an existing package over a new internal one.
 - **Domain vocabulary never lands here.** Kinds and geometry forms are a closed set

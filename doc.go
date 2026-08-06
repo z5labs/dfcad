@@ -496,6 +496,16 @@
 // method there rather than a layout string in an exporter, which is one
 // character away from being a clock reading again.
 //
+// [ExportDir] is where such an artefact lands, a sibling of [CacheDir] under
+// the same build directory. The first exporter to use it is the IFC4 writer in
+// github.com/z5labs/dfcad/ifc, which is a package of its own and imports
+// nothing of this one: it knows IFC and part 21, the command which drives it
+// knows which entity a [Kind] is, and neither knows the other's vocabulary
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+// [DeriveGlobalID] is what joins them — the derivation is this package's and
+// the 22-character encoding is IFC's, so this package derives and that one
+// encodes.
+//
 // # Reviewing a change
 //
 // Every rule above constrains one revision. Some things are suspicious only as

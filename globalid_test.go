@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	sexpr "github.com/z5labs/sexpr-go"
+
+	"github.com/z5labs/dfcad/ifc"
 )
 
 // pinnedURL is the URL testdata/model pins, and the one every expected value
@@ -87,7 +89,7 @@ func TestDeriveGlobalID(t *testing.T) {
 			got := DeriveGlobalID(testCase.url, testCase.id)
 
 			assert.Equal(t, testCase.want, got)
-			assert.Len(t, got.String(), globalIDLength)
+			assert.Len(t, got.String(), ifc.Length)
 		})
 	}
 }
@@ -194,13 +196,13 @@ func TestGlobalIDEncoding(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			got := parseUUID(t, testCase.uuid).globalID()
 
-			require.Len(t, got.String(), globalIDLength)
+			require.Len(t, got.String(), ifc.Length)
 			assert.Equal(t, testCase.want, got)
 
 			// Every character is one IFC reads, and the leading one is never
 			// above 3: two characters hold twelve bits where the first byte
 			// needs eight.
-			assert.Empty(t, strings.Trim(got.String(), globalIDAlphabet))
+			assert.Empty(t, strings.Trim(got.String(), ifc.Alphabet))
 			assert.LessOrEqual(t, got.String()[0], byte('3'))
 		})
 	}

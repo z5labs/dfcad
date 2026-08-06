@@ -104,6 +104,9 @@ var samples = map[string][]string{
 	"review": {"--base-root", "."},
 	"route":  {"--kind", "Space", "--type", "MeetingRoom", "site:S-104"},
 	"apply":  {"batch.json"},
+	// An export takes no arguments at all: what it writes is the whole model,
+	// and where it writes it is derived from the digest of that model.
+	"export": {},
 	"add-node": {
 		"--kind", "Space", "--type", "MeetingRoom",
 		"--geometry", "area", "--frame", "frame:building",

@@ -2344,8 +2344,9 @@ to stdout is not the artefact and never can be: it is the account of one, and it
 shape whichever command wrote it, so it is documented once here rather than repeated per
 command ([0022](./decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md)).
 
-**No command in this version produces an artefact.** `export` below is illustrative, and the
-shape is fixed here so that the first such command does not invent one.
+[`export`](#export) is the command which produces one. The shape below is the shape it
+writes, and it was fixed here before that command existed so that the first of them could not
+invent one.
 
 ```json
 {
@@ -2423,6 +2424,76 @@ A model that exports to nothing is **exit `0`**, and it is the same judgement `b
 makes about a parcel its own setbacks consumed: the command answered, and the answer is that
 there is nothing. Whether a format has a meaningful empty artefact — a header with no contents
 — is that format's own business; where one is written it appears in `files[]` like any other.
+
+### `export`
+
+The model's spatial structure, written as an IFC4 exchange file. It is an [artefact
+command](#the-shape-every-artefact-command-reports) and writes that shape, plus one field of
+its own.
+
+```json
+{
+  "version": 2,
+  "command": "export",
+  "derived": true,
+  "digest": "9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a",
+  "schema": "IFC4",
+  "files": [
+    {
+      "path": ".dfcad/export/9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a/model.ifc",
+      "status": "written"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string, optional | The schema the artefact was written in, exactly as the file's `FILE_SCHEMA` declares it: `IFC4`. Absent on a refusal, because nothing was written in any schema. It is a field of this payload rather than of the shared shape, because what a format calls its version is that format's business. |
+
+Everything else — `derived`, `digest`, `files[]`, `identifiers` under `--evidence` — is the
+shared shape, with the meanings documented there.
+
+**What crosses the boundary is the spatial structure and the identifiers, not the geometry.**
+The project, and every node whose kind is `Site`, `Building`, `Storey` or `Space`, is written
+as the IFC entity that kind is — the two vocabularies are one for one — nested by `within`
+through `IfcRelAggregates`, each with a local placement relative to its parent's. A node whose
+kind is `Zone` is written as an `IfcZone` with its `member-of` members assigned through
+`IfcRelAssignsToGroup`. A node whose kind is `Element` or `Interface` is contained in the
+nearest spatial ancestor it has, through `IfcRelContainedInSpatialStructure`.
+
+**What an element is written as comes from its type's classification, and the fallback is a
+proxy.** A type declaring `(classification "IFC4" "IfcWall")` puts its instances in the file as
+`IFCWALL`. A type declaring nothing under that system — or naming an entity this writer has no
+attribute list for — puts them in as `IFCBUILDINGELEMENTPROXY` with the type's own name in
+`ObjectType`, which is what the IFC specification blesses that entity for. Classifications
+under any other system are carried by the model and read by nobody here: they name the thing in
+somebody else's vocabulary rather than naming an entity in this file's.
+
+**Every rooted object carries the `GlobalId`
+[0004](./decisions/0004-globalid-derives-from-a-pinned-namespace.md) derives**, from the URL
+the project pins and the node's id. The relationships are rooted objects too, and theirs are
+derived from a name no id could collide with — `ifc/aggregates/<id>`, `ifc/contains/<id>`,
+`ifc/assigns/<id>`, and `ifc/project` for the project itself — because an id is written
+`namespace:local` and a namespace never contains a slash. Under `--evidence` the manifest
+accounts for all of them.
+
+**A retired node is not written.** A thing which stopped existing must not reach a receiving
+system as a live one, and what a retirement means for an exchange — a delete, or nothing at
+all — is the receiving system's question rather than this command's.
+
+**A model which pins no URL, or whose frames disagree about the linear unit, is a refusal**:
+`derived` false, no files, the digest written, and the reason on stderr. The second is a
+refusal over something correct — a survey grid in metres beside a fabrication grid in
+millimetres is an ordinary model — because an exchange file states one set of units and
+nothing here could choose between them. A unit with no SI spelling, which is either foot, is
+refused for the same kind of reason: IFC writes one as a conversion from the metre, and this
+exporter does not write conversions.
+
+**Nothing here reads a clock.** `IfcOwnerHistory` is absent throughout, which is what removes
+the only mandatory creation time in the schema, and the part 21 header's time stamp is the
+derivation epoch. Two exports of an unchanged tree are the same bytes, so the second reports
+`unchanged` and writes nothing.
 
 ### Diagnostics and the exit code of a read
 
