@@ -810,3 +810,233 @@ func TestRegionOverlayNamesTheOperandItRefuses(t *testing.T) {
 	require.Len(t, refused, 1)
 	assert.Equal(t, room.span, refused[0].Span)
 }
+
+// TestRegionSegments checks the attribution a boundary comes back with: which
+// edge produced each straight run of it, and which ring of the boundary that run
+// belongs to.
+//
+// The pairing is what an exporter attributes a ring back to the model with. A
+// polygon without it is anonymous coordinates, and the correspondence can only
+// be recovered by matching them — which is the re-derivation this engine exists
+// to prevent.
+func TestRegionSegments(t *testing.T) {
+	testCases := []struct {
+		name   string
+		region ID
+		rings  []int
+		edges  []ID
+	}{
+		{
+			name:   "names the edge every run of a boundary was written as",
+			region: "site:S-01",
+			rings:  []int{4},
+			edges:  []ID{"geom:E-011", "geom:E-012", "geom:E-013", "geom:E-014"},
+		},
+		{
+			name:   "keeps the runs of a courtyard apart from the runs of the plate around it",
+			region: "site:S-04",
+			rings:  []int{4, 4},
+			edges:  []ID{"geom:E-041", "geom:E-042", "geom:E-043", "geom:E-044"},
+		},
+	}
+
+	model := loadOverlaidModel(t, "shapes")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			region := model.region(t, testCase.region)
+
+			segments := region.Segments()
+			require.NotEmpty(t, segments)
+
+			rings := make([]int, 0, len(testCase.rings))
+			edges := make([]ID, 0, len(testCase.edges))
+
+			for _, segment := range segments {
+				require.NotNil(t, segment.Edge(), "a run of a boundary read from the model was written as an edge")
+
+				// Nothing here bends, so every run is the edge itself rather
+				// than a chord standing in for part of it.
+				assert.Equal(t, SegmentOriginEdge, segment.Origin())
+				assert.False(t, segment.Reversed(), "every loop of this fixture is written in traversal order")
+
+				for segment.Ring() >= len(rings) {
+					rings = append(rings, 0)
+				}
+				rings[segment.Ring()]++
+
+				if segment.Ring() == 0 {
+					edges = append(edges, segment.Edge().ID())
+				}
+			}
+
+			assert.Equal(t, testCase.rings, rings, "one count per ring of the boundary")
+			assert.Equal(t, testCase.edges, edges, "the edges of the first ring, in the order the loop traverses them")
+
+			// The runs of one ring join up and the ring closes, which is what
+			// makes them a boundary rather than a bag of pairs.
+			assertRingsClose(t, segments)
+		})
+	}
+}
+
+// assertRingsClose checks that the runs of each ring leave the corner the
+// previous one arrived at and that the last of them arrives back at the first
+// corner.
+func assertRingsClose(t *testing.T, segments []BoundarySegment) {
+	t.Helper()
+
+	for at := 0; at < len(segments); {
+		ring := segments[at].Ring()
+
+		end := at
+		for end < len(segments) && segments[end].Ring() == ring {
+			end++
+		}
+
+		for i := at; i < end-1; i++ {
+			assert.Equal(t, segments[i].To(), segments[i+1].From(),
+				"run %d of ring %d leaves where the one before it arrived", i-at+1, ring)
+		}
+
+		assert.Equal(t, segments[end-1].To(), segments[at].From(), "ring %d closes", ring)
+
+		at = end
+	}
+}
+
+// TestRegionSegmentsRunTheWayTheLoopTraversedTheEdge is its own function because
+// what it asserts is an agreement between two regions rather than a property of
+// either.
+//
+// A party wall is one edge which two loops name, and the second of them
+// traverses it the other way round. A caller which read the edge's own vertices
+// and assumed the run followed them would draw one of the two rooms inside out,
+// so the direction is the traversal's answer and travels with the run.
+func TestRegionSegmentsRunTheWayTheLoopTraversedTheEdge(t *testing.T) {
+	model := loadMeasuredRoot(t, boundaryFixture("valid"))
+
+	const partition = ID("geom:E-02")
+
+	room := segmentOfRegion(t, model, "site:S-101", partition)
+	corridor := segmentOfRegion(t, model, "site:S-102", partition)
+
+	assert.False(t, room.Reversed(), "the room traverses the partition the way it was written")
+	assert.True(t, corridor.Reversed(), "the corridor traverses it the other way round")
+
+	// Which is the same wall run backwards and not a second wall: one edge, one
+	// pair of corners, two directions.
+	assert.Equal(t, room.From(), corridor.To())
+	assert.Equal(t, room.To(), corridor.From())
+	assert.Same(t, room.Edge(), corridor.Edge())
+}
+
+// segmentOfRegion is the one run of a region's boundary which names an edge,
+// failing the test where the region has none.
+func segmentOfRegion(t *testing.T, model measuredModel, subject, edge ID) BoundarySegment {
+	t.Helper()
+
+	node, ok := model.nodes.Node(subject)
+	require.True(t, ok, "the fixture holds a node %s", subject)
+
+	region, diags := model.topology.RegionOf(node, model.boundaries, model.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags), "%s is a region which can be operated on", subject)
+
+	for _, segment := range region.Segments() {
+		if segment.Edge() != nil && segment.Edge().ID() == edge {
+			return segment
+		}
+	}
+
+	t.Fatalf("the boundary of %s has no run written as %s", subject, edge)
+
+	return BoundarySegment{}
+}
+
+// TestRegionSegmentsOfARegionAnOperationProduced checks the answer the runs of a
+// derived boundary give, which is that an operation put them there.
+//
+// It is the case attribution must not guess at. The boundary of an intersection
+// runs partly along each operand and partly along where they cross, and there is
+// no edge which is the second kind — so naming the nearest edge which nearly
+// produced a run would be a lie the next derivation acts on.
+func TestRegionSegmentsOfARegionAnOperationProduced(t *testing.T) {
+	testCases := []struct {
+		name   string
+		derive func(subject, clip Region) (Region, []Diagnostic)
+	}{
+		{
+			name:   "attributes nothing of an intersection to an edge",
+			derive: Region.Intersect,
+		},
+		{
+			name:   "attributes nothing of a union to an edge",
+			derive: Region.Union,
+		},
+		{
+			name:   "attributes nothing of a difference to an edge",
+			derive: Region.Difference,
+		},
+		{
+			name: "attributes nothing of an offset to an edge",
+			derive: func(subject, _ Region) (Region, []Diagnostic) {
+				return subject.Buffer(1)
+			},
+		},
+	}
+
+	model := loadOverlaidModel(t, "shapes")
+
+	room := model.region(t, "site:S-01")
+	store := model.region(t, "site:S-02")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			derived, diags := testCase.derive(room, store)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			segments := derived.Segments()
+			require.NotEmpty(t, segments, "a derived boundary still says where it runs")
+
+			for _, segment := range segments {
+				assert.Equal(t, SegmentOriginOperation, segment.Origin())
+				assert.Nil(t, segment.Edge())
+				assert.False(t, segment.Reversed())
+			}
+
+			// One run per corner of every ring the operation left, which is the
+			// whole of the boundary rather than the part of it which happens to
+			// lie along an operand.
+			var corners int
+			for _, piece := range derived.Pieces() {
+				corners += len(piece.Outer())
+				for _, hole := range piece.Holes() {
+					corners += len(hole)
+				}
+			}
+
+			assert.Len(t, segments, corners)
+			assertRingsClose(t, segments)
+		})
+	}
+}
+
+// TestRegionSegmentStrings checks the rendering a run has, which is what a
+// reader sees rather than what a caller computes with.
+func TestRegionSegmentStrings(t *testing.T) {
+	model := loadOverlaidModel(t, "shapes")
+
+	segments := model.region(t, "site:S-01").Segments()
+	require.NotEmpty(t, segments)
+
+	assert.Equal(t, "(0.0 0.0 0.0) to (4.0 0.0 0.0): edge geom:E-011, forwards", segments[0].String())
+
+	offset, diags := model.region(t, "site:S-01").Buffer(1)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	produced := offset.Segments()
+	require.NotEmpty(t, produced)
+	assert.Contains(t, produced[0].String(), "operation")
+
+	assert.Equal(t, "operation", SegmentOriginOperation.String())
+}

@@ -290,3 +290,48 @@ func TestRunBuildableHumanOutputNeverChangesStdout(t *testing.T) {
 	assert.NotContains(t, humanReport, "geom:E-11: 5.0 m")
 	assert.Contains(t, loudReport, "geom:E-11: 5.0 m")
 }
+
+// TestRunBuildableAttributesTheBoundaryToItsEdges checks the half of the answer
+// which makes a ring more than coordinates: which edge produced each straight
+// run of the parcel's boundary, and which way round the loop ran through it.
+func TestRunBuildableAttributesTheBoundaryToItsEdges(t *testing.T) {
+	result, _ := derived(t, exitSuccess, model(), "site:P-01")
+
+	require.NotNil(t, result.Parcel)
+	require.Len(t, result.Parcel.Boundary, 4)
+
+	edges := make([]string, 0, len(result.Parcel.Boundary))
+	for _, segment := range result.Parcel.Boundary {
+		edges = append(edges, segment.Edge)
+
+		assert.Zero(t, segment.Ring, "the parcel is bounded by one ring")
+		assert.Equal(t, "edge", segment.Origin, "nothing here bends, so every run is the edge itself")
+		assert.False(t, segment.Reversed)
+		assert.Len(t, segment.From, 3)
+		assert.Len(t, segment.To, 3)
+	}
+
+	assert.Equal(t, []string{"geom:E-11", "geom:E-12", "geom:E-13", "geom:E-14"}, edges,
+		"the edges of the boundary, in the order the loop traverses them")
+
+	// The runs join up and the ring closes, which is what makes them a boundary
+	// rather than a bag of pairs.
+	for i, segment := range result.Parcel.Boundary {
+		next := result.Parcel.Boundary[(i+1)%len(result.Parcel.Boundary)]
+		assert.Equal(t, segment.To, next.From)
+	}
+
+	// The setbacks are read off the same pairing, so the two agree by
+	// construction rather than by coincidence.
+	setbacks := make([]string, 0, len(result.Setbacks))
+	for _, setback := range result.Setbacks {
+		setbacks = append(setbacks, setback.Edge)
+	}
+	assert.Equal(t, edges, setbacks)
+
+	// What is left buildable is derived, and attributes none of its own
+	// boundary: the strip along an edge is where the setback put it, and no edge
+	// of the model runs there.
+	require.NotNil(t, result.Region)
+	assert.Empty(t, result.Region.Boundary)
+}

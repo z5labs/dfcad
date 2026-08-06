@@ -1174,6 +1174,7 @@ model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
 | `region.pieces[].area` | number | What one connected part encloses once its holes are taken away. |
 | `region.pieces[].outer` | array | The ring bounding that part, closed without repeating its first corner, each corner as its components. |
 | `region.pieces[].holes` | array, optional | The rings taken out of it. Absent where there are none. |
+| `region.boundary[]` | array, optional | Which edge produced each straight run of the boundary. Same shape as [`buildable`](#buildable)'s `region.boundary`. Every run of a drawing names an edge: a chord standing in for part of an arc has `origin` `arc` and names the edge that bends along it. |
 | `budget` | object, optional | The accuracy of the corners the drawing was read from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. |
 
 **`deviation` is what was achieved and `chord` is what was asked for,** and the two differ
@@ -1260,7 +1261,35 @@ the one a permanent structure gets placed against.
 | `region.pieces[].area` | number | What one connected part encloses once its holes are taken away. |
 | `region.pieces[].outer` | array | The ring bounding that part, closed without repeating its first corner, each corner as its components. |
 | `region.pieces[].holes` | array, optional | The rings taken out of it. Absent where there are none. |
+| `region.boundary[].ring` | number | Which ring of the boundary a straight run belongs to, counted from zero in the order the rings are traversed. |
+| `region.boundary[].edge` | string | The id of the edge that run was written as, or whose arc it stands in for. |
+| `region.boundary[].origin` | string | What produced the run: `edge` where it is the edge itself, corner to corner as it was written, and `arc` where it is one chord of the drawing of the arc that edge bends along. |
+| `region.boundary[].reversed` | bool | Whether the run goes against the order the edge was written. |
+| `region.boundary[].from` | array | The corner the run leaves, as its components. |
+| `region.boundary[].to` | array | The corner it arrives at. |
 | `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims and the setback claims together. Same shape as [`budget`](#budget), without `from` and `to`. |
+
+**`boundary` is what attributes a ring back to the model it came from.** A polygon on its own
+is anonymous coordinates: it cannot say which segment is the party wall, cannot carry a
+relationship onto the element backing the edge behind it, and cannot carry a claim written on
+an edge through to the run that edge produced. Every consumer that wants those has to
+re-derive the correspondence by matching coordinates, which is exactly the re-derivation this
+engine exists to prevent — so the pairing is reported from where the boundary is assembled and
+is known.
+
+**The direction is stated because a loop traverses an edge in either order.** Two regions
+either side of a party wall name one edge and run through it opposite ways, and a caller that
+read the edge's own vertices and assumed the run followed them would draw one of them inside
+out.
+
+**A run an operation produced names no edge, and is not written.** `boundary` carries the runs
+an edge is behind, which is every run of a region read from the model — `parcel` here, and the
+`region` of a `tessellate` — and none of a region an operation produced. The boundary of a
+buildable region, of an intersection or of an offset runs where the operation put it, and
+naming the nearest edge that nearly produced it would be a lie the next derivation acts on.
+Repeating those corners under a name that says only "an operation put this here" would double
+the payload to say what `pieces` already says, so `boundary` is **absent** for such a region;
+`derived` on the result is what tells that apart from a region nothing was computed for.
 
 Different setbacks per edge are the ordinary case — six metres at the road, four at the rear,
 three at each flank — and which edge is which is not modelled. A setback is a claim written on
@@ -1329,7 +1358,7 @@ involved to the final budget.
 | `clearance.margin` | number | `actual` less `required`, which is the quantity the verdict is decided on. |
 | `clearance.unit` | string, optional | The linear unit all three are in. |
 | `clearance.uncertainty` | object, optional | How well the margin is known: `magnitude`, `unit` and `coverage-factor`. Absent where the budget could not be reduced to one figure, which `budget` says the reason for. |
-| `envelope` | object, optional | The region the subject had to sit inside. Same shape as `buildable`'s `region`. |
+| `envelope` | object, optional | The region the subject had to sit inside. Same shape as `buildable`'s `region`, `boundary` included where the envelope was read from the model rather than carried into another frame. |
 | `proposal` | object, optional | The subject, expressed in the envelope's frame. |
 | `needed` | object, optional | The proposal grown by the required clearance, which is the shape the envelope had to accommodate. The proposal itself where nothing beyond fitting at all was required. |
 | `shared` | object, optional | What the two have in common. |

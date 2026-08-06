@@ -185,6 +185,20 @@ type regionEntry struct {
 	// Pieces are the connected parts it covers, each with the ring bounding it
 	// and the rings taken out of it.
 	Pieces []pieceEntry `json:"pieces"`
+
+	// Boundary is which edge produced each straight run of the boundary, in the
+	// order the rings are traversed. It is what lets a ring be attributed back
+	// to the model it came from rather than arriving as anonymous coordinates.
+	//
+	// Only the runs an edge is behind are written, which is every run of a
+	// region read from the model and none of a region an operation produced. An
+	// intersection's boundary runs partly along each operand and partly along
+	// where they cross, and writing its corners a second time under a name which
+	// says "an operation put this here" would double the payload to say what
+	// `pieces` already says. Absent where there is nothing to attribute, which
+	// `derived` on the result tells apart from a region nothing was computed
+	// for.
+	Boundary []segmentEntry `json:"boundary,omitempty"`
 }
 
 // pieceEntry is one connected part of a region.
@@ -203,6 +217,38 @@ type pieceEntry struct {
 
 	// Holes are the rings taken out of it. Absent where there are none.
 	Holes [][][]float64 `json:"holes,omitempty"`
+}
+
+// segmentEntry is one straight run of a region's boundary and the edge which
+// produced it.
+type segmentEntry struct {
+	// Ring is which ring of the boundary the run belongs to, counted from zero
+	// in the order the rings are traversed. A run of a courtyard and a run of
+	// the plate around it are the same shape of object, and this is what says
+	// which ring a caller is closing.
+	Ring int `json:"ring"`
+
+	// Edge is the id of the edge the run was written as, or whose arc it stands
+	// in for.
+	Edge string `json:"edge"`
+
+	// Origin is what produced the run: `edge` where it is the edge itself,
+	// corner to corner as it was written, and `arc` where it is one chord of the
+	// drawing of the arc that edge bends along. A chord is not the edge, and
+	// carrying it back into a model as one would write a straight wall where a
+	// curved one is.
+	Origin string `json:"origin"`
+
+	// Reversed reports whether the run goes against the order the edge was
+	// written. Two regions either side of a party wall name one edge and
+	// traverse it opposite ways, so a caller which read the edge's own vertices
+	// and assumed the run followed them would draw one of them inside out.
+	Reversed bool `json:"reversed"`
+
+	// From is the corner the run leaves and To the one it arrives at, each as
+	// its components, in the order the ring is traversed.
+	From []float64 `json:"from"`
+	To   []float64 `json:"to"`
 }
 
 // setbackEntry is one edge's setback and the claim it came from.
@@ -392,6 +438,28 @@ func regionOf(region dfcad.Region) regionEntry {
 			written.Holes = append(written.Holes, ring(hole))
 		}
 		entry.Pieces = append(entry.Pieces, written)
+	}
+
+	for _, segment := range region.Segments() {
+		edge := segment.Edge()
+		if edge == nil {
+			// A run an operation produced attributes to nothing, and the region
+			// it belongs to is already written as derived. Writing it anyway
+			// would repeat the coordinates above under a name which names no
+			// edge.
+			continue
+		}
+
+		from, to := segment.From(), segment.To()
+
+		entry.Boundary = append(entry.Boundary, segmentEntry{
+			Ring:     segment.Ring(),
+			Edge:     string(edge.ID()),
+			Origin:   segment.Origin().String(),
+			Reversed: segment.Reversed(),
+			From:     from[:],
+			To:       to[:],
+		})
 	}
 
 	return entry

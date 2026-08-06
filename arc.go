@@ -317,7 +317,7 @@ func (t *Topology) TessellateLoop(loop *Loop, survey Survey, chord string) (Tess
 		return Tessellation{}, m.diags
 	}
 
-	points, deviation, ok := m.drawnRing(out, tolerance)
+	points, _, deviation, ok := m.drawnRing(out, tolerance)
 	if !ok {
 		return Tessellation{}, m.diags
 	}
@@ -431,6 +431,16 @@ func (t RegionTessellation) Region() Region { return t.region }
 // downstream.
 func (t RegionTessellation) Pieces() []Piece { return t.region.Pieces() }
 
+// Segments returns the straight runs of the drawn boundary, each naming the edge
+// it was written as or whose arc it stands in for.
+//
+// A chord of a drawn arc comes back as [SegmentOriginArc] and names the edge
+// which bends along it, so a drawing is attributable back to the model corner by
+// corner rather than arriving as anonymous coordinates. It is not the edge, and
+// the origin is what says so: the chord is as close to the curve as the tolerance
+// the drawing was made to allowed, and no closer.
+func (t RegionTessellation) Segments() []BoundarySegment { return t.region.Segments() }
+
 // Empty reports whether the drawn figure covers nothing.
 func (t RegionTessellation) Empty() bool { return t.region.Empty() }
 
@@ -528,8 +538,8 @@ func (t *Topology) TessellateRegion(
 }
 
 // drawnRing is an assembled ring with every arc in it replaced by the segments
-// which stand in for it, and how far the worst of those segments falls from the
-// curve it stands in for.
+// which stand in for it, where in it each step of the traversal begins, and how
+// far the worst of those segments falls from the curve it stands in for.
 //
 // It covers the steps of the traversal and no more: a ring which closes is
 // complete, and a traversal which does not close ends at a corner no step of it
@@ -537,11 +547,22 @@ func (t *Topology) TessellateRegion(
 // it comes back as its own corners, exactly as they were surveyed and in the
 // order the traversal ran through them, which is what makes a straight ring and
 // a drawn one the same kind of value.
-func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, float64, bool) {
+//
+// The starts are what makes a drawn ring attributable: a step contributes one
+// point where it is straight and a run of them where it bends, so the index it
+// begins at is the only thing which says which of the drawing's chords stand in
+// for which edge. Counting them back afterwards would mean re-deriving the
+// division of the curve, and two answers about how many chords an arc became is
+// one more than there should be.
+func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, []int, float64, bool) {
 	var points []Point
 	var deviation float64
 
+	starts := make([]int, 0, len(out.points))
+
 	for i, point := range out.points {
+		starts = append(starts, len(points))
+
 		curve := out.bends[i]
 		if curve == nil {
 			points = append(points, point)
@@ -550,7 +571,7 @@ func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, float6
 
 		segment := Tessellation{}
 		if !m.draw(curve, tolerance, &segment) {
-			return nil, 0, false
+			return nil, nil, 0, false
 		}
 
 		// The last point of one arc is the first corner of the next step, so it
@@ -559,7 +580,7 @@ func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, float6
 		deviation = math.Max(deviation, segment.deviation)
 	}
 
-	return points, deviation, true
+	return points, starts, deviation, true
 }
 
 // maxChordDivisions is the most segments one arc is allowed to become.

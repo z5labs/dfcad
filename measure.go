@@ -668,6 +668,16 @@ type outline struct {
 	// same order: the edge at an index leaves the corner at that index.
 	edges []*Edge
 
+	// reversed is whether the traversal ran through each of those edges against
+	// the order it was written, one per edge and in the same order.
+	//
+	// It is the traversal's answer and not the edge's. Two rings either side of
+	// one edge run through it opposite ways, so a run of a boundary which did
+	// not carry this could only be read back by comparing its corners with the
+	// edge's own vertices — which is the re-derivation [BoundarySegment] exists
+	// to make unnecessary.
+	reversed []bool
+
 	// bends are the arcs those edges bend along, one per edge and in the same
 	// order, nil wherever an edge is straight — which is what almost every edge
 	// is. Each is oriented the way the traversal ran through it and not the way
@@ -755,6 +765,7 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 	for _, step := range steps {
 		out.corners = append(out.corners, step.From())
 		out.edges = append(out.edges, step.Edge())
+		out.reversed = append(out.reversed, step.Reversed())
 	}
 
 	if !m.locate(loop, out) {

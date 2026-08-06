@@ -449,3 +449,53 @@ func TestRegionSegmentsAreOnlyOnARegionRead(t *testing.T) {
 	require.Empty(t, renderBoundaryDiagnostics(t, diags))
 	assert.Empty(t, offset.segments, "an offset boundary runs where no edge was written")
 }
+
+// TestBuildableSetbacksFollowTheBoundarySegments is its own function because
+// what it asserts is that two answers come from one place rather than that
+// either is right.
+//
+// Which edge produced which run of a boundary is [Region.Segments], and a
+// setback is that answer read under a predicate. A derivation which worked the
+// pairing out again for itself would be a second implementation of it, and the
+// day the two disagree is the day a setback is taken off an edge the boundary
+// does not run along.
+func TestBuildableSetbacksFollowTheBoundarySegments(t *testing.T) {
+	model := parcels(t)
+
+	result, diags := model.buildable(t, "plan:P-01", setbackOf)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	// Every edge of the parcel's boundary, once, in the order the loop
+	// traverses it — which is the order the setbacks come back in.
+	var expected []ID
+	seen := make(map[ID]bool)
+
+	segments := result.Boundary().Segments()
+	require.NotEmpty(t, segments)
+
+	for _, segment := range segments {
+		require.NotNil(t, segment.Edge())
+
+		if seen[segment.Edge().ID()] {
+			continue
+		}
+		seen[segment.Edge().ID()] = true
+
+		expected = append(expected, segment.Edge().ID())
+	}
+
+	applied := make([]ID, 0, len(result.Setbacks()))
+	for _, setback := range result.Setbacks() {
+		applied = append(applied, setback.Edge().ID())
+	}
+
+	assert.Equal(t, expected, applied)
+
+	// And what is buildable is derived, so it attributes none of its own
+	// boundary: the strip along an edge is where the setback put it and no edge
+	// of the model runs there.
+	for _, segment := range result.Region().Segments() {
+		assert.Equal(t, SegmentOriginOperation, segment.Origin())
+		assert.Nil(t, segment.Edge())
+	}
+}
