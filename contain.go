@@ -134,6 +134,28 @@ var nests = map[Kind][]Kind{
 // confidently.
 func Nests(child, parent Kind) bool { return slices.Contains(nests[child], parent) }
 
+// spatialKinds is the closed set of kinds which sit in the containment
+// hierarchy, in specification order.
+//
+// It is every kind but [KindZone], and it is written out rather than derived
+// from [nests] because the two say different things: a Site nests inside
+// nothing and a Zone nests inside nothing, and only one of them is a place.
+var spatialKinds = []Kind{KindSite, KindBuilding, KindStorey, KindSpace, KindElement, KindInterface}
+
+// Spatial reports whether a node of this kind is somewhere rather than a
+// grouping of things which are.
+//
+// It is the question every walk which means "what is inside this" has to ask
+// first. A zone is a set its members were written into and holds nothing by
+// containment, so a walk which took one for a place would answer "nothing is in
+// here" about a zone whose every member has an outline — which reads as an
+// empty storey rather than as the wrong question.
+func (k Kind) Spatial() bool { return slices.Contains(spatialKinds, k) }
+
+// SpatialKinds returns the kinds which sit in the containment hierarchy, in
+// specification order.
+func SpatialKinds() []Kind { return slices.Clone(spatialKinds) }
+
 // Within returns the node which strictly contains node, labelled with the
 // relation which produced it, and whether the model holds one.
 //

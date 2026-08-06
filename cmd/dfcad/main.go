@@ -147,6 +147,12 @@ var commands = []command{
 		run:     runSite,
 	},
 	{
+		name:    "plan",
+		summary: "report what a spatial node contains as rings, with the claims written on them",
+		usage:   planUsage,
+		run:     runPlan,
+	},
+	{
 		name:    "export",
 		summary: "write the model's spatial structure as an IFC4 file",
 		usage:   exportUsage,

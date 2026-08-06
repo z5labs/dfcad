@@ -1,0 +1,89 @@
+(node site:B-01
+  (label "Block A")
+  (kind Building)
+  (type OfficeBuilding)
+  (geometry solid)
+  (frame frame:building))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type OfficeStorey)
+  (geometry solid)
+  (frame frame:building)
+  (within site:B-01))
+
+(node site:R-02
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-02)
+  (area
+    (value 12.0 m2)
+    (source "As-built check AB-2026-002")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-05-06")))
+
+; Two captions, both live, neither retracted. Resolution picks nothing between
+; two claims nothing rankable was said about, and a plan reports both.
+(node site:R-01
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-01)
+  (area
+    (value 12.0 m2)
+    (source "As-built check AB-2026-002")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-05-06"))
+  (caption
+    (value "Meeting Room A")
+    (source "Room schedule RS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01"))
+  (caption
+    (value "MR-A")
+    (source "Fit-out drawing FD-2026-004")
+    (method method:schedule)
+    (date "2026-04-02")))
+
+(node site:A-01
+  (label "Recess off Room A")
+  (kind Space)
+  (type Alcove)
+  (geometry area)
+  (frame frame:building)
+  (within site:R-01)
+  (boundary geom:L-11)
+  (area
+    (value 1.0 m2)
+    (source "As-built check AB-2026-002")
+    (method method:total-station)
+    (accuracy (independent 0.02 m2))
+    (date "2026-05-06")))
+
+(node site:D-01
+  (label "Doorway into Room A")
+  (kind Element)
+  (type Doorway)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (caption
+    (value "D-01")
+    (source "Door schedule DS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+
+(node site:Z-01
+  (label "Level 1 occupancy zone")
+  (kind Zone)
+  (type Campus))

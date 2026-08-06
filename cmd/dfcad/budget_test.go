@@ -147,6 +147,30 @@ type path struct {
 	// that adds a field to a discovery answer fails here and is reviewed
 	// against the gate rather than absorbed into it.
 	ceiling int
+
+	// ratio is how many times cheaper than reading the model the path claims to
+	// be, which [TestTheQueryPathCostsLessThanReadingTheFiles] asserts.
+	//
+	// Zero means the standing claim, [standingRatio], which is what every path
+	// answering a question about one named thing is held to. A path states a
+	// smaller one only where the standing claim would be a comparison between
+	// two different questions — see [annotatedPlan], which is the one that does
+	// — and stating it is what puts the weaker claim in the record rather than
+	// leaving it out of the comparison altogether.
+	ratio int
+}
+
+// standingRatio is the claim the query surface is made on: an agent that would
+// have read the model instead comes out at least this many times ahead, which
+// is by enough that the round trips are worth making.
+const standingRatio = 4
+
+// claimed is how many times cheaper than reading the model the path says it is.
+func (p path) claimed() int {
+	if p.ratio == 0 {
+		return standingRatio
+	}
+	return p.ratio
 }
 
 // gated reports whether anybody set a target for the path.
@@ -225,6 +249,15 @@ var (
 			"--root", budgetRoot,
 		},
 	}
+	planLevel = call{
+		name: "dfcad plan site:L-01 --annotate area",
+		args: []string{
+			"plan", "site:L-01",
+			"--annotate", "area",
+			"--position", "position", "--tolerance", "boundary-closure",
+			"--root", budgetRoot,
+		},
+	}
 )
 
 var (
@@ -288,7 +321,50 @@ var (
 		calls:   []call{listCorners},
 	}
 
-	paths = []path{discovery, coldQuestion, warmQuestion, wholeRetrieval, derivedQuestion, geometricDiscovery}
+	annotatedPlan = path{
+		name: "reading a storey as an annotated plan",
+		what: "what level 1 looks like in plan, with the area claimed on each room",
+		// No target, and it could not honestly have one. Every other path here
+		// answers a question about one named thing and costs what that answer
+		// costs; this is the whole of a floor plate — every ring of every room,
+		// corner by corner, with the claims anchored to them — so what it costs
+		// is the size of the storey rather than of the arrangement.
+		//
+		// It is measured because it is the most expensive answer this engine
+		// gives and because it is the one whose per-entry payload multiplies:
+		// a field added to a boundary segment is paid once per wall of every
+		// room, which is fifty-odd times here and twice in `tessellate`. The
+		// alternative to asking it is reading both geometry files and both
+		// entity files and pairing them up by hand, which is what the
+		// comparison below prices it against.
+		ceiling: 7600,
+		// Two rather than the standing four, because the standing claim would be
+		// a comparison between two different questions. Every other path answers
+		// about one named thing, and reading the whole model is the only other
+		// way to get that answer. This enumerates a whole floor plate — and the
+		// model it is divided by holds two of them plus the building above them,
+		// so the files it genuinely stands in for are about half of what the
+		// comparison prices it against. Measured, it is 2.8 times cheaper than
+		// the whole model, which is a little under twice as cheap as reading the
+		// storey it replaces.
+		//
+		// That is the honest figure and it is stated rather than left out of the
+		// comparison. A path nothing claims anything about is one whose cost can
+		// double without anybody arguing about it, and the weaker claim written
+		// into docs/token-budget.md is where a partitioning review of this answer
+		// starts. What such a review would start from: a third of the payload is
+		// `region.boundary`, a quarter the budget's terms and a quarter the
+		// claims themselves, and none of the three is obviously the one to drop —
+		// the boundary is what pairs a wall with a run of the ring, which is the
+		// whole premise of an annotated plan.
+		ratio: 2,
+		calls: []call{planLevel},
+	}
+
+	paths = []path{
+		discovery, coldQuestion, warmQuestion, wholeRetrieval,
+		derivedQuestion, geometricDiscovery, annotatedPlan,
+	}
 )
 
 // answer runs one call and returns what it wrote to stdout, which is the whole
@@ -437,6 +513,10 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 			name: "finds the corners a position was ever surveyed for",
 			path: geometricDiscovery,
 		},
+		{
+			name: "reads a whole storey as rings with the claims written on them",
+			path: annotatedPlan,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -584,9 +664,9 @@ func TestTheQueryPathCostsLessThanReadingTheFiles(t *testing.T) {
 		for i, p := range paths {
 			_, total := cost(t, codec, answered[i])
 
-			assert.Less(t, total*4, whole,
-				"%s costs %d tokens under %s against %d to read the model, which is less than four times cheaper",
-				p.name, total, e.name, whole)
+			assert.Less(t, total*p.claimed(), whole,
+				"%s costs %d tokens under %s against %d to read the model, which is less than %d times cheaper",
+				p.name, total, e.name, whole, p.claimed())
 		}
 	}
 }
@@ -725,7 +805,8 @@ func measurements(t testing.TB) string {
 
 		if !p.gated() {
 			fmt.Fprintf(&out, "\n\nNo target: nothing asked this path to cost anything in particular. "+
-				"Regression ceiling %d tokens.\n", p.ceiling)
+				"Regression ceiling %d tokens. Claimed at %d times cheaper than reading the model.\n",
+				p.ceiling, p.claimed())
 			continue
 		}
 
@@ -733,8 +814,9 @@ func measurements(t testing.TB) string {
 		if p.met(totals) {
 			verdict = "**met**"
 		}
-		fmt.Fprintf(&out, "\n\nTarget %d tokens: %s. Regression ceiling %d tokens.\n",
-			p.target, verdict, p.ceiling)
+		fmt.Fprintf(&out, "\n\nTarget %d tokens: %s. Regression ceiling %d tokens. "+
+			"Claimed at %d times cheaper than reading the model.\n",
+			p.target, verdict, p.ceiling, p.claimed())
 	}
 
 	fmt.Fprintf(&out, "\n## Where the tokens go\n\n")
