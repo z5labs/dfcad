@@ -278,10 +278,17 @@ func TestTheInitialCheckSetOnDegenerateInput(t *testing.T) {
 // TestClaimAgreesWithGeometry is its own function because its fixture holds the
 // geometry still and varies only what is written about it.
 //
-// The shape is one outline and one run of wall, shared by every node in it, so
-// the difference between a case which passes and a case which fails is the claim
-// and nothing else. That is the failure the check is for: a number which stopped
-// matching a boundary nobody touched afterwards.
+// The shape is one outline, one run of wall and one pair of corners, shared by
+// every subject which uses them, so the difference between a case which passes
+// and a case which fails is the claim and nothing else. That is the failure the
+// check is for: a number which stopped matching a boundary nobody touched
+// afterwards.
+//
+// The spans at the end are written on edges rather than on nodes, and every one
+// of them belongs to no loop. That the fixture loads clean is half the assertion
+// about them: an assertion naming a check which cannot examine the form it is
+// written on is refused when the model is loaded, so a check which did not bind
+// to an edge would fail here before any of these cases were decided.
 func TestClaimAgreesWithGeometry(t *testing.T) {
 	run := runCheckFixture(t, "agreement")
 
@@ -365,6 +372,47 @@ func TestClaimAgreesWithGeometry(t *testing.T) {
 					"claimed against 7.0 m measured, which is 1.0 m less than the shape",
 			},
 		},
+		{
+			name:     "holds of a span written on an edge which belongs to no loop",
+			instance: "geom:E-20",
+			expected: nil,
+		},
+		{
+			name:     "reports a span longer than the corners it runs between, naming both of them",
+			instance: "geom:E-21",
+			expected: []string{
+				"expected the length claimed of geom:E-21 to agree with the corners it runs between, geom:V-20 " +
+					"and geom:V-21, found 4.5 m claimed against 4.0 m measured, which is 0.5 m more than the span",
+			},
+		},
+		{
+			name:     "reports a span shorter than the corners it runs between, which is the other mistake",
+			instance: "geom:E-22",
+			expected: []string{
+				"expected the length claimed of geom:E-22 to agree with the corners it runs between, geom:V-20 " +
+					"and geom:V-21, found 3.5 m claimed against 4.0 m measured, which is 0.5 m less than the span",
+			},
+		},
+		{
+			name:     "leaves an edge with nothing claimed under the predicate alone",
+			instance: "geom:E-23",
+			expected: nil,
+		},
+		{
+			name:     "leaves an edge whose ends nobody has surveyed alone",
+			instance: "geom:E-24",
+			expected: nil,
+		},
+		{
+			name:     "compares the span which replaced a retracted one rather than the retracted one",
+			instance: "geom:E-25",
+			expected: nil,
+		},
+		{
+			name:     "holds where a span and its corners differ by less than what the evidence can tell apart",
+			instance: "geom:E-26",
+			expected: nil,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -375,10 +423,10 @@ func TestClaimAgreesWithGeometry(t *testing.T) {
 	}
 
 	t.Run("decides every rule the fixture states either way", func(t *testing.T) {
-		assert.Equal(t, 12, run.Rules)
+		assert.Equal(t, 19, run.Rules)
 		assert.Equal(t, run.Rules, run.Ran)
-		assert.Equal(t, 5, run.Failed)
-		assert.Equal(t, 7, run.Passed)
+		assert.Equal(t, 7, run.Failed)
+		assert.Equal(t, 12, run.Passed)
 	})
 
 	t.Run("says what to do about each of them", func(t *testing.T) {
@@ -418,6 +466,41 @@ func TestClaimAgreesWithGeometryLeadsBackToBothPlaces(t *testing.T) {
 	require.Len(t, violation.Related, 1)
 	assert.NotEqual(t, violation.Subject, violation.Related[0].Span,
 		"the boundary it was compared against is a different place from the claim")
+}
+
+// TestClaimAgreesWithGeometryOnAnEdgeLeadsBackToBothCorners is its own function
+// for the same reason as the one above, and about a different pair of places.
+//
+// A span which no longer matches the corners it runs between is either a stale
+// number or an end which moved, and which of the two ends moved is what the
+// reader is about to go and find out. A failure which pointed at the edge would
+// name neither.
+func TestClaimAgreesWithGeometryOnAnEdgeLeadsBackToBothCorners(t *testing.T) {
+	graph := loadCheckFixture(t, "agreement")
+
+	edge, held := graph.Topology().Edge("geom:E-21")
+	require.True(t, held)
+
+	var violation Violation
+	for _, found := range graph.Rules().Select(RuleFilter{Subjects: []ID{"geom:E-21"}}).Run().Violations {
+		violation = found
+	}
+	require.NotEmpty(t, violation.Check)
+
+	resolution, resolved := graph.Claims().Resolve("geom:E-21", "length", graph.Registry())
+	require.NoError(t, resolved)
+	current, ok := resolution.Claim()
+	require.True(t, ok)
+
+	assert.Equal(t, current.Span(), violation.Subject, "the failure points at the span which disagrees")
+	assert.NotEqual(t, edge.Span(), violation.Subject)
+
+	require.Len(t, violation.Related, 2, "both corners the span was measured between")
+	assert.NotEqual(t, violation.Related[0].Span, violation.Related[1].Span)
+	for _, related := range violation.Related {
+		assert.NotEqual(t, violation.Subject, related.Span,
+			"a corner it was compared against is a different place from the claim")
+	}
 }
 
 // TestEdgeBackingResolvesReportsEveryReferenceWhichReachesNoElement is its own

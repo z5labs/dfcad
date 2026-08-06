@@ -303,3 +303,157 @@
     (position position)
     (tolerance boundary-closure)
     (discrepancy length-discrepancy)))
+
+; The spans below are written on the edges themselves rather than on a node, and
+; they are what the check reaches which no node-bound rule can. A measurement
+; written on an edge is the most directly checkable one the format can express —
+; both ends are already in the model — and an edge belongs to no loop unless
+; something says so, which is legal and is the case these cover.
+;
+; Two corners four metres apart, and every span below is written between them.
+; The geometry is held still for the same reason it is held still above: what
+; differs between a case which passes and a case which fails is the claim and
+; nothing else.
+(vertex geom:V-20 (label "Recorded span, west end") (frame frame:building)
+  (position (value (20.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-21 (label "Recorded span, east end") (frame frame:building)
+  (position (value (24.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+; Two corners nobody has surveyed yet. They are ordinary corners of a model being
+; written and the only thing missing is where they are.
+(vertex geom:V-22 (label "Unsurveyed span, west end") (frame frame:building))
+(vertex geom:V-23 (label "Unsurveyed span, east end") (frame frame:building))
+
+; The number written on the edge is the distance between its two ends.
+(edge geom:E-20
+  (label "Recorded span, as measured")
+  (frame frame:building)
+  (vertices geom:V-20 geom:V-21)
+  (length
+    (value 4.0 m)
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.005 m))
+    (date "2026-02-18"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; The number is longer than the corners it runs between: a span recorded face to
+; face against corners set out centreline to centreline, which is the discrepancy
+; two conventions in one model leave behind.
+(edge geom:E-21
+  (label "Recorded span, dimensioned face to face")
+  (frame frame:building)
+  (vertices geom:V-20 geom:V-21)
+  (length
+    (value 4.5 m)
+    (source "Room data sheet RDS-2026-018")
+    (method method:tape)
+    (accuracy (independent 0.005 m))
+    (date "2026-02-19"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; The number is shorter than the corners it runs between, which is the other
+; mistake and reads differently: a corner has moved out and nothing followed it.
+(edge geom:E-22
+  (label "Recorded span, dimensioned short")
+  (frame frame:building)
+  (vertices geom:V-20 geom:V-21)
+  (length
+    (value 3.5 m)
+    (source "Room data sheet RDS-2026-018")
+    (method method:tape)
+    (accuracy (independent 0.005 m))
+    (date "2026-02-19"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; Drawn and not yet measured. There is a span and no number written on it, which
+; is nothing to compare rather than a disagreement.
+(edge geom:E-23
+  (label "Recorded span, not yet measured")
+  (frame frame:building)
+  (vertices geom:V-20 geom:V-21)
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; Measured and not yet surveyed, which is the same state from the other side: the
+; number is there and neither end has a position for it to be checked against.
+(edge geom:E-24
+  (label "Unsurveyed span")
+  (frame frame:building)
+  (vertices geom:V-22 geom:V-23)
+  (length
+    (value 4.0 m)
+    (source "Room data sheet RDS-2026-018")
+    (method method:tape)
+    (accuracy (independent 0.005 m))
+    (date "2026-02-19"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; The stale number is still on the edge and is retracted. What is compared is the
+; one which replaced it, because a retracted number is not a disagreement.
+(edge geom:E-25
+  (label "Recorded span, remeasured")
+  (frame frame:building)
+  (vertices geom:V-20 geom:V-21)
+  (length
+    (id survey:L-0125)
+    (value 4.5 m)
+    (source "Room data sheet RDS-2026-004")
+    (method method:tape)
+    (accuracy (independent 0.005 m))
+    (date "2026-01-12")
+    (rank deprecated)
+    (superseded-by survey:L-0126))
+  (length
+    (id survey:L-0126)
+    (value 4.0 m)
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.005 m))
+    (date "2026-02-18"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))
+
+; The two differ by 0.02 m, which is twice the declared discrepancy and still
+; inside what the evidence can tell apart: the number is good to 0.05 m and the
+; corners put the span within about 0.006 m. Two figures which differ by less
+; than that do not disagree.
+(edge geom:E-26
+  (label "Recorded span, tape measured")
+  (frame frame:building)
+  (vertices geom:V-20 geom:V-21)
+  (length
+    (value 4.02 m)
+    (source "Room data sheet RDS-2026-018")
+    (method method:tape)
+    (accuracy (independent 0.05 m))
+    (date "2026-02-19"))
+  (assert claim-agrees-with-geometry
+    (predicate length)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy length-discrepancy)))

@@ -195,7 +195,8 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "claim-agrees-with-geometry",
 		Description: "The measurement claimed of the subject under the named predicate agrees with the one its " +
-			"shape computes to: an area for a subject bounded by loops, a length for one drawn as a line.",
+			"shape computes to: an area for a subject bounded by loops, a length for one drawn as a line, and the " +
+			"distance between its two corners for an edge.",
 		Parameters: []CheckParameter{
 			{
 				Name:     predicateParameter,
@@ -226,7 +227,7 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 					"frame is in m — and in the unit itself for a length.",
 			},
 		},
-		Forms:      []SubjectForm{SubjectNode},
+		Forms:      []SubjectForm{SubjectNode, SubjectEdge},
 		Geometries: []Geometry{GeometryArea, GeometrySurface, GeometryLine},
 	}
 }
@@ -247,6 +248,15 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 // The shape is recomputed from the corners' position claims every time this
 // runs, which is what makes it unable to have gone stale
 // ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
+//
+// Which shape that is comes from the form the rule was written on. A node is
+// measured through the loops which bound it — an area where it encloses one, a
+// total length where it is drawn as a line — and an edge is the distance between
+// the two corners it runs between. The edge is the most directly checkable
+// measurement the format can express, because both ends are already in the
+// model, and it is the one an outline never reaches: a span written on an edge
+// which belongs to no loop is a legal thing to write and has no boundary for a
+// node-bound rule to be about.
 //
 // # Uncertainty, and why a bare tolerance is not enough
 //
@@ -284,10 +294,14 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 // under the named predicate, are both left alone. There is nothing to compare in
 // either, and a room somebody has drawn and not yet measured — or measured and
 // not yet drawn — is an ordinary state of a model being written rather than a
-// disagreement.
+// disagreement. An edge whose ends nobody has surveyed under the named predicate
+// is the same state seen from the geometry's side: a span nothing can measure is
+// not a span which disagrees.
 func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
-	node, ok := subject.Subject().(*SemanticNode)
-	if !ok {
+	graph := subject.Graph()
+
+	place, compares := comparing(graph, subject.Subject())
+	if !compares {
 		return nil
 	}
 
@@ -308,8 +322,6 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		return nil
 	}
 
-	graph := subject.Graph()
-
 	declared, found := graph.Registry().Tolerance(discrepancy)
 	if !found {
 		// A rule naming a tolerance the registry does not declare is a load
@@ -319,10 +331,10 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		return nil
 	}
 
-	// The claim is read first because it is the cheaper half and because a
-	// subject which claims nothing under the predicate is left alone whatever
-	// its shape turns out to be.
-	resolution, err := graph.Claims().Resolve(node.ID(), predicate, graph.Registry())
+	// The claim is read before the shape is measured, because a subject which
+	// claims nothing under the predicate is left alone whatever its geometry
+	// turns out to be.
+	resolution, err := graph.Claims().Resolve(subject.Subject().ID(), predicate, graph.Registry())
 	if err != nil {
 		// Two equally current claims under a strict predicate are the conflict
 		// register's to report, and comparing one of them against the shape
@@ -341,16 +353,16 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		return []Failure{{
 			Message: fmt.Sprintf(
 				"expected the %s claimed of %s to be a number its shape could be compared against, found %s",
-				predicate, nodeName(node), describeShape(value.Shape()),
+				predicate, place.name, describeShape(value.Shape()),
 			),
 			Hint: "a measurement which agrees or disagrees with a shape is one number; the predicate this rule names " +
 				"carries something else, so the rule as written cannot be decided either way",
 			Span:    claim.Span(),
-			Related: boundaryOf(graph, node),
+			Related: place.related,
 		}}
 	}
 
-	shape, failures := measuredShape(graph, node, tolerance, position)
+	shape, failures := measuredGeometry(graph, subject.Subject(), tolerance, position)
 	if len(failures) > 0 {
 		return failures
 	}
@@ -363,12 +375,12 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		return []Failure{{
 			Message: fmt.Sprintf(
 				"expected the %s claimed of %s in %s, the unit its shape is measured in, found %s %s",
-				predicate, nodeName(node), shape.unit, decimal(claimed), value.Unit(),
+				predicate, place.name, shape.unit, decimal(claimed), value.Unit(),
 			),
 			Hint: "nothing here converts between units, so a claim written in one and a shape measured in another " +
 				"are two figures which cannot be compared",
 			Span:    claim.Span(),
-			Related: boundaryOf(graph, node),
+			Related: place.related,
 		}}
 	}
 
@@ -376,13 +388,13 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		return []Failure{{
 			Message: fmt.Sprintf(
 				"expected the discrepancy %s in %s, the unit the shape of %s is measured in, found %s %s",
-				declared.Name, shape.unit, nodeName(node), decimal(declared.Value), declared.Unit,
+				declared.Name, shape.unit, place.name, decimal(declared.Value), declared.Unit,
 			),
 			Hint: "how far a claim and a shape may differ is a figure of what they are figures of: an area for a " +
 				"subject bounded by loops and a length for one drawn as a line, and nothing here converts between " +
 				"the two. It is the (discrepancy ...) parameter rather than the (tolerance ...) one, which is a " +
 				"distance and is what corners are judged coincident against",
-			Span:    graph.Nodes().named(node),
+			Span:    place.at,
 			Related: []RelatedLocation{{Span: declared.Span, Message: "the discrepancy is declared here"}},
 		}}
 	}
@@ -404,22 +416,86 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 
 	return []Failure{{
 		Message: fmt.Sprintf(
-			"expected the %s claimed of %s to agree with the shape it is drawn as, found %s%s claimed against %s%s "+
-				"measured, which is %s%s %s the shape",
-			predicate, nodeName(node),
+			"expected the %s claimed of %s to agree with %s, found %s%s claimed against %s%s "+
+				"measured, which is %s%s %s %s",
+			predicate, place.name, shape.wording.against,
 			decimal(claimed), shape.suffix,
 			decimal(shape.value), shape.suffix,
-			decimal(math.Abs(difference)), shape.suffix, sense,
+			decimal(math.Abs(difference)), shape.suffix, sense, shape.wording.noun,
 		),
 		Hint: fmt.Sprintf(
 			"the shape is recomputed from the corners' %s claims, judged against the tolerance %s; the two may "+
 				"differ by %s, which is %s %s, or by their combined uncertainty where that is wider — so either the "+
-				"claim has gone stale or the boundary is drawn wrong",
-			position, tolerance, declared.Name, decimal(declared.Value), declared.Unit,
+				"claim has gone stale or %s",
+			position, tolerance, declared.Name, decimal(declared.Value), declared.Unit, shape.wording.blame,
 		),
 		Span:    claim.Span(),
-		Related: boundaryOf(graph, node),
+		Related: place.related,
 	}}
+}
+
+// compared is the half of a failure of this check which the form the rule was
+// written on decides: what to call the subject, where its id is written, and
+// where to send a reader for the geometry the claim was compared against.
+//
+// The three travel together because a failure which named one form and pointed
+// at another's geometry would send a reader to a line which is not the one to
+// change, and because the comparison between them is the same arithmetic
+// whichever form carried the claim.
+type compared struct {
+	// name is what a message calls the subject.
+	name string
+
+	// at is where the subject's id is written, which is where a failure about
+	// the rule rather than about the claim points.
+	at Span
+
+	// related is where the geometry the claim was compared against is written.
+	related []RelatedLocation
+}
+
+// comparing is what a failure of this check says about the thing the rule was
+// written on, and whether this check compares anything on that form at all.
+//
+// A form it does not compare on is left alone rather than reported. An assertion
+// naming a check which cannot examine the thing it is written on is refused when
+// the model is loaded ([ResolveAssertions]), so this is the guard behind that
+// and never the diagnostic somebody reads.
+func comparing(graph *Graph, entity Entity) (compared, bool) {
+	switch subject := entity.(type) {
+	case *SemanticNode:
+		return compared{
+			name:    nodeName(subject),
+			at:      graph.Nodes().named(subject),
+			related: boundaryOf(graph, subject),
+		}, true
+	case *Edge:
+		return compared{
+			name:    geometricName(edgeTag, subject.ID()),
+			at:      graph.Topology().namedAt(subject.ID(), subject.Span()),
+			related: endsOf(graph, subject),
+		}, true
+	}
+
+	return compared{}, false
+}
+
+// measuredGeometry is the figure the subject's own geometry computes to, and
+// what stopped it being read.
+//
+// A node is measured through the loops which bound it and an edge from its two
+// ends, which is the whole of the difference between the two forms this check
+// runs on. Everything past this point — the unit, the band, the sign of the gap
+// — is one comparison.
+func measuredGeometry(graph *Graph, entity Entity, tolerance, position string) (shape, []Failure) {
+	switch subject := entity.(type) {
+	case *SemanticNode:
+		return measuredShape(graph, subject, tolerance, position)
+	case *Edge:
+		return measuredSpan(graph, subject, tolerance, position)
+	}
+
+	return shape{}, nil
 }
 
 // currentClaim is the claim a shape is compared against, and whether the model
@@ -483,6 +559,46 @@ type shape struct {
 	// references no loop has none, and that is not the same state as a figure
 	// which came out zero.
 	measured bool
+
+	// wording is how a failure names what the figure was computed from.
+	wording wording
+}
+
+// wording is the part of a disagreement's sentence which the geometry the figure
+// came from decides.
+//
+// A node bounded by loops disagrees with an outline somebody drew; an edge
+// disagrees with the two corners it runs between, and telling a reader to look
+// at a boundary would send them to a form an edge need not belong to at all. The
+// rest of the sentence — the two figures, the gap between them and which way it
+// runs — is one comparison whatever was measured, so only the phrases which name
+// the geometry travel with the shape.
+type wording struct {
+	// against is what the claim was expected to agree with, written after "to
+	// agree with".
+	against string
+
+	// noun is what the measured figure is a figure of, written after "more
+	// than" or "less than".
+	noun string
+
+	// blame is the other thing which may be wrong where the two disagree,
+	// written after "either the claim has gone stale or".
+	blame string
+}
+
+// drawn is how a failure words a figure computed from the loops which bound a
+// node: the outline is the thing to look at, and it is a thing somebody drew.
+//
+// It is a function rather than a package variable because it is a constant and a
+// struct cannot be one, and a variable holding it could be written to from
+// anywhere in the package.
+func drawn() wording {
+	return wording{
+		against: "the shape it is drawn as",
+		noun:    "the shape",
+		blame:   "the boundary is drawn wrong",
+	}
 }
 
 // measuredShape computes what a subject's geometry says it measures, and reports
@@ -523,6 +639,7 @@ func measuredShape(graph *Graph, node *SemanticNode, tolerance, position string)
 		sensitivity: perimeter,
 		budget:      measurement.Budget(),
 		measured:    true,
+		wording:     drawn(),
 	}, nil
 }
 
@@ -571,8 +688,60 @@ func measuredLine(graph *Graph, node *SemanticNode, survey Survey) (shape, []Fai
 	}
 
 	out.sensitivity, out.measured = 1, true
+	out.wording = drawn()
 
 	return out, nil
+}
+
+// measuredSpan is how far one edge reaches: the distance between the two corners
+// it runs between, with the accuracy their position claims put behind it.
+//
+// It is [Graph.Measure]'s answer and not a subtraction of its own, which is what
+// makes an edge that bends measure along its arc rather than across its chord. A
+// second reading of an edge's length here would be a second answer to the
+// question the whole engine already answers in one place.
+//
+// An end nothing places is no figure rather than a failure. A corner nobody has
+// surveyed under the named predicate is an ordinary state of a model being
+// written — the same state as a room drawn and not yet measured — and a span
+// which cannot be measured is not a span which disagrees. What is reported is
+// what stopped a span whose ends *are* placed being read: a position in a unit
+// the edge's frame is not in, two ends written with different numbers of
+// components, an edge whose ends are at one point.
+func measuredSpan(graph *Graph, edge *Edge, tolerance, position string) (shape, []Failure) {
+	survey := positionSurvey(graph, tolerance, position, graph.Corners(edge))
+
+	start, end := edge.Vertices()
+	for _, corner := range []ID{start, end} {
+		if _, placed := survey.Positions[corner]; !placed {
+			return shape{}, nil
+		}
+	}
+
+	measurement, diags := graph.Measure(edge, survey)
+	if len(diags) > 0 {
+		return shape{}, failuresOf(diags)
+	}
+
+	length, computed := measurement.Length()
+	if !computed {
+		return shape{}, nil
+	}
+
+	return shape{
+		value:       length,
+		unit:        measurement.Unit(),
+		suffix:      unitSuffix(measurement.Unit()),
+		linear:      measurement.Unit(),
+		sensitivity: 1,
+		budget:      measurement.Budget(),
+		measured:    true,
+		wording: wording{
+			against: fmt.Sprintf("the corners it runs between, %s and %s", start, end),
+			noun:    "the span",
+			blame:   "an end of it has moved",
+		},
+	}, nil
 }
 
 // agreementBand is the combined one-sigma uncertainty of a claimed figure and
@@ -633,6 +802,38 @@ func boundaryOf(graph *Graph, node *SemanticNode) []RelatedLocation {
 			Message: "the boundary it was compared against",
 		})
 	}
+	return out
+}
+
+// endsOf is where the two corners an edge's span was measured between are
+// written, for a failure which has to name both places: the claim, and the
+// geometry it disagrees with.
+//
+// Both are named rather than the edge itself. A span which no longer matches
+// what was written down is either a stale number or a corner which moved, and
+// which of the two ends moved is exactly what the reader is about to go and
+// find out.
+//
+// An end the model does not hold is left out rather than pointed at. An edge
+// naming a corner nothing answers to is a load error against the edge, and a
+// related location for it would be a second report of that in the vocabulary of
+// a rule.
+func endsOf(graph *Graph, edge *Edge) []RelatedLocation {
+	start, end := edge.Vertices()
+
+	var out []RelatedLocation
+	for _, corner := range []ID{start, end} {
+		vertex, held := graph.Topology().Vertex(corner)
+		if !held {
+			continue
+		}
+
+		out = append(out, RelatedLocation{
+			Span:    graph.Topology().namedAt(vertex.ID(), vertex.Span()),
+			Message: "a corner the span was measured between",
+		})
+	}
+
 	return out
 }
 
