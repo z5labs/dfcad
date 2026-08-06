@@ -457,6 +457,43 @@ type Frame struct {
 	Span Span
 }
 
+// Plain returns the plain values written on the frame under predicate, in the
+// order they were written.
+//
+// A predicate the registry declares non-claim-bearing takes a plain value and
+// no children (specification section 6.5), and the claim pass leaves that value
+// exactly where it was written: there is no source, no method and no accuracy
+// on it, which is the whole of what that pass reads. This is how one is read
+// back, and it is what carries a fact about a frame which is not a measurement
+// — the name of the coordinate reference system it is rooted at, say — without
+// dressing it up as one.
+//
+// The shape is what was written rather than what the predicate declares,
+// because a Frame carries no registry to look that declaration up in. A form
+// under predicate holding no plain value is not returned: a claim form is one,
+// and so is a transform, which is written as a child form rather than
+// positionally and is read through [Frames.Transform] with the claim around it.
+//
+// The slice is empty for a predicate nothing wrote. More than one is not an
+// error here — repeating a predicate is the ordinary case — and what to make of
+// two is the caller's, which is the only place it can be decided.
+func (f Frame) Plain(predicate string) []Value {
+	var out []Value
+
+	for _, form := range f.Claims {
+		tag, ok := formTag(form)
+		if !ok || tag != predicate {
+			continue
+		}
+
+		if value, ok := plainValue(form); ok {
+			out = append(out, value)
+		}
+	}
+
+	return out
+}
+
 // Tolerance is one declared named tolerance, per specification section 7.6.
 //
 // No numeric literal tolerance appears in engine code and none appears in an

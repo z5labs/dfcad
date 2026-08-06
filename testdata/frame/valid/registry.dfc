@@ -22,7 +22,18 @@
   (shape transform)
   (description "The rigid transform from a frame to its parent."))
 
-(frame frame:survey-grid (label "Site survey grid") (unit m))
+; The name of the projected system the chain is rooted at. It carries no
+; provenance because it is not a measurement of anything: it names an entry in
+; somebody else's register, and this model neither resolves it nor converts it.
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The projected coordinate reference system the chain is rooted at."))
+
+(frame frame:survey-grid
+  (label "Site survey grid")
+  (unit m)
+  (crs "EPSG:25831"))
 
 (frame frame:site
   (label "Site setting-out grid")

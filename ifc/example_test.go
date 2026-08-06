@@ -178,3 +178,51 @@ func ExampleRepresentation() {
 	// ENDSEC;
 	// END-ISO-10303-21;
 }
+
+// A georeference says where the file's coordinate space sits on the earth: the
+// projected system it is expressed in, and the conversion into it.
+//
+// Both strings are written and neither is read. Where the model's own frame is
+// the projected system, the conversion is the identity — the offsets are nought
+// because the schema requires them, and the rotation and the scale are absent,
+// which is the schema saying there is none rather than a writer stating a fit
+// nobody measured.
+func ExampleGeoreference() {
+	model := ifc.Model{
+		Header: ifc.Header{Name: "model.ifc", TimeStamp: "1970-01-01T00:00:00"},
+		Units: ifc.UnitAssignment{Units: []ifc.SIUnit{
+			{Type: "LENGTHUNIT", Name: "METRE"},
+		}},
+		Context: ifc.RepresentationContext{Type: "Model", Dimension: 3},
+		Georeference: &ifc.Georeference{
+			CRS: ifc.ProjectedCRS{
+				Name:        "EPSG:25831",
+				Description: `PROJCS["ETRS89 / UTM zone 31N"]`,
+			},
+		},
+		Project: ifc.Project{GlobalID: "0Ig1S2wRr2WQeQMwAKN3aq", Name: "Riverside"},
+	}
+
+	if err := ifc.Write(os.Stdout, model); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// ISO-10303-21;
+	// HEADER;
+	// FILE_DESCRIPTION((),'2;1');
+	// FILE_NAME('model.ifc','1970-01-01T00:00:00',(),(),'','','');
+	// FILE_SCHEMA(('IFC4'));
+	// ENDSEC;
+	// DATA;
+	// #1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+	// #2=IFCUNITASSIGNMENT((#1));
+	// #3=IFCCARTESIANPOINT((0.,0.,0.));
+	// #4=IFCAXIS2PLACEMENT3D(#3,$,$);
+	// #5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,$,#4,$);
+	// #6=IFCPROJECTEDCRS('EPSG:25831','PROJCS["ETRS89 / UTM zone 31N"]',$,$,$,$,$);
+	// #7=IFCMAPCONVERSION(#5,#6,0.,0.,0.,$,$,$);
+	// #8=IFCPROJECT('0Ig1S2wRr2WQeQMwAKN3aq',$,'Riverside',$,$,$,$,(#5),#2);
+	// ENDSEC;
+	// END-ISO-10303-21;
+}

@@ -1562,3 +1562,163 @@ func TestWriteBoundsNothingWhereTheCallerStatedNoBoundary(t *testing.T) {
 	assert.NotContains(t, source, "IFCRELSPACEBOUNDARY")
 	assert.NotContains(t, source, "IFCCONNECTIONCURVEGEOMETRY")
 }
+
+// georeferenced is the fixture placed on the earth, which is the one thing a
+// spatial model cannot say for itself.
+//
+// The definition is a fragment rather than a whole well known text string
+// because what this package does with it is nothing: it is written out exactly
+// as it arrives, so the only property a longer one would exercise is the string
+// encoder, which has its own tests.
+func georeferenced() Model {
+	model := fixture()
+	model.Georeference = &Georeference{
+		CRS: ProjectedCRS{
+			Name:        "EPSG:6543",
+			Description: `PROJCS["NAD83(2011) / Louisiana South (ftUS)"]`,
+		},
+	}
+
+	return model
+}
+
+func TestWriteGeoreference(t *testing.T) {
+	got := written(t, georeferenced())
+
+	assert.Equal(t, golden(t, "georeferenced.ifc", got), got,
+		"the emitted file is stale; regenerate it with: go test ./ifc -update")
+}
+
+// TestWriteGeoreferenceIsAFunctionOfTheModel is the property the golden holds
+// still, asserted directly for the reason [TestWriteIsAFunctionOfTheModel] is.
+func TestWriteGeoreferenceIsAFunctionOfTheModel(t *testing.T) {
+	first := written(t, georeferenced())
+
+	for range 8 {
+		assert.Equal(t, first, written(t, georeferenced()))
+	}
+}
+
+func TestWriteGeoreferenceReadsBackUnderAnIndependentReader(t *testing.T) {
+	parsed, err := read(written(t, georeferenced()))
+	require.NoError(t, err)
+
+	var crs, conversion simple
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+
+		switch held.keyword {
+		case "IFCPROJECTEDCRS":
+			crs = held
+		case "IFCMAPCONVERSION":
+			conversion = held
+		}
+	}
+
+	require.Equal(t, "IFCPROJECTEDCRS", crs.keyword, "the file holds the projected system")
+	require.Equal(t, "IFCMAPCONVERSION", conversion.keyword, "the file holds the conversion into it")
+
+	t.Run("names the system and carries its definition verbatim", func(t *testing.T) {
+		require.Len(t, crs.attributes, 7)
+
+		assert.Equal(t, itemString, crs.attributes[0].form)
+		assert.Equal(t, "EPSG:6543", crs.attributes[0].text)
+
+		assert.Equal(t, itemString, crs.attributes[1].form)
+		assert.Equal(t, `PROJCS["NAD83(2011) / Louisiana South (ftUS)"]`, crs.attributes[1].text)
+	})
+
+	t.Run("leaves every attribute the caller did not give absent", func(t *testing.T) {
+		for _, at := range []int{2, 3, 4, 5, 6} {
+			assert.Equal(t, itemAbsent, crs.attributes[at].form, "attribute %d", at)
+		}
+	})
+
+	t.Run("converts out of the model's own representation context", func(t *testing.T) {
+		require.Len(t, conversion.attributes, 8)
+
+		require.Equal(t, itemReference, conversion.attributes[0].form)
+
+		source, ok := parsed.instance(conversion.attributes[0].at)
+		require.True(t, ok)
+		assert.Equal(t, "IFCGEOMETRICREPRESENTATIONCONTEXT", source.keyword)
+	})
+
+	t.Run("converts into the system written beside it", func(t *testing.T) {
+		require.Equal(t, itemReference, conversion.attributes[1].form)
+		assert.Equal(t, crs.number, conversion.attributes[1].at)
+	})
+
+	t.Run("writes the identity: no offset stated, and no rotation and no scale at all", func(t *testing.T) {
+		for _, at := range []int{2, 3, 4} {
+			assert.Equal(t, itemReal, conversion.attributes[at].form, "attribute %d", at)
+			assert.Equal(t, "0.", conversion.attributes[at].text, "attribute %d", at)
+		}
+
+		for _, at := range []int{5, 6, 7} {
+			assert.Equal(t, itemAbsent, conversion.attributes[at].form, "attribute %d", at)
+		}
+	})
+}
+
+// TestWriteWritesNoGeoreferenceWhereTheCallerStatedNone is its own function
+// because the absence is the assertion: a file nobody has sited says nothing
+// about where it is, rather than saying it is at the origin of a system nobody
+// named.
+func TestWriteWritesNoGeoreferenceWhereTheCallerStatedNone(t *testing.T) {
+	got := written(t, fixture())
+
+	assert.NotContains(t, got, "IFCPROJECTEDCRS")
+	assert.NotContains(t, got, "IFCMAPCONVERSION")
+}
+
+// TestWriteRefusesAGeoreferenceWithNoName is its own function because it is a
+// refusal rather than a reading: the name is the whole of what a receiving
+// system can act on, since nothing here resolves it.
+func TestWriteRefusesAGeoreferenceWithNoName(t *testing.T) {
+	model := fixture()
+	model.Georeference = &Georeference{CRS: ProjectedCRS{Description: "PROJCS[]"}}
+
+	err := Write(&strings.Builder{}, model)
+
+	var got UnnamedCRSError
+	require.ErrorAs(t, err, &got)
+}
+
+// TestWriteStatesAMapConversionTheCallerMeasured is its own function because
+// it is about the other half of the optionality: a factor written out is one
+// somebody measured, and it has to survive the write.
+func TestWriteStatesAMapConversionTheCallerMeasured(t *testing.T) {
+	abscissa, ordinate, scale := 0.9999985, 0.0017453, 1.0000034
+
+	model := georeferenced()
+	model.Georeference.Conversion = MapConversion{
+		Eastings:         401235.117,
+		Northings:        3172884.902,
+		OrthogonalHeight: 44.318,
+		XAxisAbscissa:    &abscissa,
+		XAxisOrdinate:    &ordinate,
+		Scale:            &scale,
+	}
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err)
+
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCMAPCONVERSION" {
+			continue
+		}
+
+		assert.Equal(t, "401235.117", held.attributes[2].text)
+		assert.Equal(t, "3172884.902", held.attributes[3].text)
+		assert.Equal(t, "44.318", held.attributes[4].text)
+		assert.Equal(t, "0.9999985", held.attributes[5].text)
+		assert.Equal(t, "0.0017453", held.attributes[6].text)
+		assert.Equal(t, "1.0000034", held.attributes[7].text)
+
+		return
+	}
+
+	t.Fatal("the model carries a map conversion")
+}

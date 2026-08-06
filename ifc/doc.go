@@ -51,6 +51,14 @@
 // IfcRelContainedInSpatialStructure for the products, and
 // IfcRelAssignsToGroup for the zones.
 //
+// A model may also carry a [Georeference], which says where that coordinate
+// space sits on the earth: an IfcProjectedCRS naming the system, and an
+// IfcMapConversion out of the representation context into it. Both are written
+// and neither is read. An authority code is an identifier in somebody else's
+// register and a definition is that register's own text, so resolving either
+// would mean a geodetic dataset and the arithmetic over it — a product rather
+// than a field of a struct, and one nothing else here needs.
+//
 // A spatial element may carry a [Representation], which is its shape, and any
 // number of property sets, which are everything about it which is neither
 // geometry nor one of IFC's own attributes. A representation holds more than
