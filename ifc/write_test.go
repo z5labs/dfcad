@@ -183,6 +183,89 @@ func TestWriteIsAFunctionOfTheModel(t *testing.T) {
 	}
 }
 
+// enclosed is source wrapped in the sections an exchange file needs, so that a
+// case below is the one line it is about.
+func enclosed(data string) string {
+	return "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n" + data + "\nENDSEC;\nEND-ISO-10303-21;\n"
+}
+
+// TestReadRefuses checks the reader the assertions below go through, which is
+// the one thing those assertions cannot check for themselves: a reader which
+// accepted anything would report every file as well formed, including the ones
+// this writer got wrong.
+func TestReadRefuses(t *testing.T) {
+	testCases := []struct {
+		name     string
+		source   string
+		expected string
+	}{
+		{
+			name:     "a file which does not open as an exchange file",
+			source:   "IFCPROJECT();\n",
+			expected: "ISO-10303-21",
+		},
+		{
+			name:     "an instance in the data section with no number",
+			source:   enclosed("IFCDIRECTION((0.,0.,1.));"),
+			expected: `'#'`,
+		},
+		{
+			name:     "a string literal which is never closed",
+			source:   enclosed("#1=IFCSITE('unterminated);"),
+			expected: "a closing quote",
+		},
+		{
+			name:     "an enumeration which is never closed",
+			source:   enclosed("#1=IFCSIUNIT(*,.LENGTHUNIT"),
+			expected: "a closing dot",
+		},
+		{
+			name:     "an attribute list which is never closed",
+			source:   enclosed("#1=IFCDIRECTION((0.,0.,1.);"),
+			expected: "a comma or a closing parenthesis",
+		},
+		{
+			name:     "something which is not an attribute at all",
+			source:   enclosed("#1=IFCDIRECTION(!);"),
+			expected: "an attribute",
+		},
+		{
+			name:     "a real whose digits are not a number",
+			source:   enclosed("#1=IFCDIRECTION((1.2.3));"),
+			expected: "a real",
+		},
+		{
+			name:     "text after the end of the file",
+			source:   enclosed("#1=IFCDIRECTION((0.,0.,1.));") + "IFCPROJECT();\n",
+			expected: "the end of the file",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := read(testCase.source)
+
+			var got SyntaxError
+			require.ErrorAs(t, err, &got)
+
+			assert.Equal(t, testCase.expected, got.Want)
+			assert.GreaterOrEqual(t, got.Offset, 0)
+		})
+	}
+}
+
+// TestReadRefusesOneInstanceNumberWrittenTwice is its own function because it
+// is about a relation between two instances rather than about the text of one,
+// and it carries a different field.
+func TestReadRefusesOneInstanceNumberWrittenTwice(t *testing.T) {
+	_, err := read(enclosed("#1=IFCDIRECTION((0.,0.,1.));\n#1=IFCDIRECTION((1.,0.,0.));"))
+
+	var got DuplicateInstanceError
+	require.ErrorAs(t, err, &got)
+
+	assert.Equal(t, 1, got.Number)
+}
+
 func TestWriteReadsBackUnderAnIndependentReader(t *testing.T) {
 	source := written(t, fixture())
 

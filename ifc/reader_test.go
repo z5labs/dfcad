@@ -33,6 +33,47 @@ func read(source string) (*file, error) {
 	return scanner.file()
 }
 
+// SyntaxError is text this reader could not read as an exchange file.
+//
+// It is a type rather than a formatted message for the reason every error in
+// this repository is one: a test which had to match message text would be a
+// test of the wording. Nothing asserts on these today — the checks in
+// write_test.go require that reading succeeds — and that is exactly why the
+// fields are here rather than folded into a string, because the test which
+// wants to say "the writer emits an unterminated literal" should be able to
+// say it without one.
+type SyntaxError struct {
+	// Offset is where in the source the reader stopped, in bytes.
+	Offset int
+
+	// Want says what would have been legal there.
+	Want string
+
+	// Found is what was there instead: the text from Offset on, clipped, or
+	// the token which was read.
+	Found string
+}
+
+// Error implements the [error] interface.
+func (e SyntaxError) Error() string {
+	return fmt.Sprintf("expected %s at offset %d, found %q", e.Want, e.Offset, e.Found)
+}
+
+// DuplicateInstanceError is one instance number written on two instances.
+//
+// A part 21 file numbers each instance once and every reference resolves
+// through that number, so a repeat is not a duplicate line — it is two
+// entities a reader will silently take for one.
+type DuplicateInstanceError struct {
+	// Number is the instance number which was written twice.
+	Number int
+}
+
+// Error implements the [error] interface.
+func (e DuplicateInstanceError) Error() string {
+	return fmt.Sprintf("expected each instance number to be written once, found #%d written twice", e.Number)
+}
+
 // file is one parsed exchange file.
 type file struct {
 	// header is the header entities, in the order they were written.
@@ -159,7 +200,7 @@ func (s *scanner) file() (*file, error) {
 		entity.number = number
 
 		if _, held := parsed.instances[number]; held {
-			return nil, fmt.Errorf("instance #%d is written twice", number)
+			return nil, DuplicateInstanceError{Number: number}
 		}
 		parsed.instances[number] = entity
 		parsed.order = append(parsed.order, number)
@@ -178,7 +219,7 @@ func (s *scanner) file() (*file, error) {
 
 	s.space()
 	if s.at != len(s.source) {
-		return nil, fmt.Errorf("trailing text at offset %d: %q", s.at, s.rest())
+		return nil, SyntaxError{Offset: s.at, Want: "the end of the file", Found: s.rest()}
 	}
 
 	return parsed, nil
@@ -240,7 +281,7 @@ func (s *scanner) arguments() ([]item, error) {
 			s.at++
 			return items, nil
 		default:
-			return nil, fmt.Errorf("expected a comma or a closing parenthesis at offset %d: %q", s.at, s.rest())
+			return nil, SyntaxError{Offset: s.at, Want: "a comma or a closing parenthesis", Found: s.rest()}
 		}
 	}
 }
@@ -283,7 +324,7 @@ func (s *scanner) item() (item, error) {
 		return s.numeric()
 
 	default:
-		return item{}, fmt.Errorf("expected an attribute at offset %d: %q", s.at, s.rest())
+		return item{}, SyntaxError{Offset: s.at, Want: "an attribute", Found: s.rest()}
 	}
 }
 
@@ -318,7 +359,7 @@ func (s *scanner) string() (item, error) {
 		return item{form: itemString, text: written.String()}, nil
 	}
 
-	return item{}, fmt.Errorf("unterminated string literal at offset %d", s.at)
+	return item{}, SyntaxError{Offset: s.at, Want: "a closing quote", Found: ""}
 }
 
 // enumeration parses a dotted enumeration member.
@@ -332,7 +373,7 @@ func (s *scanner) enumeration() (item, error) {
 		s.at++
 	}
 	if s.at == len(s.source) {
-		return item{}, fmt.Errorf("unterminated enumeration at offset %d", start)
+		return item{}, SyntaxError{Offset: start, Want: "a closing dot", Found: s.source[start:]}
 	}
 
 	written := s.source[start:s.at]
@@ -357,7 +398,7 @@ func (s *scanner) numeric() (item, error) {
 
 	if !strings.ContainsAny(written, ".") {
 		if _, err := strconv.ParseInt(written, 10, 64); err != nil {
-			return item{}, fmt.Errorf("malformed integer %q at offset %d", written, start)
+			return item{}, SyntaxError{Offset: start, Want: "an integer", Found: written}
 		}
 		return item{form: itemInteger, text: written}, nil
 	}
@@ -370,7 +411,7 @@ func (s *scanner) numeric() (item, error) {
 		readable += "0"
 	}
 	if _, err := strconv.ParseFloat(readable, 64); err != nil {
-		return item{}, fmt.Errorf("malformed real %q at offset %d", written, start)
+		return item{}, SyntaxError{Offset: start, Want: "a real", Found: written}
 	}
 
 	return item{form: itemReal, text: written}, nil
@@ -390,7 +431,7 @@ func (s *scanner) keyword() (string, error) {
 	}
 
 	if s.at == start {
-		return "", fmt.Errorf("expected a keyword at offset %d: %q", s.at, s.rest())
+		return "", SyntaxError{Offset: s.at, Want: "a keyword", Found: s.rest()}
 	}
 
 	return s.source[start:s.at], nil
@@ -403,9 +444,18 @@ func (s *scanner) number() (int, error) {
 		s.at++
 	}
 	if s.at == start {
-		return 0, fmt.Errorf("expected an instance number at offset %d: %q", s.at, s.rest())
+		return 0, SyntaxError{Offset: s.at, Want: "an instance number", Found: s.rest()}
 	}
-	return strconv.Atoi(s.source[start:s.at])
+	written := s.source[start:s.at]
+
+	number, err := strconv.Atoi(written)
+	if err != nil {
+		// A run of digits which will not fit in an int, which is the only way
+		// this fails once the scan above has read one.
+		return 0, SyntaxError{Offset: start, Want: "an instance number", Found: written}
+	}
+
+	return number, nil
 }
 
 // expectKeyword consumes the keyword given, and fails on anything else.
@@ -415,7 +465,7 @@ func (s *scanner) expectKeyword(want string) error {
 		return err
 	}
 	if got != want {
-		return fmt.Errorf("expected %s, found %s", want, got)
+		return SyntaxError{Offset: s.at - len(got), Want: want, Found: got}
 	}
 	return nil
 }
@@ -424,7 +474,7 @@ func (s *scanner) expectKeyword(want string) error {
 func (s *scanner) expect(want byte) error {
 	s.space()
 	if s.at >= len(s.source) || s.source[s.at] != want {
-		return fmt.Errorf("expected %q at offset %d: %q", want, s.at, s.rest())
+		return SyntaxError{Offset: s.at, Want: strconv.QuoteRune(rune(want)), Found: s.rest()}
 	}
 	s.at++
 	return nil
