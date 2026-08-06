@@ -1,6 +1,6 @@
 # The dfcad entity format
 
-**Specification version 1.1.**
+**Specification version 1.2.**
 
 This document defines the text format a dfcad model is written in: which tagged forms are
 legal, where each may appear, with what arity and ordering, and what the one canonical
@@ -842,15 +842,17 @@ The description is for the person reading the registry. Nothing in the engine re
   (kind <Kind>)
   (geometry <geometry>)
   (description "<text>")
+  (classification "<system>" "<code>")
   (invariant <check-name> (<parameter> <value>) …))
 ```
 
-| Child         | Arity  | Contents                                                                     |
-|---------------|--------|------------------------------------------------------------------------------|
-| `kind`        | `1..n` | The kinds a node of this type may declare.                                   |
-| `geometry`    | `1..n` | The geometry forms a node of this type may declare, including `absent`.      |
-| `description` | `1`    | A one-line string.                                                           |
-| `invariant`   | `0..n` | A check that applies to every instance of the type. Same shape as `assert`.  |
+| Child            | Arity  | Contents                                                                  |
+|------------------|--------|---------------------------------------------------------------------------|
+| `kind`           | `1..n` | The kinds a node of this type may declare.                                |
+| `geometry`       | `1..n` | The geometry forms a node of this type may declare, including `absent`.   |
+| `description`    | `1`    | A one-line string.                                                        |
+| `classification` | `0..n` | How a scheme outside this model names the type: a system and a code, both strings. |
+| `invariant`      | `0..n` | A check that applies to every instance of the type. Same shape as `assert`. |
 
 - `geometry` here may take the value **`absent`**, which permits an instance to omit its
   `geometry` child. A type permitting both an area and no geometry lists both. `absent` is
@@ -858,6 +860,25 @@ The description is for the person reading the registry. Nothing in the engine re
   naming it.
 - **A node whose declared `kind` or `geometry` is not in its type's permitted set is a load
   error naming all three** — the node, the type, and the value that was not permitted.
+- A `classification` is **two opaque strings**: the `system` naming the scheme, and the `code`
+  naming this type within it. Neither is interpreted. There is no list of known systems, no
+  syntax a code is checked against, and nothing anywhere in the engine whose behaviour depends
+  on either value — a classification is carried, printed and reported, and that is all. What a
+  code means is the business of whoever reads the model against that scheme, which is where
+  the knowledge of the scheme lives
+  ([0010](./docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+- **Both strings are required and neither may be empty.** The child's whole content is the
+  pair, so a half of it left blank names nothing while still occupying a system's place in the
+  rule below.
+- **A type carries at most one classification per system**, and a second entry for a system
+  already given is a registry error naming both. Several systems on one type is the ordinary
+  case, and is why the child repeats: a type may be an IFC class, a Uniclass code and an
+  OmniClass code at once, and each of those is a different scheme's answer to the same
+  question. Two answers from *one* scheme is not a richer mapping, it is an unresolved
+  disagreement, and a reader would have no rule for choosing between them.
+- Two types may name the same code in one system. The mapping is into a foreign vocabulary
+  and need not be injective — a project distinguishing two kinds of partition that IFC spells
+  one way is exactly the case the child exists for.
 - An `invariant` applies automatically to every instance of the type, including instances
   added later, so an invariant true of a type is stated once rather than copied onto a
   hundred and fifty instances. A violation names the instance, the invariant, the parameters
@@ -1116,8 +1137,8 @@ coarse organisation that actually helps, and comments move with what they annota
 
 2. **Structural children** are printed in the order their form's table lists them. Where a
    structural child repeats — `member-of`, `boundary`, `observed-in`, `backed-by`, `kind` and
-   `geometry` in a type entry, `invariant`, and the terms inside an `accuracy` — the repeats
-   are sorted within their own group.
+   `geometry` in a type entry, `classification`, `invariant`, and the terms inside an
+   `accuracy` — the repeats are sorted within their own group.
 
 3. **Claim forms** follow every structural child, sorted. **Assertion forms** follow the
    claims, sorted.
@@ -1434,7 +1455,8 @@ Reading it back:
 ## 10. Versioning of this specification
 
 This document carries a version of the form `MAJOR.MINOR`, stated at the top. The current
-version is **1.1**, which added the `route` form of [7.7](#77-route).
+version is **1.2**, which added the optional `classification` child of
+[7.3](#73-type).
 
 | Change                                                             | Version effect |
 |--------------------------------------------------------------------|----------------|
@@ -1507,8 +1529,8 @@ below.
 | 0006   | [6.6.5](#665-accuracy-terms): 1σ storage, independent and systematic terms, a shared term named by id and counted once. |
 | 0007   | [6.5](#65-claims): rank closed at `normal` and `deprecated`, deprecation requires a replacement. |
 | 0008   | [6.5](#65-claims): a bare scalar where a claim belongs is a load error, unconditionally.         |
-| 0009   | [6.3](#63-edge), [11](#11-not-in-this-version): no stored classification, no derived value in the source tree. |
-| 0010   | [1](#1-scope), [7](#7-registry-forms): two closed sets compiled in, everything else registry data with no meaning attached. |
+| 0009   | [6.3](#63-edge), [11](#11-not-in-this-version): no stored boundary classification, no derived value in the source tree. The `classification` of [7.3](#73-type) is a different thing under the same word — how a foreign scheme names a *type*, which is authored rather than derived. |
+| 0010   | [1](#1-scope), [7](#7-registry-forms): two closed sets compiled in, everything else registry data with no meaning attached. [7.3](#73-type): a mapping to a foreign vocabulary is a slot a type fills rather than a table the engine carries, and neither half of the pair is interpreted here. |
 | 0011   | [6.8](#68-assert): named parameterised checks, no expression language, parameters validated at load. |
 | 0012   | [6.8](#68-assert), [7.6](#76-tolerance): named tolerances only, no literal anywhere.             |
 | 0013   | [11](#11-not-in-this-version): no scenario, variant or phase dimension.                          |

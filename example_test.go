@@ -1874,6 +1874,78 @@ func ExampleTx_Retire() {
 	// site:E-01 is within site:S-102
 }
 
+// ExampleTx_Classify says how a scheme outside this model names one of this
+// project's types.
+//
+// Both strings are opaque. The engine copies them and reads neither: what a code
+// means belongs to whoever is mapping the model into that scheme, which is what
+// keeps the mapping registry data somebody reviews rather than a table compiled
+// into the engine.
+func ExampleTx_Classify() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer os.RemoveAll(root)
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer tx.Close()
+
+	// One type, two schemes. Neither displaces the other: they are two
+	// vocabularies' answers to the same question.
+	for _, classification := range []dfcad.ExternalClassification{
+		{System: "IFC4", Code: "IfcSpace"},
+		{System: "Uniclass2015", Code: "SL_25_10_50"},
+	} {
+		if err := tx.Classify("MeetingRoom", classification); err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	if _, _, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	declared, _ := graph.Registry().Type("MeetingRoom")
+	for _, classification := range declared.Classifications {
+		fmt.Println(classification.System, classification.Code)
+	}
+
+	// A second code from a system the type already carries is refused: it is a
+	// disagreement rather than a richer mapping, and nothing has a rule for
+	// choosing between the two.
+	second, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer second.Close()
+
+	fmt.Println(second.Classify("MeetingRoom", dfcad.ExternalClassification{
+		System: "IFC4",
+		Code:   "IfcZone",
+	}))
+
+	// Output:
+	// IFC4 IfcSpace
+	// Uniclass2015 SL_25_10_50
+	// expected a system MeetingRoom is not already classified in, found "IFC4", in which it is already "IfcSpace"
+}
+
 // ExampleGraph_References says what points at one thing, which is what a
 // refusal to retire it reports.
 func ExampleGraph_References() {
@@ -2451,7 +2523,7 @@ func ExampleParseBatch_refused() {
 	// Output:
 	// operation 1, add-node: a node is written with an id
 	// operation 2, add-node: json: unknown field "edges"
-	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, set-label, retire, add-claim, supersede, deprecate-claim
+	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, classify-type, set-label, retire, add-claim, supersede, deprecate-claim
 	// no id was written: true
 }
 

@@ -1,0 +1,45 @@
+; Every way a classification can be wrong, and the one thing the engine will
+; never say about one: that it does not recognise the system or the code.
+; Neither string is interpreted anywhere, so the only mistakes available are
+; structural ones.
+(project
+  (label "Riverside example")
+  (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+; One system, two codes. Which of them a reader should use is a question nothing
+; here answers, so the second is refused rather than silently preferred.
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (classification "IFC4" "IfcSpace")
+  (classification "IFC4" "IfcZone"))
+
+; A blank half of the pair. Neither names anything, and the blank system would
+; still take a system's place in the rule above.
+(type Corridor
+  (kind Space)
+  (geometry area)
+  (description "A circulation space between rooms.")
+  (classification "" "IfcSpace")
+  (classification "Uniclass2015" ""))
+
+; The wrong sort of datum on each side. A system is a string, not a symbol, and
+; a code is a string, not a count — a scheme whose codes are digits still writes
+; them as text, because the code is a name rather than a magnitude.
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces.")
+  (classification IFC4 "IfcWall")
+  (classification "OmniClass" 23))
+
+; Two types naming one code in one system is not a mistake. The mapping is into
+; a foreign vocabulary and need not be injective.
+(type ServiceRiser
+  (kind Space)
+  (geometry area)
+  (description "A shaft carrying services between storeys.")
+  (classification "IFC4" "IfcSpace"))

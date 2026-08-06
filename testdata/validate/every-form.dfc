@@ -9,6 +9,7 @@
   (geometry area)
   (geometry absent)
   (description "A region occupancy is counted over.")
+  (classification "IFC4" "IfcZone")
   (invariant zone-members-resolve))
 
 (predicate nominal-width

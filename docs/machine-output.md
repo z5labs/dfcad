@@ -170,7 +170,7 @@ arguments.
   },
   "contracts": {
     "output": 2,
-    "entity-format": "1.1"
+    "entity-format": "1.2"
   }
 }
 ```
@@ -255,6 +255,7 @@ before. It takes no arguments and one flag.
 | Flag | Meaning |
 |------|---------|
 | `--describe` | Include the one line the registry gives each type. |
+| `--classification` | Include how schemes outside this model name each type. |
 
 ```json
 {
@@ -286,6 +287,9 @@ before. It takes no arguments and one flag.
 | `types[].geometries` | array | The geometry forms an instance may declare, in specification order. |
 | `types[].absent` | boolean, optional | Whether an instance may omit its geometry entirely. Absent on a type that requires one, the way `retired` is on a listed instance. Absence is not a geometry form — a node with no geometry omits the child rather than naming one — so it is a field of its own rather than a member of `geometries`. |
 | `types[].description` | string, optional | The one line the registry gives the type. Written under `--describe`, and absent under it too when the registry wrote none. |
+| `types[].classifications` | array, optional | How schemes outside this model name the type, in the order the registry wrote them. Written under `--classification`, and absent under it too when the registry wrote none, which is the ordinary case. |
+| `types[].classifications[].system` | string | The scheme's name, exactly as the registry wrote it. Nothing here interprets it: there is no list of known systems. |
+| `types[].classifications[].code` | string | What the type is called within that scheme, exactly as the registry wrote it, and equally uninterpreted. |
 | `types[].instances` | integer | How many semantic nodes declare this type. |
 
 The descriptions are asked for rather than given. They are prose about the vocabulary rather
@@ -294,6 +298,10 @@ the call every cold start begins with — so whoever is deciding which type to a
 paid for them on every run and read them on almost none. The measurement is in
 [`token-budget.md`](./token-budget.md) and the reasoning in
 [0017](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md).
+
+The classifications are asked for rather than given, for a related reason and a different
+reader: the caller which needs them is one mapping this model into a foreign schema, and it
+asks once. A model which declares none pays nothing for the flag either way.
 
 ### `list-instances`
 
@@ -1730,8 +1738,9 @@ the decision looks like and for what happens when the rules do not place a node.
 | `files[].status` | string | One of `created`, `rewritten`, `unchanged` — what happened to the file, or, on a dry run, what would have. |
 | `files[].effects` | array, optional | What the change did to the *model* in this file, in the order the mutations were applied. |
 | `files[].effects[].op` | string | One of `created`, `modified`, `retired`. |
-| `files[].effects[].tag` | string | The form it was written as — `node`, `vertex`, `edge`, `loop` — so an effect says which family it is about without the reader resolving the id. |
-| `files[].effects[].id` | string, optional | The thing it was about. Absent for a form carrying no id. |
+| `files[].effects[].tag` | string | The form it was written as — `node`, `vertex`, `edge`, `loop`, `type` — so an effect says which family it is about without the reader resolving the id. |
+| `files[].effects[].id` | string, optional | The thing it was about. Absent for a form carrying no id, which is every registry entry other than a frame. |
+| `files[].effects[].name` | string, optional | The plain symbol a registry entry is declared under, which is what a `type` effect is about. Absent for every form that names itself with an id instead. It is a field of its own rather than a second spelling of `id`: an id is namespaced, is never reissued and resolves to a node, and a registry name is none of those. |
 | `files[].diff` | string, optional | The unified diff from what was on disk to what was written. Absent where the two are the same. |
 
 Statuses:
@@ -1991,6 +2000,22 @@ result.
 Under `--dry-run` every field above is what it would have been, which is the whole point of
 running one first: the ids, the reuses and the tolerance that decided them are what an author
 is checking before committing to them.
+
+### `classify-type`
+
+How a scheme outside this model names a declared type. It takes the type, the system and the
+code, and reports the write payload above with nothing added to it.
+
+Both strings are opaque. No scheme is known to the engine, no code is checked against a
+syntax, and nothing anywhere reads either value — which is what keeps a mapping to a foreign
+vocabulary a line of registry data somebody reviews rather than a table compiled into the
+tool ([0010](./decisions/0010-the-engine-carries-no-domain-vocabulary.md)). A type carries as
+many of them as there are schemes worth mapping into, and at most one code per system:
+classifying a type in a system it already carries is a usage error naming the code it already
+has, because a second code from one scheme is a disagreement nothing has a rule for resolving.
+
+The change lands in the registry file the type was declared in. That is not a routing
+decision — a type is where somebody wrote it, and this adds a child to that declaration.
 
 ### `set-label`
 

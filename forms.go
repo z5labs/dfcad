@@ -447,6 +447,7 @@ var (
 			{tag: "kind", arity: atLeast(1), form: args(exactly(1), "a kind")},
 			{tag: "geometry", arity: atLeast(1), form: args(exactly(1), "a geometry form or absent")},
 			{tag: "description", arity: exactly(1), form: args(exactly(1), "a string")},
+			{tag: "classification", arity: repeated, form: args(exactly(2), "a system and a code, both strings")},
 			{tag: "invariant", arity: repeated, form: assertForm},
 		},
 	}

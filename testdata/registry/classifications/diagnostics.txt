@@ -1,0 +1,21 @@
+testdata/registry/classifications/registry.dfc:18:3: error: expected a classification system this type is not already classified in, found "IFC4"
+18 |   (classification "IFC4" "IfcZone"))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: a type carries at most one code per system; several systems on one type is the ordinary case
+testdata/registry/classifications/registry.dfc:17:3: note: first classified in this system here
+17 |   (classification "IFC4" "IfcSpace")
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+testdata/registry/classifications/registry.dfc:26:19: error: expected a classification system, found an empty string
+26 |   (classification "" "IfcSpace")
+   |                   ^^
+   = hint: a classification is a system and a code, and neither half is optional
+testdata/registry/classifications/registry.dfc:27:34: error: expected a classification code, found an empty string
+27 |   (classification "Uniclass2015" ""))
+   |                                  ^^
+   = hint: a classification is a system and a code, and neither half is optional
+testdata/registry/classifications/registry.dfc:36:19: error: expected a classification system, found the symbol IFC4
+36 |   (classification IFC4 "IfcWall")
+   |                   ^^^^
+testdata/registry/classifications/registry.dfc:37:31: error: expected a classification code, found the number 23
+37 |   (classification "OmniClass" 23))
+   |                               ^^

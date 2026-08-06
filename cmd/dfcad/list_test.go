@@ -69,12 +69,15 @@ const listRegistry = `(project
 (type MeetingRoom
   (kind Space)
   (geometry area)
-  (description "An enclosed room used for meetings."))
+  (description "An enclosed room used for meetings.")
+  (classification "IFC4" "IfcSpace")
+  (classification "Uniclass2015" "SL_25_10_50"))
 
 (type Parcel
   (kind Site)
   (geometry area)
-  (description "A plot of land with a boundary and a planning regime over it."))
+  (description "A plot of land with a boundary and a planning regime over it.")
+  (classification "IFC4" "IfcSite"))
 
 (type OfficeBuilding
   (kind Building)
@@ -576,6 +579,60 @@ func TestRunListTypesDescribesOnlyWhenAsked(t *testing.T) {
 
 		assert.Equal(t, "An enclosed room used for meetings.", described["MeetingRoom"])
 		assert.Equal(t, "A building let as offices.", described["OfficeBuilding"])
+	})
+}
+
+// TestRunListTypesClassifiesOnlyWhenAsked is the same shape of gate as the one
+// above and for a different reader: the caller which needs a mapping into a
+// foreign schema is one exporting rather than one exploring, and it asks once.
+//
+// The measurement is what settles it rather than an argument: the classifications
+// of the budget model's registry cost more than the whole of the cold discovery
+// path's remaining headroom against its target. See docs/token-budget.md.
+func TestRunListTypesClassifiesOnlyWhenAsked(t *testing.T) {
+	t.Run("leaves the foreign vocabulary out", func(t *testing.T) {
+		t.Chdir(tree(t, model()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run([]string{"list-types"}, &stdout, &stderr), stderr.String())
+
+		result := listed[listTypesResult](t, stdout.String())
+		for _, declared := range result.Types {
+			assert.Empty(t, declared.Classifications, declared.Name)
+		}
+
+		assert.NotContains(t, stdout.String(), "IfcSpace")
+		assert.Contains(t, stdout.String(), "MeetingRoom")
+	})
+
+	t.Run("reports every scheme a type names when it is asked for", func(t *testing.T) {
+		t.Chdir(tree(t, model()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run([]string{"list-types", "--classification"}, &stdout, &stderr), stderr.String())
+
+		result := listed[listTypesResult](t, stdout.String())
+
+		classified := make(map[string][]listedClassification, len(result.Types))
+		for _, declared := range result.Types {
+			classified[declared.Name] = declared.Classifications
+		}
+
+		assert.Equal(t, []listedClassification{
+			{System: "IFC4", Code: "IfcSpace"},
+			{System: "Uniclass2015", Code: "SL_25_10_50"},
+		}, classified["MeetingRoom"])
+
+		assert.Equal(t, []listedClassification{
+			{System: "IFC4", Code: "IfcSite"},
+		}, classified["Parcel"])
+
+		// A type nothing maps into a foreign scheme writes no empty list for a
+		// caller to step over. It is the ordinary case, and it is what the
+		// engine carrying no vocabulary of its own looks like from here.
+		assert.Nil(t, classified["Campus"])
+		assert.Equal(t, 2, strings.Count(stdout.String(), `"classifications"`),
+			"the field is written on the two types which carry one and on no other")
 	})
 }
 

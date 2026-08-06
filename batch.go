@@ -42,6 +42,7 @@ const (
 	addEdgeOperation        = "add-edge"
 	addLoopOperation        = "add-loop"
 	scaffoldLoopOperation   = "scaffold-loop"
+	classifyTypeOperation   = "classify-type"
 	setLabelOperation       = "set-label"
 	retireOperation         = "retire"
 	addClaimOperation       = "add-claim"
@@ -62,6 +63,9 @@ var ErrNoOperations = errors.New("a batch is one or more operations, in the orde
 // concatenated or a stream of them, and applying the first while silently
 // dropping the rest is the reading which loses work.
 var ErrExtraInput = errors.New("a batch is one JSON object and nothing after it")
+
+// ErrNoType is a classification naming no type to write itself on.
+var ErrNoType = errors.New("a classification names the declared type it is written on")
 
 // ErrNoValue is a claim written with nothing claimed.
 //
@@ -218,6 +222,7 @@ var made = []struct {
 	{addEdgeOperation, func() Operation { return &AddEdgeOperation{} }},
 	{addLoopOperation, func() Operation { return &AddLoopOperation{} }},
 	{scaffoldLoopOperation, func() Operation { return &ScaffoldLoopOperation{} }},
+	{classifyTypeOperation, func() Operation { return &ClassifyTypeOperation{} }},
 	{setLabelOperation, func() Operation { return &SetLabelOperation{} }},
 	{retireOperation, func() Operation { return &RetireOperation{} }},
 	{addClaimOperation, func() Operation { return &AddClaimOperation{} }},
@@ -1049,6 +1054,35 @@ func (o *ScaffoldLoopOperation) apply(tx *Tx, out *Applied) error {
 	out.Snaps, out.Tolerance, out.Notices = built.Snaps, built.Tolerance, notices
 
 	return nil
+}
+
+// ClassifyTypeOperation says how a scheme outside this model names a type. It
+// is `classify-type`.
+type ClassifyTypeOperation struct {
+	// Type is the declared type being classified.
+	Type string `json:"type"`
+
+	// System names the scheme. It is opaque: nothing here knows any scheme, and
+	// no value is preferred over another.
+	System string `json:"system"`
+
+	// Code names the type within that scheme, and is opaque for the same
+	// reason.
+	Code string `json:"code"`
+}
+
+// Name implements [Operation].
+func (o *ClassifyTypeOperation) Name() string { return classifyTypeOperation }
+
+func (o *ClassifyTypeOperation) check() error {
+	if o.Type == "" {
+		return ErrNoType
+	}
+	return nil
+}
+
+func (o *ClassifyTypeOperation) apply(tx *Tx, _ *Applied) error {
+	return tx.Classify(o.Type, ExternalClassification{System: o.System, Code: o.Code})
 }
 
 // SetLabelOperation changes what a thing is called, and nothing else. It is

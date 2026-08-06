@@ -28,12 +28,19 @@ call to make against a model nothing has read before.
 Flags:
 
 	--describe       include the one line the registry gives each type
+	--classification include how schemes outside this model name each type
 
 The descriptions are left out unless they are asked for. They are prose about
 the vocabulary rather than about this model, they grow with the registry rather
 than with the model, and this is the call every cold start begins with — so
 whoever is deciding which type to ask about next pays for them on every run and
 reads them on almost none. Ask for them and they come back.
+
+The classifications are left out for the same reason and not for the same
+readers: the one caller which needs them is a caller mapping this model into a
+foreign schema, and it asks once. A system and a code are two opaque strings the
+registry wrote, reported exactly as written — no scheme is known here, and
+nothing about a code is interpreted.
 
 Types come back in name order, so two runs over one model produce the same
 list and a diff between them means something.
@@ -46,7 +53,9 @@ a registry file into looks like.
 ` + outputContractHelp + `
 The object list-types writes carries "types": one entry per declared type, in
 name order, each with its name, the kinds and geometry forms it permits,
-whether an instance may omit its geometry, and its instance count.
+whether an instance may omit its geometry, and its instance count. Under
+--classification each entry also carries "classifications", in the order the
+registry wrote them, each a system and a code.
 `
 
 const listInstancesUsage = `dfcad list-instances — list the instances of a type.
@@ -298,8 +307,28 @@ type listedType struct {
 	// registry wrote none.
 	Description string `json:"description,omitempty"`
 
+	// Classifications are how schemes outside this model name the type, in the
+	// order the registry wrote them. Written under --classification and absent
+	// otherwise, and absent under it too when the registry wrote none, which is
+	// the ordinary case.
+	Classifications []listedClassification `json:"classifications,omitempty"`
+
 	// Instances is how many semantic nodes declare this type.
 	Instances int `json:"instances"`
+}
+
+// listedClassification is one external classification of a type.
+//
+// Both halves are reported exactly as the registry wrote them. Neither is
+// normalised, folded or checked against anything: the engine knows no scheme,
+// and a caller mapping this model into one is the only reader which can say what
+// either string means.
+type listedClassification struct {
+	// System names the scheme.
+	System string `json:"system"`
+
+	// Code names this type within that scheme.
+	Code string `json:"code"`
 }
 
 // listInstancesResult is the object list-instances writes to stdout.
@@ -418,6 +447,7 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	flags := newFlagSet(cmd, globals)
 
 	describing := flags.Bool("describe", false, "")
+	classifying := flags.Bool("classification", false, "")
 
 	extra, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -448,6 +478,9 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		}
 		if *describing {
 			entry.Description = declared.Description
+		}
+		if *classifying {
+			entry.Classifications = classificationsOf(declared)
 		}
 
 		result.Types = append(result.Types, entry)
@@ -789,6 +822,28 @@ func permittedGeometries(declared dfcad.Type) []string {
 	return out
 }
 
+// classificationsOf is how schemes outside this model name the type, in the
+// order the registry wrote them.
+//
+// Written order rather than sorted, unlike every other list this command
+// reports: the registry file's own canonical form already sorts them, so what
+// comes back here is a stable order somebody can diff, and re-sorting it on a
+// second key here would only be a second opinion about the same list.
+func classificationsOf(declared dfcad.Type) []listedClassification {
+	if len(declared.Classifications) == 0 {
+		return nil
+	}
+
+	out := make([]listedClassification, 0, len(declared.Classifications))
+	for _, classification := range declared.Classifications {
+		out = append(out, listedClassification{
+			System: classification.System,
+			Code:   classification.Code,
+		})
+	}
+	return out
+}
+
 // loadModel reads the whole model beneath the root and renders whatever is
 // wrong with it to stderr.
 //
@@ -856,11 +911,12 @@ func reportTypes(types []listedType, globals *globals, stderr io.Writer) {
 		// The detail behind the summary is progress rather than result — the
 		// result is on stdout — so it is behind the verbosity flag.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: kind %s, geometry %s, %s\n",
+			fmt.Fprintf(stderr, "%s: kind %s, geometry %s, %s%s\n",
 				declared.Name,
 				join(declared.Kinds),
 				join(permitted(declared)),
 				plural(declared.Instances, "instance"),
+				classifiedAs(declared),
 			)
 		}
 	}
@@ -877,6 +933,22 @@ func permitted(declared listedType) []string {
 		out = append(out, "none at all")
 	}
 	return out
+}
+
+// classifiedAs is how a type's external classifications are spelled at the end
+// of a progress line, and is empty where it has none — which is every type on a
+// run that did not ask for them, and most types on one that did.
+func classifiedAs(declared listedType) string {
+	if len(declared.Classifications) == 0 {
+		return ""
+	}
+
+	spelled := make([]string, 0, len(declared.Classifications))
+	for _, classification := range declared.Classifications {
+		spelled = append(spelled, classification.System+" "+classification.Code)
+	}
+
+	return ", " + join(spelled)
 }
 
 // reportInstances renders a list-instances result for a person, on stderr.

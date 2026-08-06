@@ -21,6 +21,7 @@
   (kind Space)
   (geometry area)
   (description "An enclosed room used for meetings.")
+  (classification "IFC4" "IfcSpace")
   (invariant boundary-loops-close (tolerance boundary-closure)))
 
 (type Partition

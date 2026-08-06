@@ -197,6 +197,10 @@ var (
 		name: "dfcad list-types --describe",
 		args: []string{"list-types", "--describe", "--root", budgetRoot},
 	}
+	classifyTypes = call{
+		name: "dfcad list-types --classification",
+		args: []string{"list-types", "--classification", "--root", budgetRoot},
+	}
 	evidenceArea = call{
 		name: "dfcad resolve site:S-111 area --evidence",
 		args: []string{"resolve", "site:S-111", "area", "--evidence", "--root", budgetRoot},
@@ -471,6 +475,16 @@ var fields = []field{
 		name: "the descriptions `--describe` adds",
 		call: describeType,
 		keys: []string{"description"},
+	},
+	{
+		// Priced because it is the field which decides whether the mapping to a
+		// foreign schema belongs in the default discovery answer. It does not:
+		// the cold path is already within a handful of tokens of its target, and
+		// this is paid once by the one caller which is exporting rather than on
+		// every cold start by every caller which is not.
+		name: "the classifications `--classification` adds",
+		call: classifyTypes,
+		keys: []string{"classifications"},
 	},
 	{
 		name: "the whole claim `--evidence` adds",
