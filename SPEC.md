@@ -1480,8 +1480,8 @@ Named so that their absence reads as a decision rather than an oversight.
 - **Derived values of any sort** — area, length, centroid, bounding box, tessellation,
   membership, propagated accuracy. None of them is a field, a comment or a sidecar inside the
   source tree ([0009](./docs/decisions/0009-derived-values-are-never-written-back.md)). An
-  exported representation is one of them: it is a build output written under `.dfcad` and
-  keyed by the digest of these files, never a file beside them
+  exported representation is one of them: it is a build output written under `.dfcad/export`,
+  keyed by a digest over the entity files this document defines, never a file beside them
   ([0021](./docs/decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)).
 - **A scenario, variant or phase dimension.** Not deferred — excluded. A variant is a branch
   ([0013](./docs/decisions/0013-variants-are-branches.md)).
