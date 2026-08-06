@@ -142,14 +142,14 @@ func georeferenced(
 	// which is not one and a definition in the wrong unit are two independent
 	// mistakes, and reporting the first and stopping turns fixing them into a
 	// guessing loop.
-	identifier, found, refused := oneValue(root, named.identifier, flagCRS)
+	identifier, identifiers, refused := oneValue(root, named.identifier, flagCRS)
 	diags = append(diags, refused...)
 
-	definition, defined, refused := oneValue(root, named.definition, flagCRSDefinition)
+	definition, definitions, refused := oneValue(root, named.definition, flagCRSDefinition)
 	diags = append(diags, refused...)
 
 	text := ""
-	if found {
+	if identifiers == 1 {
 		holds, ok := identifier.Text()
 		switch {
 		case !ok:
@@ -166,7 +166,7 @@ func georeferenced(
 	}
 
 	written := ""
-	if defined {
+	if definitions == 1 {
 		holds, ok := definition.Text()
 		switch {
 		case !ok:
@@ -182,7 +182,11 @@ func georeferenced(
 		}
 	}
 
-	if defined && !found {
+	// Gated on the identifier being absent rather than on its being unusable.
+	// A frame carrying two of them has already been told it carries two, and
+	// adding "only the definition" beside that would name a mistake nobody
+	// made.
+	if definitions == 1 && identifiers == 0 {
 		diags = append(diags, dfcad.Diagnostic{
 			Severity: dfcad.SeverityError,
 			Span:     definition.Span(),
@@ -268,25 +272,29 @@ func misplacedCRS(registry *dfcad.Registry, root dfcad.Frame, rooted bool, named
 }
 
 // oneValue is the single plain value written on the root frame under predicate,
-// and whether there is one.
+// together with how many were written.
+//
+// The count is returned rather than a bare "there is one" because none and too
+// many are different facts about the model, and a caller which folded them
+// together would report a frame carrying two identifiers as carrying none.
 //
 // Repeating a predicate is the ordinary case in this format — two width claims
 // on a node are two measurements — but a model is rooted at one coordinate
 // reference system, so two of them is a disagreement rather than a pair of
 // readings. There is nothing here which could choose between them and choosing
 // would put a georeference into the artefact which half the model contradicts.
-func oneValue(root dfcad.Frame, predicate, flag string) (dfcad.Value, bool, []dfcad.Diagnostic) {
+func oneValue(root dfcad.Frame, predicate, flag string) (dfcad.Value, int, []dfcad.Diagnostic) {
 	if predicate == "" {
-		return dfcad.Value{}, false, nil
+		return dfcad.Value{}, 0, nil
 	}
 
 	values := root.Plain(predicate)
 
 	switch len(values) {
 	case 0:
-		return dfcad.Value{}, false, nil
+		return dfcad.Value{}, 0, nil
 	case 1:
-		return values[0], true, nil
+		return values[0], 1, nil
 	}
 
 	related := make([]dfcad.RelatedLocation, 0, len(values)-1)
@@ -294,7 +302,7 @@ func oneValue(root dfcad.Frame, predicate, flag string) (dfcad.Value, bool, []df
 		related = append(related, dfcad.RelatedLocation{Span: value.Span(), Message: "and here"})
 	}
 
-	return dfcad.Value{}, false, []dfcad.Diagnostic{{
+	return dfcad.Value{}, len(values), []dfcad.Diagnostic{{
 		Severity: dfcad.SeverityError,
 		Span:     values[0].Span(),
 		Message: fmt.Sprintf(

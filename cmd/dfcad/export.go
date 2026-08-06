@@ -71,7 +71,8 @@ Flags:
 	                           which is what a body is swept through
 	--crs <predicate>          the predicate the identifier of the project's
 	                           coordinate reference system is written under
-	--crs-definition <pred>    the predicate its full definition is written
+	--crs-definition <predicate>
+	                           the predicate its full definition is written
 	                           under, where the project holds one
 
 The manifest is asked for rather than sent by default because it grows one

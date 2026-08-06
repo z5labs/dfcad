@@ -259,6 +259,23 @@ func TestRunExportReportsEveryGeoreferenceMistakeAtOnce(t *testing.T) {
 	assert.Contains(t, stderr, "US survey foot")
 }
 
+// TestRunExportSaysOnlyWhatIsWrongAboutTwoIdentifiers is its own function
+// because it is about a diagnostic which must not appear: a frame carrying two
+// identifiers has none this can use, and saying beside that that there was
+// "only the definition" would name a mistake nobody made.
+func TestRunExportSaysOnlyWhatIsWrongAboutTwoIdentifiers(t *testing.T) {
+	_, _, stderr := exporting(t, exitCheck,
+		sited(
+			`(crs "EPSG:6543")`,
+			`(crs "EPSG:26982")`,
+			`(crs-definition "`+quoted(utmZone31N)+`")`,
+		),
+		"--crs", "crs", "--crs-definition", "crs-definition")
+
+	assert.Contains(t, stderr, "rooted at one coordinate reference system")
+	assert.NotContains(t, stderr, "only the definition")
+}
+
 // TestRunExportRefusesADefinitionWithNothingToDefine is its own function
 // because it is a usage error rather than a verdict on a model: it is decided
 // from the invocation alone, before anything is read.
