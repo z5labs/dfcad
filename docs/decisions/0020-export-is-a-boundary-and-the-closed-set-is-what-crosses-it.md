@@ -87,14 +87,18 @@ fixes the set:
 | `Element`   | `IfcBuildingElementProxy` | `within` → `IfcRelContainedInSpatialStructure`, or `IfcRelAggregates` inside another `Element` |
 | `Interface` | `IfcVirtualElement`       | `within` → `IfcRelContainedInSpatialStructure` |
 
-Five of the seven are IFC's spatial decomposition one for one, which is not a coincidence:
-that hierarchy is where the set came from. `Zone` is a grouping rather than a container, and
-`IfcZone` is likewise an `IfcGroup` rather than a spatial element, so `member-of` and `within`
-stay as distinct on export as [SPEC §6.9.1](../../SPEC.md#691-the-containment-hierarchy)
-keeps them. `Interface` maps to `IfcVirtualElement`, IFC's own element for a boundary between
-two things that are not physically separated, because that is what an interface is and
-because it is a product with a placement — a relationship entity could not be written
-`within` anything.
+Four of the seven — `Site`, `Building`, `Storey` and `Space` — are IFC's spatial structure
+decomposition one for one, which is not a coincidence: that hierarchy is where the set came
+from, and `IfcSite`, `IfcBuilding`, `IfcBuildingStorey` and `IfcSpace` are exactly the
+subtypes of `IfcSpatialStructureElement`. The other three land outside it. `Zone` is a
+grouping rather than a container, and `IfcZone` is likewise an `IfcGroup` rather than a
+spatial element, so `member-of` and `within` stay as distinct on export as
+[SPEC §6.9.1](../../SPEC.md#691-the-containment-hierarchy) keeps them. `Element` and
+`Interface` map to `IfcElement` subtypes, which is why they are *contained in* the spatial
+structure rather than aggregated by it. `Interface` in particular maps to
+`IfcVirtualElement`, IFC's own element for a boundary between two things that are not
+physically separated, because that is what an interface is and because it is a product with a
+placement — a relationship entity could not be written `within` anything.
 
 **A specific element class is registry data, not an engine table.** Every `Element` exports
 as `IfcBuildingElementProxy` unless the model itself says otherwise. Anything more precise —
