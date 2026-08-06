@@ -73,3 +73,4 @@ the code in front of them and needs the part that is not in the code.
 | [0020](./0020-export-is-a-boundary-and-the-closed-set-is-what-crosses-it.md) | Export is a boundary, and the closed set is what crosses it | Accepted |
 | [0021](./0021-an-export-is-a-build-output-keyed-by-its-source-digest.md) | An export is a build output keyed by its source digest | Accepted |
 | [0022](./0022-a-command-whose-product-is-a-file-answers-on-stdout.md) | A command whose product is a file answers on stdout like every other command | Accepted |
+| [0023](./0023-the-map-export-names-its-coordinate-system-in-the-file.md) | The map export names its coordinate system in the file, which is why it is GML and not GeoJSON | Accepted |

@@ -117,6 +117,15 @@ var samples = map[string][]string{
 	// An export takes no arguments at all: what it writes is the whole model,
 	// and where it writes it is derived from the digest of that model.
 	"export": {},
+	// A map export takes none either, and does take the vocabulary an outline
+	// is read under, which it requires rather than merely accepts. The fixture
+	// names no coordinate reference system, so the walk also reaches the run
+	// which writes the file and says it names no system.
+	"export-map": {
+		"--position", "position",
+		"--tolerance", "coincident",
+		"--chord", "chord-deviation",
+	},
 	"add-node": {
 		"--kind", "Space", "--type", "MeetingRoom",
 		"--geometry", "area", "--frame", "frame:building",

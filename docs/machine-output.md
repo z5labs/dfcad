@@ -2446,9 +2446,9 @@ to stdout is not the artefact and never can be: it is the account of one, and it
 shape whichever command wrote it, so it is documented once here rather than repeated per
 command ([0022](./decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md)).
 
-[`export`](#export) is the command which produces one. The shape below is the shape it
-writes, and it was fixed here before that command existed so that the first of them could not
-invent one.
+[`export`](#export) and [`export-map`](#export-map) are the commands which produce one. The
+shape below is the shape both write, and it was fixed here before either existed so that the
+first of them could not invent one.
 
 ```json
 {
@@ -2707,6 +2707,66 @@ length measure and there is no zero-height solid.
 the only mandatory creation time in the schema, and the part 21 header's time stamp is the
 derivation epoch. Two exports of an unchanged tree are the same bytes, so the second reports
 `unchanged` and writes nothing.
+
+### `export-map`
+
+The model's regions, written as a GML 3.2 document a GIS opens with the project's coordinate
+reference system already attached. It is an [artefact
+command](#the-shape-every-artefact-command-reports) and writes that shape, plus the same one
+field of its own that [`export`](#export) does.
+
+```json
+{
+  "version": 2,
+  "command": "export-map",
+  "derived": true,
+  "digest": "9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a",
+  "schema": "GML 3.2.1",
+  "files": [
+    {
+      "path": ".dfcad/export/9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a/model.gml",
+      "status": "written"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `schema` | string, optional | The version of GML the document conforms to: `GML 3.2.1`. Absent on a refusal, because nothing was written in any version. |
+
+Everything else — `derived`, `digest`, `files[]` — is the shared shape, with the meanings
+documented there. There is no `identifiers`: this format derives no identifier of the
+project's, and the id of every node written is a property of the feature it was written as.
+
+**The default destination is the same directory `export` writes into**, keyed by the same
+digest, so the artefacts of one revision sit together and `.dfcad` remains a thing which can
+be deleted whole.
+
+**The vocabulary an outline is read under is required rather than optional**, which is the one
+way this command's invocation differs from `export`'s. `--position`, `--tolerance` and
+`--chord` go together and a run naming none of them is exit `3`. A spatial structure with no
+shape in it is a correct IFC file; a vector layer with no shape in it is a file with nothing
+in it at all.
+
+**Every feature is expressed in the coordinates of the frame the chain is rooted at.** A
+region outlined on another frame is carried there by the chain of measured transforms the
+model already states — the same arithmetic [`site`](#site) does across frames — and a chain
+which does not reach is a refusal rather than a feature written where it was drawn. Nothing
+reprojects: the identifier is carried and never read, so the coordinates in the document are
+the model's own to the last digit
+([0023](./decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md)).
+
+**A run naming no `--crs` still writes the file, and warns.** The document then carries no
+`srsName`, which is a layer a reader has to be told the system of out of band. It is a warning
+rather than a refusal because a model nobody has sited is one somebody is still working on,
+and exit `0` because the file is what was asked for.
+
+**The elevation is dropped and a boundary which is not level is refused.** A map is a plan, so
+each position is two ordinates, easting then northing; a boundary whose corners do not lie at
+one level in the root frame has no plan, and the projection which would give it one is not
+this command's to choose. The level is judged after the carry, because a transform between
+frames preserves the plane a region lies in but not which plane that is.
 
 ### Diagnostics and the exit code of a read
 

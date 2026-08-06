@@ -159,6 +159,12 @@ var commands = []command{
 		run:     runExport,
 	},
 	{
+		name:    "export-map",
+		summary: "write the model's regions as a georeferenced vector file",
+		usage:   exportMapUsage,
+		run:     runExportMap,
+	},
+	{
 		name:    "check",
 		summary: "run every rule the model states and say whether it holds",
 		usage:   checkUsage,
