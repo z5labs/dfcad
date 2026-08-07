@@ -302,11 +302,19 @@ func (w *writer) units(assignment UnitAssignment) (reference, error) {
 
 // unit writes one unit of an assignment, whichever of the two it is.
 //
-// The refusal at the end is unreachable through the exported API — [Unit] is
-// closed by an unexported method — and it is here for the case it is reachable
-// from: a unit added to this package and not added here would otherwise be
-// written as nothing at all. A nil in the slice reaches it too, which is the
-// one way a caller can get here.
+// The refusal at the end is what anything else gets, and it is here for the
+// case a unit is added to this package and not added here: written as nothing
+// at all is worse than refused.
+//
+// A caller can reach it, and the ways it can are refusals on purpose. The
+// method which closes [Unit] has a value receiver, so a pointer to either of
+// the two satisfies the interface as well — and the switch takes the values
+// only, exactly as [writer.item] takes the values of an [Item]. A unit is a
+// handful of fields copied into an assignment and encoded from that copy;
+// taking `&SIUnit{…}` as well would be a second spelling of every unit for
+// this package to keep in step, and one whose aliasing the encoding has no use
+// for. A nil, typed or not, lands here too, which is a caller assigning
+// nothing at all.
 func (w *writer) unit(assigned Unit) (reference, error) {
 	switch held := assigned.(type) {
 	case SIUnit:

@@ -810,6 +810,24 @@ func TestWriteRefuses(t *testing.T) {
 			expected: UnknownUnitError{},
 		},
 		{
+			// The method closing [Unit] has a value receiver, so a pointer to
+			// one satisfies the interface and is not a unit this writes. It is
+			// refused rather than followed, which is the choice [Item] makes
+			// too: one spelling of a unit is one thing to keep in step.
+			name: "a pointer to a unit rather than the unit",
+			model: func(model *Model) {
+				model.Units = UnitAssignment{Units: []Unit{&SIUnit{Type: "LENGTHUNIT", Name: "METRE"}}}
+			},
+			expected: UnknownUnitError{},
+		},
+		{
+			name: "a typed nil where a unit belongs",
+			model: func(model *Model) {
+				model.Units = UnitAssignment{Units: []Unit{(*ConversionBasedUnit)(nil)}}
+			},
+			expected: UnknownUnitError{},
+		},
+		{
 			name: "a conversion factor which is not a number",
 			model: func(model *Model) {
 				model.Units = UnitAssignment{Units: []Unit{ConversionBasedUnit{
