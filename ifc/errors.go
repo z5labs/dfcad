@@ -247,6 +247,23 @@ func (e UnknownItemError) Error() string {
 	return fmt.Sprintf("expected a geometry this package writes, found %s, which it has no attribute list for", e.Item)
 }
 
+// UnknownUnitError reports a [Unit] this package has no attribute list for.
+//
+// The set of units is closed by an unexported method, and this package takes
+// the value of each: a nil and a pointer to one of them are what a caller can
+// put in an assignment which is not a unit this writes. It is otherwise here
+// for the reason [UnknownItemError] is: a unit added to the package and not
+// added to the writer is refused rather than written as nothing.
+type UnknownUnitError struct {
+	// Unit is the Go type of what was found.
+	Unit string
+}
+
+// Error implements the [error] interface.
+func (e UnknownUnitError) Error() string {
+	return fmt.Sprintf("expected a unit this package writes, found %s, which it has no attribute list for", e.Unit)
+}
+
 // ShortPolylineError reports a [Polyline] through fewer than two points.
 //
 // A polyline is a run of segments between its points, so one point is a run of

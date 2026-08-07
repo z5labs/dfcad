@@ -573,12 +573,17 @@ func TestRunExportAnswersOnARefusal(t *testing.T) {
 			expected: "one linear unit",
 		},
 		{
-			name: "a model authored in a unit the schema has no SI spelling for",
+			// Writing a foot is what the exporter learned to do, and it did
+			// not learn to choose between two units: a model in metres beside
+			// a model in feet is refused exactly as one in metres beside one
+			// in millimetres is.
+			name: "a model whose frames disagree, one of them in feet",
 			files: map[string]string{
-				"registry.dfc":      strings.Replace(exportRegistry, "(unit m)", "(unit ft)", 1),
+				"registry.dfc": exportRegistry +
+					strings.Replace(exportSecondFrame, "(unit mm)", "(unit ft)", 1),
 				"entities/site.dfc": exportEntities,
 			},
-			expected: "SI spelling",
+			expected: "one linear unit",
 		},
 	}
 
@@ -598,6 +603,225 @@ func TestRunExportAnswersOnARefusal(t *testing.T) {
 
 			assert.NoDirExists(t, filepath.Join(root, dfcad.BuildDir, "export"),
 				"an artefact is all or nothing, and nothing was produced")
+		})
+	}
+}
+
+// inUnit is a fixture tree rewritten in another linear unit.
+//
+// Every unit token moves together — the frame's, the tolerances', the
+// predicates' and every claim's — and not one number moves with them. That is
+// what makes the goldens below differ in their unit assignment and nowhere
+// else, and it is the whole of what "the value in the source is the value in
+// the file" means.
+func inUnit(files map[string]string, unit string) map[string]string {
+	out := make(map[string]string, len(files))
+
+	for path, src := range files {
+		out[path] = strings.ReplaceAll(src, " m)", " "+unit+")")
+	}
+
+	return out
+}
+
+// exportedInUnit is the drawn fixture authored in a unit and exported.
+//
+// It is the drawn one rather than the spatial one because what a foot has to
+// survive is the coordinates: a file with no geometry in it states a unit
+// nothing is measured in.
+func exportedInUnit(t *testing.T, unit string) string {
+	t.Helper()
+
+	result, _, _ := exporting(t, exitSuccess, inUnit(shapeModel(), unit),
+		append(drawingFlags(), "--height", "clear-height")...)
+
+	return artefact(t, result)
+}
+
+// TestRunExportWritesEachUnitFamilyAsItsOwnGolden is its own function because
+// the three artefacts are three files on disk, and what holds them still is a
+// golden each rather than an assertion about any one of them.
+//
+// The metric golden is the drawn export's own, because a model in metres is
+// exported exactly as it was before this could write a foot, and a second copy
+// of those bytes would be a second thing to keep in step.
+func TestRunExportWritesEachUnitFamilyAsItsOwnGolden(t *testing.T) {
+	testCases := []struct {
+		name   string
+		unit   string
+		golden string
+	}{
+		{name: "a model authored in metres", unit: "m", golden: "testdata/export/shapes.ifc"},
+		{name: "a model authored in feet", unit: "ft", golden: "testdata/export/feet.ifc"},
+		{name: "a model authored in survey feet", unit: "usft", golden: "testdata/export/survey-feet.ifc"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := exportedInUnit(t, testCase.unit)
+
+			assert.Equal(t, unitGolden(t, testCase.golden, got), got,
+				"the exported artefact is stale; regenerate it with: go test ./cmd/dfcad -update")
+
+			assert.Equal(t, got, exportedInUnit(t, testCase.unit),
+				"two exports of an unchanged tree are the same bytes")
+		})
+	}
+}
+
+// unitGolden is the recorded artefact at path, rewritten from got under
+// -update.
+func unitGolden(t *testing.T, path string, got string) string {
+	t.Helper()
+
+	if *updateGolden {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(want)
+}
+
+// TestRunExportWritesAFootAsAConversionOverTheMetre is its own function
+// because it is about the unit assignment rather than about the model: IFC4
+// has a first-class form for a unit the SI has no name for, and this is that
+// form written.
+func TestRunExportWritesAFootAsAConversionOverTheMetre(t *testing.T) {
+	testCases := []struct {
+		name     string
+		unit     string
+		expected []string
+	}{
+		{
+			name: "the international foot, exactly 0.3048 m",
+			unit: "ft",
+			expected: []string{
+				"IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);",
+				"IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),",
+				".LENGTHUNIT.,'foot',",
+				"IFCDIMENSIONALEXPONENTS(2,0,0,0,0,0,0);",
+				"IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290304),",
+				".AREAUNIT.,'square foot',",
+				"IFCDIMENSIONALEXPONENTS(3,0,0,0,0,0,0);",
+				"IFCMEASUREWITHUNIT(IFCVOLUMEMEASURE(0.028316846592),",
+				".VOLUMEUNIT.,'cubic foot',",
+			},
+		},
+		{
+			// 1200/3937 does not terminate in decimal — 3937 is 31 × 127 — so
+			// what is written is the whole of the float64 and not a rounded
+			// spelling somebody chose.
+			name: "the US survey foot, exactly 1200/3937 m",
+			unit: "usft",
+			expected: []string{
+				"IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048006096012192),",
+				".LENGTHUNIT.,'US survey foot',",
+				"IFCMEASUREWITHUNIT(IFCAREAMEASURE(0.09290341161327484),",
+				".AREAUNIT.,'square US survey foot',",
+				"IFCMEASUREWITHUNIT(IFCVOLUMEMEASURE(0.02831701649375916),",
+				".VOLUMEUNIT.,'cubic US survey foot',",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			source := exportedInUnit(t, testCase.unit)
+
+			for _, expected := range testCase.expected {
+				assert.Contains(t, source, expected)
+			}
+
+			assert.Contains(t, source, "IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);",
+				"a radian is a radian whatever a model's lengths are in")
+		})
+	}
+
+	t.Run("names the two feet so that neither can be read as the other", func(t *testing.T) {
+		// IfcOpenShell's own table holds `foot` at 0.3048 and has no entry for
+		// the survey foot at all, so a reader keying off the name rather than
+		// the factor puts a model four feet out at a state plane false
+		// easting. The name is what stops that; the factor is what states the
+		// unit.
+		assert.NotContains(t, exportedInUnit(t, "usft"), ",'foot',")
+		assert.NotContains(t, exportedInUnit(t, "ft"), "US survey foot")
+	})
+
+	t.Run("writes no conversion at all for a model authored in metres", func(t *testing.T) {
+		source := exportedInUnit(t, "m")
+
+		assert.NotContains(t, source, "IFCCONVERSIONBASEDUNIT")
+		assert.Contains(t, source, "IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);")
+	})
+}
+
+// TestRunExportLeavesEveryCoordinateInTheUnitItWasAuthoredIn is its own
+// function because it is a statement about three files rather than about one:
+// the same tree in three units puts the same numbers in all three, which is
+// what a named conversion buys over an applied one.
+func TestRunExportLeavesEveryCoordinateInTheUnitItWasAuthoredIn(t *testing.T) {
+	metric := coordinates(exportedInUnit(t, "m"))
+	require.NotEmpty(t, metric)
+
+	for _, unit := range []string{"ft", "usft"} {
+		t.Run("in "+unit, func(t *testing.T) {
+			source := exportedInUnit(t, unit)
+
+			assert.Equal(t, metric, coordinates(source),
+				"a value written in the source is the value in the file")
+
+			assert.NotContains(t, source, "1.2192",
+				"4 authored is 4 written, and never 4 converted to metres")
+		})
+	}
+}
+
+// coordinates is every point in an exported file, as it was written and
+// without its instance number.
+//
+// The numbers are dropped because they move: a conversion is four instances
+// where an SI unit is one, so everything after the assignment shifts. What has
+// to be identical across the three files is the coordinates, not where they
+// landed in the numbering.
+func coordinates(source string) []string {
+	var out []string
+
+	for _, line := range strings.Split(source, "\n") {
+		_, written, found := strings.Cut(line, "=")
+		if !found || !strings.HasPrefix(written, "IFCCARTESIANPOINT(") {
+			continue
+		}
+
+		out = append(out, written)
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
+// TestExportedConversionsAreTheEnginesOwnNumbers is its own function because it
+// is about two tables agreeing rather than about a file: the factors here are
+// restated as untyped constants so that the square and the cube are exact, and
+// restating a number is how two of them come to disagree.
+func TestExportedConversionsAreTheEnginesOwnNumbers(t *testing.T) {
+	for unit, converted := range conversions {
+		t.Run(string(unit), func(t *testing.T) {
+			metres, defined := unit.Metres()
+			require.True(t, defined, "the engine defines the unit this is a conversion for")
+
+			assert.Equal(t, metres, converted.length)
+
+			// The square and the cube are close to the engine's number
+			// multiplied out and are deliberately not equal to it: one
+			// rounding of exact arithmetic is not the same float64 as two
+			// roundings of the same product, and the exact one is what a
+			// reader should get.
+			assert.InEpsilon(t, metres*metres, converted.area, 1e-15)
+			assert.InEpsilon(t, metres*metres*metres, converted.volume, 1e-15)
 		})
 	}
 }

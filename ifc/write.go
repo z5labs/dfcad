@@ -94,6 +94,9 @@ const (
 	entityContext    Entity = "IFCGEOMETRICREPRESENTATIONCONTEXT"
 	entityUnits      Entity = "IFCUNITASSIGNMENT"
 	entitySIUnit     Entity = "IFCSIUNIT"
+	entityConversion Entity = "IFCCONVERSIONBASEDUNIT"
+	entityMeasure    Entity = "IFCMEASUREWITHUNIT"
+	entityExponents  Entity = "IFCDIMENSIONALEXPONENTS"
 	entityLocal      Entity = "IFCLOCALPLACEMENT"
 	entityAxis       Entity = "IFCAXIS2PLACEMENT3D"
 	entityPoint      Entity = "IFCCARTESIANPOINT"
@@ -286,13 +289,8 @@ func (w *writer) units(assignment UnitAssignment) (reference, error) {
 	}
 
 	written := make(list, 0, len(assignment.Units))
-	for _, unit := range assignment.Units {
-		at, err := w.add(entitySIUnit, []value{
-			derived{}, // Dimensions, which the schema derives
-			enumeration(unit.Type),
-			optionalEnumeration(unit.Prefix),
-			enumeration(unit.Name),
-		})
+	for _, assigned := range assignment.Units {
+		at, err := w.unit(assigned)
 		if err != nil {
 			return 0, err
 		}
@@ -300,6 +298,93 @@ func (w *writer) units(assignment UnitAssignment) (reference, error) {
 	}
 
 	return w.add(entityUnits, []value{written})
+}
+
+// unit writes one unit of an assignment, whichever of the two it is.
+//
+// The refusal at the end is what anything else gets, and it is here for the
+// case a unit is added to this package and not added here: written as nothing
+// at all is worse than refused.
+//
+// A caller can reach it, and the ways it can are refusals on purpose. The
+// method which closes [Unit] has a value receiver, so a pointer to either of
+// the two satisfies the interface as well — and the switch takes the values
+// only, exactly as [writer.item] takes the values of an [Item]. A unit is a
+// handful of fields copied into an assignment and encoded from that copy;
+// taking `&SIUnit{…}` as well would be a second spelling of every unit for
+// this package to keep in step, and one whose aliasing the encoding has no use
+// for. A nil, typed or not, lands here too, which is a caller assigning
+// nothing at all.
+func (w *writer) unit(assigned Unit) (reference, error) {
+	switch held := assigned.(type) {
+	case SIUnit:
+		return w.si(held)
+	case ConversionBasedUnit:
+		return w.conversion(held)
+	default:
+		return 0, UnknownUnitError{Unit: fmt.Sprintf("%T", assigned)}
+	}
+}
+
+// si writes one IfcSIUnit.
+func (w *writer) si(unit SIUnit) (reference, error) {
+	return w.add(entitySIUnit, []value{
+		derived{}, // Dimensions, which the schema derives
+		enumeration(unit.Type),
+		optionalEnumeration(unit.Prefix),
+		enumeration(unit.Name),
+	})
+}
+
+// conversion writes one IfcConversionBasedUnit and the three entities beneath
+// it: its dimensional exponents, the SI unit its factor is over, and the
+// factor itself.
+//
+// They are written in that order because each is referenced by the one after
+// it, which is the same rule the whole traversal follows.
+func (w *writer) conversion(unit ConversionBasedUnit) (reference, error) {
+	exponents, err := w.exponents(unit.Dimensions)
+	if err != nil {
+		return 0, err
+	}
+
+	factor, err := w.measure(unit.Factor)
+	if err != nil {
+		return 0, err
+	}
+
+	return w.add(entityConversion, []value{
+		exponents,
+		enumeration(unit.Type),
+		text(unit.Name),
+		factor,
+	})
+}
+
+// exponents writes one IfcDimensionalExponents.
+func (w *writer) exponents(dimensions DimensionalExponents) (reference, error) {
+	return w.add(entityExponents, []value{
+		integer(dimensions.Length),
+		integer(dimensions.Mass),
+		integer(dimensions.Time),
+		integer(dimensions.ElectricCurrent),
+		integer(dimensions.ThermodynamicTemperature),
+		integer(dimensions.AmountOfSubstance),
+		integer(dimensions.LuminousIntensity),
+	})
+}
+
+// measure writes one IfcMeasureWithUnit and the unit it is over.
+func (w *writer) measure(factor MeasureWithUnit) (reference, error) {
+	over, err := w.unit(factor.Unit)
+	if err != nil {
+		return 0, err
+	}
+
+	return w.add(entityMeasure, []value{
+		typedReal{measure: factor.Measure, value: factor.Value},
+		over,
+	})
 }
 
 // context writes the geometric representation context and returns the

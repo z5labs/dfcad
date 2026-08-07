@@ -2690,9 +2690,25 @@ reconciles two.
 `derived` false, no files, the digest written, and the reason on stderr. The second is a
 refusal over something correct — a survey grid in metres beside a fabrication grid in
 millimetres is an ordinary model — because an exchange file states one set of units and
-nothing here could choose between them. A unit with no SI spelling, which is either foot, is
-refused for the same kind of reason: IFC writes one as a conversion from the metre, and this
-exporter does not write conversions.
+nothing here could choose between them.
+
+**A model authored in feet is written in feet.** The unit the frames agree on is the unit the
+file states, whichever it is: the four metric spellings are an `IfcSIUnit` with the prefix
+each carries, and either foot is an `IfcConversionBasedUnit` stating its factor over the
+metre — `0.3048` for `ft` and `1200/3937` for `usft`, the second to the whole of its `float64`
+because it does not terminate in decimal. Length, area and volume are a conversion each,
+distinguished by the dimensional exponent the quantity has; the plane angle stays an
+`IfcSIUnit` in radians. The two feet are written under names which tell them apart — `foot`
+and `US survey foot`, and the square and cube of each — because a reader keying off the name
+rather than the factor holds its own table, and the tables in the wild have one entry for
+`foot` at 0.3048 and none at all for the survey foot: a model read that way lands four feet
+out at a state plane false easting.
+
+**Nothing is converted.** The factor is named beside the coordinates and never applied to
+them, which is what [0005](decisions/0005-one-linear-unit-per-frame.md) means by conversion
+happening at an export boundary — a value written in the source is the value in the file.
+Converting instead would round every coordinate of a model in survey feet, and the file would
+stop carrying the numbers the surveyor published.
 
 **A shape which was asked for and cannot be drawn is a refusal too**, and for the same reason
 an artefact is all or nothing: a file with one room's solid quietly missing is worse than no

@@ -72,11 +72,11 @@ func fixture() Model {
 			Originating:   "dfcad",
 			Authorisation: "",
 		},
-		Units: UnitAssignment{Units: []SIUnit{
-			{Type: "LENGTHUNIT", Name: "METRE"},
-			{Type: "AREAUNIT", Name: "SQUARE_METRE"},
-			{Type: "VOLUMEUNIT", Name: "CUBIC_METRE"},
-			{Type: "PLANEANGLEUNIT", Name: "RADIAN"},
+		Units: UnitAssignment{Units: []Unit{
+			SIUnit{Type: "LENGTHUNIT", Name: "METRE"},
+			SIUnit{Type: "AREAUNIT", Name: "SQUARE_METRE"},
+			SIUnit{Type: "VOLUMEUNIT", Name: "CUBIC_METRE"},
+			SIUnit{Type: "PLANEANGLEUNIT", Name: "RADIAN"},
 		}},
 		Context: RepresentationContext{
 			Type:      "Model",
@@ -458,11 +458,282 @@ func TestWriteReadsBackUnderAnIndependentReader(t *testing.T) {
 	})
 }
 
+// surveyFoot is how long a US survey foot is in metres: 1200/3937, exactly.
+//
+// It is the unit the fixture below is authored in because it is the one whose
+// factor no decimal spelling terminates, which is what makes writing the
+// conversion rather than applying it the whole point. A file which converted
+// its coordinates to metres would round every one of them.
+const surveyFoot = 1200.0 / 3937.0
+
+// converted is the fixture authored in a unit the SI has no name for, with the
+// plot a hundred of them east of the origin.
+//
+// The three conversions differ in their dimensional exponent and in their
+// factor, which is what makes them a length, an area and a volume rather than
+// one unit written three times. The plane angle stays an IfcSIUnit: a radian is
+// a radian whatever a model's lengths are in.
+func converted() Model {
+	model := fixture()
+
+	model.Units = UnitAssignment{Units: []Unit{
+		ConversionBasedUnit{
+			Type:       "LENGTHUNIT",
+			Dimensions: DimensionalExponents{Length: 1},
+			Name:       "US survey foot",
+			Factor: MeasureWithUnit{
+				Measure: "LENGTHMEASURE",
+				Value:   surveyFoot,
+				Unit:    SIUnit{Type: "LENGTHUNIT", Name: "METRE"},
+			},
+		},
+		ConversionBasedUnit{
+			Type:       "AREAUNIT",
+			Dimensions: DimensionalExponents{Length: 2},
+			Name:       "square US survey foot",
+			Factor: MeasureWithUnit{
+				Measure: "AREAMEASURE",
+				Value:   surveyFoot * surveyFoot,
+				Unit:    SIUnit{Type: "AREAUNIT", Name: "SQUARE_METRE"},
+			},
+		},
+		ConversionBasedUnit{
+			Type:       "VOLUMEUNIT",
+			Dimensions: DimensionalExponents{Length: 3},
+			Name:       "cubic US survey foot",
+			Factor: MeasureWithUnit{
+				Measure: "VOLUMEMEASURE",
+				Value:   surveyFoot * surveyFoot * surveyFoot,
+				Unit:    SIUnit{Type: "VOLUMEUNIT", Name: "CUBIC_METRE"},
+			},
+		},
+		SIUnit{Type: "PLANEANGLEUNIT", Name: "RADIAN"},
+	}}
+
+	model.Project.Sites[0].Placement = &Placement{Location: Point{X: 100}}
+
+	return model
+}
+
+func TestWriteConversionBasedUnits(t *testing.T) {
+	got := written(t, converted())
+
+	assert.Equal(t, golden(t, "converted.ifc", got), got,
+		"the emitted file is stale; regenerate it with: go test ./ifc -update")
+}
+
+// TestWriteConversionBasedUnitsIsAFunctionOfTheModel is here for the reason
+// [TestWriteIsAFunctionOfTheModel] is: the golden catches a reviewed change to
+// the bytes and this catches a map ranged into them.
+func TestWriteConversionBasedUnitsIsAFunctionOfTheModel(t *testing.T) {
+	first := written(t, converted())
+
+	for range 8 {
+		assert.Equal(t, first, written(t, converted()))
+	}
+}
+
+// TestWriteConversionBasedUnitsReadsBackUnderAnIndependentReader is the
+// property the whole form exists for, asserted the way a receiving system
+// would get it: read the file, take the factor it states, and multiply.
+//
+// Nothing here is told what a survey foot is. The scale comes out of the file,
+// which is what a reader keying off the factor rather than off the name does,
+// and the length it gives back is the length the model was authored with.
+func TestWriteConversionBasedUnitsReadsBackUnderAnIndependentReader(t *testing.T) {
+	source := written(t, converted())
+
+	parsed, err := read(source)
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	length, held := conversionUnit(t, parsed, "LENGTHUNIT")
+	require.True(t, held, "the assignment states a length unit as a conversion")
+
+	t.Run("names the unit distinguishably from the other foot", func(t *testing.T) {
+		assert.Equal(t, "US survey foot", length.name)
+		assert.NotEqual(t, "foot", length.name,
+			"the two feet differ by two parts per million, and a reader keying off the name reads one as the other")
+	})
+
+	t.Run("states the factor over the metre to the last digit the model held", func(t *testing.T) {
+		assert.Equal(t, "LENGTHMEASURE", length.measure)
+		assert.Equal(t, "METRE", length.over)
+		assert.Equal(t, surveyFoot, length.factor)
+	})
+
+	t.Run("computes the authored length back in metres", func(t *testing.T) {
+		// The plot is a hundred survey feet east of the origin, and the file
+		// says so in survey feet: what a reader multiplies is the coordinate
+		// it read, by the scale it read.
+		site, held := parsed.instance(placementOf(t, parsed, "site:P-01"))
+		require.True(t, held)
+
+		require.Equal(t, itemList, site.attributes[0].form)
+		require.Len(t, site.attributes[0].items, 3)
+		assert.Equal(t, "100.", site.attributes[0].items[0].text,
+			"the coordinate is the one the model was authored with, unconverted")
+
+		easting, err := strconv.ParseFloat(site.attributes[0].items[0].text+"0", 64)
+		require.NoError(t, err)
+
+		assert.InDelta(t, 30.480060960121924, easting*length.factor, 1e-12)
+	})
+
+	t.Run("gives each of the three the dimensional exponent its quantity has", func(t *testing.T) {
+		for _, testCase := range []struct {
+			unit     string
+			exponent string
+		}{
+			{unit: "LENGTHUNIT", exponent: "1"},
+			{unit: "AREAUNIT", exponent: "2"},
+			{unit: "VOLUMEUNIT", exponent: "3"},
+		} {
+			held, ok := conversionUnit(t, parsed, testCase.unit)
+			require.True(t, ok, testCase.unit)
+
+			assert.Equal(t, []string{testCase.exponent, "0", "0", "0", "0", "0", "0"}, held.exponents,
+				testCase.unit)
+		}
+	})
+
+	t.Run("leaves the plane angle an SI unit", func(t *testing.T) {
+		assigned := assignment(t, parsed)
+
+		var angles int
+		for _, member := range assigned {
+			held, ok := parsed.instance(member.at)
+			require.True(t, ok)
+
+			if held.keyword != "IFCSIUNIT" {
+				continue
+			}
+
+			assert.Equal(t, "PLANEANGLEUNIT", held.attributes[1].text)
+			assert.Equal(t, "RADIAN", held.attributes[3].text)
+			angles++
+		}
+
+		assert.Equal(t, 1, angles, "the assignment's own SI unit is the angle and nothing else")
+	})
+}
+
+// assignment is the members of the file's one IfcUnitAssignment.
+func assignment(t *testing.T, parsed *file) []item {
+	t.Helper()
+
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCUNITASSIGNMENT" {
+			continue
+		}
+
+		require.Len(t, held.attributes, 1)
+		require.Equal(t, itemList, held.attributes[0].form)
+
+		return held.attributes[0].items
+	}
+
+	require.Fail(t, "the file states a unit assignment")
+
+	return nil
+}
+
+// conversion is one IfcConversionBasedUnit as a reader which knows nothing of
+// the writer finds it: the name it is known by, the exponents which say what
+// quantity it measures, and the factor over the SI unit beneath it.
+type conversion struct {
+	name      string
+	measure   string
+	factor    float64
+	over      string
+	exponents []string
+}
+
+// conversionUnit resolves the conversion the assignment states for a quantity,
+// following every reference by hand.
+func conversionUnit(t *testing.T, parsed *file, quantity string) (conversion, bool) {
+	t.Helper()
+
+	for _, member := range assignment(t, parsed) {
+		held, ok := parsed.instance(member.at)
+		require.True(t, ok)
+
+		if held.keyword != "IFCCONVERSIONBASEDUNIT" || held.attributes[1].text != quantity {
+			continue
+		}
+
+		require.Len(t, held.attributes, 4)
+
+		exponents, ok := parsed.instance(held.attributes[0].at)
+		require.True(t, ok)
+		require.Equal(t, "IFCDIMENSIONALEXPONENTS", exponents.keyword)
+
+		out := conversion{name: held.attributes[2].text}
+		for _, one := range exponents.attributes {
+			require.Equal(t, itemInteger, one.form)
+			out.exponents = append(out.exponents, one.text)
+		}
+
+		measure, ok := parsed.instance(held.attributes[3].at)
+		require.True(t, ok)
+		require.Equal(t, "IFCMEASUREWITHUNIT", measure.keyword)
+		require.Len(t, measure.attributes, 2)
+
+		require.Equal(t, itemTyped, measure.attributes[0].form)
+		out.measure = strings.TrimPrefix(measure.attributes[0].text, "IFC")
+
+		require.Len(t, measure.attributes[0].items, 1)
+		require.Equal(t, itemReal, measure.attributes[0].items[0].form)
+
+		factor, err := strconv.ParseFloat(measure.attributes[0].items[0].text, 64)
+		require.NoError(t, err)
+		out.factor = factor
+
+		si, ok := parsed.instance(measure.attributes[1].at)
+		require.True(t, ok)
+		require.Equal(t, "IFCSIUNIT", si.keyword)
+		out.over = si.attributes[3].text
+
+		return out, true
+	}
+
+	return conversion{}, false
+}
+
+// placementOf is the instance number of the point an element's placement puts
+// it at, found from the element's name.
+func placementOf(t *testing.T, parsed *file, name string) int {
+	t.Helper()
+
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if len(held.attributes) < 6 || held.attributes[2].text != name {
+			continue
+		}
+
+		local, ok := parsed.instance(held.attributes[5].at)
+		require.True(t, ok)
+		require.Equal(t, "IFCLOCALPLACEMENT", local.keyword)
+
+		axis, ok := parsed.instance(local.attributes[1].at)
+		require.True(t, ok)
+		require.Equal(t, "IFCAXIS2PLACEMENT3D", axis.keyword)
+
+		return axis.attributes[0].at
+	}
+
+	require.Fail(t, "the file holds an element named "+name)
+
+	return 0
+}
+
 // rooted reports whether a parsed instance is an IfcRoot subtype, which is
 // what says its first attribute is a GlobalId and its second an owner history.
 func rooted(held simple) bool {
 	unrooted := []string{
-		"IFCSIUNIT", "IFCUNITASSIGNMENT", "IFCGEOMETRICREPRESENTATIONCONTEXT",
+		"IFCSIUNIT", "IFCUNITASSIGNMENT", "IFCCONVERSIONBASEDUNIT",
+		"IFCMEASUREWITHUNIT", "IFCDIMENSIONALEXPONENTS",
+		"IFCGEOMETRICREPRESENTATIONCONTEXT",
 		"IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
 		"IFCLOCALPLACEMENT", "IFCAXIS2PLACEMENT3D", "IFCCARTESIANPOINT", "IFCDIRECTION",
 		"IFCPRODUCTDEFINITIONSHAPE", "IFCSHAPEREPRESENTATION", "IFCPOLYLINE",
@@ -532,6 +803,45 @@ func TestWriteRefuses(t *testing.T) {
 			name:     "a model which states no unit",
 			model:    func(model *Model) { model.Units = UnitAssignment{} },
 			expected: EmptyUnitsError{},
+		},
+		{
+			name:     "a unit this package has no attribute list for",
+			model:    func(model *Model) { model.Units = UnitAssignment{Units: []Unit{nil}} },
+			expected: UnknownUnitError{},
+		},
+		{
+			// The method closing [Unit] has a value receiver, so a pointer to
+			// one satisfies the interface and is not a unit this writes. It is
+			// refused rather than followed, which is the choice [Item] makes
+			// too: one spelling of a unit is one thing to keep in step.
+			name: "a pointer to a unit rather than the unit",
+			model: func(model *Model) {
+				model.Units = UnitAssignment{Units: []Unit{&SIUnit{Type: "LENGTHUNIT", Name: "METRE"}}}
+			},
+			expected: UnknownUnitError{},
+		},
+		{
+			name: "a typed nil where a unit belongs",
+			model: func(model *Model) {
+				model.Units = UnitAssignment{Units: []Unit{(*ConversionBasedUnit)(nil)}}
+			},
+			expected: UnknownUnitError{},
+		},
+		{
+			name: "a conversion factor which is not a number",
+			model: func(model *Model) {
+				model.Units = UnitAssignment{Units: []Unit{ConversionBasedUnit{
+					Type:       "LENGTHUNIT",
+					Dimensions: DimensionalExponents{Length: 1},
+					Name:       "foot",
+					Factor: MeasureWithUnit{
+						Measure: "LENGTHMEASURE",
+						Value:   math.NaN(),
+						Unit:    SIUnit{Type: "LENGTHUNIT", Name: "METRE"},
+					},
+				}}}
+			},
+			expected: UnrepresentableRealError{},
 		},
 		{
 			name: "a coordinate which is not a number",

@@ -83,6 +83,33 @@ func optionalTypedText(written string) value {
 	return typedText(written)
 }
 
+// typedReal is a floating point attribute whose type has to be named:
+// `IFCLENGTHMEASURE(0.3048)`.
+//
+// It is [typedText]'s counterpart over a number, and it is here for the same
+// reason: an attribute declared as a SELECT over the schema's measure types
+// carries no type of its own, so the value has to say which member it is. The
+// member is the caller's because the same entity states a length, an area and
+// a volume, and which of those a number is is not something the encoding can
+// tell.
+type typedReal struct {
+	measure string
+	value   float64
+}
+
+func (t typedReal) encode(dst []byte) ([]byte, error) {
+	dst = append(dst, "IFC"...)
+	dst = append(dst, t.measure...)
+	dst = append(dst, '(')
+
+	dst, err := appendReal(dst, t.value)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(dst, ')'), nil
+}
+
 // real is a floating point attribute.
 type real float64
 
