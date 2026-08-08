@@ -60,6 +60,17 @@ has related to the building has. A storey whose frame does not reach the root is
 refused naming the frame: an export which cannot say where a level sits writes
 no file, rather than a file with every level flat on the ground.
 
+Every coordinate in the file is written in the coordinates of the frame the
+chain is rooted at. A shape authored on any other frame — a room drawn at
+nought on the plan grid of its level, a wall set out on a fabrication grid — is
+carried there first, by the chain of measured transforms the model states and
+by nothing else: this is a similarity transform in the plane the survey was
+already projected into, and there is no reprojection anywhere. A shape whose
+frame does not reach the root is refused naming that frame. What the placements
+above a shape already stand at is taken back off it, so a coordinate in the file
+composed with the placements above it is the coordinate the model states rather
+than the same lift applied twice.
+
 Flags:
 
 	--out <path>               where to write the file (default: beneath
@@ -155,13 +166,17 @@ linear unit token is checked against the unit the frame declares — the token
 and never the factor beside it, because several correct spellings of one factor
 differ in their last digits.
 
-The map conversion is the identity, always. The root frame is the projected
-system the chain is rooted at, so the file's coordinates are already the
-system's: there is no offset between them, no rotation and no scale, and
-writing one would state a fit nobody measured. A coordinate reference system
-written on any frame but the root is refused for the same reason — every other
-frame reaches the root through a measured transform, and a second georeference
-beside it would be a second answer nothing reconciles.
+The map conversion states where the file's coordinates sit in that system, and
+comes out as the identity: the root frame is the projected system the chain is
+rooted at and every coordinate in the file has been carried into the root
+frame, so there is nothing left between them to state. It is the identity
+because those two facts hold and not because it is written that way — an export
+which assumed it wrote an identity over coordinates nothing had carried, which
+put every room of a levelled model at the system's origin. No rotation and no
+scale is written whatever the frames say, because one would state a fit nobody
+measured. A coordinate reference system written on any frame but the root is
+refused — every other frame reaches the root through a measured transform, and a
+second georeference beside it would be a second answer nothing reconciles.
 
 The units are the frames' own, and the frames have to agree on one: a file
 states one set of units, and a model whose frames declare two is refused rather
@@ -598,11 +613,20 @@ func exported(
 		return ifc.Model{}, nil, refused
 	}
 
+	// The frame every coordinate in the file is written in, settled once
+	// before the walk. A model whose frames reach no root has no such frame,
+	// and each shape it was going to draw is refused naming the frame it was
+	// drawn on
+	// ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)).
+	root, rooted := graph.Frames().Root()
+
 	out := &exporter{
 		graph:    graph,
 		registry: registry,
 		url:      project.GlobalIDNamespace,
 		shapes:   drawn,
+		root:     root.ID,
+		rooted:   rooted,
 		derived:  make(map[dfcad.ID]ifc.GlobalID),
 		written:  make(map[dfcad.ID]bool),
 	}
@@ -611,7 +635,12 @@ func exported(
 	// The two are built in statements rather than in the literal below because
 	// the second reads what the first recorded: a group assigns objects this
 	// file holds, and which those are is not known until they are held.
-	sites := out.decompose(out.roots)
+	//
+	// The walk starts at the root frame's origin, which is where the file's own
+	// coordinate space sits: every placement below it is written relative to
+	// the one above, so what the walk carries down is how far the placements so
+	// far have already moved a shape.
+	sites := out.decompose(out.roots, 0)
 	groups := out.zones()
 
 	model := ifc.Model{
@@ -638,7 +667,7 @@ func exported(
 			World:       ifc.Placement{},
 			Subcontexts: drawn.subcontexts(),
 		},
-		Georeference: placed.projected(),
+		Georeference: placed.projected(out.sited(placed)),
 		Project: ifc.Project{
 			GlobalID:   out.identify(dfcad.ID("ifc/project")),
 			Name:       project.Label,
@@ -661,6 +690,17 @@ type exporter struct {
 	// shapes is the vocabulary geometry is read under, and is empty for a run
 	// which asked for none.
 	shapes shapes
+
+	// root is the frame the chain is rooted at, which is the frame every
+	// coordinate in the file is written in, and rooted says whether the model
+	// has one at all.
+	//
+	// It is one field rather than a lookup per shape because it is a fact
+	// about the model: a walk which asked the frames again per node would be
+	// asking a settled question, and a model with no root would answer it once
+	// per shape.
+	root   dfcad.ID
+	rooted bool
 
 	// diags is everything the traversal had to say about the model, in the
 	// order it met it.
@@ -828,7 +868,15 @@ func (e *exporter) spatialParent(node *dfcad.SemanticNode) (dfcad.ID, bool) {
 }
 
 // decompose is a list of sibling spatial nodes as IFC holds them.
-func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
+//
+// datum is how far the placements above these nodes have already moved a shape
+// off the root frame's origin. IFC writes a placement relative to the one it
+// hangs from, so a coordinate in the file plus the placements above it is what
+// a reader gets — and this export writes every coordinate in the root frame
+// ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)),
+// which is what the datum is taken back off so the two compose to the frame
+// the geometry was carried into rather than to twice the lift.
+func (e *exporter) decompose(nodes []*dfcad.SemanticNode, datum float64) []ifc.Spatial {
 	out := make([]ifc.Spatial, 0, len(nodes))
 
 	for _, node := range nodes {
@@ -838,6 +886,13 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 		// chain which cannot be walked is reported against the storey it was
 		// declared on rather than after everything beneath it.
 		elevation := e.elevation(node)
+
+		// Where this element's own placement stands, which is where its shape
+		// and everything hanging off it are written from.
+		standingAt := datum
+		if elevation != nil {
+			standingAt += *elevation
+		}
 
 		element := ifc.Spatial{
 			Entity:      spatialEntity(node.Kind()),
@@ -857,8 +912,8 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 			// is the structure, which is what makes moving a building move
 			// everything in it.
 			Placement: standing(elevation),
-			Children:  e.decompose(e.children[id]),
-			Products:  e.contained(e.products[id]),
+			Children:  e.decompose(e.children[id], standingAt),
+			Products:  e.contained(e.products[id], standingAt),
 		}
 
 		// Whether there is anything to draw is the node's boundary's to say and
@@ -869,7 +924,7 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 		// and did measure the height of is a storey this draws.
 		var drawn dfcad.RegionTessellation
 		if e.shapes.complete() {
-			element.Representation, element.Properties, drawn = e.shaped(node)
+			element.Representation, element.Properties, drawn = e.shaped(node, standingAt)
 		}
 
 		// The boundaries are relationships rather than geometry, so they are
@@ -963,8 +1018,9 @@ func standing(elevation *float64) *ifc.Placement {
 	return &ifc.Placement{Location: ifc.Point{Z: *elevation}}
 }
 
-// contained is a list of products standing in one spatial element.
-func (e *exporter) contained(nodes []*dfcad.SemanticNode) []ifc.Product {
+// contained is a list of products standing in one spatial element, written
+// from where that element's placement stands.
+func (e *exporter) contained(nodes []*dfcad.SemanticNode, datum float64) []ifc.Product {
 	out := make([]ifc.Product, 0, len(nodes))
 
 	for _, node := range nodes {
@@ -981,7 +1037,7 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode) []ifc.Product {
 
 		if e.shapes.complete() {
 			e.carriable(node)
-			product.Representation, product.Properties = e.modelled(node)
+			product.Representation, product.Properties = e.modelled(node, datum)
 		}
 
 		out = append(out, product)

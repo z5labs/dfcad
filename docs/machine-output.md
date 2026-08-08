@@ -2704,11 +2704,24 @@ copied unchecked. The flag is of no use on its own: naming it without `--crs` is
 because a definition is written beside an identifier and there would be nothing to write it
 beside.
 
-**The map conversion is the identity, always.** The root frame *is* the projected system the
-chain is rooted at [SPEC §7.5](../SPEC.md#75-frame), so the file's coordinates are already the
-system's: `Eastings`, `Northings` and `OrthogonalHeight` are nought because the schema requires
-them, and `XAxisAbscissa`, `XAxisOrdinate` and `Scale` are absent, which the schema reads as no
-rotation and unit scale. Writing a scale there would state a fit nobody measured.
+**Every coordinate in the file is written in the root frame.** A shape authored on any other
+frame — a room drawn at nought on the plan grid of its level, a wall set out on a fabrication
+grid — is carried there first, by the chain of measured transforms the model states and by
+nothing else, which is the same walk `export-map` makes and is what keeps the two exports
+agreeing about where one model is
+[0024](decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md). Nothing
+reprojects. A shape whose frame does not reach the root is refused naming that frame, and the
+export writes no file. What the placements above a shape already stand at — a storey's
+elevation, say — is taken back off it, so a coordinate in the file composed with the placements
+above it is the coordinate the model states rather than the same lift applied twice.
+
+**The map conversion states what is left, which is nothing.** The root frame *is* the projected
+system the chain is rooted at [SPEC §7.5](../SPEC.md#75-frame) and the file's coordinates have
+been carried into the root frame, so `Eastings`, `Northings` and `OrthogonalHeight` are nought —
+written because the schema requires them, and nought because those two facts hold rather than
+because the writer says so. `XAxisAbscissa`, `XAxisOrdinate` and `Scale` are absent, which the
+schema reads as no rotation and unit scale. Writing a scale there would state a fit nobody
+measured.
 
 **A coordinate reference system on any frame but the root is a refusal**, as are an identifier
 which is not an authority and a code, two of them on one frame, and a definition whose unit
