@@ -1,0 +1,88 @@
+; The vocabulary the model beside it is checked against.
+;
+; One tolerance, because the check judges one quantity: how far past a boundary
+; something reaches is a distance, and it is the same distance two corners are
+; one corner within. What widens it on any given subject is the accuracy of the
+; claims the two shapes were read from, which is measurement rather than
+; registry data and is never written here.
+(project
+  (label "Containment fixture")
+  (globalid-namespace "https://example.org/models/inside"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a thing in its frame."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+; A second frame, declared so that a position written in it can be judged
+; against an outline drawn in the first — which is the one thing nothing here
+; does on its own.
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:building)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 30.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out report SO-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-20")))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, and how close two corners are one corner."))
+
+(type Campus
+  (kind Site)
+  (geometry absent)
+  (description "The ground everything below stands on."))
+
+(type Block
+  (kind Building)
+  (geometry absent)
+  (description "One building of the campus."))
+
+(type Level
+  (kind Storey)
+  (geometry area)
+  (description "One storey of a building, with the outline of its floor plate."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A wall between two spaces, drawn as the run it follows."))
+
+(type Device
+  (kind Element)
+  (geometry point)
+  (description "A piece of equipment recorded at the point it was set out at."))
+
+(type SurveyedOutline
+  (kind Zone)
+  (geometry area)
+  (description "The outline of a building as the boundary survey recorded it."))

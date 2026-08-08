@@ -1273,6 +1273,66 @@ func toSegment(point vec, one segment) float64 {
 	return point.sub(one.a.add(direction.scale(at))).length()
 }
 
+// encloses reports whether a point of the model falls inside the region, by the
+// same non-zero winding rule the overlay nests its rings with.
+//
+// The point is read in the region's own plane, so a component out of that plane
+// decides nothing here. That is a different question from the one
+// [Region.comparable] refuses — two regions on different storeys are not inside
+// each other, because each has a plane of its own and the two are not one — and
+// a point has no plane to disagree with. Whether the thing the point stands for
+// is far enough out of the plane to matter is the caller's to ask, and the
+// caller which has to ask it is the only one which knows what the point is.
+//
+// A point on the boundary itself is not a question this answers reliably, and
+// nothing asks it one: a caller deciding whether something is outside reads
+// [Region.away] beside this, and a point on the boundary is nought away from it.
+func (r Region) encloses(point Point) bool {
+	at := r.basis.project(point)
+
+	var winding int
+	for _, ring := range r.figure(r.basis) {
+		for i, from := range ring {
+			winding += crossing(from, ring[(i+1)%len(ring)], at)
+		}
+	}
+
+	return winding != 0
+}
+
+// away is how far a point of the model lies from the region's boundary, read in
+// the region's own plane.
+//
+// It is a distance to the boundary and says nothing about which side of it the
+// point falls on: a point a metre inside and a point a metre outside are both a
+// metre away. [Region.encloses] is what says which, and the two are read
+// together.
+func (r Region) away(point Point) float64 {
+	return nearestTo(r.basis.project(point), r.figure(r.basis))
+}
+
+// nearestTo is how far a point in a plane's own axes lies from the nearest
+// segment of a figure in those axes.
+//
+// A figure with no ring is a distance to nothing, which is nought rather than
+// an infinity a caller would have to test for before printing it — the same
+// answer [Region.gap] gives for the same reason.
+func nearestTo(at vec, figure []contour) float64 {
+	nearest := math.Inf(1)
+
+	for _, ring := range figure {
+		for i, from := range ring {
+			nearest = math.Min(nearest, toSegment(at, segment{a: from, b: ring[(i+1)%len(ring)]}))
+		}
+	}
+
+	if math.IsInf(nearest, 1) {
+		return 0
+	}
+
+	return nearest
+}
+
 // In returns the region expressed in another frame.
 //
 // It is the explicit step operations refuse to take on a caller's behalf. Two

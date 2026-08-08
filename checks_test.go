@@ -675,3 +675,220 @@ func TestGroundToGridStatedSizesTheSilence(t *testing.T) {
 	assert.Equal(t, "registry.dfc", filepath.Base(reported.Related[1].Span.Start.Path))
 	assert.NotEqual(t, reported.Related[0].Span, reported.Related[1].Span)
 }
+
+// TestSitsInside is its own function because its fixture varies the form of the
+// subject rather than what is written about one form.
+//
+// A device is a point, a partition is a run of corners and a floor plate is an
+// outline, and the rule says one thing about all three: nothing of it reaches
+// past the boundary of the thing it is checked against. Each of those is read
+// out of the model differently, so a table over one fixture is what shows the
+// three answering the same question rather than three rules under one name.
+func TestSitsInside(t *testing.T) {
+	run := runCheckFixture(t, "inside")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "holds of an outline wholly inside the one it is checked against",
+			instance: "site:S-101",
+			expected: nil,
+		},
+		{
+			name:     "reports an outline reaching past its container, naming how much is out and how far",
+			instance: "site:S-102",
+			expected: []string{
+				"expected site:S-102 to sit inside site:L-01, found 4.0 m² of it outside, reaching 3.0 m past " +
+					"the boundary at (13.0 1.0)",
+			},
+		},
+		{
+			name:     "holds of a floor plate which agrees with the outline the survey recorded",
+			instance: "site:L-01",
+			expected: nil,
+		},
+		{
+			name:     "reports a floor plate which disagrees with the outline the survey recorded",
+			instance: "site:L-02",
+			expected: []string{
+				"expected site:L-02 to sit inside site:O-01, found 6.0 m² of it outside, reaching 2.0 m past " +
+					"the boundary at (13.0 0.0)",
+			},
+		},
+		{
+			name:     "holds of a run of wall drawn inside the plate it runs across",
+			instance: "site:W-01",
+			expected: nil,
+		},
+		{
+			name:     "reports a run of wall which leaves the plate, naming the corner which is furthest out",
+			instance: "site:W-02",
+			expected: []string{
+				"expected site:W-02 to sit inside site:L-01, found geom:V-63 3.0 m outside the boundary, " +
+					"at (13.0 5.5)",
+			},
+		},
+		{
+			name:     "holds of a device inside the footprint and well above its plane",
+			instance: "site:D-01",
+			expected: nil,
+		},
+		{
+			name:     "reports a device set out past the footprint it is written within",
+			instance: "site:D-02",
+			expected: []string{
+				"expected site:D-02 to sit inside site:L-01, found it 2.0 m outside the boundary, at (12.0 2.0)",
+			},
+		},
+		{
+			name:     "reports a device nobody has set out rather than passing it",
+			instance: "site:D-03",
+			expected: []string{
+				"expected a position claimed of site:D-03 under position to judge against the container " +
+					"site:L-01, found none",
+			},
+		},
+		{
+			name:     "refuses a position written in one frame against an outline drawn in another",
+			instance: "site:D-04",
+			expected: []string{
+				"expected site:D-04 to be declared in frame:building, the frame the container site:L-01 is " +
+					"drawn in, found frame:annex",
+			},
+		},
+		{
+			name:     "holds where a thing is outside by less than the accuracy which put it there",
+			instance: "site:D-05",
+			expected: nil,
+		},
+		{
+			name:     "reports the same distance where the accuracy is narrow enough to tell it from nothing",
+			instance: "site:D-06",
+			expected: []string{
+				"expected site:D-06 to sit inside site:L-01, found it 0.25 m outside the boundary, at (10.25 5.0)",
+			},
+		},
+		{
+			name:     "names every corner of a run nobody has surveyed rather than the first of them",
+			instance: "site:W-03",
+			expected: []string{
+				"expected a position claimed of geom:V-71 under position to judge against the container " +
+					"site:L-01, found none",
+				"expected a position claimed of geom:V-72 under position to judge against the container " +
+					"site:L-01, found none",
+				"expected a position claimed of geom:V-73 under position to judge against the container " +
+					"site:L-01, found none",
+			},
+		},
+		{
+			name:     "reports a subject whose type declares an area and which nobody has drawn",
+			instance: "site:S-190",
+			expected: []string{
+				"expected a shape on site:S-190 to judge against the container site:L-01, found no loop bounding it",
+			},
+		},
+		{
+			name:     "reports a subject whose type declares a line and which nobody has drawn",
+			instance: "site:W-90",
+			expected: []string{
+				"expected a shape on site:W-90 to judge against the container site:L-01, found no edge drawing it",
+			},
+		},
+		{
+			name:     "reports a container which encloses nothing to be inside of",
+			instance: "site:D-08",
+			expected: []string{
+				"expected the container site:O-90 to have a shape to sit inside, found no loop bounding it",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, reportedBy(run, "sits-inside", testCase.instance))
+		})
+	}
+
+	t.Run("decides every rule the fixture states either way", func(t *testing.T) {
+		assert.Equal(t, 16, run.Rules)
+		assert.Equal(t, run.Rules, run.Ran)
+		assert.Equal(t, 11, run.Failed)
+		assert.Equal(t, 5, run.Passed)
+	})
+
+	t.Run("says what to do about each of them", func(t *testing.T) {
+		for _, violation := range run.Violations {
+			assert.NotEmpty(t, violation.Hint, violation.Instance)
+		}
+	})
+}
+
+// TestSitsInsideJudgesAShapeItIsNotWrittenWithin is its own function because
+// what it asserts is a property of the graph rather than of a message.
+//
+// The container is a parameter and never the containment parent, and the second
+// story wanting this check is exactly the case where the two differ: a floor
+// plate is checked against the outline a boundary survey recorded, and it is
+// written within the building rather than within the survey. A rule which
+// reached for the parent could not say that at all.
+func TestSitsInsideJudgesAShapeItIsNotWrittenWithin(t *testing.T) {
+	graph := loadCheckFixture(t, "inside")
+
+	plate, held := graph.Node("site:L-02")
+	require.True(t, held)
+
+	parent, written := plate.Within()
+	require.True(t, written)
+	assert.Equal(t, ID("site:B-01"), parent, "the plate is written within the building")
+
+	outline, held := graph.Node("site:O-01")
+	require.True(t, held)
+
+	run := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:L-02"}}).Run()
+
+	require.Len(t, run.Violations, 1)
+	require.Len(t, run.Violations[0].Related, 1)
+	assert.True(t, encloses(outline.Span(), run.Violations[0].Related[0].Span),
+		"and is judged against the surveyed outline, which is not its parent")
+}
+
+// TestSitsInsideLeadsBackToWhatToMove is its own function because its assertion
+// is about the spans rather than the messages.
+//
+// Two places are always involved and either may be the one to change: the thing
+// which is outside, and the shape it is outside of. A failure which pointed
+// only at the node would leave a reader with a wall of nine corners to find the
+// one which is over the line.
+func TestSitsInsideLeadsBackToWhatToMove(t *testing.T) {
+	graph := loadCheckFixture(t, "inside")
+
+	corner, held := graph.Topology().Vertex("geom:V-63")
+	require.True(t, held)
+
+	run := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:W-02"}}).Run()
+	require.Len(t, run.Violations, 1)
+
+	wall, held := graph.Node("site:W-02")
+	require.True(t, held)
+
+	assert.True(t, encloses(corner.Span(), run.Violations[0].Subject),
+		"the failure points at the corner which is outside")
+	assert.False(t, encloses(wall.Span(), run.Violations[0].Subject),
+		"rather than at the wall the corner belongs to")
+
+	require.Len(t, run.Violations[0].Related, 1)
+	assert.NotEqual(t, run.Violations[0].Subject, run.Violations[0].Related[0].Span,
+		"the shape it is outside of is a different place from the corner")
+}
+
+// encloses reports whether one span lies inside another, which is how a test
+// says that a failure points somewhere within a form without restating the
+// arithmetic that produced the span.
+func encloses(outer, inner Span) bool {
+	return outer.Start.Path == inner.Start.Path &&
+		outer.Start.Offset <= inner.Start.Offset &&
+		inner.End.Offset <= outer.End.Offset
+}
