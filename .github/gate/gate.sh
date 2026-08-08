@@ -188,6 +188,17 @@ annotate() {
 # A span carrying no position is the path alone. It comes back with empty line
 # and column and is annotated at file level rather than dropped, because a
 # finding whose position is missing is still a finding.
+#
+# The fallback works because `capture` on input which does not match yields
+# **empty** rather than raising — it is `match` underneath, and `match` yields no
+# output — so `//` takes the right-hand side. Measured on jq 1.8.1, and it has
+# been read the other way in review, which is why it is written down here.
+#
+# What `capture` does raise on is input which is not a string, and that is
+# deliberately not caught. A span which arrives as an object is the v2 change
+# running backwards — the shape this whole file was broken by — and emit turns
+# that raise into a contract error naming the stage. A `try ... catch` here would
+# turn it into a file-level annotation instead, which is the quiet failure again.
 readonly SPAN_START='
 def span_start:
 	if . == null or . == "" then
