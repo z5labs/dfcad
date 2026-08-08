@@ -263,6 +263,7 @@ func (s shapes) bodied() []string {
 // and a representation holding no shapes is a file IFC refuses.
 func (e *exporter) shaped(
 	node *dfcad.SemanticNode,
+	datum float64,
 ) (*ifc.Representation, []ifc.PropertySet, dfcad.RegionTessellation) {
 	drawn, diags := e.graph.Topology().TessellateRegion(
 		node,
@@ -277,18 +278,39 @@ func (e *exporter) shaped(
 		return nil, nil, drawn
 	}
 
-	elevation, level := e.level(node, rings(pieces), drawn.Region().Tolerance().Value)
+	// Carried before it is checked for level, and not after. A transform
+	// between frames is rigid up to a scale, so it preserves the plane a
+	// region lies in but not which plane that is: a boundary lying flat on one
+	// grid can arrive tilted on another, and it is the coordinates being
+	// written which have to be a plan.
+	carry, carried := e.carrying(node, drawn.Frame())
+	if !carried {
+		return nil, nil, drawn
+	}
+
+	plans, moved := e.carriedPieces(node, carry, pieces)
+	if !moved {
+		return nil, nil, drawn
+	}
+
+	elevation, level := e.level(node, planRings(plans), drawn.Region().Tolerance().Value)
 	if !level {
 		return nil, nil, drawn
 	}
 
+	// The elevation came back in the root frame and the placement this shape
+	// is written under already stands at the datum, so what is written is what
+	// is left of it. A model authored in the root frame has a datum of nought
+	// and is unchanged by this.
+	elevation -= datum
+
 	// The outline is what the model states and is written whatever else is
 	// known, which is what makes a footprint-only export the ordinary case
 	// rather than a degraded one.
-	outlines := make([]ifc.Item, 0, len(pieces))
-	for _, piece := range pieces {
-		outlines = append(outlines, planar(piece.Outer()))
-		for _, hole := range piece.Holes() {
+	outlines := make([]ifc.Item, 0, len(plans))
+	for _, piece := range plans {
+		outlines = append(outlines, planar(piece.outer))
+		for _, hole := range piece.holes {
 			outlines = append(outlines, planar(hole))
 		}
 	}
@@ -307,18 +329,18 @@ func (e *exporter) shaped(
 		return representation, nil, drawn
 	}
 
-	solids := make([]ifc.Item, 0, len(pieces))
-	for _, piece := range pieces {
+	solids := make([]ifc.Item, 0, len(plans))
+	for _, piece := range plans {
 		// The holes are the region's own, which is what carries the even-odd
 		// nesting it worked out through to the file rather than leaving a
 		// reader to work it out again from a heap of curves.
-		inner := make([]ifc.Polyline, 0, len(piece.Holes()))
-		for _, hole := range piece.Holes() {
+		inner := make([]ifc.Polyline, 0, len(piece.holes))
+		for _, hole := range piece.holes {
 			inner = append(inner, planar(hole))
 		}
 
 		solids = append(solids, ifc.ExtrudedArea{
-			Profile: ifc.ArbitraryProfile{Outer: planar(piece.Outer()), Inner: inner},
+			Profile: ifc.ArbitraryProfile{Outer: planar(piece.outer), Inner: inner},
 			// The profile is drawn in the xy of this placement, so the
 			// elevation the boundary sits at goes here. The footprint beside
 			// it is a plan and carries no elevation at all, which is what
@@ -348,12 +370,15 @@ func (e *exporter) shaped(
 // the sweep which makes a solid of either is one operation — so an element
 // bounded by a ring is drawn exactly as a space is, and what the kind decides is
 // only which entity the shape is written on.
-func (e *exporter) modelled(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.PropertySet) {
+func (e *exporter) modelled(
+	node *dfcad.SemanticNode,
+	datum float64,
+) (*ifc.Representation, []ifc.PropertySet) {
 	if geometry, _ := node.Geometry(); geometry == dfcad.GeometryLine {
-		return e.thickened(node)
+		return e.thickened(node, datum)
 	}
 
-	representation, properties, _ := e.shaped(node)
+	representation, properties, _ := e.shaped(node, datum)
 
 	return representation, properties
 }
@@ -374,7 +399,10 @@ func (e *exporter) modelled(node *dfcad.SemanticNode) (*ifc.Representation, []if
 // whole story is about — a receiving system shows it as nothing, or as a hairline
 // nobody can select — and an object with no shape at least says plainly that the
 // model does not state one.
-func (e *exporter) thickened(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.PropertySet) {
+func (e *exporter) thickened(
+	node *dfcad.SemanticNode,
+	datum float64,
+) (*ifc.Representation, []ifc.PropertySet) {
 	runs, unit, drew := e.runs(node)
 	if !drew {
 		return nil, nil
@@ -400,6 +428,11 @@ func (e *exporter) thickened(node *dfcad.SemanticNode) (*ifc.Representation, []i
 	if !level {
 		return nil, nil
 	}
+
+	// The runs came back in the root frame, for the reason a region's rings
+	// do, so the datum the placement already stands at comes off the level
+	// they lie at.
+	elevation -= datum
 
 	claimed := thicknessOf(e.shapes.thickness)
 
@@ -484,11 +517,25 @@ func (e *exporter) runs(node *dfcad.SemanticNode) ([][]dfcad.Point, dfcad.Unit, 
 			continue
 		}
 
+		// Each edge is carried on its own frame rather than on the node's. A
+		// run is edges rather than a ring, and nothing says the edges of one
+		// were all drawn on one grid — a partition set out on the fabrication
+		// frame and continued on the storey's is two frames and one wall.
+		carry, carried := e.carrying(node, edge.Frame())
+		if !carried {
+			return nil, "", false
+		}
+
+		moved, ok := e.carriedRing(node, carry, points)
+		if !ok {
+			return nil, "", false
+		}
+
 		if unit == "" {
 			unit = drawn.Unit()
 		}
 
-		out = append(out, points)
+		out = append(out, moved)
 	}
 
 	return out, unit, len(out) > 0

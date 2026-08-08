@@ -86,17 +86,38 @@ type recordedCRS struct {
 	// Definition is the register's full definition of it, where the project
 	// holds one, exactly as it was written.
 	Definition string
+
+	// Frame is the frame the system was read off, which is the root and is
+	// refused anywhere else. It is carried because the conversion into the
+	// system is the offset between this frame and the frame the coordinates
+	// were written in, and a record which did not say which frame it describes
+	// could not be asked for that offset.
+	Frame dfcad.ID
+
+	// Span is where that frame was declared, which is what a refusal about the
+	// offset points at.
+	Span dfcad.Span
 }
 
 // projected is the record as IFC holds it: an IfcProjectedCRS naming the system
 // and an IfcMapConversion into it.
 //
-// The conversion is the identity, always. The root frame is the projected
-// coordinate reference system the chain is rooted at
-// ([SPEC §7.5](SPEC.md#75-frame)), so the file's coordinates are already the
-// system's coordinates: there is no offset between them, no rotation and no
-// scale, and writing one would be stating a fit nobody measured.
-func (s *recordedCRS) projected() *ifc.Georeference {
+// at is where the coordinates this file holds sit in that system, which is what
+// the conversion states. It comes in rather than being assumed: the root frame
+// is the projected coordinate reference system the chain is rooted at
+// ([SPEC §7.5](SPEC.md#75-frame)) and every coordinate in the file is written
+// in the root frame
+// ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)),
+// so the offset is nothing — but it is nothing because those two facts were
+// checked and not because the writer decided so. The export which assumed it
+// wrote an identity conversion over coordinates nothing had carried, which
+// placed every room of a levelled model at the system's origin.
+//
+// The three factors stay absent whatever comes in. A rotation or a scale
+// between the model and the system would be geodesy, which this engine does
+// not do ([0023](docs/decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md)),
+// so there is no arrangement of frames which produces one to write.
+func (s *recordedCRS) projected(at dfcad.Point) *ifc.Georeference {
 	if s == nil {
 		return nil
 	}
@@ -109,7 +130,11 @@ func (s *recordedCRS) projected() *ifc.Georeference {
 			Name:        s.Identifier,
 			Description: s.Definition,
 		},
-		Conversion: ifc.MapConversion{},
+		Conversion: ifc.MapConversion{
+			Eastings:         at[0],
+			Northings:        at[1],
+			OrthogonalHeight: at[2],
+		},
 	}
 }
 
@@ -219,7 +244,7 @@ func georeferenced(
 		return nil, diags
 	}
 
-	return &recordedCRS{Identifier: text, Definition: written}, nil
+	return &recordedCRS{Identifier: text, Definition: written, Frame: root.ID, Span: root.Span}, nil
 }
 
 // wrongShape is the diagnostic for a plain value which is not the text the

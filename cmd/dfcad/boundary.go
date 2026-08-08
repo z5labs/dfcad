@@ -118,7 +118,7 @@ func (e *exporter) boundary(
 		Internal: e.enclosure(node, element),
 		// The curve is what the drawing produced for this edge, and is absent
 		// on a run which drew nothing.
-		Connection: connection(drawn, edge),
+		Connection: e.connection(drawn, edge),
 	}, true
 }
 
@@ -204,7 +204,18 @@ func (e *exporter) enclosing(node *dfcad.SemanticNode) (dfcad.ID, bool) {
 // The curve is two dimensional for the reason the footprint is: it is
 // expressed in the plane the space is drawn in, and the elevation is carried
 // by the placement rather than repeated on every point.
-func connection(drawn dfcad.RegionTessellation, edge *dfcad.Edge) *ifc.ConnectionCurve {
+//
+// It is carried into the root frame like the outline it was cut from, and for
+// the same reason: a curve left in the frame it was authored in beside a
+// footprint which was carried is the two halves of one room in two places
+// ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)).
+// A corner the chain does not reach drops the curve rather than reporting it,
+// because the footprint this was cut out of has already refused the export
+// over the same chain, and the same missing transform said twice is one fault
+// reported twice.
+func (e *exporter) connection(drawn dfcad.RegionTessellation, edge *dfcad.Edge) *ifc.ConnectionCurve {
+	carry := carriage{frames: e.graph.Frames(), from: drawn.Frame(), to: e.root}
+
 	var points []ifc.Point2D
 
 	for _, segment := range drawn.Segments() {
@@ -212,7 +223,17 @@ func connection(drawn dfcad.RegionTessellation, edge *dfcad.Edge) *ifc.Connectio
 			continue
 		}
 
-		from, to := flat(segment.From()), flat(segment.To())
+		start, err := carry.point(segment.From())
+		if err != nil {
+			return nil
+		}
+
+		end, err := carry.point(segment.To())
+		if err != nil {
+			return nil
+		}
+
+		from, to := flat(start), flat(end)
 		if len(points) == 0 || points[len(points)-1] != from {
 			points = append(points, from)
 		}
