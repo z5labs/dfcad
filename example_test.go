@@ -418,6 +418,7 @@ func ExampleChecks() {
 	// edge-endpoints-differ
 	// ground-to-grid-stated (crs <predicate>) (ground-to-grid <predicate>) (position <predicate>)
 	// required-claim (predicate <predicate>)
+	// sits-inside (container <id>) (tolerance <tolerance>) (position <predicate>)
 	// stays-clear-of-zone (zone <id>) (tolerance <tolerance>) (position <predicate>)
 	// within-resolves
 	// zone-members-resolve

@@ -645,29 +645,37 @@ func (r Region) gap(other Region) float64 {
 // than the average is what stops a structure a metre over the line at one corner
 // reading as a comfortable few centimetres.
 func (r Region) overrun(outside Region) float64 {
+	_, depth := r.deepest(outside)
+	return depth
+}
+
+// deepest is the corner of a region which lies furthest from this region's
+// boundary, and how far from it that corner lies.
+//
+// It is [Region.overrun] with the place kept as well as the distance, for a
+// report which has to say where a thing reaches past a boundary and not only by
+// how much. The two are one walk rather than two, so a report naming a corner
+// and a figure cannot name a corner the figure was not measured at.
+func (r Region) deepest(outside Region) (Point, float64) {
 	boundary := r.figure(r.basis)
 	if len(boundary) == 0 {
-		return 0
+		return Point{}, 0
 	}
 
-	var deepest float64
+	var (
+		at      Point
+		deepest float64
+	)
 
 	for _, piece := range outside.pieces {
 		for _, ring := range append([][]Point{piece.outer}, piece.holes...) {
 			for _, point := range ring {
-				at := r.basis.project(point)
-
-				nearest := math.Inf(1)
-				for _, edge := range boundary {
-					for i, from := range edge {
-						nearest = math.Min(nearest, toSegment(at, segment{a: from, b: edge[(i+1)%len(edge)]}))
-					}
+				if nearest := nearestTo(r.basis.project(point), boundary); nearest > deepest {
+					at, deepest = point, nearest
 				}
-
-				deepest = math.Max(deepest, nearest)
 			}
 		}
 	}
 
-	return deepest
+	return at, deepest
 }

@@ -44,6 +44,7 @@ var registeredChecks = newCheckSet(
 	edgeEndpointsDiffer{},
 	groundToGridStated{},
 	requiredClaim{},
+	sitsInside{},
 	staysClearOfZone{},
 	withinResolves{},
 	zoneMembersResolve{},
@@ -80,6 +81,15 @@ const (
 	// kindParameter narrows a check over what a node contains to the contents of
 	// one kind.
 	kindParameter = "kind"
+
+	// containerParameter is the node whose shape a subject has to lie inside.
+	//
+	// It is written rather than taken from what the subject is `within`, because
+	// the shape a thing has to be inside of is not always the thing which
+	// contains it: a storey's footprint is judged against the surveyed outline
+	// of the building it stands for, and a storey is written within the
+	// building rather than within the outline.
+	containerParameter = "container"
 
 	// crsParameter is the predicate the projected coordinate reference system a
 	// chain is rooted at is named under.
@@ -1652,6 +1662,487 @@ func statesScale(transform Transform) bool {
 		return false
 	}
 	return transform.Scale != 1.0
+}
+
+// sitsInside is the check that a node's shape lies inside another node's.
+type sitsInside struct{}
+
+// Declare implements [Check].
+func (sitsInside) Declare() CheckDeclaration {
+	return CheckDeclaration{
+		Name: "sits-inside",
+		Description: "The subject's shape lies inside the shape of the named node: nothing of it reaches past that " +
+			"node's boundary by more than the named tolerance, or than the combined accuracy of the two where that " +
+			"is wider.",
+		Parameters: []CheckParameter{
+			{
+				Name:        containerParameter,
+				Type:        ParameterID,
+				Required:    true,
+				Description: "The node whose shape the subject is to lie inside.",
+			},
+			{
+				Name:        toleranceParameter,
+				Type:        ParameterTolerance,
+				Required:    true,
+				Description: "How close two corners are one corner, and how far past a boundary is not past it at all.",
+			},
+			{
+				Name:        positionParameter,
+				Type:        ParameterPredicate,
+				Required:    true,
+				Description: "The predicate a position is claimed under, which is what both shapes are read from.",
+			},
+		},
+		Forms:      []SubjectForm{SubjectNode},
+		Geometries: []Geometry{GeometryPoint, GeometryLine, GeometryArea, GeometrySurface, GeometrySolid},
+	}
+}
+
+// Run implements [Runner].
+//
+// This is the failure a containment which resolves cannot catch. A device
+// written `within` a storey and set out thirty feet outside its footprint
+// satisfies [withinResolves] — the containment is one the hierarchy permits —
+// and satisfies every other rule it declares, because nothing until here
+// compared the two shapes.
+//
+// # The container is named, never assumed
+//
+// It is a parameter rather than the `within` parent, and that is the difference
+// between one check and two. A storey's footprint is judged against the
+// surveyed outline of the building it stands for, and a storey is not written
+// within that outline — it is written within the building. A rule which reached
+// for the parent could say the first thing and never the second, and the two
+// are the same question about two pairs of shapes.
+//
+// # What the subject is read as
+//
+// A subject bounded by loops is read as a region and compared with the
+// container's by taking one away from the other, which is what nests a
+// courtyard inside a plate and what makes the part left over the part outside.
+// A subject drawn as a line or recorded as a point covers no area and has none
+// to take away: it is read as the places the model puts it — the corners its
+// edges run between, or the position claimed of the node itself — and each of
+// those is judged against the container's boundary.
+//
+// The two are not the same rigour and the difference is worth stating. A run of
+// a line between two corners inside the container can leave it and come back
+// where the container is notched, and this does not report that: it reports
+// where the model puts a corner. The fix for a container shaped like that is to
+// draw the corner the notch needs, which is a corner the model wanted anyway.
+//
+// Where a failure says a thing reaches past the boundary is a coordinate of the
+// container's own frame, written with as many components as the model wrote its
+// positions with ([Region.printed]). The comparison is made in the plane's axes
+// and a place written in those would be a pair of numbers appearing nowhere in
+// the file; a reader has to be able to find the corner this is about.
+//
+// A point-based subject is judged in the container's plane, and a subject with a
+// plane of its own is refused unless the two planes are one ([Region.Difference]
+// refuses it). That is not an inconsistency: a device is above the floor plate
+// it stands on and is inside its footprint, so requiring the two to be coplanar
+// would refuse the whole motivating case, while two floor plates on different
+// storeys are inside each other seen from above and are not inside each other.
+//
+// # Uncertainty
+//
+// The declared tolerance is the floor rather than the whole test, exactly as it
+// is for [claimAgreesWithGeometry]. A shape reaching past a boundary by less
+// than the combined one-sigma uncertainty of the two shapes has not been shown
+// to be outside it, and reporting it would be reporting the survey rather than
+// the model. Where neither side states an accuracy the floor is the whole of it,
+// because an unstated accuracy is unknown rather than zero
+// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
+func (sitsInside) Run(subject CheckSubject) []Failure {
+	node, ok := subject.Subject().(*SemanticNode)
+	if !ok {
+		return nil
+	}
+
+	written, ok := symbolOf(subject, containerParameter)
+	if !ok {
+		return nil
+	}
+	tolerance, ok := symbolOf(subject, toleranceParameter)
+	if !ok {
+		return nil
+	}
+	position, ok := symbolOf(subject, positionParameter)
+	if !ok {
+		return nil
+	}
+
+	graph := subject.Graph()
+
+	container, held := graph.Node(ID(written))
+	if !held {
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected a container this model holds, found %s, which names no node of it",
+				written,
+			),
+			Hint: "the node a subject sits inside is named rather than taken from what contains it, so that a " +
+				"footprint can be judged against an outline it is not written within; it is a node of this model " +
+				"with a shape of its own",
+			Span: graph.Nodes().named(node),
+		}}
+	}
+
+	enclosing, failures := shapeOf(graph, container, tolerance, position)
+	if len(failures) > 0 {
+		return failures
+	}
+
+	if !enclosing.ready {
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected the container %s to have a shape to sit inside, found no loop bounding it",
+				container.ID(),
+			),
+			Hint: "a node with no outline encloses nothing, so nothing can be inside it; the rule as written cannot " +
+				"be decided either way",
+			Span:    graph.Nodes().named(node),
+			Related: pointingAt(graph, container, "the container it names is written here"),
+		}}
+	}
+
+	if geometry, _ := node.Geometry(); geometry == GeometryPoint || geometry == GeometryLine {
+		return sittingPoints(graph, node, container, enclosing, position)
+	}
+
+	return sittingRegion(graph, node, container, enclosing, tolerance, position)
+}
+
+// sittingRegion decides a subject bounded by loops: what of it the container
+// does not cover, and how far past the boundary the furthest corner of that
+// reaches.
+func sittingRegion(
+	graph *Graph,
+	node, container *SemanticNode,
+	enclosing Region,
+	tolerance, position string,
+) []Failure {
+	shape, failures := shapeOf(graph, node, tolerance, position)
+	if len(failures) > 0 {
+		return failures
+	}
+
+	if !shape.ready {
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected a shape on %s to judge against the container %s, found no loop bounding it",
+				nodeName(node), container.ID(),
+			),
+			Hint: "a node whose type declares an area and which references no loop has no outline to compare; the " +
+				"rule holds of a shape and there is none to hold it of",
+			Span: graph.Nodes().named(node),
+		}}
+	}
+
+	beyond, diags := shape.Difference(enclosing)
+	if len(diags) > 0 {
+		return failuresOf(diags)
+	}
+
+	if beyond.Empty() {
+		return nil
+	}
+
+	at, depth := enclosing.deepest(beyond)
+
+	declared := enclosing.Tolerance()
+	if depth <= insideBand(declared, shape.Budget(), enclosing.Budget()) {
+		return nil
+	}
+
+	return []Failure{{
+		Message: fmt.Sprintf(
+			"expected %s to sit inside %s, found %s%s of it outside, reaching %s%s past the boundary at %s",
+			nodeName(node), container.ID(),
+			decimal(beyond.Area()), squareSuffix(enclosing.Unit()),
+			decimal(depth), unitSuffix(enclosing.Unit()), pointText(at, enclosing.printed()),
+		),
+		Hint:    outsideHint(declared, position),
+		Span:    graph.Nodes().named(node),
+		Related: pointingAt(graph, container, "the container it is to sit inside is written here"),
+	}}
+}
+
+// sittingPoints decides a subject the model puts somewhere rather than draws an
+// outline for: the corners a line runs between, or the position claimed of a
+// node recorded as a point.
+//
+// The furthest placement outside is the one reported, and it is one failure
+// rather than one per corner. What a reader has to do about a wall half outside
+// a storey is decided by how far the worst of it is out; a failure per corner
+// would say the same thing as many times as the wall has corners, and the
+// number to act on would be spread across all of them.
+func sittingPoints(
+	graph *Graph,
+	node, container *SemanticNode,
+	enclosing Region,
+	position string,
+) []Failure {
+	placements, budget, failures := placementsOf(graph, node, container, enclosing, position)
+	if len(failures) > 0 {
+		return failures
+	}
+
+	// The boundary is projected into its own axes once and every placement is
+	// asked against that. A wall has as many corners as it has turns, and
+	// re-projecting the container's whole outline for each of them would be the
+	// whole of the work this does.
+	figure := enclosing.figure(enclosing.basis)
+
+	var (
+		furthest placement
+		depth    float64
+		outside  bool
+	)
+
+	for _, one := range placements {
+		at := enclosing.basis.project(one.at)
+		if enclosedBy(at, figure) {
+			continue
+		}
+
+		if away := nearestTo(at, figure); !outside || away > depth {
+			furthest, depth, outside = one, away, true
+		}
+	}
+
+	declared := enclosing.Tolerance()
+	if !outside || depth <= insideBand(declared, budget, enclosing.Budget()) {
+		return nil
+	}
+
+	return []Failure{{
+		Message: fmt.Sprintf(
+			"expected %s to sit inside %s, found %s %s%s outside the boundary, at %s",
+			nodeName(node), container.ID(), furthest.name,
+			decimal(depth), unitSuffix(enclosing.Unit()), pointText(furthest.at, enclosing.printed()),
+		),
+		Hint:    outsideHint(declared, position),
+		Span:    furthest.span,
+		Related: pointingAt(graph, container, "the container it is to sit inside is written here"),
+	}}
+}
+
+// placement is one position the model puts a subject at: where it is, what a
+// failure calls it, and where to send a reader to move it.
+//
+// The name is what tells the two point-based forms apart in a report. A line is
+// out of its container at a corner somebody can go and re-survey, so the corner
+// is named; a node recorded as a point is out of it at itself, and a message
+// which named it a second time would be repeating the subject it just named.
+type placement struct {
+	at   Point
+	name string
+	span Span
+}
+
+// placementsOf reads where the model puts a subject which covers no area,
+// together with the accuracy of the claims which put it there.
+//
+// A subject the model places nowhere is reported rather than passed. A device
+// nobody has set out yet is not a device inside its storey, and answering "it
+// does not reach past the boundary" about a position which does not exist is
+// how a gate reports a model sound because it measured nothing.
+//
+// Every corner which could not be read is reported and not only the first. A
+// run of wall nobody has surveyed is a list of corners to go and occupy, and
+// naming one of them per run turns fixing it into a loop.
+func placementsOf(
+	graph *Graph,
+	node, container *SemanticNode,
+	enclosing Region,
+	position string,
+) ([]placement, Budget, []Failure) {
+	var budget Budget
+
+	if geometry, _ := node.Geometry(); geometry == GeometryPoint {
+		frame, declared := node.Frame()
+		if !declared || frame != enclosing.Frame() {
+			mismatch := frameMismatch(graph, node, nodeName(node), frame, container, enclosing)
+			return nil, budget, []Failure{mismatch}
+		}
+
+		claim, at, placed := placedAt(graph, node.ID(), position)
+		if !placed {
+			where := graph.Nodes().named(node)
+			return nil, budget, []Failure{unplaced(graph, node, nodeName(node), container, position, where)}
+		}
+
+		budget.Add(claim)
+
+		return []placement{{at: at, name: "it", span: claim.Span()}}, budget, nil
+	}
+
+	var (
+		placements []placement
+		failures   []Failure
+		corners    int
+	)
+
+	for vertex := range graph.Corners(node) {
+		corners++
+
+		corner, where := string(vertex.ID()), graph.named(vertex)
+
+		if vertex.Frame() != enclosing.Frame() {
+			failures = append(failures,
+				frameMismatch(graph, node, corner, vertex.Frame(), container, enclosing))
+			continue
+		}
+
+		claim, at, placed := placedAt(graph, vertex.ID(), position)
+		if !placed {
+			failures = append(failures, unplaced(graph, node, corner, container, position, where))
+			continue
+		}
+
+		budget.Add(claim)
+		placements = append(placements, placement{at: at, name: corner, span: where})
+	}
+
+	switch {
+	case len(failures) > 0:
+		return nil, budget, failures
+
+	case corners == 0:
+		return nil, budget, []Failure{{
+			Message: fmt.Sprintf(
+				"expected a shape on %s to judge against the container %s, found no edge drawing it",
+				nodeName(node), container.ID(),
+			),
+			Hint: "a node whose type declares a line and which references no loop is drawn nowhere; the rule holds " +
+				"of a shape and there is none to hold it of",
+			Span: graph.Nodes().named(node),
+		}}
+	}
+
+	return placements, budget, nil
+}
+
+// placedAt is where one thing's current claim under a predicate puts it, and
+// whether one puts it anywhere at all.
+//
+// A value which is not a coordinate places nothing. It is the same state as no
+// claim at all as far as this is concerned — there is no position to judge —
+// and the predicate declaring the wrong shape is the registry's to report.
+func placedAt(graph *Graph, subject ID, position string) (*Claim, Point, bool) {
+	resolution, err := graph.Claims().Resolve(subject, position, graph.Registry())
+	if err != nil {
+		return nil, Point{}, false
+	}
+
+	claim, stated := currentClaim(resolution)
+	if !stated {
+		return nil, Point{}, false
+	}
+
+	components, coordinate := claim.Value().Coordinate()
+	if !coordinate {
+		return nil, Point{}, false
+	}
+
+	var at Point
+	copy(at[:], components)
+
+	return claim, at, true
+}
+
+// unplaced is the failure for a subject the rule cannot find a position for.
+func unplaced(
+	graph *Graph,
+	node *SemanticNode,
+	what string,
+	container *SemanticNode,
+	position string,
+	span Span,
+) Failure {
+	return Failure{
+		Message: fmt.Sprintf(
+			"expected a position claimed of %s under %s to judge against the container %s, found none",
+			what, position, container.ID(),
+		),
+		Hint: "a subject which covers no area is where the model says it is; with nothing said under that predicate " +
+			"there is no place to judge, and the rule as written cannot be decided either way",
+		Span:    span,
+		Related: pointingAt(graph, node, "the rule is written here"),
+	}
+}
+
+// frameMismatch is the failure for a position written in one frame and a
+// container drawn in another.
+//
+// Nothing here converts between frames on its own
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)), so two coordinates
+// in two frames are two numbers rather than two places, and judging one against
+// the other would be an answer rather than a refusal. It is the refusal
+// [Region.comparable] makes of two regions, made of a point.
+func frameMismatch(
+	graph *Graph,
+	node *SemanticNode,
+	what string,
+	frame ID,
+	container *SemanticNode,
+	enclosing Region,
+) Failure {
+	found := "no frame at all"
+	if frame != "" {
+		found = string(frame)
+	}
+
+	return Failure{
+		Message: fmt.Sprintf(
+			"expected %s to be declared in %s, the frame the container %s is drawn in, found %s",
+			what, enclosing.Frame(), container.ID(), found,
+		),
+		Hint: "nothing here converts between frames on its own: the transform between two of them is a measurement " +
+			"with an accuracy of its own, so a position in one frame and an outline in another are two numbers " +
+			"rather than two places",
+		Span:    graph.Nodes().named(node),
+		Related: pointingAt(graph, container, "the container it names is written here"),
+	}
+}
+
+// pointingAt is the one related location a failure of this check sends a reader
+// to, which is always a node written somewhere in the model.
+func pointingAt(graph *Graph, node *SemanticNode, message string) []RelatedLocation {
+	return []RelatedLocation{{Span: graph.Nodes().named(node), Message: message}}
+}
+
+// insideBand is how far past a boundary is not past it at all: the declared
+// tolerance, or the combined one-sigma uncertainty of the two shapes where that
+// is wider.
+//
+// The two are combined in quadrature, as two separate measurements of where one
+// boundary is relative to another. A side which stated no accuracy contributes
+// nothing rather than stopping the arithmetic, because the declared tolerance is
+// the floor under the answer and is what decides a comparison the evidence
+// cannot narrow.
+func insideBand(declared Tolerance, subject, container Budget) float64 {
+	own, surveyed := sigmaIn(subject, declared.Unit)
+	theirs, drawn := sigmaIn(container, declared.Unit)
+
+	if !surveyed && !drawn {
+		return declared.Value
+	}
+
+	return math.Max(declared.Value, math.Sqrt(own*own+theirs*theirs))
+}
+
+// outsideHint is what to do about a shape which reaches past its container,
+// which is the same advice whichever way the subject was read.
+func outsideHint(declared Tolerance, position string) string {
+	return fmt.Sprintf(
+		"both shapes are read from the %s claims and judged against the tolerance %s; nothing reaching past the "+
+			"boundary by less than %s %s, or than the combined uncertainty of the two where that is wider, is "+
+			"reported — so this is further out than the survey can account for",
+		position, declared.Name, decimal(declared.Value), declared.Unit,
+	)
 }
 
 // staysClearOfZone is the check that a shape does not cross into a zone it is

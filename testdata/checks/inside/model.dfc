@@ -1,0 +1,399 @@
+; A model whose shapes are checked against the shapes they are meant to sit
+; inside.
+;
+; Every failure here is a file which loads and whose containment resolves. A
+; device thirty feet off the plate is written within the storey it is off, a
+; room half outside its level is a legal room in a legal level, and a floor
+; plate which disagrees with the boundary survey is two well-formed outlines —
+; and nothing short of comparing the two shapes finds any of them.
+
+; The floor plate of level 1: ten by six, in the building's own grid.
+(vertex geom:V-01 (label "Level 1, south-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Level 1, south-east corner") (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "Level 1, north-east corner") (frame frame:building)
+  (position (value (10.0 6.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "Level 1, north-west corner") (frame frame:building)
+  (position (value (0.0 6.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01 (label "Level 1, south side") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Level 1, east side") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Level 1, north side") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Level 1, west side") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01 (label "Level 1 outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; The outline the boundary survey recorded for the block, a metre clear of the
+; plate on every side. It is a zone: nothing is written within it, and the
+; storeys judged against it are written within the building.
+(vertex geom:V-11 (label "Surveyed outline, corner 1") (frame frame:building)
+  (position (value (-1.0 -1.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-12 (label "Surveyed outline, corner 2") (frame frame:building)
+  (position (value (11.0 -1.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-13 (label "Surveyed outline, corner 3") (frame frame:building)
+  (position (value (11.0 7.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+(vertex geom:V-14 (label "Surveyed outline, corner 4") (frame frame:building)
+  (position (value (-1.0 7.0 0.0) m) (source "Boundary survey BS-2026-002, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-01-30")))
+
+(edge geom:E-11 (label "Surveyed outline, side 1") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12 (label "Surveyed outline, side 2") (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (label "Surveyed outline, side 3") (frame frame:building) (vertices geom:V-13 geom:V-14))
+(edge geom:E-14 (label "Surveyed outline, side 4") (frame frame:building) (vertices geom:V-14 geom:V-11))
+(loop geom:L-02 (label "Surveyed outline") (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+
+; The floor plate of level 2, which somebody set out two metres past the east
+; face of the surveyed outline and nobody compared with it.
+(vertex geom:V-21 (label "Level 2, south-west corner") (frame frame:building)
+  (position (value (5.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-22 (label "Level 2, south-east corner") (frame frame:building)
+  (position (value (13.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-23 (label "Level 2, north-east corner") (frame frame:building)
+  (position (value (12.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-24 (label "Level 2, north-west corner") (frame frame:building)
+  (position (value (5.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-21 (label "Level 2, south side") (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "Level 2, east side") (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "Level 2, north side") (frame frame:building) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "Level 2, west side") (frame frame:building) (vertices geom:V-24 geom:V-21))
+(loop geom:L-03 (label "Level 2 outline") (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+
+; A room wholly inside level 1.
+(vertex geom:V-31 (label "Room A, corner 1") (frame frame:building)
+  (position (value (1.0 1.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-32 (label "Room A, corner 2") (frame frame:building)
+  (position (value (4.0 1.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-33 (label "Room A, corner 3") (frame frame:building)
+  (position (value (4.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-34 (label "Room A, corner 4") (frame frame:building)
+  (position (value (1.0 4.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-31 (label "Room A, side 1") (frame frame:building) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (label "Room A, side 2") (frame frame:building) (vertices geom:V-32 geom:V-33))
+(edge geom:E-33 (label "Room A, side 3") (frame frame:building) (vertices geom:V-33 geom:V-34))
+(edge geom:E-34 (label "Room A, side 4") (frame frame:building) (vertices geom:V-34 geom:V-31))
+(loop geom:L-04 (label "Room A outline") (frame frame:building)
+  (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34))
+
+; A room drawn out past the east face of the plate it is written within: three
+; metres over the line at its worst corner, and four square metres of it beyond.
+(vertex geom:V-41 (label "Room B, corner 1") (frame frame:building)
+  (position (value (8.0 1.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-42 (label "Room B, corner 2") (frame frame:building)
+  (position (value (13.0 1.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-43 (label "Room B, corner 3") (frame frame:building)
+  (position (value (11.0 3.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-44 (label "Room B, corner 4") (frame frame:building)
+  (position (value (8.0 3.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-41 (label "Room B, side 1") (frame frame:building) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42 (label "Room B, side 2") (frame frame:building) (vertices geom:V-42 geom:V-43))
+(edge geom:E-43 (label "Room B, side 3") (frame frame:building) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (label "Room B, side 4") (frame frame:building) (vertices geom:V-44 geom:V-41))
+(loop geom:L-05 (label "Room B outline") (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+
+; A run of partition inside the plate, and one which leaves it. Neither is a
+; ring: a wall's two ends do not meet, which is what a line is.
+(vertex geom:V-51 (label "Partition A, west end") (frame frame:building)
+  (position (value (2.0 5.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-52 (label "Partition A, turn") (frame frame:building)
+  (position (value (5.0 5.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-53 (label "Partition A, north end") (frame frame:building)
+  (position (value (5.0 5.5 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-51 (label "Partition A, west run") (frame frame:building) (vertices geom:V-51 geom:V-52))
+(edge geom:E-52 (label "Partition A, north run") (frame frame:building) (vertices geom:V-52 geom:V-53))
+(loop geom:L-06 (label "Partition A run") (frame frame:building)
+  (edges geom:E-51 geom:E-52))
+
+(vertex geom:V-61 (label "Partition B, west end") (frame frame:building)
+  (position (value (8.0 5.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-62 (label "Partition B, turn") (frame frame:building)
+  (position (value (12.0 5.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-63 (label "Partition B, east end") (frame frame:building)
+  (position (value (13.0 5.5 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-61 (label "Partition B, west run") (frame frame:building) (vertices geom:V-61 geom:V-62))
+(edge geom:E-62 (label "Partition B, east run") (frame frame:building) (vertices geom:V-62 geom:V-63))
+(loop geom:L-07 (label "Partition B run") (frame frame:building)
+  (edges geom:E-61 geom:E-62))
+
+; A run of wall drawn between corners nobody has surveyed. Every one of them is
+; named rather than the first of them: fixing this is three visits to site, and
+; a rule which reported one per run would take three runs to say so.
+(vertex geom:V-71 (label "Partition D, west end") (frame frame:building))
+(vertex geom:V-72 (label "Partition D, turn") (frame frame:building))
+(vertex geom:V-73 (label "Partition D, north end") (frame frame:building))
+
+(edge geom:E-71 (label "Partition D, west run") (frame frame:building) (vertices geom:V-71 geom:V-72))
+(edge geom:E-72 (label "Partition D, north run") (frame frame:building) (vertices geom:V-72 geom:V-73))
+(loop geom:L-08 (label "Partition D run") (frame frame:building)
+  (edges geom:E-71 geom:E-72))
+
+; The hierarchy the storeys hang off. Nothing is written within the surveyed
+; outline below, which is the point of naming a container rather than reaching
+; for the parent: a plate is checked against a survey it is not inside of.
+(node site:P-01
+  (label "Riverside campus")
+  (kind Site)
+  (type Campus))
+
+(node site:B-01
+  (label "Block A")
+  (kind Building)
+  (type Block)
+  (within site:P-01))
+
+(node site:O-01
+  (label "Block A, surveyed outline")
+  (kind Zone)
+  (type SurveyedOutline)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-02))
+
+; A zone with no outline, so that a rule naming it as a container has nothing to
+; be inside of.
+(node site:O-90
+  (label "Block B, outline not yet surveyed")
+  (kind Zone)
+  (type SurveyedOutline)
+  (geometry area)
+  (frame frame:building))
+
+; Level 1 agrees with the survey. Level 2 does not, and says so with the same
+; rule against the same container.
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (within site:B-01)
+  (boundary geom:L-01)
+  (assert sits-inside (container site:O-01) (tolerance boundary-closure) (position position)))
+
+(node site:L-02
+  (label "Level 2")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (within site:B-01)
+  (boundary geom:L-03)
+  (assert sits-inside (container site:O-01) (tolerance boundary-closure) (position position)))
+
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-04)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+(node site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-05)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A room whose type declares an area and which nobody has drawn yet.
+(node site:S-190
+  (label "Meeting Room C, not yet drawn")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+(node site:W-01
+  (label "Partition A")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-06)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+(node site:W-02
+  (label "Partition B")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-07)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+(node site:W-03
+  (label "Partition D")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-08)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A wall whose type declares a line and which nobody has drawn yet.
+(node site:W-90
+  (label "Partition C, not yet drawn")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A device on the plate, two and a half metres above it. It is inside the
+; footprint and is not in its plane, which is the ordinary state of everything
+; hung off a ceiling.
+(node site:D-01
+  (label "Air handling unit 1")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (3.0 2.0 2.5) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02"))
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; The same device two metres off the east face of the plate it is written
+; within, which every other rule in the engine is satisfied by.
+(node site:D-02
+  (label "Air handling unit 2")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (12.0 2.0 0.0) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02"))
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A device nobody has set out yet. There is no place to judge, which is not the
+; same answer as a place inside.
+(node site:D-03
+  (label "Air handling unit 3, not yet set out")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A device set out in the annex's own grid, judged against a plate drawn in the
+; building's. Two coordinates in two frames are two numbers rather than two
+; places.
+(node site:D-04
+  (label "Annex pump")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:annex)
+  (within site:L-01)
+  (position
+    (value (3.0 2.0 0.0) m)
+    (source "Annex set-out AS-2026-003, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-04"))
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A quarter of a metre past the face, set out by a method which knows where
+; it is to half a metre. It is outside the plate and the evidence does not say
+; so, and reporting it would be reporting the survey rather than the model.
+(node site:D-05
+  (label "Meter, located off the site plan")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (10.25 1.0 0.0) m)
+    (source "Site plan SP-2026-001, scaled")
+    (method method:drawing-take-off)
+    (accuracy (independent 0.5 m))
+    (date "2026-03-02"))
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; The same quarter metre, surveyed. Same distance, same tolerance,
+; and this one is reported: the accuracy is what changed.
+(node site:D-06
+  (label "Meter, surveyed")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (10.25 5.0 0.0) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02"))
+  (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
+
+; A rule naming a container which encloses nothing.
+(node site:D-08
+  (label "Sensor, checked against an unsurveyed outline")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (3.0 4.0 0.0) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02"))
+  (assert sits-inside (container site:O-90) (tolerance boundary-closure) (position position)))
