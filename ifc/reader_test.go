@@ -457,7 +457,7 @@ func (s *scanner) keyword() (string, error) {
 	start := s.at
 	for s.at < len(s.source) {
 		char := s.source[s.at]
-		if !(char == '_' || char == '-' || unicode.IsDigit(rune(char)) || unicode.IsLetter(rune(char))) {
+		if char != '_' && char != '-' && !unicode.IsDigit(rune(char)) && !unicode.IsLetter(rune(char)) {
 			break
 		}
 		s.at++

@@ -339,7 +339,7 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	reportBuildableFor(result, derived, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -511,9 +511,9 @@ func reportBuildableFor(result buildableResult, derived dfcad.Buildable, globals
 	// spelled again here, so that a caller reporting the answer and this command
 	// reporting it write the same thing.
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "%s\n", derived.Report())
+		_, _ = fmt.Fprintf(stderr, "%s\n", derived.Report())
 		return
 	}
 
-	fmt.Fprintf(stderr, "%s\n", derived)
+	_, _ = fmt.Fprintf(stderr, "%s\n", derived)
 }

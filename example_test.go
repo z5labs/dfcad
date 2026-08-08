@@ -569,7 +569,7 @@ func ExampleResolveAssertions() {
 `
 
 	dir, _ := os.MkdirTemp("", "dfcad")
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 
 	registry, _ := os.ReadFile("testdata/assert/valid/registry.dfc")
 	_ = os.WriteFile(filepath.Join(dir, "registry.dfc"), registry, 0o644)
@@ -1503,7 +1503,7 @@ func ExampleTx() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1521,7 +1521,7 @@ func ExampleTx() {
 	for _, diagnostic := range diags {
 		fmt.Println(diagnostic)
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// Every step of the change except the writing, which is what a --dry-run
 	// on a write command sets.
@@ -1570,7 +1570,7 @@ func ExampleTx_refused() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1582,7 +1582,7 @@ func ExampleTx_refused() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// An id the model already holds. Nothing about the form itself is wrong,
 	// which is why only interpreting the whole model finds it.
@@ -1705,7 +1705,7 @@ func ExampleTx_AddNode() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1717,7 +1717,7 @@ func ExampleTx_AddNode() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec := dfcad.NodeSpec{
 		ID:       "site:S-103",
@@ -1773,7 +1773,7 @@ func ExampleTx_AddNode_taken() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1785,7 +1785,7 @@ func ExampleTx_AddNode_taken() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	err = tx.AddNode(dfcad.NodeSpec{
 		ID:       "site:S-101",
@@ -1814,7 +1814,7 @@ func ExampleTx_Retire() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1826,7 +1826,7 @@ func ExampleTx_Retire() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// Without a replacement this is refused, naming the partition written
 	// inside the room: a reference to something which says it stopped existing
@@ -1888,7 +1888,7 @@ func ExampleTx_Classify() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1900,7 +1900,7 @@ func ExampleTx_Classify() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// One type, two schemes. Neither displaces the other: they are two
 	// vocabularies' answers to the same question.
@@ -1934,7 +1934,7 @@ func ExampleTx_Classify() {
 		fmt.Println(err)
 		return
 	}
-	defer second.Close()
+	defer func() { _ = second.Close() }()
 
 	fmt.Println(second.Classify("MeetingRoom", dfcad.ExternalClassification{
 		System: "IFC4",
@@ -1968,7 +1968,7 @@ func ExampleTx_AddClaim() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -1980,7 +1980,7 @@ func ExampleTx_AddClaim() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// The partition is already measured twice, so a third measurement is a
 	// third opinion. That is the normal case rather than an error, and the
@@ -2025,7 +2025,7 @@ func ExampleTx_AddClaim_unrankable() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2037,7 +2037,7 @@ func ExampleTx_AddClaim_unrankable() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	_, notices, err := tx.AddClaim(dfcad.ClaimSpec{
 		Subject:   "site:S-102",
@@ -2083,7 +2083,7 @@ func ExampleTx_Supersede() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2095,7 +2095,7 @@ func ExampleTx_Supersede() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// The claim being corrected is named by its subject and predicate, because
 	// the one it replaces wrote no id — an id is required only of a claim
@@ -2144,7 +2144,7 @@ func ExampleTx_DeprecateClaim() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2156,7 +2156,7 @@ func ExampleTx_DeprecateClaim() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	if _, err := tx.DeprecateClaim("survey:W-0002", ""); err != nil {
 		fmt.Println(err)
@@ -2194,7 +2194,7 @@ func ExampleTx_AddVertex() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2206,7 +2206,7 @@ func ExampleTx_AddVertex() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	accuracy, err := dfcad.ParseAccuracyTerm("independent 0.004 m")
 	if err != nil {
@@ -2276,7 +2276,7 @@ func ExampleTx_Scaffold() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2288,7 +2288,7 @@ func ExampleTx_Scaffold() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	accuracy, err := dfcad.ParseAccuracyTerm("independent 0.004 m")
 	if err != nil {
@@ -2373,7 +2373,7 @@ func ExampleTx_Scaffold_unclosed() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2385,7 +2385,7 @@ func ExampleTx_Scaffold_unclosed() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	metres := func(x, y, z float64) dfcad.Corner {
 		return dfcad.Corner{Position: dfcad.CoordinateValue([]float64{x, y, z}, "m")}
@@ -2431,7 +2431,7 @@ func ExampleTx_Apply() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
 		fmt.Println(err)
@@ -2461,7 +2461,7 @@ func ExampleTx_Apply() {
 		fmt.Println(err)
 		return
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	applied, err := tx.Apply(batch)
 	if err != nil {
@@ -2854,7 +2854,7 @@ func ExampleGraph_Derive() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(build)
+	defer func() { _ = os.RemoveAll(build) }()
 
 	cache, err := dfcad.OpenCache(build)
 	if err != nil {
@@ -2905,7 +2905,7 @@ func ExampleDigestOf() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	entities := filepath.Join(root, "model.dfc")
 	if err := os.WriteFile(entities, []byte("(node site:S-101 (label \"Meeting Room B\") (kind Space))\n"), 0o644); err != nil {
@@ -2950,7 +2950,7 @@ func ExampleDerivationEpoch() {
 		fmt.Println(err)
 		return
 	}
-	defer os.RemoveAll(root)
+	defer func() { _ = os.RemoveAll(root) }()
 
 	entities := filepath.Join(root, "model.dfc")
 	if err := os.WriteFile(entities, []byte("(node site:S-101 (label \"Meeting Room B\") (kind Space))\n"), 0o644); err != nil {

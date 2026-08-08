@@ -256,7 +256,7 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	reportMeasureFor(result, measurement, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -396,9 +396,9 @@ func reportMeasureFor(result measureResult, measurement dfcad.Measurement, globa
 	// spelled again here, so that a caller reporting the answer and this command
 	// reporting it write the same thing.
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "%s\n", measurement.Report())
+		_, _ = fmt.Fprintf(stderr, "%s\n", measurement.Report())
 		return
 	}
 
-	fmt.Fprintf(stderr, "%s\n", measurement)
+	_, _ = fmt.Fprintf(stderr, "%s\n", measurement)
 }

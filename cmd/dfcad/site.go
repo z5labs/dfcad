@@ -295,7 +295,7 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	reportSiteFor(result, answer, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -395,9 +395,9 @@ func reportSiteFor(result siteResult, answer dfcad.Fit, globals *globals, stderr
 	// than spelled again here, so that a caller reporting the answer and this
 	// command reporting it write the same thing.
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "%s\n", answer.Report())
+		_, _ = fmt.Fprintf(stderr, "%s\n", answer.Report())
 		return
 	}
 
-	fmt.Fprintf(stderr, "%s\n", answer)
+	_, _ = fmt.Fprintf(stderr, "%s\n", answer)
 }

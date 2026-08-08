@@ -266,7 +266,7 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	reportCheck(result, *list, elapsed, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -399,7 +399,7 @@ func reportCheck(result checkResult, list bool, elapsed time.Duration, globals *
 	// ways progress is: with the summary a person asked for, and on its own when
 	// a run was asked to say what it was doing.
 	if globals.Verbosity >= verbosityProgress && !globals.human() {
-		fmt.Fprintf(stderr, "dfcad check: %s in %s\n", plural(result.Summary.Checks, "rule"), duration(elapsed))
+		_, _ = fmt.Fprintf(stderr, "dfcad check: %s in %s\n", plural(result.Summary.Checks, "rule"), duration(elapsed))
 	}
 
 	if !globals.human() {
@@ -408,13 +408,13 @@ func reportCheck(result checkResult, list bool, elapsed time.Duration, globals *
 
 	if globals.Verbosity >= verbosityProgress {
 		for _, entry := range result.Checks {
-			fmt.Fprintf(stderr, "%s: %s\n", writtenRule(entry), outcome(entry))
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", writtenRule(entry), outcome(entry))
 		}
 	}
 
 	summary := result.Summary
 	if list {
-		fmt.Fprintf(stderr, "%s: %d would run, %d would decide nothing (%s)\n",
+		_, _ = fmt.Fprintf(stderr, "%s: %d would run, %d would decide nothing (%s)\n",
 			plural(summary.Checks, "check"),
 			summary.Runnable,
 			summary.Checks-summary.Runnable,
@@ -423,7 +423,7 @@ func reportCheck(result checkResult, list bool, elapsed time.Duration, globals *
 		return
 	}
 
-	fmt.Fprintf(stderr, "%s: %d ran, %d passed, %d failed, %d decided nothing (%s)\n",
+	_, _ = fmt.Fprintf(stderr, "%s: %d ran, %d passed, %d failed, %d decided nothing (%s)\n",
 		plural(summary.Checks, "check"),
 		summary.Ran,
 		summary.Passed,

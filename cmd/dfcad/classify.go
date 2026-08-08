@@ -79,7 +79,7 @@ func runClassifyType(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	classification := dfcad.ExternalClassification{System: arguments[1], Code: arguments[2]}
 

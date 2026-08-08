@@ -315,7 +315,7 @@ func runAddVertex(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec := dfcad.VertexSpec{ID: id, Label: *axes.label, Frame: dfcad.ID(*axes.frame)}
 
@@ -381,7 +381,7 @@ func runAddEdge(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec := dfcad.EdgeSpec{
 		ID:       id,
@@ -435,7 +435,7 @@ func runAddLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec := dfcad.LoopSpec{ID: id, Label: *axes.label, Frame: dfcad.ID(*axes.frame), Edges: edges}
 
@@ -477,7 +477,7 @@ func runScaffoldLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec, err := axes.spec(tx.Graph().Registry())
 	if err != nil {
@@ -671,7 +671,7 @@ func declared(tolerance dfcad.Tolerance) toleranceEntry {
 // says the same way.
 func reportRouted(cmd command, globals *globals, stderr io.Writer, id dfcad.ID, to dfcad.Destination) {
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, to.Path)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, to.Path)
 	}
 }
 
@@ -685,14 +685,14 @@ func reportRouted(cmd command, globals *globals, stderr io.Writer, id dfcad.ID, 
 func reportSnaps(cmd command, snaps []dfcad.Snap, tolerance dfcad.Tolerance, stderr io.Writer) {
 	for _, snap := range snaps {
 		if snap.Reused {
-			fmt.Fprintf(stderr,
+			_, _ = fmt.Fprintf(stderr,
 				"dfcad %s: corner %d reuses %s, %g %s away, which is within the tolerance %s\n",
 				cmd.name, snap.Corner, snap.Vertex, snap.Distance, snap.Unit, tolerance.Name,
 			)
 			continue
 		}
 
-		fmt.Fprintf(stderr,
+		_, _ = fmt.Fprintf(stderr,
 			"dfcad %s: warning: corner %d is %g %s from %s, within the tolerance %s, "+
 				"and snapping is off: a second vertex is written at that point\n",
 			cmd.name, snap.Corner, snap.Distance, snap.Unit, snap.Vertex, tolerance.Name,

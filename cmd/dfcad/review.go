@@ -209,7 +209,7 @@ func runReview(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	base, comparison, history, err := previous(cmd, globals, *against, *baseRoot, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 	defer func() {
@@ -235,7 +235,7 @@ func runReview(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	if *annotate != "" {
 		if err := annotated(*annotate, result, stderr); err != nil {
-			fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 			return exitLoad
 		}
 	}
@@ -243,7 +243,7 @@ func runReview(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	reportReview(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -319,7 +319,7 @@ func previous(cmd command, globals *globals, against, baseRoot string, stderr io
 	}
 
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: comparing against the merge base %s\n", cmd.name, mergeBase)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: comparing against the merge base %s\n", cmd.name, mergeBase)
 	}
 
 	root := filepath.Join(extracted, filepath.FromSlash(prefix))
@@ -537,6 +537,6 @@ func reportReview(result reviewResult, globals *globals, stderr io.Writer) {
 
 	summary := result.Summary
 
-	fmt.Fprintf(stderr, "%s: %d failing, %d warning, %d acknowledged\n",
+	_, _ = fmt.Fprintf(stderr, "%s: %d failing, %d warning, %d acknowledged\n",
 		plural(summary.Findings, "finding"), summary.Failures, summary.Warnings, summary.Ignored)
 }

@@ -331,7 +331,7 @@ func TestGraphDigest(t *testing.T) {
 		tx, diags, err := Begin(root)
 		require.NoError(t, err)
 		require.Empty(t, renderBoundaryDiagnostics(t, diags))
-		defer tx.Close()
+		defer func() { _ = tx.Close() }()
 
 		digest, ok := tx.Graph().Digest()
 		require.True(t, ok, "a transaction's graph is as much a reading of the tree as any other")

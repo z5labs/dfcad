@@ -707,21 +707,21 @@ func (spec ClaimSpec) form() *Node {
 // valueNode is the `value` child of a claim, written in whichever of the four
 // shapes the value has.
 func valueNode(value Value) *Node {
-	switch {
-	case value.shape == ShapeScalar:
+	switch value.shape {
+	case ShapeScalar:
 		return formNode(valueChild, withUnitNode(realNode(value.number), value.unit)...)
 
-	case value.shape == ShapeCoordinate:
+	case ShapeCoordinate:
 		components := make([]*Node, 0, len(value.components))
 		for _, component := range value.components {
 			components = append(components, realNode(component))
 		}
 		return formNode(valueChild, withUnitNode(relisted(nil, components), value.unit)...)
 
-	case value.shape == ShapeText:
+	case ShapeText:
 		return formNode(valueChild, stringNode(value.text))
 
-	case value.shape == ShapeTransform:
+	case ShapeTransform:
 		return formNode(valueChild, formNode(transformChild,
 			formNode("translation", realNodes(value.transform.Translation[:])...),
 			formNode("rotation", realNodes(value.transform.Rotation[:])...),
@@ -1071,10 +1071,10 @@ func (tx *Tx) DeprecateClaim(id, supersededBy ID) ([]Notice, error) {
 		return nil, AlreadyDeprecatedError{ID: id, SupersededBy: replacement}
 	}
 
-	switch {
-	case supersededBy == "":
+	switch supersededBy {
+	case "":
 		return nil, MissingReplacementError{ID: id}
-	case supersededBy == id:
+	case id:
 		return nil, SelfSupersessionError{ID: id}
 	}
 

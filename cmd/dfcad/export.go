@@ -375,7 +375,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	if render(diags, stderr) {
 		if err := emit(stdout, result); err != nil {
-			fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 			return exitLoad
 		}
 		return exitCheck
@@ -383,10 +383,10 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	var written bytes.Buffer
 	if err := ifc.Write(&written, model); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 
 		if err := emit(stdout, result); err != nil {
-			fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 			return exitLoad
 		}
 		return exitCheck
@@ -394,7 +394,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	status, err := place(destination, written.Bytes())
 	if err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -409,7 +409,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	reportExport(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -480,10 +480,10 @@ func place(destination string, artefact []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer os.Remove(temporary.Name())
+	defer func() { _ = os.Remove(temporary.Name()) }()
 
 	if _, err := temporary.Write(artefact); err != nil {
-		temporary.Close()
+		_ = temporary.Close()
 		return "", err
 	}
 	if err := temporary.Close(); err != nil {
@@ -511,7 +511,7 @@ func reportExport(result exportResult, globals *globals, stderr io.Writer) {
 	}
 
 	for _, file := range result.Files {
-		fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, result.Schema)
+		_, _ = fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, result.Schema)
 	}
 }
 

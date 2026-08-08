@@ -500,7 +500,7 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	reportTraversal(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -667,10 +667,10 @@ func reportTraversal(result traverseResult, globals *globals, stderr io.Writer) 
 		// The results themselves are already the answer, on stdout, so the
 		// reading of them is progress rather than result.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: %s at %d\n", entry.ID, entry.Relation, entry.Depth)
+			_, _ = fmt.Fprintf(stderr, "%s: %s at %d\n", entry.ID, entry.Relation, entry.Depth)
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s %s: %s, deepest at %d\n",
+	_, _ = fmt.Fprintf(stderr, "%s %s: %s, deepest at %d\n",
 		result.Query, result.Subject, plural(len(result.Results), "result"), deepest)
 }
