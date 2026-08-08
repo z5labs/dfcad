@@ -371,6 +371,29 @@ func (e BoundaryOnNonSpaceError) Error() string {
 		EntitySpace, e.Of, e.Entity)
 }
 
+// ElevationOnNonStoreyError reports a [Spatial.Elevation] set on a spatial
+// element which is not a building storey.
+//
+// Elevation is IfcBuildingStorey's own attribute and no other spatial
+// element's. The attribute standing in that position on a site is
+// RefLatitude, on a building ElevationOfRefHeight and on a space
+// PredefinedType, so a length written there is not a length the receiving
+// system reads back — it is a compound plane angle, a different height, or an
+// enumeration member which is none of the ones the schema names.
+type ElevationOnNonStoreyError struct {
+	// Entity is what the element was being written as.
+	Entity Entity
+
+	// Of is the identifier of that element.
+	Of GlobalID
+}
+
+// Error implements the [error] interface.
+func (e ElevationOnNonStoreyError) Error() string {
+	return fmt.Sprintf("expected an elevation on an %s, found one on %s, which is an %s",
+		EntityBuildingStorey, e.Of, e.Entity)
+}
+
 // MissingBoundaryElementError reports a [SpaceBoundary] naming no element.
 //
 // RelatedBuildingElement is mandatory, so there is nothing to write for a

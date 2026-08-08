@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -897,4 +898,579 @@ func TestExportDestinationHoldsTheAuthoredTreeClosed(t *testing.T) {
 			assert.Equal(t, root, got.Root)
 		})
 	}
+}
+
+// storeyRegistry is the vocabulary the two-storey fixture below is authored
+// against.
+//
+// The two frames are what it is for. One is the root, and the other is a plan
+// grid measured three metres above it — which is how a building authored a
+// level at a time is written, and is the arrangement whose every corner is at
+// nought in the frame it was drawn in.
+const storeyRegistry = `(project
+  (label "Riverside example")
+  (description "The two-storey model the levelled export fixture is derived from.")
+  (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate clear-height
+  (unit m)
+  (shape scalar)
+  (description "Floor to soffit height of a space."))
+
+(tolerance corner
+  (value 0.005 m)
+  (description "How close two corners have to be to be one corner."))
+
+(tolerance facet
+  (value 0.1 m)
+  (description "How far a segment standing in for a curve may fall from it."))
+
+(frame frame:plan-ground (label "Main floor plan grid") (unit m))
+
+(frame frame:plan-upstairs
+  (label "Upstairs plan grid")
+  (unit m)
+  (parent frame:plan-ground)
+  (transform site:C-0001)
+  (frame-transform
+    (id site:C-0001)
+    (value
+      (transform
+        (translation 0.0 0.0 3.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-014, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+
+(type Parcel
+  (kind Site)
+  (geometry absent)
+  (description "A plot of land.")
+  (classification "IFC4" "IfcSite"))
+
+(type OfficeBuilding
+  (kind Building)
+  (geometry absent)
+  (description "A building let as offices."))
+
+(type Level
+  (kind Storey)
+  (geometry absent)
+  (description "One floor of a building."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (classification "IFC4" "IfcSpace"))
+`
+
+// storeyGeometry is one room per level, each drawn at nought in the plan frame
+// of the level it stands on.
+//
+// The two are the same rectangle on purpose. Nothing in the coordinates
+// distinguishes the upstairs room from the one below it, so an export which
+// reads the elevation off the corners has no way to tell them apart, and an
+// export which reads it off the frame chain has.
+const storeyGeometry = `
+(vertex geom:V-301-A (frame frame:plan-ground) (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-301-B (frame frame:plan-ground) (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-301-C (frame frame:plan-ground) (position (value (4.0 3.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-301-D (frame frame:plan-ground) (position (value (0.0 3.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-301-AB (frame frame:plan-ground) (vertices geom:V-301-A geom:V-301-B))
+(edge geom:E-301-BC (frame frame:plan-ground) (vertices geom:V-301-B geom:V-301-C))
+(edge geom:E-301-CD (frame frame:plan-ground) (vertices geom:V-301-C geom:V-301-D))
+(edge geom:E-301-DA (frame frame:plan-ground) (vertices geom:V-301-D geom:V-301-A))
+
+(loop geom:L-301 (frame frame:plan-ground) (edges geom:E-301-AB geom:E-301-BC geom:E-301-CD geom:E-301-DA))
+
+(vertex geom:V-302-A (frame frame:plan-upstairs) (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-2") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-302-B (frame frame:plan-upstairs) (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-2") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-302-C (frame frame:plan-upstairs) (position (value (4.0 3.0 0.0) m) (source "Interior control set IC-2") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-302-D (frame frame:plan-upstairs) (position (value (0.0 3.0 0.0) m) (source "Interior control set IC-2") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-302-AB (frame frame:plan-upstairs) (vertices geom:V-302-A geom:V-302-B))
+(edge geom:E-302-BC (frame frame:plan-upstairs) (vertices geom:V-302-B geom:V-302-C))
+(edge geom:E-302-CD (frame frame:plan-upstairs) (vertices geom:V-302-C geom:V-302-D))
+(edge geom:E-302-DA (frame frame:plan-upstairs) (vertices geom:V-302-D geom:V-302-A))
+
+(loop geom:L-302 (frame frame:plan-upstairs) (edges geom:E-302-AB geom:E-302-BC geom:E-302-CD geom:E-302-DA))
+`
+
+// storeyEntities is a building of two levels, each declared in the plan frame
+// its rooms were drawn in.
+const storeyEntities = `(node site:P-01
+  (label "Plot one")
+  (kind Site)
+  (type Parcel))
+
+(node site:B-01
+  (label "Block A")
+  (kind Building)
+  (type OfficeBuilding)
+  (within site:P-01))
+
+(node site:L-01
+  (label "Main floor")
+  (kind Storey)
+  (type Level)
+  (frame frame:plan-ground)
+  (within site:B-01))
+
+(node site:L-02
+  (label "Upstairs")
+  (kind Storey)
+  (type Level)
+  (frame frame:plan-upstairs)
+  (within site:B-01))
+
+(node site:S-01
+  (label "Main floor meeting room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:plan-ground)
+  (within site:L-01)
+  (boundary geom:L-301)
+  (clear-height
+    (value 2.7 m)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-05-06")))
+
+(node site:S-02
+  (label "Upstairs meeting room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:plan-upstairs)
+  (within site:L-02)
+  (boundary geom:L-302)
+  (clear-height
+    (value 2.4 m)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-05-06")))
+`
+
+// storeyModel is the two-storey fixture tree the levelled export is run
+// against.
+func storeyModel() map[string]string {
+	return map[string]string{
+		"registry.dfc":        storeyRegistry,
+		"geometry/levels.dfc": storeyGeometry,
+		"entities/site.dfc":   storeyEntities,
+	}
+}
+
+// exportLevelled is the two-storey fixture exported with everything drawn.
+func exportLevelled(t *testing.T, files map[string]string) string {
+	t.Helper()
+
+	result, _, _ := exporting(t, exitSuccess, files, append(drawingFlags(), "--height", "clear-height")...)
+
+	return artefact(t, result)
+}
+
+func TestRunExportWritesAStoreyAtTheElevationItsFrameChainPutsItAt(t *testing.T) {
+	got := exportLevelled(t, storeyModel())
+
+	assert.Equal(t, storeyGolden(t, got), got,
+		"the levelled artefact is stale; regenerate it with: go test ./cmd/dfcad -update")
+}
+
+// storeyGolden is the recorded two-storey artefact, rewritten from got under
+// -update.
+func storeyGolden(t *testing.T, got string) string {
+	t.Helper()
+
+	const path = "testdata/export/storeys.ifc"
+
+	if *updateGolden {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(want)
+}
+
+// TestRunExportIsByteIdenticalForAnUnchangedTwoStoreyTree is its own function
+// because the elevation is the first number this command puts in a file which
+// it derived by walking rather than by reading, and a walk is where an order
+// which is a property of the run rather than of the model gets in
+// ([0021](docs/decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)).
+func TestRunExportIsByteIdenticalForAnUnchangedTwoStoreyTree(t *testing.T) {
+	first := exportLevelled(t, storeyModel())
+
+	for range 4 {
+		assert.Equal(t, first, exportLevelled(t, storeyModel()))
+	}
+}
+
+// TestRunExportLeavesNoStoreyStackedInsideAnother is the story's central
+// assertion, and it is its own function because what it says is about two
+// storeys of one file rather than about a line of it: the rooms of a building
+// authored a level at a time occupy z ranges which do not meet.
+func TestRunExportLeavesNoStoreyStackedInsideAnother(t *testing.T) {
+	source := exportLevelled(t, storeyModel())
+
+	ground := extent(t, source, "site:L-01")
+	upstairs := extent(t, source, "site:L-02")
+
+	assert.Equal(t, span{low: 0, high: 2.7}, ground,
+		"the main floor stands on the building's datum and is as tall as it was measured")
+	assert.Equal(t, span{low: 3, high: 5.4}, upstairs,
+		"the upstairs stands at the lift its frame states and is as tall as it was measured")
+
+	assert.GreaterOrEqual(t, upstairs.low, ground.high,
+		"an upper storey which starts below the top of the one beneath it interpenetrates it")
+}
+
+// TestRunExportWritesTheElevationTheFrameChainStates is its own function
+// because it is about the attribute rather than about the geometry: a
+// receiving system which draws nothing still has to be told which level is
+// which, and IfcBuildingStorey.Elevation is where it reads that.
+func TestRunExportWritesTheElevationTheFrameChainStates(t *testing.T) {
+	source := exportLevelled(t, storeyModel())
+
+	testCases := []struct {
+		name     string
+		storey   string
+		expected string
+	}{
+		{
+			name:     "writes the root frame's own storey at nought rather than at nothing",
+			storey:   "site:L-01",
+			expected: "0.",
+		},
+		{
+			name:     "writes the storey above it at the height its transform states",
+			storey:   "site:L-02",
+			expected: "3.",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			held := instance(t, source, storey(t, source, testCase.storey))
+
+			assert.Equal(t, testCase.expected, held.attributes[9])
+		})
+	}
+}
+
+// TestRunExportWritesNoElevationForAStoreyDeclaringNoFrame is its own function
+// because it is the case every model authored before this could read a chain
+// is in: nothing is derived, nothing is placed, and the file is the one it was.
+func TestRunExportWritesNoElevationForAStoreyDeclaringNoFrame(t *testing.T) {
+	result, _, _ := exporting(t, exitSuccess, exportModel())
+	source := artefact(t, result)
+
+	held := instance(t, source, storey(t, source, "site:L-01"))
+
+	assert.Equal(t, "$", held.attributes[9],
+		"a storey nobody has related to the building's datum states no elevation")
+	assert.Equal(t, 0.0, elevationOf(t, source, held.attributes[5]),
+		"and it is placed at its parent's origin, exactly as it was")
+}
+
+// TestRunExportRefusesAStoreyWhoseFrameChainCannotBeWalked is its own function
+// because its assertions are a refusal's rather than a file's: an export which
+// cannot say where a level sits writes no file at all, rather than a file with
+// every level flat on the ground.
+func TestRunExportRefusesAStoreyWhoseFrameChainCannotBeWalked(t *testing.T) {
+	testCases := []struct {
+		name   string
+		files  func() map[string]string
+		args   []string
+		frame  string
+		storey string
+	}{
+		{
+			name: "a storey declared in a frame the registry does not declare",
+			files: func() map[string]string {
+				files := storeyModel()
+				files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"],
+					"(frame frame:plan-upstairs)", "(frame frame:plan-attic)", 1)
+				return files
+			},
+			args:   append(drawingFlags(), "--height", "clear-height"),
+			frame:  "frame:plan-attic",
+			storey: "site:L-02",
+		},
+		{
+			name: "a storey declared in a frame in a model whose frames reach no root",
+			files: func() map[string]string {
+				files := exportModel()
+				files["registry.dfc"] = strings.Replace(files["registry.dfc"],
+					"(frame frame:building (label \"Building local grid\") (unit m))\n", "", 1)
+				files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"],
+					"  (type Level)", "  (type Level)\n  (frame frame:building)", 1)
+				return files
+			},
+			frame:  "frame:building",
+			storey: "site:L-01",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, root, stderr := exporting(t, exitCheck, testCase.files(), testCase.args...)
+
+			assert.False(t, result.Derived)
+			assert.Empty(t, result.Files)
+
+			assert.Contains(t, stderr, testCase.frame, "a refusal names the frame it could not walk")
+			assert.Contains(t, stderr, testCase.storey, "and the storey which declared it")
+
+			assert.NoDirExists(t, filepath.Join(root, dfcad.BuildDir, "export"),
+				"an artefact is all or nothing, and nothing was produced")
+		})
+	}
+}
+
+// span is the interval one storey's solids occupy above the file's datum.
+type span struct{ low, high float64 }
+
+// extent is the z range the rooms of one storey occupy, read back out of the
+// exported file.
+//
+// It resolves the same chain a receiving system resolves — the storey's local
+// placement, the space's beneath it, and the position of each swept solid —
+// rather than reading the elevation attribute, because the attribute is what a
+// reader labels a level with and the chain is what it draws.
+func extent(t *testing.T, source, name string) span {
+	t.Helper()
+
+	at := storey(t, source, name)
+
+	var out span
+	first := true
+
+	for _, space := range aggregated(t, source, at) {
+		room := instance(t, source, space)
+		require.Equal(t, "IFCSPACE", room.keyword)
+
+		// The room's own placement hangs off the storey's, which hangs off the
+		// building's: reading it is reading the whole chain, which is what a
+		// receiving system does and is the only reason a storey's placement
+		// moves anything.
+		low := elevationOf(t, source, room.attributes[5])
+
+		for _, solid := range solids(t, source, room.attributes[6]) {
+			bottom := low + elevationOf(t, source, solid.attributes[1])
+			top := bottom + real(t, solid.attributes[3])
+
+			if first {
+				out, first = span{low: bottom, high: top}, false
+				continue
+			}
+			out.low = min(out.low, bottom)
+			out.high = max(out.high, top)
+		}
+	}
+
+	require.False(t, first, "the storey %s holds a drawn room", name)
+
+	return out
+}
+
+// storey is the instance number of the IfcBuildingStorey a file writes under
+// the given name.
+func storey(t *testing.T, source, name string) string {
+	t.Helper()
+
+	for at, held := range parsed(t, source) {
+		if held.keyword == "IFCBUILDINGSTOREY" && held.attributes[2] == "'"+name+"'" {
+			return at
+		}
+	}
+
+	t.Fatalf("the file holds a storey named %s", name)
+
+	return ""
+}
+
+// aggregated is the objects one IfcRelAggregates joins to the object at.
+func aggregated(t *testing.T, source, at string) []string {
+	t.Helper()
+
+	for _, held := range parsed(t, source) {
+		if held.keyword != "IFCRELAGGREGATES" || held.attributes[4] != at {
+			continue
+		}
+		return split(strings.TrimSuffix(strings.TrimPrefix(held.attributes[5], "("), ")"))
+	}
+
+	return nil
+}
+
+// solids is every IfcExtrudedAreaSolid beneath one product definition shape.
+func solids(t *testing.T, source, at string) []entity {
+	t.Helper()
+
+	if at == "$" {
+		return nil
+	}
+
+	var out []entity
+
+	shape := instance(t, source, at)
+	require.Equal(t, "IFCPRODUCTDEFINITIONSHAPE", shape.keyword)
+
+	for _, representation := range split(strings.TrimSuffix(strings.TrimPrefix(shape.attributes[2], "("), ")")) {
+		drawn := instance(t, source, representation)
+
+		for _, item := range split(strings.TrimSuffix(strings.TrimPrefix(drawn.attributes[3], "("), ")")) {
+			held := instance(t, source, item)
+			if held.keyword == "IFCEXTRUDEDAREASOLID" {
+				out = append(out, held)
+			}
+		}
+	}
+
+	return out
+}
+
+// elevationOf is the third coordinate an IfcLocalPlacement or an
+// IfcAxis2Placement3D puts its coordinate system at, summed all the way up the
+// chain of placements it hangs off.
+func elevationOf(t *testing.T, source, at string) float64 {
+	t.Helper()
+
+	if at == "$" {
+		return 0
+	}
+
+	held := instance(t, source, at)
+
+	switch held.keyword {
+	case "IFCLOCALPLACEMENT":
+		return elevationOf(t, source, held.attributes[0]) + elevationOf(t, source, held.attributes[1])
+
+	case "IFCAXIS2PLACEMENT3D":
+		point := instance(t, source, held.attributes[0])
+		require.Equal(t, "IFCCARTESIANPOINT", point.keyword)
+
+		written := split(strings.TrimSuffix(strings.TrimPrefix(point.attributes[0], "("), ")"))
+		require.Len(t, written, 3)
+
+		return real(t, written[2])
+	}
+
+	t.Fatalf("expected a placement at %s, found an %s", at, held.keyword)
+
+	return 0
+}
+
+// real is a part 21 real as a float. A real always carries its point, which
+// is what makes `3.` a number and `3` an integer.
+func real(t *testing.T, written string) float64 {
+	t.Helper()
+
+	out, err := strconv.ParseFloat(written, 64)
+	require.NoError(t, err, "the attribute %q is a real", written)
+
+	return out
+}
+
+// entity is one data instance of an exported file.
+type entity struct {
+	keyword    string
+	attributes []string
+}
+
+// instance is the data instance numbered at, which every walk above resolves
+// its references through.
+func instance(t *testing.T, source, at string) entity {
+	t.Helper()
+
+	held, ok := parsed(t, source)[at]
+	require.True(t, ok, "the file holds the instance %s", at)
+
+	return held
+}
+
+// parsed is every data instance of an exported file by the reference which
+// names it.
+//
+// It is the shallowest thing which can answer the questions above and nothing
+// more: this writer puts one instance on one line, so the split is a line at a
+// time, and the assertions which need a real reader are in the ifc package
+// where one lives.
+func parsed(t *testing.T, source string) map[string]entity {
+	t.Helper()
+
+	out := make(map[string]entity)
+
+	for _, line := range strings.Split(source, "\n") {
+		at, written, found := strings.Cut(line, "=")
+		if !found || !strings.HasPrefix(at, "#") {
+			continue
+		}
+
+		keyword, arguments, found := strings.Cut(strings.TrimSuffix(written, ";"), "(")
+		require.True(t, found, "the instance %s is a keyword and an attribute list", at)
+
+		out[at] = entity{keyword: keyword, attributes: split(strings.TrimSuffix(arguments, ")"))}
+	}
+
+	require.NotEmpty(t, out, "the file holds data instances")
+
+	return out
+}
+
+// split is an attribute list cut at the commas which are not inside a nested
+// list or a string.
+func split(written string) []string {
+	var (
+		out    []string
+		depth  int
+		quoted bool
+		from   int
+	)
+
+	for at, char := range written {
+		switch {
+		case char == '\'':
+			quoted = !quoted
+		case quoted:
+		case char == '(':
+			depth++
+		case char == ')':
+			depth--
+		case char == ',' && depth == 0:
+			out = append(out, written[from:at])
+			from = at + 1
+		}
+	}
+
+	if trailing := written[from:]; trailing != "" {
+		out = append(out, trailing)
+	}
+
+	return out
 }

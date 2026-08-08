@@ -983,6 +983,142 @@ func TestWriteOmitsWhatTheCallerDidNotGive(t *testing.T) {
 	t.Fatal("the fixture holds a site")
 }
 
+// storeyElevation is the tenth attribute of the one IfcBuildingStorey a model
+// wrote, which is the position IFC4 fixes Elevation at.
+//
+// The index is transcribed from the schema rather than counted off the
+// writer's table, for the reason every assertion which goes through the reader
+// is: a position read back out of the thing under test would agree with it
+// however wrong it was.
+func storeyElevation(t *testing.T, model Model) item {
+	t.Helper()
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err)
+
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != string(EntityBuildingStorey) {
+			continue
+		}
+
+		require.Len(t, held.attributes, 10)
+
+		return held.attributes[9]
+	}
+
+	t.Fatal("the fixture holds a storey")
+
+	return item{}
+}
+
+// TestWriteStoreyElevation is its own function because Elevation is the one
+// attribute in a spatial element's tail this package fills in from a field
+// rather than writing as absent, and what it asserts is that the number
+// reaches the position the schema fixes for it.
+func TestWriteStoreyElevation(t *testing.T) {
+	testCases := []struct {
+		name      string
+		elevation *float64
+		form      string
+		text      string
+	}{
+		{
+			name:      "writes nothing for a storey nobody has related to the building's datum",
+			elevation: nil,
+			form:      itemAbsent,
+		},
+		{
+			name:      "writes the ground floor's nought rather than reading it as absence",
+			elevation: elevation(0),
+			form:      itemReal,
+			text:      "0.",
+		},
+		{
+			name:      "writes a storey above the datum at the height it stands",
+			elevation: elevation(9),
+			form:      itemReal,
+			text:      "9.",
+		},
+		{
+			name:      "writes a basement below the datum as the negative it is",
+			elevation: elevation(-3.5),
+			form:      itemReal,
+			text:      "-3.5",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := fixture()
+			model.Project.Sites[0].Children[0].Children[0].Elevation = testCase.elevation
+
+			got := storeyElevation(t, model)
+
+			assert.Equal(t, testCase.form, got.form)
+			if testCase.form != itemAbsent {
+				assert.Equal(t, testCase.text, got.text)
+			}
+		})
+	}
+}
+
+// elevation is a height as the optional attribute holds one.
+func elevation(metres float64) *float64 { return &metres }
+
+// TestWriteRefusesAnElevationOnAnythingButAStorey is its own function because
+// its assertions are a refusal's rather than an instance's: the attribute in
+// that position on a site, a building or a space is a different attribute
+// entirely, so a length written there is a number the receiving system reads
+// as something else.
+func TestWriteRefusesAnElevationOnAnythingButAStorey(t *testing.T) {
+	testCases := []struct {
+		name   string
+		on     func(model *Model) *Spatial
+		entity Entity
+		of     GlobalID
+	}{
+		{
+			name:   "on a site, whose tail begins with a latitude",
+			on:     func(model *Model) *Spatial { return &model.Project.Sites[0] },
+			entity: EntitySite,
+			of:     "2Ig1S2wRr2WQeQMwAKN3aq",
+		},
+		{
+			name:   "on a building, whose tail begins with a different height",
+			on:     func(model *Model) *Spatial { return &model.Project.Sites[0].Children[0] },
+			entity: EntityBuilding,
+			of:     "4Ig1S2wRr2WQeQMwAKN3aq",
+		},
+		{
+			name:   "on a space, whose tail begins with an enumeration",
+			on:     func(model *Model) *Spatial { return space(model) },
+			entity: EntitySpace,
+			of:     "8Ig1S2wRr2WQeQMwAKN3aq",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := fixture()
+			testCase.on(&model).Elevation = elevation(9)
+
+			var out strings.Builder
+			err := Write(&out, model)
+
+			var got ElevationOnNonStoreyError
+			require.ErrorAs(t, err, &got)
+
+			assert.Equal(t, testCase.entity, got.Entity)
+			assert.Equal(t, testCase.of, got.Of)
+
+			// An artefact is all or nothing: a refusal leaves nothing behind
+			// which a later run would read as the export of this model.
+			assert.Empty(t, out.String())
+		})
+	}
+}
+
 // TestWritePlacesEachElementInsideItsParent is its own function because what
 // it asserts is the shape of a chain rather than the content of an instance:
 // a local placement points at the placement of whatever contains it, which is
