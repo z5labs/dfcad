@@ -1,0 +1,15 @@
+; A node naming a type the registry beside it does not declare. It is canonical,
+; so `dfcad fmt --check` passes over it, and it is what makes `dfcad check`
+; refuse the model outright rather than report a rule which did not hold.
+;
+; That refusal has no machine form to annotate from — the load diagnostic is
+; carried by the commands which report per file, and check reports per rule — so
+; the gate says so in an annotation of its own and the log carries the file, the
+; line and the caret.
+(node
+  site:S-002
+  (label "Meeting Room B")
+  (kind Space)
+  (type BroomCupboard)
+  (geometry area)
+  (frame frame:building))

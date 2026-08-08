@@ -31,9 +31,17 @@ continuous integration section of [`CLAUDE.md`](../../CLAUDE.md).
 
 | Path | What it is |
 |---|---|
-| `gate.sh` | The gate. Runs the commands over one model root, annotates what failed, records how long it took, and exits non-zero if any of them said no. |
-| `selftest.sh` | Runs `gate.sh` against `broken/` and requires it to block. |
-| `broken/` | A deliberately broken model: one file not in canonical form, and one node naming a type the registry does not declare. |
+| `gate.sh` | The gate. Runs the commands over one model root, annotates what failed, records how long it took and how much it said, and exits non-zero if any of them said no. |
+| `selftest.sh` | Runs `gate.sh` against both broken models and requires it to block, and to say where. |
+| `broken/` | A deliberately broken model which **loads**: one file not in canonical form, one room whose outline does not close against the invariant its type states, and one corner rewritten with no measurement behind it. |
+| `unloadable/` | A deliberately broken model which **does not load**: one file which does not parse, and one node naming a type the registry does not declare. |
+
+There are two models because no single one can exercise the whole gate. A file
+which does not parse stops the model loading, and a model which does not load
+runs no rule and produces no violation with a span on it; a model which loads
+has no failed file for the `fmt` stage to report a diagnostic against. One root
+can hold either the spanned check violation or the file which does not parse,
+and not both.
 
 ## Running it
 
@@ -55,7 +63,8 @@ uploads as the `dfcad-gate-results` artifact, holding, per model root:
 | `<root>.check.json` | `dfcad check`'s result object: the summary of how many rules there were, ran, passed and failed, and every violation. |
 | `<root>.review.json` | `dfcad review`'s result object: which two revisions were compared, the policy each check ran under, and every finding. Written only when `--against` was given. |
 | `<root>.review.md` | The same findings as the Markdown a reviewer reads, which the gate appends to `$GITHUB_STEP_SUMMARY`. Written only when `--against` was given. |
-| `<root>.timing.json` | How many milliseconds each command took, and the two together. |
+| `<root>.timing.json` | How many milliseconds each command took, and the three together. Written on every run, including the ones which found something — those are the runs the gate is slowest on. |
+| `<root>.annotations.json` | How many annotations each stage placed, the output contract they were read against, and whether any result could not be read at all. |
 
 ## The binary it runs
 
@@ -132,7 +141,8 @@ Everything needed to fix the model is in the log, without a local reproduction:
   which does not parse and a violation both carry a span, so those land on the
   line; a file which is merely not canonical has no line to land on, because
   what is wrong with it is the whole file's shape, so its annotation is at file
-  level.
+  level. A span is the string `path:line:column-line:column`, and the numbers
+  are read from the right, so a path holding a colon or a dash still parses.
 - **A review finding** is annotated at the severity its policy gave it — a
   `failure` as an error, a `warning` as a warning — and names the commit which
   introduced the change, so the reviewer is not left bisecting the branch for
@@ -155,6 +165,38 @@ to the engine's output contract, not something to paper over here by parsing the
 human rendering — the two renderings exist precisely so that neither is derived
 from the other.
 
+## The output contract it reads, and why it is stated
+
+Every annotation the gate places is read out of a result object with `jq`, and
+the shape of that object is [the machine output
+contract](../../docs/machine-output.md). `gate.sh` states the version it reads
+in one place — `OUTPUT_CONTRACT`, which `gate.sh --contract` prints — and three
+things are checked against it:
+
+1. **Every stage checks the result it just read.** A result object carries the
+   contract it was written against in `.version`. One the filters were not
+   written for is reported as an annotation of its own and fails the gate,
+   because a gate which cannot read what the tool wrote does not know whether
+   the model is sound.
+2. **The self-test checks the binary.** `dfcad version` reports
+   `.contracts.output`, and the self-test requires it to be the number the gate
+   reads. That is the earlier signal of the two: it fails on the build which
+   bumps the contract, whatever any one result object happens to contain.
+3. **The self-test counts what each stage annotated**, and requires each of
+   `fmt`, `check` and `review` to have said something about a model which gives
+   it something to say.
+
+All three exist because of one incident. Contract v2 made every span a string
+where it had been two nested objects; the filters here went on reading
+`.span.start.line`; and for three months the gate emitted **no annotation on any
+repository** while still exiting non-zero — it blocked by crashing, with nothing
+on the line, no `timing.json` and no sign in the run that anything was wrong. A
+gate which blocks and says nothing looks exactly like a gate doing its job.
+
+An engine change which bumps the contract therefore fails here first, in the
+pull request that makes it, with a message naming the filters that have to
+change.
+
 ## Why the self-test runs on every build
 
 The self-test is the answer to "has this gate ever actually blocked anything?",
@@ -167,13 +209,34 @@ renamed field, a `--binary` which is not there. Those failures are silent by
 construction: everything goes green, which is what a working gate also looks
 like.
 
-So `broken/` is committed, and `selftest.sh` runs `gate.sh` against it before
-the gate is believed about anything else in the job. It requires a non-zero
-exit, both stages to have written their results, `fmt --check` to have flagged
-exactly the one file that is not canonical, `check` to have refused the model
-without claiming to have run any rule over it, and an annotation naming the file
-and a diagnostic naming the file, line and column. A gate which stopped blocking
-fails there, in the run that broke it.
+So both broken models are committed, and `selftest.sh` runs `gate.sh` against
+each of them before the gate is believed about anything else in the job. It
+requires:
+
+- a non-zero exit over each of them, and every result file written — including
+  `timing.json`, which is written after the annotations and so goes missing when
+  a gate dies partway through emitting them;
+- `fmt --check` to have flagged exactly the one file that is not canonical;
+- `check` to have failed the invariant on the model which loads, and to have
+  refused the model which does not without claiming to have run any rule over
+  it;
+- `review` to have found the corner which moved with nothing measured behind it;
+- a **non-zero annotation count for each of the three stages**, and, for every
+  finding which names a line, an annotation on that line — matched against the
+  span the result object carries, parsed a second time here in a different
+  engine from the gate's, so that a filter and its assertion cannot agree with
+  each other about a form neither of them reads correctly.
+
+A gate which stopped blocking fails there, in the run that broke it. So does one
+which stopped saying where.
+
+The review stage needs two revisions, and the self-test makes them rather than
+relying on this repository's own history: it builds a throwaway git repository
+whose merge base is `broken/` with every `*.dfc.prior` file laid over its
+neighbour, and whose branch is `broken/` as it stands. A `.dfc.prior` file is not
+walked by the loader — the extension is not `.dfc` — so it is inert to every
+stage of the gate, and it keeps the change under review down to the one number
+that actually differs instead of a second copy of the whole model.
 
 The self-test prefixes the gate's own workflow commands with `[captured] `
 before echoing them, and unsets `GITHUB_STEP_SUMMARY` for the run. Without both,
@@ -190,10 +253,13 @@ the colons does work.
 
 ## Adopting it in a data repository
 
-1. Copy `gate.sh` and, if you want the assurance, `selftest.sh` and `broken/`.
-   `broken/` is a model in its own right — a registry, a file that is not
-   canonical, and a node naming an undeclared type — so it is worth rewriting in
-   your own vocabulary rather than carrying this one's.
+1. Copy `gate.sh` and, if you want the assurance, `selftest.sh`, `broken/` and
+   `unloadable/`. Each of those is a model in its own right, so both are worth
+   rewriting in your own vocabulary rather than carrying this one's. What has to
+   survive the rewrite is what each stage is given to say: a file which is not
+   canonical, a rule which fails on something that loads, a `*.dfc.prior` file
+   holding the revision before the change under review, and — in the other root
+   — a file which does not parse.
 2. Install a pinned `dfcad` and pass it as `--binary`.
 3. Call `gate.sh` once per model root you want gated, with `--results` pointing
    at a directory you upload. Add `--against origin/<default branch>` once your

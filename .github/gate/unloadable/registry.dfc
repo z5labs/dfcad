@@ -1,0 +1,17 @@
+; The vocabulary of the model which does not load.
+;
+; It is the same vocabulary as the model beside it, minus the invariant: no rule
+; here will ever run, because a model which does not load runs none. What this
+; root is for is the other side of the gate — a file which does not parse, whose
+; diagnostic carries a span, and a node naming a type nobody declared.
+(project
+  (label "Gate self-test, unloadable")
+  (globalid-namespace "https://example.org/models/gate-self-test-unloadable"))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type
+  MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+(frame frame:building (label "Building local grid") (unit m))

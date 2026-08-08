@@ -206,13 +206,20 @@ jobs:
             and (.build.commit | test("^[0-9a-f]{7,40}$"))
           ' > /dev/null
 
-      # Exercising the gate against a deliberately broken model, every run, and
-      # before the gate is believed about anything else. A gate nobody has seen
-      # fail is not known to be a gate: a swallowed exit code or a filter which
-      # stopped matching would leave every later step passing, and a branch
-      # which broke the model would then merge looking exactly like one which
-      # did not.
-      - name: Confirm the gate blocks a broken model
+      # Exercising the gate against two deliberately broken models, every run,
+      # and before the gate is believed about anything else. A gate nobody has
+      # seen fail is not known to be a gate: a swallowed exit code or a filter
+      # which stopped matching would leave every later step passing, and a
+      # branch which broke the model would then merge looking exactly like one
+      # which did not.
+      #
+      # It is the binary built above that is asked, so this is also where a bump
+      # to the machine output contract surfaces: the self-test requires the
+      # build's `.contracts.output` to be the version gate.sh's filters read, and
+      # requires each of the three stages to have annotated something. A gate
+      # which still blocks while saying nothing on the line — which is what a
+      # contract bump left behind last time — fails here.
+      - name: Confirm the gate blocks a broken model, and says where
         run: .github/gate/selftest.sh --binary ./dfcad
 
       - name: Open the runtime table

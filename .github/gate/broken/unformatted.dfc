@@ -1,7 +1,11 @@
 ; A node which says something true, written in a form the printer does not
-; produce. Nothing here is invalid: it loads, and it is what `dfcad fmt --check`
-; is for — the gate's first stage, and the one a model acquires by being edited
-; by hand.
+; produce. Nothing here is invalid: it loads, it breaks no rule its type states,
+; and it is what `dfcad fmt --check` is for — the gate's first stage, and the one
+; a model acquires by being edited by hand.
+;
+; It is wrong in exactly one way on purpose. A node which was both unformatted
+; and in breach of its type would leave a run unable to say which stage of the
+; gate had caught it, which is the question the self-test exists to answer.
 (node    site:S-001
         (label   "Meeting Room A")
     (kind Space) (type MeetingRoom)
