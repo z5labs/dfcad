@@ -380,7 +380,21 @@ func (e *exporter) thickened(node *dfcad.SemanticNode) (*ifc.Representation, []i
 		return nil, nil
 	}
 
-	tolerance, _ := e.registry.Tolerance(e.shapes.tolerance)
+	// A region reads its own tolerance on the way to being assembled and is
+	// refused by the engine where the registry declares none. A run is never
+	// assembled, so this is the only place that refusal can be made for one —
+	// and taking the zero value instead would judge every run level against a
+	// tolerance of nothing, which is the engine deciding how close is close
+	// enough ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
+	tolerance, declared := e.registry.Tolerance(e.shapes.tolerance)
+	if !declared {
+		e.refuse(node, fmt.Sprintf(
+			"expected a declared tolerance to judge the run of %s level, found that the registry declares no "+
+				"tolerance %q", node.ID(), e.shapes.tolerance),
+			"how far apart two corners may be and still be at one level is a distance the project wrote down; there "+
+				"is no default for it, and one compiled in here would be the engine deciding how close is close enough")
+		return nil, nil
+	}
 
 	elevation, level := e.level(node, runs, tolerance.Value)
 	if !level {
@@ -544,8 +558,11 @@ type dimension struct {
 	// which named none.
 	predicate string
 
-	// noun is what a diagnostic calls the number: "height", "thickness".
-	noun string
+	// noun is what a diagnostic calls the number: "height", "thickness". plural
+	// is that word in the plural, written out rather than suffixed, because
+	// "thicknesss" is what suffixing gives.
+	noun   string
+	plural string
 
 	// purpose is what the number is for, written into a refusal after "to":
 	// "sweep its body through", "widen its run by".
@@ -567,6 +584,7 @@ func heightOf(predicate string) dimension {
 	return dimension{
 		predicate:   predicate,
 		noun:        "height",
+		plural:      "heights",
 		purpose:     "sweep its body through",
 		property:    propertyHeight,
 		set:         heightProvenance,
@@ -580,6 +598,7 @@ func thicknessOf(predicate string) dimension {
 	return dimension{
 		predicate:   predicate,
 		noun:        "thickness",
+		plural:      "thicknesses",
 		purpose:     "widen its run by",
 		property:    propertyThickness,
 		set:         thicknessProvenance,
@@ -620,7 +639,7 @@ func (e *exporter) length(
 			"expected at most one current %s claimed of %s to %s, found %d the resolution rule cannot separate",
 			of.predicate, node.ID(), of.purpose, len(resolution.Candidates())),
 			fmt.Sprintf("supersede the ones which no longer hold, or re-measure; a body built from one of two equally "+
-				"current %ss is a solid the file gives no reason for", of.noun))
+				"current %s is a solid the file gives no reason for", of.plural))
 		return 0, resolution, false
 	}
 

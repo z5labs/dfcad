@@ -1009,3 +1009,93 @@ func TestRunExportOfElementsIsAFunctionOfTheModel(t *testing.T) {
 		assert.Equal(t, first, exportElements(t))
 	}
 }
+
+// lineModel is the element fixture with the node bounded by rings taken out of
+// it, so that what is left is drawn as lines and nothing else.
+//
+// It is what tells a refusal made on the run path from one the region path made
+// first: an area node in the tree answers for the tolerance on its own, and a
+// model of nothing but runs has nobody to answer for it but the run.
+func lineModel(t *testing.T) map[string]string {
+	t.Helper()
+
+	files := elementModel()
+
+	entities := files["entities/site.dfc"]
+	from := strings.Index(entities, "(node site:K-01")
+	to := strings.Index(entities, "(node site:W-01")
+	require.Positive(t, from, "the fixture holds the countertop")
+	require.Greater(t, to, from, "and the partition after it")
+
+	files["entities/site.dfc"] = entities[:from] + entities[to:]
+
+	return files
+}
+
+// TestRunExportRefusesARunItHasNoDeclaredToleranceToJudge is its own function
+// because it is about a name rather than about a shape: there is no default
+// tolerance and there never will be, so a run named against one the registry
+// does not declare is refused rather than judged against nothing.
+func TestRunExportRefusesARunItHasNoDeclaredToleranceToJudge(t *testing.T) {
+	result, _, stderr := exporting(t, exitCheck, lineModel(t),
+		"--position", "position", "--tolerance", "nonesuch", "--chord", "facet",
+		"--height", "clear-height", "--thickness", "nominal-thickness")
+
+	assert.False(t, result.Derived)
+	assert.Empty(t, result.Files, "an artefact is all or nothing, and nothing was produced")
+	assert.Contains(t, stderr, "nonesuch", "the refusal names the tolerance nobody declared")
+	assert.Contains(t, stderr, "site:W-01", "and a run it could not judge")
+}
+
+// TestRunExportNamesTheQuantityBehindAnAmbiguousClaim is its own function
+// because what it asserts is the words a diagnostic uses: a reader sent to fix
+// two equally current claims is told which quantity they are of, and the two
+// quantities are not one word with an "s" put on the end of it.
+func TestRunExportNamesTheQuantityBehindAnAmbiguousClaim(t *testing.T) {
+	testCases := []struct {
+		name     string
+		twice    edit
+		expected string
+	}{
+		{
+			name: "two equally current heights",
+			twice: edit{"entities/site.dfc", `  (clear-height
+    (value 1.1 m)`, `  (clear-height
+    (value 1.3 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02"))
+  (clear-height
+    (value 1.1 m)`},
+			expected: "equally current heights",
+		},
+		{
+			name: "two equally current thicknesses",
+			twice: edit{"entities/site.dfc", `  (nominal-thickness
+    (value 0.05 m)`, `  (nominal-thickness
+    (value 0.08 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02"))
+  (nominal-thickness
+    (value 0.05 m)`},
+			expected: "equally current thicknesses",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			files := elementModel()
+
+			replaced := strings.Replace(files[testCase.twice.file], testCase.twice.from, testCase.twice.to, 1)
+			require.NotEqual(t, files[testCase.twice.file], replaced,
+				"%s holds %q", testCase.twice.file, testCase.twice.from)
+			files[testCase.twice.file] = replaced
+
+			_, _, stderr := exporting(t, exitCheck, files, bodyFlags()...)
+
+			assert.Contains(t, stderr, "cannot separate")
+			assert.Contains(t, stderr, testCase.expected)
+		})
+	}
+}
