@@ -2585,35 +2585,65 @@ Under `--evidence` the manifest accounts for all of them.
 system as a live one, and what a retirement means for an exchange — a delete, or nothing at
 all — is the receiving system's question rather than this command's.
 
-**A space carries the outline its model states, and the solid a viewer can draw, as two
+**A node carries the outline its model states, and the solid a viewer can draw, as two
 representations of one shape definition.** `--position`, `--tolerance` and `--chord` are the
 vocabulary a boundary is read under; they go together or not at all, and a run naming none of
 them writes the spatial structure and no shape, which is a correct IFC file and is what this
-command wrote before it could draw anything. A run naming all three gives every `IfcSpace`
-whose boundary it can read a `FootPrint` / `Curve2D` representation built from the rings
-bounding it, holes included, drawn to the named chord tolerance — so a curved wall reaches the
-file as the curve it is rather than as the straight line between its ends. Arcs are read only
-where `--arc-centre` and `--arc-through` name the vocabulary they are written in, exactly as
-in [`tessellate`](#tessellate).
+command wrote before it could draw anything. A run naming all three gives every node whose
+boundary it can read a `FootPrint` / `Curve2D` representation built from the rings bounding
+it, holes included, drawn to the named chord tolerance — so a curved wall reaches the file as
+the curve it is rather than as the straight line between its ends. Arcs are read only where
+`--arc-centre` and `--arc-through` name the vocabulary they are written in, exactly as in
+[`tessellate`](#tessellate).
+
+**What is drawn is decided by a node's boundary and its declared geometry, never by its
+kind.** A room and a countertop are both an area with a height over it, and the sweep which
+makes a solid of either is one operation, so an element bounded by a ring is drawn exactly as
+a space is; what its kind decides is only which entity the shape is written on. An
+`IfcProduct` carries its shape in the same attribute whichever it is, because that is where
+the schema declares it, and a product nobody drew writes it absent as every product did
+before there was one to write.
 
 **`--height <predicate>` is what adds a body, and it has no default.** Where it names a
-predicate and a space's height resolves under it, the space additionally carries a `Body` /
+predicate and a node's height resolves under it, the node additionally carries a `Body` /
 `SweptSolid` representation: the footprint extruded upwards through that height, with the
 holes carried through as the profile's `InnerCurves`, so the even-odd nesting the region
 derivation computed reaches the file rather than being worked out again from a heap of curves.
 The two live in one `IfcProductDefinitionShape`. They are two representations rather than one
 because they are not the same statement: the footprint is what the model says, and the body is
-a convenience built from a claim. A run naming no predicate, and a space nothing claims a
+a convenience built from a claim. A run naming no predicate, and a node nothing claims a
 height of, both export as footprints — a two dimensional file is correct, and it is what an
 author who has drawn plans and measured nothing should get.
 
-**The claim behind a body travels into the file beside it**, as an `IfcPropertySet` named
-`dfcad_HeightProvenance` attached through `IfcRelDefinesByProperties`. It carries the
-predicate, the height and its unit, and whatever the claim states: its source, its method, its
-accuracy, its date, its id, and which step of the resolution rule chose it. That last is how a
-surveyed height is told from an assumed one without holding the model — a claim nothing
-rankable was said about reads as `unranked`, and is still used, because it is what the model
-says.
+**`--thickness <predicate>` is the same for a node drawn as a line, and has no default
+either.** A partition, a railing and a duct run are each authored as a centreline — one run of
+the model, shared by whatever stands either side of it — and each is built as a solid, so the
+thickness claimed of the node is what turns the one into the other. Its run is read edge by
+edge rather than assembled into a ring, which is the distinction `measure` already draws: a
+wall not being a closed cycle is what a line is rather than a mistake in one. Each straight
+segment is widened by the claimed thickness, half either side, and swept upwards through the
+height. That is a profile per segment rather than one outline mitred around the whole run,
+because the joint where two segments meet is a detail the model does not state and is not this
+command's to invent. A node drawn as a line with no thickness claimed carries no shape at all:
+a centreline of no width is not a solid, and IFC has nowhere to put one.
+
+**Each claim behind a body travels into the file beside it**, as an `IfcPropertySet` named
+`dfcad_HeightProvenance` or `dfcad_ThicknessProvenance` attached through
+`IfcRelDefinesByProperties`. Each carries the predicate, the figure and its unit, and whatever
+the claim states: its source, its method, its accuracy, its date, its id, and which step of
+the resolution rule chose it. That last is how a surveyed height is told from an assumed one
+without holding the model — a claim nothing rankable was said about reads as `unranked`, and
+is still used, because it is what the model says. They are two sets rather than one because
+they are two measurements: a wall's height may be surveyed and its thickness taken off a
+drawing.
+
+**A body claimed of something no entity here can carry one on is refused, naming the claim.**
+The proxy fallback above is the answer to a classification this writer has no attribute list
+for, and it stays the answer for everything nobody measured. It is not the answer for a node
+somebody claimed a height of whose type is classified as an entity which is not a product — a
+relationship, a spatial element. The claim says a body was meant and the classification says
+where, the two disagree, and saying which claim and which entity is more use than writing the
+body somewhere the model did not point at or dropping it in silence.
 
 **A space's boundaries cross as relationships, drawn or not.** Every edge of a room's outline
 which names the element realising it is written as an `IfcRelSpaceBoundary` between the two —

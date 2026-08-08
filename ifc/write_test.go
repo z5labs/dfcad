@@ -1330,6 +1330,196 @@ func TestWriteShapesReadsBackUnderAnIndependentReader(t *testing.T) {
 	})
 }
 
+// partition is the plan of the wall the fixture below draws: a run three
+// metres long widened to a tenth of a metre either side of it, closed by
+// repeating its first point as its last.
+func partition() Polyline {
+	return Polyline{Points: []Point2D{
+		{X: 0, Y: -0.05}, {X: 3, Y: -0.05}, {X: 3, Y: 0.05}, {X: 0, Y: 0.05}, {X: 0, Y: -0.05},
+	}}
+}
+
+// bodied is the shaped fixture with its products drawn too: the wall carries a
+// solid of its own, and a countertop stands beside it as the furnishing
+// element a countertop is.
+//
+// The three products are the three answers this package has for a thing
+// standing in a room. One is drawn and carries the claim behind its shape; one
+// is a piece of furniture, which is an entity in its own right rather than a
+// proxy; and one is drawn by nobody and writes an absent Representation, which
+// is what every product did before there was a field to put one in.
+func bodied() Model {
+	model := shaped()
+
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+
+	wall := &space.Products[0]
+
+	wall.Representation = &Representation{Shapes: []Shape{{
+		Context:    "Body",
+		Identifier: "Body",
+		Type:       "SweptSolid",
+		Items: []Item{ExtrudedArea{
+			Profile:   ArbitraryProfile{Outer: partition()},
+			Position:  Placement{Location: Point{Z: 3}},
+			Direction: Direction{Z: 1},
+			Depth:     2.5,
+		}},
+	}}}
+
+	wall.Properties = []PropertySet{{
+		GlobalID:    "GIg1S2wRr2WQeQMwAKN3aq",
+		Defines:     "HIg1S2wRr2WQeQMwAKN3aq",
+		Name:        "dfcad_ThicknessProvenance",
+		Description: "Where the thickness the run was widened by came from.",
+		Properties: []Property{
+			{Name: "Predicate", Value: "nominal-thickness"},
+			{Name: "Thickness", Value: "0.1"},
+		},
+	}}
+
+	space.Products = append(space.Products, Product{
+		Entity:     "IFCFURNISHINGELEMENT",
+		GlobalID:   "IIg1S2wRr2WQeQMwAKN3aq",
+		Name:       "site:K-01",
+		ObjectType: "Countertop",
+		Placement:  origin(),
+	})
+
+	return model
+}
+
+func TestWriteProductShapes(t *testing.T) {
+	got := written(t, bodied())
+
+	assert.Equal(t, golden(t, "bodied.ifc", got), got,
+		"the emitted file is stale; regenerate it with: go test ./ifc -update")
+}
+
+// TestWriteProductShapesIsAFunctionOfTheModel is the byte-identity property
+// over a drawn product, held for the reason it is held over a drawn space.
+func TestWriteProductShapesIsAFunctionOfTheModel(t *testing.T) {
+	first := written(t, bodied())
+
+	for range 8 {
+		assert.Equal(t, first, written(t, bodied()))
+	}
+}
+
+func TestWriteProductShapesReadsBackUnderAnIndependentReader(t *testing.T) {
+	source := written(t, bodied())
+
+	parsed, err := read(source)
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	// The attribute Representation is at, which is the same position in every
+	// product this package writes because IfcProduct is where it is declared.
+	const representation = 6
+
+	t.Run("writes a furnishing element with the attribute count IFC4 fixes for it", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCFURNISHINGELEMENT" {
+				continue
+			}
+			found++
+
+			assert.Len(t, held.attributes, 8, "#%d=%s", number, held.keyword)
+		}
+
+		assert.Equal(t, 1, found)
+	})
+
+	t.Run("gives the drawn product the shape definition it was written with", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCWALL" {
+				continue
+			}
+			found++
+
+			require.Equal(t, itemReference, held.attributes[representation].form)
+
+			shape, ok := parsed.instance(held.attributes[representation].at)
+			require.True(t, ok)
+			assert.Equal(t, "IFCPRODUCTDEFINITIONSHAPE", shape.keyword)
+		}
+
+		assert.Equal(t, 1, found)
+	})
+
+	t.Run("writes a product nobody drew with an absent representation", func(t *testing.T) {
+		found := 0
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCBUILDINGELEMENTPROXY" && held.keyword != "IFCFURNISHINGELEMENT" {
+				continue
+			}
+			found++
+
+			assert.Equal(t, itemAbsent, held.attributes[representation].form,
+				"#%d=%s", number, held.keyword)
+		}
+
+		assert.Equal(t, 2, found)
+	})
+
+	t.Run("attaches the product's property set to the product", func(t *testing.T) {
+		related := map[string]int{}
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCRELDEFINESBYPROPERTIES" {
+				continue
+			}
+
+			require.Equal(t, itemList, held.attributes[4].form, "RelatedObjects")
+			require.Len(t, held.attributes[4].items, 1)
+
+			of, ok := parsed.instance(held.attributes[4].items[0].at)
+			require.True(t, ok)
+			related[of.keyword]++
+		}
+
+		assert.Equal(t, map[string]int{"IFCSPACE": 1, "IFCWALL": 1}, related)
+	})
+
+	t.Run("resolves every reference it writes", func(t *testing.T) {
+		var walk func(items []item)
+		walk = func(items []item) {
+			for _, one := range items {
+				switch one.form {
+				case itemReference:
+					_, held := parsed.instance(one.at)
+					assert.True(t, held, "#%d is referenced and not written", one.at)
+				case itemList, itemTyped:
+					walk(one.items)
+				}
+			}
+		}
+
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			walk(held.attributes)
+		}
+	})
+}
+
+// TestProductsHoldsEveryEntityAProductIsWrittenAs is its own function because
+// it is about the table rather than about a file: a caller mapping its own
+// vocabulary onto IFC asks this before it maps, and an entity missing from it
+// is a thing which reaches the file as a proxy.
+func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
+	assert.Contains(t, Products(), Entity("IFCFURNISHINGELEMENT"),
+		"a countertop is a furnishing element rather than a proxy")
+	assert.True(t, slices.IsSorted(Products()), "the table is answered in name order")
+}
+
 func TestWriteRefusesGeometryItCannotWrite(t *testing.T) {
 	testCases := []struct {
 		name     string

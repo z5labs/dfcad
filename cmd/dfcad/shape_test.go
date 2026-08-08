@@ -606,6 +606,11 @@ func TestRunExportRefusesAnIncompleteDrawingVocabulary(t *testing.T) {
 			expected: "swept upwards",
 		},
 		{
+			name:     "a thickness with no run to widen",
+			args:     []string{"--thickness", "nominal-thickness"},
+			expected: "--thickness",
+		},
+		{
 			name:     "an arc vocabulary with no boundary to bend",
 			args:     []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through"},
 			expected: "--position",
@@ -645,4 +650,452 @@ func TestRunExportNamesTheClaimBehindARefusedHeight(t *testing.T) {
 	assert.Contains(t, stderr, "survey:H-201", "the refusal names the claim it is about")
 	assert.Contains(t, stderr, "site:S-201", "and the room the claim was written on")
 	assert.Contains(t, stderr, "clear-height", "and the predicate it was claimed under")
+}
+
+// elementRegistry is the drawn fixture's vocabulary with the elements this
+// project builds added to it.
+//
+// The four types are the four answers a drawn product has. One is an area with
+// a height over it, which is a room's shape on something which is not a room;
+// two are runs, which is what a partition and a railing are; and one is
+// classified as an entity no product can be written as, which is the mistake
+// the export has to say something about rather than write around.
+const elementRegistry = shapeRegistry + `
+(predicate nominal-thickness
+  (unit m)
+  (shape scalar)
+  (description "How thick a thing built as a run is."))
+
+(type Countertop
+  (kind Element)
+  (geometry area)
+  (description "A worktop fitted along a wall.")
+  (classification "IFC4" "IfcFurnishingElement"))
+
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces.")
+  (classification "IFC4" "IfcWall"))
+
+(type Railing
+  (kind Element)
+  (geometry line)
+  (description "A guard along the open side of a stair.")
+  (classification "IFC4" "IfcRailing"))
+
+(type Threshold
+  (kind Interface)
+  (geometry absent)
+  (description "Where two rooms meet.")
+  (classification "IFC4" "IfcRelSpaceBoundary"))
+`
+
+// elementGeometry is the outline of the countertop and the runs of the
+// partition and the railing.
+//
+// The partition is two segments meeting at a corner and the railing is one, so
+// the fixture holds both the case a joint has to be answered for and the case
+// there is no joint at all.
+const elementGeometry = `
+(vertex geom:V-K-A (frame frame:building) (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-K-B (frame frame:building) (position (value (2.0 0.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-K-C (frame frame:building) (position (value (2.0 0.6 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-K-D (frame frame:building) (position (value (0.0 0.6 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-K-AB (frame frame:building) (vertices geom:V-K-A geom:V-K-B))
+(edge geom:E-K-BC (frame frame:building) (vertices geom:V-K-B geom:V-K-C))
+(edge geom:E-K-CD (frame frame:building) (vertices geom:V-K-C geom:V-K-D))
+(edge geom:E-K-DA (frame frame:building) (vertices geom:V-K-D geom:V-K-A))
+
+(loop geom:L-K (frame frame:building) (edges geom:E-K-AB geom:E-K-BC geom:E-K-CD geom:E-K-DA))
+
+(vertex geom:V-W-A (frame frame:building) (position (value (0.0 3.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-W-B (frame frame:building) (position (value (4.0 3.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-W-C (frame frame:building) (position (value (4.0 6.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-W-AB (frame frame:building) (vertices geom:V-W-A geom:V-W-B))
+(edge geom:E-W-BC (frame frame:building) (vertices geom:V-W-B geom:V-W-C))
+
+(loop geom:L-W (frame frame:building) (edges geom:E-W-AB geom:E-W-BC))
+
+(vertex geom:V-R-A (frame frame:building) (position (value (6.0 0.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-R-B (frame frame:building) (position (value (6.0 4.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-R-AB (frame frame:building) (vertices geom:V-R-A geom:V-R-B))
+
+(loop geom:L-R (frame frame:building) (edges geom:E-R-AB))
+`
+
+// elementEntities is a storey holding three elements and no space at all.
+//
+// That is the whole point of it. The consumer this story came from authors
+// stairs, railings and counters, and what it got back was a file in which every
+// one of them existed, was classified correctly, was placed correctly and had
+// no shape — so a model with nothing but elements in it has to come out with
+// geometry in it or the export has not moved.
+const elementEntities = `(node site:P-01
+  (label "Plot one")
+  (kind Site)
+  (type Parcel))
+
+(node site:B-01
+  (label "Block A")
+  (kind Building)
+  (type OfficeBuilding)
+  (within site:P-01))
+
+(node site:L-01
+  (label "Level one")
+  (kind Storey)
+  (type Level)
+  (within site:B-01))
+
+(node site:K-01
+  (label "Kitchen counter")
+  (kind Element)
+  (type Countertop)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-K)
+  (clear-height
+    (id survey:H-K-01)
+    (value 0.9 m)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-05-06")))
+
+(node site:W-01
+  (label "Kitchen partition")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-W)
+  (clear-height
+    (value 2.7 m)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-05-06"))
+  (nominal-thickness
+    (value 0.1 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+
+(node site:R-01
+  (label "Stair railing")
+  (kind Element)
+  (type Railing)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-R)
+  (clear-height
+    (value 1.1 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02"))
+  (nominal-thickness
+    (value 0.05 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+`
+
+// elementModel is the fixture tree the drawn element export is run against.
+func elementModel() map[string]string {
+	return map[string]string{
+		"registry.dfc":          elementRegistry,
+		"geometry/level-01.dfc": elementGeometry,
+		"entities/site.dfc":     elementEntities,
+	}
+}
+
+// bodyFlags is the drawing vocabulary with both of the predicates a body is
+// built from, which is what a run drawing elements gives.
+func bodyFlags() []string {
+	return append(drawingFlags(), "--height", "clear-height", "--thickness", "nominal-thickness")
+}
+
+// exportElements runs export over the element fixture and returns the artefact
+// it wrote.
+func exportElements(t *testing.T, args ...string) string {
+	t.Helper()
+
+	result, _, _ := exporting(t, exitSuccess, elementModel(), append(bodyFlags(), args...)...)
+
+	return artefact(t, result)
+}
+
+func TestRunExportDrawsTheElementsOfAModelWithNoSpaceInIt(t *testing.T) {
+	got := exportElements(t)
+
+	assert.Equal(t, elementGolden(t, got), got,
+		"the drawn element artefact is stale; regenerate it with: go test ./cmd/dfcad -update")
+}
+
+// elementGolden is the recorded element artefact, rewritten from got under
+// -update.
+func elementGolden(t *testing.T, got string) string {
+	t.Helper()
+
+	const path = "testdata/export/elements.ifc"
+
+	if *updateGolden {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(want)
+}
+
+func TestRunExportGivesAnElementTheShapeItsBoundaryStates(t *testing.T) {
+	source := exportElements(t)
+
+	testCases := []struct {
+		name     string
+		expected string
+	}{
+		{
+			name:     "writes a countertop as the furnishing element it is classified as",
+			expected: "IFCFURNISHINGELEMENT(",
+		},
+		{
+			name:     "sweeps the countertop's outline exactly as it sweeps a room's",
+			expected: "IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,",
+		},
+		{
+			name:     "writes the partition as the wall it is classified as",
+			expected: "IFCWALL(",
+		},
+		{
+			name:     "writes the railing as the railing it is classified as",
+			expected: "IFCRAILING(",
+		},
+		{
+			name:     "records where the thickness a run was widened by came from",
+			expected: "'dfcad_ThicknessProvenance'",
+		},
+		{
+			name:     "names the predicate the thickness was claimed under",
+			expected: "IFCPROPERTYSINGLEVALUE('Predicate',$,IFCTEXT('nominal-thickness'),$)",
+		},
+		{
+			name:     "writes the thickness beside the body it widened",
+			expected: "IFCPROPERTYSINGLEVALUE('Thickness',$,IFCTEXT('0.1'),$)",
+		},
+		{
+			name:     "records where the height a body was swept through came from",
+			expected: "'dfcad_HeightProvenance'",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Contains(t, source, testCase.expected)
+		})
+	}
+}
+
+// TestRunExportGivesEveryElementOfASpacelessModelABody is its own function
+// because it is the story's acceptance in one assertion: the file a consumer
+// which authors nothing but elements gets back has solids in it, and no
+// IfcSpace for those solids to have come from.
+func TestRunExportGivesEveryElementOfASpacelessModelABody(t *testing.T) {
+	source := exportElements(t)
+
+	assert.NotContains(t, source, "IFCSPACE(", "the model holds no room at all")
+
+	// The countertop's one solid, the partition's two — one per straight
+	// segment of its run — and the railing's one.
+	assert.Equal(t, 4, strings.Count(source, "IFCEXTRUDEDAREASOLID("),
+		"every element the model measured is swept into a solid")
+	assert.Equal(t, 3, strings.Count(source, "'Body','SweptSolid'"),
+		"and each carries that solid as a body of its own")
+}
+
+// TestRunExportWidensARunByTheThicknessClaimedOfIt is its own function because
+// what it asserts is a number rather than a shape: the run is widened half the
+// claimed thickness either side of the centreline, which is what makes the
+// claim the width of the wall rather than half of it.
+func TestRunExportWidensARunByTheThicknessClaimedOfIt(t *testing.T) {
+	source := exportElements(t)
+
+	// The railing runs north from (6,0) to (6,4) and is claimed to be 0.05
+	// thick, so its plan is the strip from x=5.975 to x=6.025.
+	assert.Contains(t, source, "IFCCARTESIANPOINT((5.975,0.))")
+	assert.Contains(t, source, "IFCCARTESIANPOINT((6.025,4.))")
+}
+
+// TestRunExportWritesNoBodyForARunNothingClaimsAThicknessOf is its own function
+// because what it asserts is a difference between two runs of one command: a
+// centreline with no width claimed is not a solid, and the file says so by
+// holding no shape for it rather than by holding a hairline nobody can select.
+func TestRunExportWritesNoBodyForARunNothingClaimsAThicknessOf(t *testing.T) {
+	result, _, _ := exporting(t, exitSuccess, elementModel(),
+		append(drawingFlags(), "--height", "clear-height")...)
+
+	source := artefact(t, result)
+
+	assert.Contains(t, source, "IFCWALL(", "the partition is still in the file")
+	assert.Equal(t, 1, strings.Count(source, "IFCEXTRUDEDAREASOLID("),
+		"the countertop is drawn from its own outline and the two runs are not drawn at all")
+}
+
+// TestRunExportRefusesABodyClaimedOfSomethingNoEntityCanCarryOne is its own
+// function because it is about a disagreement rather than about a value: the
+// claim says a body was meant and the classification says it was meant on a
+// relationship, and writing either of them as if the other were absent is the
+// silence this refusal replaces.
+func TestRunExportRefusesABodyClaimedOfSomethingNoEntityCanCarryOne(t *testing.T) {
+	files := elementModel()
+	files["entities/site.dfc"] += `
+(node site:T-01
+  (label "Rooms A and B, shared wall")
+  (kind Interface)
+  (type Threshold)
+  (within site:L-01)
+  (clear-height
+    (id survey:H-T-01)
+    (value 2.7 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02")))
+`
+
+	result, _, stderr := exporting(t, exitCheck, files, bodyFlags()...)
+
+	assert.False(t, result.Derived)
+	assert.Empty(t, result.Files, "an artefact is all or nothing, and nothing was produced")
+	assert.Contains(t, stderr, "survey:H-T-01", "the refusal names the claim it is about")
+	assert.Contains(t, stderr, "IfcRelSpaceBoundary", "and the entity which cannot carry the body")
+}
+
+// TestRunExportWritesAnUnmeasuredInterfaceAsAProxyStill is its own function
+// because it is the other half of the refusal above: the fallback to a proxy is
+// what a classification this writer cannot use has always meant, and it stays
+// that for everything nobody claimed a body of.
+func TestRunExportWritesAnUnmeasuredInterfaceAsAProxyStill(t *testing.T) {
+	files := elementModel()
+	files["entities/site.dfc"] += `
+(node site:T-01
+  (label "Rooms A and B, shared wall")
+  (kind Interface)
+  (type Threshold)
+  (within site:L-01))
+`
+
+	result, _, _ := exporting(t, exitSuccess, files, bodyFlags()...)
+
+	assert.Contains(t, artefact(t, result), "IFCBUILDINGELEMENTPROXY('")
+}
+
+// TestRunExportOfElementsIsAFunctionOfTheModel is the determinism property over
+// a drawn element export, which ADR 0021 makes the whole artefact turn on: the
+// same tree exports to the same bytes, and a second run reports the file it
+// found as unchanged.
+func TestRunExportOfElementsIsAFunctionOfTheModel(t *testing.T) {
+	first := exportElements(t)
+
+	for range 4 {
+		assert.Equal(t, first, exportElements(t))
+	}
+}
+
+// lineModel is the element fixture with the node bounded by rings taken out of
+// it, so that what is left is drawn as lines and nothing else.
+//
+// It is what tells a refusal made on the run path from one the region path made
+// first: an area node in the tree answers for the tolerance on its own, and a
+// model of nothing but runs has nobody to answer for it but the run.
+func lineModel(t *testing.T) map[string]string {
+	t.Helper()
+
+	files := elementModel()
+
+	entities := files["entities/site.dfc"]
+	from := strings.Index(entities, "(node site:K-01")
+	to := strings.Index(entities, "(node site:W-01")
+	require.Positive(t, from, "the fixture holds the countertop")
+	require.Greater(t, to, from, "and the partition after it")
+
+	files["entities/site.dfc"] = entities[:from] + entities[to:]
+
+	return files
+}
+
+// TestRunExportRefusesARunItHasNoDeclaredToleranceToJudge is its own function
+// because it is about a name rather than about a shape: there is no default
+// tolerance and there never will be, so a run named against one the registry
+// does not declare is refused rather than judged against nothing.
+func TestRunExportRefusesARunItHasNoDeclaredToleranceToJudge(t *testing.T) {
+	result, _, stderr := exporting(t, exitCheck, lineModel(t),
+		"--position", "position", "--tolerance", "nonesuch", "--chord", "facet",
+		"--height", "clear-height", "--thickness", "nominal-thickness")
+
+	assert.False(t, result.Derived)
+	assert.Empty(t, result.Files, "an artefact is all or nothing, and nothing was produced")
+	assert.Contains(t, stderr, "nonesuch", "the refusal names the tolerance nobody declared")
+	assert.Contains(t, stderr, "site:W-01", "and a run it could not judge")
+}
+
+// TestRunExportNamesTheQuantityBehindAnAmbiguousClaim is its own function
+// because what it asserts is the words a diagnostic uses: a reader sent to fix
+// two equally current claims is told which quantity they are of, and the two
+// quantities are not one word with an "s" put on the end of it.
+func TestRunExportNamesTheQuantityBehindAnAmbiguousClaim(t *testing.T) {
+	testCases := []struct {
+		name     string
+		twice    edit
+		expected string
+	}{
+		{
+			name: "two equally current heights",
+			twice: edit{"entities/site.dfc", `  (clear-height
+    (value 1.1 m)`, `  (clear-height
+    (value 1.3 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02"))
+  (clear-height
+    (value 1.1 m)`},
+			expected: "equally current heights",
+		},
+		{
+			name: "two equally current thicknesses",
+			twice: edit{"entities/site.dfc", `  (nominal-thickness
+    (value 0.05 m)`, `  (nominal-thickness
+    (value 0.08 m)
+    (source "Fit-out drawing FD-2026-011")
+    (method method:drawing-take-off)
+    (date "2026-03-02"))
+  (nominal-thickness
+    (value 0.05 m)`},
+			expected: "equally current thicknesses",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			files := elementModel()
+
+			replaced := strings.Replace(files[testCase.twice.file], testCase.twice.from, testCase.twice.to, 1)
+			require.NotEqual(t, files[testCase.twice.file], replaced,
+				"%s holds %q", testCase.twice.file, testCase.twice.from)
+			files[testCase.twice.file] = replaced
+
+			_, _, stderr := exporting(t, exitCheck, files, bodyFlags()...)
+
+			assert.Contains(t, stderr, "cannot separate")
+			assert.Contains(t, stderr, testCase.expected)
+		})
+	}
 }

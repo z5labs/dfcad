@@ -49,6 +49,14 @@ var (
 	// operation type, and IfcPile carries a construction type. Writing one of
 	// those from this table would produce an instance with the wrong number
 	// of attributes, so each is its own entry the day somebody needs it.
+	//
+	// IfcFurnishingElement is the one entry whose tail is nought. IFC4 adds no
+	// attribute of its own to IfcElement for it, so it ends at Tag, and a
+	// number here pretending otherwise would write an instance with an
+	// attribute the schema has no name for. It is in the table because a
+	// countertop, an island or a fitted wardrobe is classified as one, and
+	// without an entry each of those degrades to an IfcBuildingElementProxy —
+	// which a receiving system cannot tell from a duct.
 	products = map[Entity]int{
 		EntityProxy:      1,
 		"IFCBEAM":        1,
@@ -56,14 +64,16 @@ var (
 		"IFCCOVERING":    1,
 		"IFCCURTAINWALL": 1,
 		"IFCFOOTING":     1,
-		"IFCMEMBER":      1,
-		"IFCPLATE":       1,
-		"IFCRAILING":     1,
-		"IFCRAMP":        1,
-		"IFCROOF":        1,
-		"IFCSLAB":        1,
-		"IFCSTAIR":       1,
-		"IFCWALL":        1,
+		// IfcFurnishingElement's attribute list ends at Tag; see above.
+		"IFCFURNISHINGELEMENT": 0,
+		"IFCMEMBER":            1,
+		"IFCPLATE":             1,
+		"IFCRAILING":           1,
+		"IFCRAMP":              1,
+		"IFCROOF":              1,
+		"IFCSLAB":              1,
+		"IFCSTAIR":             1,
+		"IFCWALL":              1,
 	}
 )
 
@@ -625,6 +635,13 @@ func (w *writer) products(element Spatial, in reference, under reference) error 
 			return err
 		}
 
+		// The shape comes before the product which carries it, because an
+		// instance may only reference one already written.
+		representation, err := w.representation(product.Representation, product.GlobalID)
+		if err != nil {
+			return err
+		}
+
 		attributes := []value{
 			text(product.GlobalID),
 			absent{}, // OwnerHistory
@@ -632,13 +649,17 @@ func (w *writer) products(element Spatial, in reference, under reference) error 
 			optionalText(product.Description),
 			optionalText(product.ObjectType),
 			placement,
-			absent{}, // Representation
+			representation,
 			absent{}, // Tag
 		}
 		attributes = append(attributes, absents(tail)...)
 
 		at, err := w.rooted(product.Entity, product.GlobalID, attributes)
 		if err != nil {
+			return err
+		}
+
+		if err := w.properties(product.Properties, at); err != nil {
 			return err
 		}
 

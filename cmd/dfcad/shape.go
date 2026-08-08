@@ -15,9 +15,18 @@ import (
 	"github.com/z5labs/dfcad/ifc"
 )
 
-// The flag export takes to name the predicate a space's height is claimed
-// under, named here because the usage and the errors which refuse it name it.
-const flagHeight = "height"
+// The flags export takes to name the predicates a body is built from, named
+// here because the usage and the errors which refuse them name them.
+//
+// Neither has a default and neither ever will. Which predicate carries a
+// room's height and which carries a partition's thickness is project
+// vocabulary, and a figure compiled in here would be this command measuring
+// something nobody measured
+// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
+const (
+	flagHeight    = "height"
+	flagThickness = "thickness"
+)
 
 // The representations a space is written with, and the views of the model's
 // coordinate space each is drawn in.
@@ -52,15 +61,23 @@ const contextType = "Model"
 // date form the model itself is authored in.
 const claimDateLayout = "2006-01-02"
 
-// heightProvenance is the property set the height behind a body is recorded
-// in, and the description a reader sees it under.
+// heightProvenance and thicknessProvenance are the property sets the two
+// claims behind a body are recorded in, and the descriptions a reader sees them
+// under.
 //
-// The name carries the project's own prefix rather than IFC's `Pset_`, which
-// is reserved for the sets the specification defines. What is in it is not a
+// Each name carries the project's own prefix rather than IFC's `Pset_`, which
+// is reserved for the sets the specification defines. What is in them is not a
 // standard set and saying otherwise would be a claim about the schema.
+//
+// They are two sets rather than one because they are two measurements: a wall's
+// height may be surveyed and its thickness taken off a drawing, and a reader
+// deciding whether to trust the solid has to be able to tell which is which.
 const (
 	heightProvenance            = "dfcad_HeightProvenance"
 	heightProvenanceDescription = "The claim the extruded body's height was resolved from, and what is known about it."
+
+	thicknessProvenance            = "dfcad_ThicknessProvenance"
+	thicknessProvenanceDescription = "The claim the swept run's thickness was resolved from, and what is known about it."
 )
 
 // The properties that set holds, in the order they are written.
@@ -72,6 +89,7 @@ const (
 const (
 	propertyPredicate = "Predicate"
 	propertyHeight    = "Height"
+	propertyThickness = "Thickness"
 	propertyUnit      = "Unit"
 	propertySource    = "Source"
 	propertyMethod    = "Method"
@@ -106,9 +124,15 @@ type shapes struct {
 	arcCentre  string
 	arcThrough string
 
-	// height is the predicate a space's height is claimed under. A run which
+	// height is the predicate a node's height is claimed under. A run which
 	// names none exports footprints and no bodies.
 	height string
+
+	// thickness is the predicate a node drawn as a line is claimed to be thick
+	// by, which is what widens its run into something a height can be swept
+	// over. A run which names none draws no line at all: a centreline of no
+	// width is not a solid, and IFC has nowhere to put one.
+	thickness string
 }
 
 // drawing reports whether the run asked for geometry at all.
@@ -147,31 +171,39 @@ func (s shapes) subcontexts() []ifc.Subcontext {
 	}
 }
 
-// UnusableHeightVocabularyError is a run which named the predicate a height is
-// claimed under without naming the vocabulary a boundary is read under.
+// UnusableBodyVocabularyError is a run which named a predicate a body is built
+// from without naming the vocabulary a boundary is read under.
 //
-// It is a usage error rather than a height quietly ignored. A body is the
-// footprint swept upwards, so there is nothing to extrude until the boundary
-// has been read — and a run which asked for solids and got none would have to
-// find that out by opening the file.
-type UnusableHeightVocabularyError struct {
-	// Missing are the flags which were not given, spelled without their
-	// dashes, in the order the usage lists them.
+// It is a usage error rather than a claim quietly ignored. A body is a boundary
+// swept upwards, so there is nothing to extrude until the boundary has been
+// read — and a run which asked for solids and got none would have to find that
+// out by opening the file.
+type UnusableBodyVocabularyError struct {
+	// Given are the flags which were given, spelled without their dashes, in
+	// the order the usage lists them.
+	Given []string
+
+	// Missing are the flags which were not, in the same order.
 	Missing []string
 }
 
 // Error implements [error].
-func (e UnusableHeightVocabularyError) Error() string {
-	spelled := make([]string, 0, len(e.Missing))
-	for _, flag := range e.Missing {
+func (e UnusableBodyVocabularyError) Error() string {
+	return fmt.Sprintf(
+		"expected the vocabulary a boundary is read under alongside %s, found no %s: a body is a boundary swept "+
+			"upwards, so there is nothing to extrude until the outline has been read",
+		join(dashed(e.Given)), join(dashed(e.Missing)),
+	)
+}
+
+// dashed is a list of flag names as a message spells them.
+func dashed(flags []string) []string {
+	spelled := make([]string, 0, len(flags))
+	for _, flag := range flags {
 		spelled = append(spelled, "--"+flag)
 	}
 
-	return fmt.Sprintf(
-		"expected the vocabulary a boundary is read under alongside --%s, found no %s: a body is the footprint swept "+
-			"upwards, so there is nothing to extrude until the outline has been read",
-		flagHeight, join(spelled),
-	)
+	return spelled
 }
 
 // shapeVocabularyOf reports a run which asked for geometry without saying
@@ -191,11 +223,30 @@ func shapeVocabularyOf(drawn shapes) error {
 		)
 	}
 
-	if drawn.height == "" {
+	asked := drawn.bodied()
+	if len(asked) == 0 {
 		return nil
 	}
 
-	return UnusableHeightVocabularyError{Missing: []string{flagPosition, flagTolerance, flagChord}}
+	return UnusableBodyVocabularyError{
+		Given:   asked,
+		Missing: []string{flagPosition, flagTolerance, flagChord},
+	}
+}
+
+// bodied are the flags naming a claim a body is built from which this run gave,
+// in the order the usage lists them.
+func (s shapes) bodied() []string {
+	var asked []string
+
+	if s.height != "" {
+		asked = append(asked, flagHeight)
+	}
+	if s.thickness != "" {
+		asked = append(asked, flagThickness)
+	}
+
+	return asked
 }
 
 // shaped is the geometry of one space: the footprint its boundary states, the
@@ -226,7 +277,7 @@ func (e *exporter) shaped(
 		return nil, nil, drawn
 	}
 
-	elevation, level := e.level(node, drawn)
+	elevation, level := e.level(node, rings(pieces), drawn.Region().Tolerance().Value)
 	if !level {
 		return nil, nil, drawn
 	}
@@ -249,7 +300,9 @@ func (e *exporter) shaped(
 		Items:      outlines,
 	}}}
 
-	height, resolution, resolved := e.height(node, drawn)
+	swept := heightOf(e.shapes.height)
+
+	height, resolution, resolved := e.length(node, swept, drawn.Unit())
 	if !resolved {
 		return representation, nil, drawn
 	}
@@ -284,42 +337,309 @@ func (e *exporter) shaped(
 		Items:      solids,
 	})
 
-	return representation, e.provenance(node, drawn, height, resolution), drawn
+	return representation, e.provenance(node, swept, drawn.Unit(), height, resolution), drawn
 }
 
-// height is the height a body is swept through, the resolution it came from,
-// and whether there is one.
+// modelled is the geometry of a node standing in a spatial element: the outline
+// its boundary states and the body the claims about it make of that outline.
 //
-// A run which named no predicate, and a space nothing claims a height of, both
-// come back with nothing and no diagnostic. Neither is a fault: the first
-// asked for footprints and the second is a room whose height nobody has
-// measured, and refusing an export over either would make the honest 2D file
-// the issue impossible to produce.
+// Which of the two ways it is drawn is the node's declared geometry and never
+// its kind. A room and a countertop are both an area with a height over it, and
+// the sweep which makes a solid of either is one operation — so an element
+// bounded by a ring is drawn exactly as a space is, and what the kind decides is
+// only which entity the shape is written on.
+func (e *exporter) modelled(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.PropertySet) {
+	if geometry, _ := node.Geometry(); geometry == dfcad.GeometryLine {
+		return e.thickened(node)
+	}
+
+	representation, properties, _ := e.shaped(node)
+
+	return representation, properties
+}
+
+// thickened is the geometry of a node drawn as a line: the run its boundary
+// states widened by the thickness claimed of it, and the body a height sweeps
+// out of that.
 //
-// Everything else is a refusal. A height which is not a distance, one written
+// A partition, a railing and a duct run are all this shape. Each is authored as
+// a centreline because that is what it is — one run of the model, shared by
+// whatever stands either side of it — and each is built as a solid, so the
+// thickness is the number which turns the one into the other. There is no
+// default for it and there never will be, for the reason there is none for a
+// height: how thick a wall is is a fact somebody measured.
+//
+// A node nothing claims a thickness of is drawn as nothing at all rather than as
+// its bare centreline. A curve where a solid belongs is the failure mode this
+// whole story is about — a receiving system shows it as nothing, or as a hairline
+// nobody can select — and an object with no shape at least says plainly that the
+// model does not state one.
+func (e *exporter) thickened(node *dfcad.SemanticNode) (*ifc.Representation, []ifc.PropertySet) {
+	runs, unit, drew := e.runs(node)
+	if !drew {
+		return nil, nil
+	}
+
+	// A region reads its own tolerance on the way to being assembled and is
+	// refused by the engine where the registry declares none. A run is never
+	// assembled, so this is the only place that refusal can be made for one —
+	// and taking the zero value instead would judge every run level against a
+	// tolerance of nothing, which is the engine deciding how close is close
+	// enough ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
+	tolerance, declared := e.registry.Tolerance(e.shapes.tolerance)
+	if !declared {
+		e.refuse(node, fmt.Sprintf(
+			"expected a declared tolerance to judge the run of %s level, found that the registry declares no "+
+				"tolerance %q", node.ID(), e.shapes.tolerance),
+			"how far apart two corners may be and still be at one level is a distance the project wrote down; there "+
+				"is no default for it, and one compiled in here would be the engine deciding how close is close enough")
+		return nil, nil
+	}
+
+	elevation, level := e.level(node, runs, tolerance.Value)
+	if !level {
+		return nil, nil
+	}
+
+	claimed := thicknessOf(e.shapes.thickness)
+
+	thickness, resolution, resolved := e.length(node, claimed, unit)
+	if !resolved {
+		return nil, nil
+	}
+
+	plans := widened(runs, thickness)
+	if len(plans) == 0 {
+		return nil, nil
+	}
+
+	outlines := make([]ifc.Item, 0, len(plans))
+	for _, plan := range plans {
+		outlines = append(outlines, plan)
+	}
+
+	representation := &ifc.Representation{Shapes: []ifc.Shape{{
+		Context:    footprintShape,
+		Identifier: footprintShape,
+		Type:       curveRepresentation,
+		Items:      outlines,
+	}}}
+
+	properties := e.provenance(node, claimed, unit, thickness, resolution)
+
+	swept := heightOf(e.shapes.height)
+
+	height, over, resolved := e.length(node, swept, unit)
+	if !resolved {
+		return representation, properties
+	}
+
+	solids := make([]ifc.Item, 0, len(plans))
+	for _, plan := range plans {
+		solids = append(solids, ifc.ExtrudedArea{
+			Profile: ifc.ArbitraryProfile{Outer: plan},
+			// The profile is drawn in the xy of this placement, so the level the
+			// run sits at goes here, exactly as a room's does.
+			Position:  ifc.Placement{Location: ifc.Point{Z: elevation}},
+			Direction: ifc.Direction{Z: 1},
+			Depth:     height,
+		})
+	}
+
+	representation.Shapes = append(representation.Shapes, ifc.Shape{
+		Context:    bodyShape,
+		Identifier: bodyShape,
+		Type:       solidRepresentation,
+		Items:      solids,
+	})
+
+	return representation, append(properties, e.provenance(node, swept, unit, height, over)...)
+}
+
+// runs are the straight runs of a node drawn as a line — one per edge its
+// boundary reaches, in the order its loops traverse them — and the unit they
+// are in.
+//
+// It is edge by edge rather than a ring assembled out of them, which is the
+// same distinction [dfcad.Graph.Measure] draws for the same reason: assembling
+// the edges of a wall into a ring reports the gap where its two ends do not
+// meet, and a wall not being a closed cycle is what a line is rather than a
+// mistake in one.
+//
+// Each edge is drawn under the same vocabulary a region is, so a curved railing
+// reaches the file as the curve it is rather than as the chord between its
+// ends.
+func (e *exporter) runs(node *dfcad.SemanticNode) ([][]dfcad.Point, dfcad.Unit, bool) {
+	survey := bent(e.graph, node, e.shapes.position, e.shapes.tolerance, e.shapes.arcCentre, e.shapes.arcThrough)
+
+	var out [][]dfcad.Point
+	var unit dfcad.Unit
+
+	for edge := range e.graph.Boundaries().Edges(node) {
+		drawn, diags := e.graph.Topology().TessellateEdge(edge, survey, e.shapes.chord)
+		e.diags = append(e.diags, diags...)
+
+		points := drawn.Points()
+		if len(points) < 2 {
+			continue
+		}
+
+		if unit == "" {
+			unit = drawn.Unit()
+		}
+
+		out = append(out, points)
+	}
+
+	return out, unit, len(out) > 0
+}
+
+// widened is the plan of a set of runs: one closed rectangle per straight
+// segment of them, as long as the segment and as wide as the thickness claimed.
+//
+// It is a rectangle per segment rather than one outline drawn around the whole
+// run, because the joint where two segments meet is a detail the model does not
+// state. Mitring them into a single profile would be this command choosing a
+// joint — and choosing one which folds through itself wherever a run turns back
+// on itself — whereas two rectangles which overlap at the corner are exactly the
+// two runs the model wrote, each carrying the thickness it claims and nothing
+// else. It is also what the model's own shape is: a line is edges rather than a
+// ring, so a run is already a set of pieces before anything here widens one.
+//
+// A segment of no length is left out. There is no direction across a run of
+// nothing to offset along, and the rectangle built on one would be a profile of
+// no area, which IFC has no meaning for.
+func widened(runs [][]dfcad.Point, thickness float64) []ifc.Polyline {
+	out := make([]ifc.Polyline, 0, len(runs))
+
+	half := thickness / 2
+
+	for _, run := range runs {
+		for i := 0; i+1 < len(run); i++ {
+			from, to := run[i], run[i+1]
+
+			along := math.Hypot(to[0]-from[0], to[1]-from[1])
+			if !(along > 0) {
+				continue
+			}
+
+			// The offset is across the run in plan, half the thickness either
+			// side of it, which is what makes the claimed figure the width of
+			// the solid rather than half of it.
+			x := -(to[1] - from[1]) / along * half
+			y := (to[0] - from[0]) / along * half
+
+			// Wound counter-clockwise, which is the direction IFC's implementer
+			// agreements give the outer curve of a profile, and closed by
+			// repeating the corner it began at.
+			out = append(out, ifc.Polyline{Points: []ifc.Point2D{
+				{X: from[0] - x, Y: from[1] - y},
+				{X: to[0] - x, Y: to[1] - y},
+				{X: to[0] + x, Y: to[1] + y},
+				{X: from[0] + x, Y: from[1] + y},
+				{X: from[0] - x, Y: from[1] - y},
+			}})
+		}
+	}
+
+	return out
+}
+
+// dimension is one of the two lengths a solid is built from, and everything a
+// refusal or a property set has to say about it.
+//
+// The two are one type rather than two nearly identical functions because a
+// height and a thickness are the same thing here: a length, claimed of a node
+// under a predicate the run named, refused for the same four reasons and
+// carried into the file the same way. What differs between them is the words,
+// and the words are data.
+type dimension struct {
+	// predicate is the predicate the run named it under, and is empty for a run
+	// which named none.
+	predicate string
+
+	// noun is what a diagnostic calls the number: "height", "thickness". plural
+	// is that word in the plural, written out rather than suffixed, because
+	// "thicknesss" is what suffixing gives.
+	noun   string
+	plural string
+
+	// purpose is what the number is for, written into a refusal after "to":
+	// "sweep its body through", "widen its run by".
+	purpose string
+
+	// property is what the property set calls the figure, and set and
+	// description are that set's own name and description.
+	property    string
+	set         string
+	description string
+
+	// segment is the piece of a derived identifier which keeps the two sets on
+	// one node apart.
+	segment string
+}
+
+// heightOf is the height claim, under the predicate a run named.
+func heightOf(predicate string) dimension {
+	return dimension{
+		predicate:   predicate,
+		noun:        "height",
+		plural:      "heights",
+		purpose:     "sweep its body through",
+		property:    propertyHeight,
+		set:         heightProvenance,
+		description: heightProvenanceDescription,
+		segment:     "height",
+	}
+}
+
+// thicknessOf is the thickness claim, under the predicate a run named.
+func thicknessOf(predicate string) dimension {
+	return dimension{
+		predicate:   predicate,
+		noun:        "thickness",
+		plural:      "thicknesses",
+		purpose:     "widen its run by",
+		property:    propertyThickness,
+		set:         thicknessProvenance,
+		description: thicknessProvenanceDescription,
+		segment:     "thickness",
+	}
+}
+
+// length is the length claimed of a node under one of those predicates, the
+// resolution it came from, and whether there is one.
+//
+// A run which named no predicate, and a node nothing claims that length of,
+// both come back with nothing and no diagnostic. Neither is a fault: the first
+// asked for footprints and the second is a thing nobody has measured, and
+// refusing an export over either would make the honest 2D file the issue
+// impossible to produce.
+//
+// Everything else is a refusal. A length which is not a distance, one written
 // in another unit than the boundary, one which is nought or less, and two
-// equally current claims are each a body this cannot make rather than a body
-// it should guess at.
-func (e *exporter) height(
+// equally current claims are each a body this cannot make rather than a body it
+// should guess at.
+func (e *exporter) length(
 	node *dfcad.SemanticNode,
-	drawn dfcad.RegionTessellation,
+	of dimension,
+	unit dfcad.Unit,
 ) (float64, dfcad.Resolution, bool) {
-	if e.shapes.height == "" {
+	if of.predicate == "" {
 		return 0, dfcad.Resolution{}, false
 	}
 
 	// The registry is not asked whether the predicate is strict, because this
 	// refuses an ambiguity either way: two current answers to how tall a room
 	// is is not a question an export may pick from.
-	resolution, _ := e.graph.Claims().Resolve(node.ID(), e.shapes.height, nil)
+	resolution, _ := e.graph.Claims().Resolve(node.ID(), of.predicate, nil)
 
 	if resolution.Ambiguous() {
 		e.refuse(node, fmt.Sprintf(
-			"expected at most one current %s claimed of %s to sweep its body through, found %d the resolution rule "+
-				"cannot separate",
-			e.shapes.height, node.ID(), len(resolution.Candidates())),
-			"supersede the ones which no longer hold, or re-measure; a body swept through one of two equally current "+
-				"heights is a solid the file gives no reason for")
+			"expected at most one current %s claimed of %s to %s, found %d the resolution rule cannot separate",
+			of.predicate, node.ID(), of.purpose, len(resolution.Candidates())),
+			fmt.Sprintf("supersede the ones which no longer hold, or re-measure; a body built from one of two equally "+
+				"current %s is a solid the file gives no reason for", of.plural))
 		return 0, resolution, false
 	}
 
@@ -329,42 +649,42 @@ func (e *exporter) height(
 	}
 
 	value := claim.Value()
-	// Every refusal below is about one claim rather than about the room, so
+	// Every refusal below is about one claim rather than about the node, so
 	// each names that claim: the span points at the value, and the message
 	// names the claim's own id where it wrote one, because a room with four
 	// heights on it needs to say which of them is the one to go and fix.
-	claimed := namedClaim(claim, e.shapes.height, node.ID())
+	claimed := namedClaim(claim, of.predicate, node.ID())
 
-	height, scalar := value.Scalar()
+	length, scalar := value.Scalar()
 	if !scalar {
 		e.refuseAt(value.Span(), fmt.Sprintf(
-			"expected %s to be a distance to sweep its body through, found a value of another shape", claimed),
-			"a height is one number; the predicate it is claimed under is declared with a scalar value")
+			"expected %s to be a distance to %s, found a value of another shape", claimed, of.purpose),
+			fmt.Sprintf("a %s is one number; the predicate it is claimed under is declared with a scalar value", of.noun))
 		return 0, resolution, false
 	}
 
-	if value.Unit() != drawn.Unit() {
+	if value.Unit() != unit {
 		e.refuseAt(value.Span(), fmt.Sprintf(
 			"expected %s to be in %s, which is the unit of the frame its boundary is in, found %s",
-			claimed, drawn.Unit(), value.Unit()),
-			"nothing here converts between units: a frame declares one linear unit, and a height swept off a boundary "+
-				"has to be written in the unit the boundary is")
+			claimed, unit, value.Unit()),
+			fmt.Sprintf("nothing here converts between units: a frame declares one linear unit, and a %s read off a "+
+				"boundary has to be written in the unit the boundary is", of.noun))
 		return 0, resolution, false
 	}
 
-	// Written as a comparison against zero rather than as `<=` so that a
-	// height which is not a number is refused here too, naming the claim,
-	// rather than reaching the writer as a depth with no spelling.
-	if !(height > 0) {
+	// Written as a comparison against zero rather than as `<=` so that a length
+	// which is not a number is refused here too, naming the claim, rather than
+	// reaching the writer as a depth with no spelling.
+	if !(length > 0) {
 		e.refuseAt(value.Span(), fmt.Sprintf(
 			"expected %s to be a positive distance, found %s",
-			claimed, figure(height)+" "+string(value.Unit())),
-			"the depth a profile is swept through is a positive length measure and there is no solid of no thickness; "+
-				"a space nobody has measured the height of carries no claim at all, and is exported as its footprint")
+			claimed, figure(length)+" "+string(value.Unit())),
+			fmt.Sprintf("a solid is bounded by positive length measures and there is no body of no %s; a thing nobody "+
+				"has measured the %s of carries no claim at all, and is exported without a body", of.noun, of.noun))
 		return 0, resolution, false
 	}
 
-	return height, resolution, true
+	return length, resolution, true
 }
 
 // namedClaim is one claim as a diagnostic about it names it: the predicate, the
@@ -409,8 +729,7 @@ func current(resolution dfcad.Resolution) (*dfcad.Claim, bool) {
 	return candidates[0], true
 }
 
-// level is the elevation the space's boundary sits at, and whether it sits at
-// one.
+// level is the elevation a node's boundary sits at, and whether it sits at one.
 //
 // A footprint is a plan and a body is that plan swept upwards, so both are
 // answers about a boundary lying in one horizontal plane. A boundary which
@@ -418,10 +737,15 @@ func current(resolution dfcad.Resolution) (*dfcad.Claim, bool) {
 // of it would be a projection this command chose, drawn without saying so
 // beside a solid swept in a direction nothing in the model asked for.
 //
+// It takes rings rather than a drawn region because the two shapes it answers
+// for are read differently: a room's rings come off its region and a wall's run
+// comes off its loops, and whether either lies flat is the same question about
+// the same points.
+//
 // How far apart two corners may be and still be at one level is the tolerance
 // the run named, which is the same figure the boundary was assembled under.
-func (e *exporter) level(node *dfcad.SemanticNode, drawn dfcad.RegionTessellation) (float64, bool) {
-	lies := levelOf(drawn.Pieces(), drawn.Region().Tolerance().Value)
+func (e *exporter) level(node *dfcad.SemanticNode, drawn [][]dfcad.Point, tolerance float64) (float64, bool) {
+	lies := levelOfRings(drawn, tolerance)
 
 	if !lies.level {
 		e.refuse(node, fmt.Sprintf(
@@ -465,28 +789,44 @@ type levels struct {
 // How far apart two corners may be and still be at one level is the tolerance
 // the boundary was assembled under, which is passed in for the same reason.
 func levelOf(pieces []dfcad.Piece, tolerance float64) levels {
+	return levelOfRings(rings(pieces), tolerance)
+}
+
+// rings are the rings a set of pieces is bounded by: the outer ring of each and
+// the rings taken out of it, in that order.
+func rings(pieces []dfcad.Piece) [][]dfcad.Point {
+	out := make([][]dfcad.Point, 0, len(pieces))
+
+	for _, piece := range pieces {
+		out = append(out, piece.Outer())
+		out = append(out, piece.Holes()...)
+	}
+
+	return out
+}
+
+// levelOfRings is [levelOf] over rings which came from somewhere other than a
+// region: the runs of a node drawn as a line, which are not pieces of anything
+// and still have to lie flat before a plan of them means anything.
+func levelOfRings(drawn [][]dfcad.Point, tolerance float64) levels {
 	// Nothing has disagreed yet, so a set of rings holding no corner at all
 	// lies at one level vacuously. What it does not do is lie at an elevation,
 	// which is what `bounded` is for and what a caller wanting one reads.
 	lies := levels{level: true}
 
-	for _, piece := range pieces {
-		rings := append([][]dfcad.Point{piece.Outer()}, piece.Holes()...)
+	for _, ring := range drawn {
+		for _, at := range ring {
+			if !lies.bounded {
+				lies.elevation = at[2]
+				lies.bounded = true
+				continue
+			}
 
-		for _, ring := range rings {
-			for _, at := range ring {
-				if !lies.bounded {
-					lies.elevation = at[2]
-					lies.bounded = true
-					continue
-				}
+			if math.Abs(at[2]-lies.elevation) > tolerance {
+				lies.offending = at[2]
+				lies.level = false
 
-				if math.Abs(at[2]-lies.elevation) > tolerance {
-					lies.offending = at[2]
-					lies.level = false
-
-					return lies
-				}
+				return lies
 			}
 		}
 	}
@@ -494,17 +834,19 @@ func levelOf(pieces []dfcad.Piece, tolerance float64) levels {
 	return lies
 }
 
-// provenance is the property set which carries the height claim into the file.
+// provenance is the property set which carries one of the claims behind a body
+// into the file.
 //
 // It is a property set rather than a note in a description because a receiving
 // system surfaces one beside the object: a reader looking at a solid can see
-// the source, the method, the accuracy and the date behind the height it was
-// swept through, and can therefore tell a surveyed height from an assumed one
+// the source, the method, the accuracy and the date behind the figure it was
+// built from, and can therefore tell a surveyed height from an assumed one
 // without opening the model it came from.
 func (e *exporter) provenance(
 	node *dfcad.SemanticNode,
-	drawn dfcad.RegionTessellation,
-	height float64,
+	of dimension,
+	unit dfcad.Unit,
+	length float64,
 	resolution dfcad.Resolution,
 ) []ifc.PropertySet {
 	claim, held := current(resolution)
@@ -513,9 +855,9 @@ func (e *exporter) provenance(
 	}
 
 	properties := []ifc.Property{
-		{Name: propertyPredicate, Value: e.shapes.height},
-		{Name: propertyHeight, Value: figure(height)},
-		{Name: propertyUnit, Value: string(drawn.Unit())},
+		{Name: propertyPredicate, Value: of.predicate},
+		{Name: of.property, Value: figure(length)},
+		{Name: propertyUnit, Value: string(unit)},
 	}
 
 	written := func(name, value string) {
@@ -547,10 +889,10 @@ func (e *exporter) provenance(
 	id := node.ID()
 
 	return []ifc.PropertySet{{
-		GlobalID:    e.identify(dfcad.ID("ifc/properties/height/" + id)),
-		Defines:     e.identify(dfcad.ID("ifc/defines/height/" + id)),
-		Name:        heightProvenance,
-		Description: heightProvenanceDescription,
+		GlobalID:    e.identify(dfcad.ID("ifc/properties/" + of.segment + "/" + string(id))),
+		Defines:     e.identify(dfcad.ID("ifc/defines/" + of.segment + "/" + string(id))),
+		Name:        of.set,
+		Description: of.description,
 		Properties:  properties,
 	}}
 }
