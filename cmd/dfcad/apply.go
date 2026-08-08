@@ -194,7 +194,7 @@ func runApply(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wri
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	applied, err := tx.Apply(batch)
 	if err != nil {
@@ -255,28 +255,28 @@ func batched(
 
 		file, err := os.Open(path)
 		if err != nil {
-			fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 			return dfcad.Batch{}, exitLoad, false
 		}
-		defer file.Close()
+		defer func() { _ = file.Close() }()
 
 		source, name = file, path
 	}
 
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: reading the batch from %s\n", cmd.name, name)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: reading the batch from %s\n", cmd.name, name)
 	}
 
 	batch, err := dfcad.ParseBatch(source)
 	if err != nil {
 		for _, problem := range problems(err) {
-			fmt.Fprintf(stderr, "dfcad %s: %s: %v\n", cmd.name, name, problem)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %s: %v\n", cmd.name, name, problem)
 		}
 		return dfcad.Batch{}, exitLoad, false
 	}
 
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: %s\n", cmd.name, plural(len(batch.Operations), "operation"))
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %s\n", cmd.name, plural(len(batch.Operations), "operation"))
 	}
 
 	return batch, exitSuccess, true
@@ -363,7 +363,7 @@ func reportApplied(cmd command, applied []dfcad.Applied, globals *globals, stder
 	}
 
 	for _, operation := range applied {
-		fmt.Fprintf(stderr, "dfcad %s: %d %s: %s\n",
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %d %s: %s\n",
 			cmd.name,
 			operation.Index,
 			operation.Operation,
@@ -378,7 +378,7 @@ func reportTotals(counts totals, globals *globals, stderr io.Writer) {
 		return
 	}
 
-	fmt.Fprintf(stderr, "%s: %d created, %d modified, %d retired\n",
+	_, _ = fmt.Fprintf(stderr, "%s: %d created, %d modified, %d retired\n",
 		plural(counts.Operations, "operation"),
 		counts.Created,
 		counts.Modified,

@@ -247,7 +247,7 @@ func runTessellate(cmd command, args []string, _ io.Reader, stdout, stderr io.Wr
 	reportTessellateFor(result, drawn, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -390,5 +390,5 @@ func reportTessellateFor(result tessellateResult, drawn dfcad.RegionTessellation
 		return
 	}
 
-	fmt.Fprintf(stderr, "%s\n", drawn)
+	_, _ = fmt.Fprintf(stderr, "%s\n", drawn)
 }

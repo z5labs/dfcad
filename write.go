@@ -395,7 +395,7 @@ func Begin(root string) (*Tx, []Diagnostic, error) {
 
 	diags := tx.read()
 	if refused(diags) {
-		tx.Close()
+		_ = tx.Close()
 		return nil, diags, nil
 	}
 
@@ -424,12 +424,12 @@ func acquire(root string) (string, error) {
 	// the file existing is the lock, and a pid is for whoever has to decide
 	// whether removing it is safe.
 	if _, err := fmt.Fprintf(file, "%d\n", os.Getpid()); err != nil {
-		file.Close()
-		os.Remove(path)
+		_ = file.Close()
+		_ = os.Remove(path)
 		return "", LockError{Path: path, Err: err}
 	}
 	if err := file.Close(); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return "", LockError{Path: path, Err: err}
 	}
 
@@ -926,7 +926,7 @@ func write(files []*pending) error {
 func discard(files []*pending) {
 	for _, file := range files {
 		if file.tmp != "" {
-			os.Remove(file.tmp)
+			_ = os.Remove(file.tmp)
 		}
 	}
 }
@@ -945,7 +945,7 @@ func rollback(files []*pending, failure error) error {
 		switch {
 		case !file.renamed:
 			if file.tmp != "" {
-				os.Remove(file.tmp)
+				_ = os.Remove(file.tmp)
 			}
 
 		case file.existed:

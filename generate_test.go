@@ -269,7 +269,7 @@ var texts = []string{
 	`a back\slash`,
 	"a\ttab and a\nline break",
 	"Grünstraße 12, 一メートル",
-	"\x00\x1f",
+	"\x00\x1f\u0085",
 	"",
 }
 

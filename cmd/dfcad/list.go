@@ -489,7 +489,7 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	reportTypes(result.Types, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -575,7 +575,7 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 	reportInstances(result.Instances, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -705,7 +705,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	reportGeometry(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -887,10 +887,10 @@ func loadGate(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, bo
 // does not declare: the answer there is the name and where to look for the real
 // ones, and a page of flags between the two buries it.
 func usageError(cmd command, err error, stderr io.Writer, withUsage bool) int {
-	fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+	_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 	if withUsage {
-		fmt.Fprint(stderr, "\n")
-		fmt.Fprint(stderr, cmd.usage)
+		_, _ = fmt.Fprint(stderr, "\n")
+		_, _ = fmt.Fprint(stderr, cmd.usage)
 	}
 	return exitUsage
 }
@@ -911,7 +911,7 @@ func reportTypes(types []listedType, globals *globals, stderr io.Writer) {
 		// The detail behind the summary is progress rather than result — the
 		// result is on stdout — so it is behind the verbosity flag.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: kind %s, geometry %s, %s%s\n",
+			_, _ = fmt.Fprintf(stderr, "%s: kind %s, geometry %s, %s%s\n",
 				declared.Name,
 				join(declared.Kinds),
 				join(permitted(declared)),
@@ -921,7 +921,7 @@ func reportTypes(types []listedType, globals *globals, stderr io.Writer) {
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s, %s\n", plural(len(types), "type"), plural(instances, "instance"))
+	_, _ = fmt.Fprintf(stderr, "%s, %s\n", plural(len(types), "type"), plural(instances, "instance"))
 }
 
 // permitted is what a type allows in the geometry position, spelled for a
@@ -966,11 +966,11 @@ func reportInstances(instances []listedInstance, globals *globals, stderr io.Wri
 			if label == "" {
 				label = "(no label)"
 			}
-			fmt.Fprintf(stderr, "%s: %s, %s %s\n", instance.ID, label, instance.Kind, instance.Type)
+			_, _ = fmt.Fprintf(stderr, "%s: %s, %s %s\n", instance.ID, label, instance.Kind, instance.Type)
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s of %s\n", plural(len(instances), "instance"), plural(len(types), "type"))
+	_, _ = fmt.Fprintf(stderr, "%s of %s\n", plural(len(instances), "instance"), plural(len(types), "type"))
 }
 
 // reportGeometry renders a list-geometry result for a person, on stderr.
@@ -990,7 +990,7 @@ func reportGeometry(result listGeometryResult, globals *globals, stderr io.Write
 		// The nodes themselves are already the result, on stdout, so the reading
 		// of them is progress rather than result.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: %s%s in %s\n", node.ID, node.Family, between(node), node.Frame)
+			_, _ = fmt.Fprintf(stderr, "%s: %s%s in %s\n", node.ID, node.Family, between(node), node.Frame)
 		}
 	}
 
@@ -999,7 +999,7 @@ func reportGeometry(result listGeometryResult, globals *globals, stderr io.Write
 		spread = append(spread, pluralOf(counted[family], family, familyPlurals[family]))
 	}
 
-	fmt.Fprintf(stderr, "%s under %s: %s\n",
+	_, _ = fmt.Fprintf(stderr, "%s under %s: %s\n",
 		plural(len(result.Nodes), "geometric node"), result.Predicate, join(spread))
 }
 

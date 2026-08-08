@@ -443,7 +443,7 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	reportResolution(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -613,7 +613,7 @@ func express(
 	// coordinate, so a value which is not one is a value the loader could not
 	// read — which it has already said, on this stream.
 	if result.Value.Shape != string(dfcad.ShapeCoordinate) || len(result.Value.Coordinate) != 3 {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, UntransformableValueError{
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, UntransformableValueError{
 			Predicate:  result.Predicate,
 			Shape:      result.Value.Shape,
 			Components: len(result.Value.Coordinate),
@@ -641,13 +641,13 @@ func express(
 		// transform which cannot be run backwards are all the model failing to
 		// say how the two relate, which is a load failure and never an answer
 		// computed anyway.
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
 	budget, err := graph.Frames().TransformBudget(written, target)
 	if err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -695,8 +695,8 @@ func budgetOf(budget dfcad.Budget) budgetReport {
 	}
 
 	combined, err := budget.Combined()
-	switch {
-	case err == nil:
+	switch err {
+	case nil:
 		report.Combined = &combinedUncertainty{
 			Magnitude:      combined.Magnitude,
 			Unit:           string(combined.Unit),
@@ -754,18 +754,18 @@ func reportResolution(result resolveResult, globals *globals, stderr io.Writer) 
 
 	if globals.Verbosity >= verbosityProgress {
 		for _, candidate := range result.Candidates {
-			fmt.Fprintf(stderr, "%s: %s\n", candidate.Predicate, spellClaim(candidate))
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", candidate.Predicate, spellClaim(candidate))
 		}
 		if result.Budget != nil {
 			for _, term := range result.Budget.Terms {
-				fmt.Fprintf(stderr, "%s %s: %s %s from %s\n",
+				_, _ = fmt.Fprintf(stderr, "%s %s: %s %s from %s\n",
 					term.Kind, term.Name, number(term.Magnitude), term.Unit,
 					plural(len(term.Contributors), "claim"))
 			}
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s %s: %s\n", result.Subject, result.Predicate, spellAnswer(result))
+	_, _ = fmt.Fprintf(stderr, "%s %s: %s\n", result.Subject, result.Predicate, spellAnswer(result))
 }
 
 // spellAnswer is what came of a resolution, for a person: the value where there

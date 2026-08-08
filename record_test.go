@@ -301,7 +301,7 @@ func TestTxAddClaimReportsWhatItLeftBehind(t *testing.T) {
 		t.Run(testCase.name, func(t *testing.T) {
 			spec := testCase.spec(aClaim())
 			tx := begin(t, recordFixture(t))
-			defer tx.Close()
+			defer func() { _ = tx.Close() }()
 
 			_, notices, err := tx.AddClaim(spec)
 			require.NoError(t, err)
@@ -840,7 +840,7 @@ func TestClaimsWrittenByTheSameTransactionCount(t *testing.T) {
 
 	t.Run("mints past an id the same change already wrote a claim under", func(t *testing.T) {
 		tx := begin(t, recordFixture(t))
-		defer tx.Close()
+		defer func() { _ = tx.Close() }()
 
 		spec := aClaim()
 		spec.ID, spec.Subject = "site:S-102:area:1", "site:S-101"
@@ -859,7 +859,7 @@ func TestClaimsWrittenByTheSameTransactionCount(t *testing.T) {
 // never lands on something the model already holds.
 func TestMintClaimIDIsStableAndFree(t *testing.T) {
 	tx := begin(t, recordFixture(t))
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	minted, err := tx.MintClaimID("site:S-102", "area")
 	require.NoError(t, err)

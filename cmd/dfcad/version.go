@@ -169,7 +169,7 @@ func runVersion(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	reportVersion(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -197,7 +197,7 @@ func reportVersion(result versionResult, globals *globals, stderr io.Writer) {
 		build += " — unstamped, built outside the standard pipeline"
 	}
 
-	fmt.Fprintln(stderr, build)
-	fmt.Fprintf(stderr, "output contract %d, entity format %s\n",
+	_, _ = fmt.Fprintln(stderr, build)
+	_, _ = fmt.Fprintf(stderr, "output contract %d, entity format %s\n",
 		result.Contracts.Output, result.Contracts.EntityFormat)
 }

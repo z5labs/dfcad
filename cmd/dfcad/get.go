@@ -559,7 +559,7 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 	reportEntity(result.Entity, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -904,19 +904,19 @@ func reportEntity(entity getEntity, globals *globals, stderr io.Writer) {
 		// The claims themselves are already the result, on stdout, so the
 		// reading of them is progress rather than result.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: %s\n", claim.Predicate, spellClaim(claim))
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", claim.Predicate, spellClaim(claim))
 		}
 	}
 
 	for _, assertion := range entity.Assertions {
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "assert: %s\n", strings.TrimSpace(assertion.Check+" "+strings.Join(assertion.Parameters, " ")))
+			_, _ = fmt.Fprintf(stderr, "assert: %s\n", strings.TrimSpace(assertion.Check+" "+strings.Join(assertion.Parameters, " ")))
 		}
 	}
 
 	for _, path := range entity.Observations {
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "observed-in: %s\n", path)
+			_, _ = fmt.Fprintf(stderr, "observed-in: %s\n", path)
 		}
 	}
 
@@ -933,7 +933,7 @@ func reportEntity(entity getEntity, globals *globals, stderr io.Writer) {
 		counts = append(counts, plural(len(*entity.Records), "record"))
 	}
 
-	fmt.Fprintf(stderr, "%s %s at %s: %s\n",
+	_, _ = fmt.Fprintf(stderr, "%s %s at %s: %s\n",
 		entity.Family, entity.ID, entity.Span.Start, strings.Join(counts, ", "))
 }
 

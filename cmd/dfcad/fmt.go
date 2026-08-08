@@ -117,7 +117,7 @@ func runFmt(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 
 	if globals.Verbosity >= verbosityProgress {
 		for _, path := range paths {
-			fmt.Fprintf(stderr, "dfcad fmt: searching %s\n", path)
+			_, _ = fmt.Fprintf(stderr, "dfcad fmt: searching %s\n", path)
 		}
 	}
 
@@ -127,7 +127,7 @@ func runFmt(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 	report(formatted, globals, stderr)
 
 	if err := emit(stdout, result(formatted)); err != nil {
-		fmt.Fprintf(stderr, "dfcad fmt: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "dfcad fmt: %v\n", err)
 		return exitLoad
 	}
 
@@ -154,14 +154,14 @@ func report(formatted []dfcad.Formatted, globals *globals, stderr io.Writer) {
 		}
 
 		if file.Err != nil {
-			fmt.Fprintf(stderr, "dfcad fmt: %v\n", file.Err)
+			_, _ = fmt.Fprintf(stderr, "dfcad fmt: %v\n", file.Err)
 		}
 
 		if file.Changed && !file.Written {
-			fmt.Fprintf(stderr, "%s: not in canonical form\n", file.Path)
+			_, _ = fmt.Fprintf(stderr, "%s: not in canonical form\n", file.Path)
 		}
 		if file.Diff != "" {
-			fmt.Fprint(stderr, file.Diff)
+			_, _ = fmt.Fprint(stderr, file.Diff)
 		}
 	}
 
@@ -177,14 +177,14 @@ func report(formatted []dfcad.Formatted, globals *globals, stderr io.Writer) {
 		// wrong with, is detail rather than result — the lines above already
 		// name each file that failed or is not canonical.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: %s\n", file.Path, status(file))
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", file.Path, status(file))
 		}
 	}
 
 	// The statuses are listed rather than ranged over so that the summary
 	// reads the same way every time, whichever of them a run happened to
 	// produce.
-	fmt.Fprintf(stderr, "%s: %d unchanged, %d formatted, %d unformatted, %d failed\n",
+	_, _ = fmt.Fprintf(stderr, "%s: %d unchanged, %d formatted, %d unformatted, %d failed\n",
 		plural(len(formatted), "file"),
 		counts[statusUnchanged],
 		counts[statusFormatted],

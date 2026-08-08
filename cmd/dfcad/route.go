@@ -163,7 +163,7 @@ func runRoute(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	reportDestination(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -234,6 +234,6 @@ func reportDestination(result routeResult, globals *globals, stderr io.Writer) {
 		held = "an existing file"
 	}
 
-	fmt.Fprintf(stderr, "%s -> %s (%s, %s)\n",
+	_, _ = fmt.Fprintf(stderr, "%s -> %s (%s, %s)\n",
 		result.Subject.ID, result.Destination.Path, because, held)
 }

@@ -220,9 +220,7 @@ func OpenRepository(dir string) (*Repository, error) {
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	for _, line := range strings.Fields(string(boundaries)) {
-		repository.shallow = append(repository.shallow, line)
-	}
+	repository.shallow = append(repository.shallow, strings.Fields(string(boundaries))...)
 
 	return repository, nil
 }

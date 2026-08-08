@@ -743,11 +743,7 @@ func reviewDisappearances(base, head *Graph) []Finding {
 func disappearedFinding(head *Graph, id ID, span Span, what string) Finding {
 	var dangling []Dangling
 	for reference := range head.References(id) {
-		dangling = append(dangling, Dangling{
-			From:     reference.From,
-			Relation: reference.Relation,
-			Span:     reference.Span,
-		})
+		dangling = append(dangling, Dangling(reference))
 	}
 
 	message := fmt.Sprintf("%s is gone from this revision: %s was removed rather than retired", id, what)
