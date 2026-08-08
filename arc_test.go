@@ -10,6 +10,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1161,4 +1162,309 @@ func TestADrawnBoundaryIsAttributedAtEveryResolution(t *testing.T) {
 	assert.Greater(t, counts[chordTolerance], counts[coarseChordTolerance],
 		"a finer tolerance draws the same arc in more chords")
 	assert.Positive(t, counts[coarseChordTolerance])
+}
+
+// TestGraphBounding is its own function because the id is the whole of the
+// dispatch: which edges a shape is read across depends on which family holds it,
+// and there is no argument saying which.
+func TestGraphBounding(t *testing.T) {
+	graph, diags := LoadGraph(filepath.Join("testdata", "measure", "arcs"))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	node, ok := graph.Node("site:S-01")
+	require.True(t, ok)
+
+	loop, ok := graph.Topology().Loop("geom:L-01")
+	require.True(t, ok)
+
+	edge, ok := graph.Topology().Edge("geom:E-02")
+	require.True(t, ok)
+
+	vertex, ok := graph.Topology().Vertex("geom:V-01")
+	require.True(t, ok)
+
+	testCases := []struct {
+		name     string
+		entity   Entity
+		expected []ID
+	}{
+		{
+			name:     "reads a node across the edges of the loops bounding it",
+			entity:   node,
+			expected: []ID{"geom:E-01", "geom:E-02", "geom:E-03", "geom:E-04"},
+		},
+		{
+			name:     "reads a loop across the edges it names, in the order it names them",
+			entity:   loop,
+			expected: []ID{"geom:E-01", "geom:E-02", "geom:E-03", "geom:E-04"},
+		},
+		{
+			name:     "reads an edge across itself",
+			entity:   edge,
+			expected: []ID{"geom:E-02"},
+		},
+		{
+			name:     "reads a corner across nothing, because a corner has no side to bend",
+			entity:   vertex,
+			expected: nil,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var reached []ID
+			for edge := range graph.Bounding(testCase.entity) {
+				reached = append(reached, edge.ID())
+			}
+
+			assert.Equal(t, testCase.expected, reached)
+		})
+	}
+}
+
+// unreadArcSurvey is a survey which places every corner of the arc fixture and
+// bends nothing, which is what a caller who never named the arc vocabulary has.
+func unreadArcSurvey(t *testing.T, graph *Graph) Survey {
+	t.Helper()
+
+	survey := Survey{Tolerance: closureTolerance, Registry: graph.Registry()}
+	for vertex := range graph.Topology().Vertices() {
+		resolution, err := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+		require.NoError(t, err)
+
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	return survey
+}
+
+func TestUnreadArcs(t *testing.T) {
+	graph, diags := LoadGraph(filepath.Join("testdata", "measure", "arcs"))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	node, ok := graph.Node("site:S-01")
+	require.True(t, ok)
+
+	t.Run("reports the edge which claims a position and was read straight", func(t *testing.T) {
+		arcs, warnings := graph.UnreadArcs(unreadArcSurvey(t, graph), node)
+
+		require.Len(t, arcs, 1, "one of the four walls of the bay room bends")
+		assert.Equal(t, ID("geom:E-02"), arcs[0].Edge().ID())
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, arcs[0].Predicates(),
+			"both predicates it states a position under, in name order")
+		assert.NotEqual(t, Span{}, arcs[0].Span(), "a finding which cannot say where is a bug in the reporting")
+
+		require.Len(t, warnings, 1, "one warning per edge, not one per claim")
+		assert.Equal(t, SeverityWarning, warnings[0].Severity,
+			"reading a curve as a chord is a decision worth reporting and not a refusal")
+	})
+
+	t.Run("reports nothing where the survey bent every edge which bends", func(t *testing.T) {
+		model := loadMeasuredModel(t, "arcs")
+
+		arcs, warnings := graph.UnreadArcs(model.survey, node)
+
+		assert.Empty(t, arcs, "naming the vocabulary is the fix, so a run which named it has nothing to be told")
+		assert.Empty(t, warnings)
+	})
+
+	t.Run("reports nothing for a shape nobody has claimed a curve in", func(t *testing.T) {
+		straight, diags := LoadGraph(filepath.Join("testdata", "measure", "courtyard"))
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		square, ok := straight.Node("site:S-01")
+		require.True(t, ok)
+
+		arcs, warnings := straight.UnreadArcs(unreadArcSurvey(t, straight), square)
+
+		assert.Empty(t, arcs)
+		assert.Empty(t, warnings)
+	})
+
+	t.Run("reads an edge across itself, so a measurement of one says the same thing", func(t *testing.T) {
+		edge, ok := graph.Topology().Edge("geom:E-02")
+		require.True(t, ok)
+
+		arcs, _ := graph.UnreadArcs(unreadArcSurvey(t, graph), edge)
+
+		require.Len(t, arcs, 1)
+		assert.Equal(t, ID("geom:E-02"), arcs[0].Edge().ID())
+	})
+}
+
+// TestUnreadArcsAreOrderedAndHeldOnce is its own function because what it
+// asserts is a property of the list rather than of any entry in it: two runs
+// over one model have to produce the same list, and a subject reached twice has
+// to contribute its edges once.
+func TestUnreadArcsAreOrderedAndHeldOnce(t *testing.T) {
+	graph, diags := LoadGraph(filepath.Join("testdata", "measure", "arcs"))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	survey := unreadArcSurvey(t, graph)
+
+	var subjects []Entity
+	for node := range graph.OfKind(KindSpace) {
+		subjects = append(subjects, node)
+	}
+	require.NotEmpty(t, subjects)
+
+	arcs, warnings := graph.UnreadArcs(survey, subjects...)
+	require.NotEmpty(t, arcs)
+	require.Len(t, warnings, len(arcs), "one warning per edge reported")
+
+	seen := make(map[ID]bool, len(arcs))
+	ordered := make([]string, 0, len(arcs))
+	for _, arc := range arcs {
+		assert.False(t, seen[arc.Edge().ID()], "an edge two subjects share is reported once")
+		seen[arc.Edge().ID()] = true
+
+		ordered = append(ordered, string(arc.Edge().ID()))
+	}
+
+	assert.IsIncreasing(t, ordered, "the order is by edge id, so two runs diff to nothing")
+
+	// The same subjects the other way round, which reaches the same edges by a
+	// different route.
+	slices.Reverse(subjects)
+	again, _ := graph.UnreadArcs(survey, subjects...)
+
+	assert.Equal(t, arcs, again, "the order is the list's own and not the order the subjects were named in")
+}
+
+// drawnSurvey is a fixture's survey with a chord tolerance named, which is what
+// a caller who has decided to let a curve become segments has.
+func drawnSurvey(model measuredModel, chord string) Survey {
+	survey := model.survey
+	survey.Chord = chord
+
+	return survey
+}
+
+func TestARegionIsDrawnWhereTheSurveyNamesAChord(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	node, ok := model.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	region, diags := model.topology.RegionOf(node, model.boundaries, drawnSurvey(model, chordTolerance))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags),
+		"a boundary which bends is read rather than refused once there is a tolerance to draw it to")
+
+	drawn, made := region.ChordTolerance()
+	require.True(t, made, "the answer says what it was drawn to")
+	assert.Equal(t, chordTolerance, drawn.Name)
+
+	assert.Positive(t, region.Deviation(), "a curve drawn as segments falls short of it somewhere")
+	assert.LessOrEqual(t, region.Deviation(), drawn.Value, "and never by more than it was allowed to")
+
+	// Four by four with a semicircular bay of radius two on one side. The drawn
+	// figure is inside the curve everywhere, so it encloses a little less than
+	// the arc does and never more.
+	exact := 16 + semicircle
+	assert.Less(t, region.Area(), exact, "the chords of a bulge lie inside it")
+	assert.InDelta(t, exact, region.Area(), 0.05, "and not far inside it, at a centimetre of chord")
+}
+
+// TestARegionWithNoCurveIsUnchangedByNamingAChord is its own function because
+// what it asserts is an equality between two answers rather than either answer's
+// value, and it is exact rather than within a tolerance.
+//
+// Naming a chord must not be a thing a caller has to avoid on a straight model.
+// Nothing is drawn for one, nothing reads the name, and the region which comes
+// back is the same value down to its unexported fields — which is what stops
+// every equality downstream failing for a reason nobody could see.
+func TestARegionWithNoCurveIsUnchangedByNamingAChord(t *testing.T) {
+	model := loadMeasuredModel(t, "courtyard")
+
+	node, ok := model.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	read, diags := model.topology.RegionOf(node, model.boundaries, model.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	named, diags := model.topology.RegionOf(node, model.boundaries, drawnSurvey(model, chordTolerance))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	assert.Equal(t, read, named, "a region with no curve in it is read the same whether or not a chord is named")
+
+	_, made := named.ChordTolerance()
+	assert.False(t, made, "nothing was approximated, so there is nothing to declare")
+	assert.Equal(t, 0.0, named.Deviation())
+}
+
+func TestMeasuringNestsCurvedRingsAtTheSegmentsTheChordNames(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	node, ok := model.nodes.Node("site:S-31")
+	require.True(t, ok)
+
+	t.Run("refuses to nest them where no chord is named", func(t *testing.T) {
+		measurement, diags := model.topology.MeasureRegion(node, model.boundaries, model.survey)
+		require.NotEmpty(t, diags)
+
+		_, computed := measurement.Area()
+		assert.False(t, computed, "no area, rather than one nested at whichever side of a bulge a corner fell")
+
+		_, made := measurement.ChordTolerance()
+		assert.False(t, made)
+	})
+
+	t.Run("nests them and measures the arcs exactly where one is", func(t *testing.T) {
+		measurement, diags := model.topology.MeasureRegion(
+			node, model.boundaries, drawnSurvey(model, chordTolerance))
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		area, computed := measurement.Area()
+		require.True(t, computed)
+
+		// A ten metre plate with a round courtyard of radius two taken out of
+		// the middle of it. The drawing decided which ring was the hole and
+		// nothing else: the figure is the closed form, not the polygon's.
+		assert.InDelta(t, 100-2*semicircle, area, 1e-9,
+			"the chord decided the nesting and the arc decided the area")
+
+		drawn, made := measurement.ChordTolerance()
+		require.True(t, made, "an answer which had to draw says what it drew to")
+		assert.Equal(t, chordTolerance, drawn.Name)
+
+		assert.Positive(t, measurement.Deviation())
+		assert.LessOrEqual(t, measurement.Deviation(), drawn.Value)
+	})
+
+	t.Run("reports the same area however closely the rings were drawn", func(t *testing.T) {
+		fine, diags := model.topology.MeasureRegion(
+			node, model.boundaries, drawnSurvey(model, chordTolerance))
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		coarse, diags := model.topology.MeasureRegion(
+			node, model.boundaries, drawnSurvey(model, coarseChordTolerance))
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		exact, _ := fine.Area()
+		rough, _ := coarse.Area()
+
+		assert.Equal(t, exact, rough,
+			"the resolution of a drawing never leaks into a figure somebody reports")
+		assert.Greater(t, coarse.Deviation(), fine.Deviation(),
+			"what the tolerance does move is how far the nesting's segments fell from the curve")
+	})
+}
+
+// TestAStraightRegionMeasuresTheSameWhetherOrNotAChordIsNamed is its own
+// function for the reason [TestARegionWithNoCurveIsUnchangedByNamingAChord] is:
+// what it asserts is an equality between two answers, exactly, and a model of
+// straight walls must be unable to tell that the flag exists.
+func TestAStraightRegionMeasuresTheSameWhetherOrNotAChordIsNamed(t *testing.T) {
+	model := loadMeasuredModel(t, "courtyard")
+
+	node, ok := model.nodes.Node("site:S-01")
+	require.True(t, ok)
+
+	read, diags := model.topology.MeasureRegion(node, model.boundaries, model.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	named, diags := model.topology.MeasureRegion(node, model.boundaries, drawnSurvey(model, chordTolerance))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	assert.Equal(t, read, named)
 }

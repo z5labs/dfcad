@@ -135,6 +135,12 @@ type shapes struct {
 	thickness string
 }
 
+// curvature is the vocabulary a curved edge is read under, which every survey
+// this exporter builds is asked in.
+func (s shapes) curvature() arcs {
+	return arcs{centre: s.arcCentre, through: s.arcThrough, chord: s.chord}
+}
+
 // drawing reports whether the run asked for geometry at all.
 //
 // Every flag which is only of use to a drawing counts, and not just the three
@@ -268,7 +274,7 @@ func (e *exporter) shaped(
 	drawn, diags := e.graph.Topology().TessellateRegion(
 		node,
 		e.graph.Boundaries(),
-		bent(e.graph, node, e.shapes.position, e.shapes.tolerance, e.shapes.arcCentre, e.shapes.arcThrough),
+		bent(e.graph, e.shapes.position, e.shapes.tolerance, e.shapes.curvature(), node),
 		e.shapes.chord,
 	)
 	e.diags = append(e.diags, diags...)
@@ -503,7 +509,7 @@ func (e *exporter) thickened(
 // reaches the file as the curve it is rather than as the chord between its
 // ends.
 func (e *exporter) runs(node *dfcad.SemanticNode) ([][]dfcad.Point, dfcad.Unit, bool) {
-	survey := bent(e.graph, node, e.shapes.position, e.shapes.tolerance, e.shapes.arcCentre, e.shapes.arcThrough)
+	survey := bent(e.graph, e.shapes.position, e.shapes.tolerance, e.shapes.curvature(), node)
 
 	var out [][]dfcad.Point
 	var unit dfcad.Unit

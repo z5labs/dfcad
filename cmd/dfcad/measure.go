@@ -46,16 +46,47 @@ nothing, and that is an answer rather than a failure.
 
 Flags:
 
-	--position <predicate>   the predicate a corner's position is claimed
-	                         under, which every figure is read from (required)
-	--tolerance <name>       the tolerance corners are judged coincident
-	                         against and rings judged planar against
-	                         (required)
+	--position <predicate>     the predicate a corner's position is claimed
+	                           under, which every figure is read from
+	                           (required)
+	--tolerance <name>         the tolerance corners are judged coincident
+	                           against and rings judged planar against
+	                           (required)
+	--arc-centre <predicate>   the predicate a curved edge's centre is claimed
+	                           under
+	--arc-through <predicate>  the predicate the point a curved edge passes
+	                           through is claimed under
+	--chord <name>             the tolerance a curve may be drawn to where the
+	                           rings of a region have to be nested at the
+	                           segments
 
-Neither has a default and neither ever will. Which predicate carries a
-position, and how close two corners have to be to be one corner, are things the
-project wrote down, and a value compiled in here would be the engine deciding
-one of them on a project's behalf.
+Neither of the first two has a default and neither ever will. Which predicate
+carries a position, and how close two corners have to be to be one corner, are
+things the project wrote down, and a value compiled in here would be the engine
+deciding one of them on a project's behalf.
+
+The last three are the vocabulary a curve is read under. The two predicates go
+together: a centre without a point on the curve leaves two arcs between the same
+two ends and does not say which was meant, so naming one and not the other is a
+usage error.
+
+A run which names them measures the arc and not the chord. Every figure comes
+from the parameterisation — the area under a bay window, the length along it,
+where it puts the centroid, how far it reaches — so nothing here is drawn and
+--chord is not needed to read a curve at all. It is needed for one thing: a
+region bounded by several rings, one of which bends, is nested by asking which
+ring holds which, and that question is answered at the segments because a bulge
+which reaches past a corner is a whole ring counted the wrong way. Such a region
+is refused until a chord tolerance names what it may be drawn to, and the answer
+then carries that tolerance and the deviation the drawing achieved.
+
+A run which names none of them reads every edge as the straight line between its
+two ends, which is what almost every edge is. Where that discarded something the
+model states, the answer says so: "chorded" lists every edge which claims a
+position — which is how and only how a curve is written, because an edge has no
+position of its own — and a warning on stderr names each of them. An area
+reported over a chorded boundary can be out by a third, and the one thing worse
+than refusing it is reporting it silently.
 
 Each figure is reported only where it could be computed, and never as a
 plausible-looking number instead. A ring which does not close, corners which do
@@ -78,7 +109,10 @@ The object measure writes carries "subject" and the "family" which holds it,
 "frame" and "unit" it was computed in, the "tolerance" it was judged against,
 whichever of "area", "length", "centroid" and "bounds" could be computed, each
 with its own unit, and the "budget": the accuracy of the corners broken out by
-term.
+term. Where rings had to be drawn to nest them it also carries the "chord"
+tolerance they were drawn to and the "deviation" that drawing achieved, and
+where a curve went unread it carries "chorded": the edges which state one, each
+with the predicates it states it under.
 
 Exit code 1 is a measurement which could not be made — a ring which does not
 close, a corner nothing states the position of, a shape which crosses itself.
@@ -147,6 +181,26 @@ type measureResult struct {
 	// still reaches as far as it reaches.
 	Bounds *measuredBox `json:"bounds,omitempty"`
 
+	// Chord is the tolerance the rings were drawn to and Deviation how far the
+	// worst segment of that drawing fell from the curve it stood in for.
+	//
+	// Both are absent for almost every measurement, which is the point of them.
+	// Every figure above is computed from the arc itself, so the only thing a
+	// drawing is ever needed for is deciding which of several rings holds which;
+	// a measurement which carries neither was approximated nowhere.
+	Chord     *toleranceEntry `json:"chord,omitempty"`
+	Deviation *measuredValue  `json:"deviation,omitempty"`
+
+	// Chorded is the edges of what was measured which state a curve this run
+	// did not read, each with the predicates it states it under. Absent for a
+	// run which read every curve and for a model which claims none.
+	//
+	// It is in the answer rather than only on stderr because the figures above
+	// are about the straight lines between those edges' ends rather than about
+	// the walls, and a consumer comparing a computed area against a stated one
+	// has to be able to see that from the object it is comparing.
+	Chorded []chordedEntry `json:"chorded,omitempty"`
+
 	// Budget is the accuracy of the corners every figure was computed from,
 	// broken out by term.
 	//
@@ -207,6 +261,9 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 
 	position := flags.String(flagPosition, "", "")
 	tolerance := flags.String(flagTolerance, "", "")
+	centre := flags.String(flagArcCentre, "", "")
+	through := flags.String(flagArcThrough, "", "")
+	chord := flags.String(flagChord, "", "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -227,6 +284,10 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 		return usageError(cmd, err, stderr, true)
 	}
 
+	if err := arcVocabularyOf(*centre, *through); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
 	subject, err := dfcad.ParseID(arguments[0])
 	if err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -244,14 +305,22 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 		return usageError(cmd, UnknownIDError{ID: string(subject), Nearest: string(nearest)}, stderr, false)
 	}
 
-	measurement, diags := graph.Measure(entity, placed(graph, entity, *position, *tolerance))
+	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through, chord: *chord}, entity)
+
+	measurement, diags := graph.Measure(entity, survey)
+
+	// What the survey could not bend, reported before the answer is written: a
+	// figure computed over a chord is still the answer, and saying which of its
+	// edges is a chord is what makes it one somebody can act on.
+	chorded, unread := chordedOf(graph, survey, entity)
+	diags = append(diags, unread...)
 
 	// The diagnostics are for whoever wrote the model, so they go to stderr on
 	// every run and in every format, and whether any of them is an error is what
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportMeasure(cmd, graph, subject, entity, measurement, *tolerance, !refused)
+	result := reportMeasure(cmd, graph, subject, entity, measurement, chorded, *tolerance, !refused)
 
 	reportMeasureFor(result, measurement, globals, stderr)
 
@@ -267,32 +336,6 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	return exitSuccess
 }
 
-// placed is where every corner the subject is measured from is, read under the
-// predicate the run named and judged against the tolerance it named.
-//
-// Which corners those are is [dfcad.Graph.Corners] rather than a walk of this
-// command's own, for the reason the measurement itself is the library's: a
-// survey built from a guess at which corners matter is a measurement which
-// silently rests on fewer claims than the answer does.
-//
-// A corner whose position does not resolve is not placed and is not refused
-// here. Whether it was needed is the measurement's question, and it answers it
-// with a diagnostic naming the corner and the shape it belonged to — which is
-// more than this could say.
-func placed(graph *dfcad.Graph, entity dfcad.Entity, position, tolerance string) dfcad.Survey {
-	survey := dfcad.Survey{Tolerance: tolerance, Registry: graph.Registry()}
-
-	for vertex := range graph.Corners(entity) {
-		resolution, err := graph.Claims().Resolve(vertex.ID(), position, graph.Registry())
-		if err != nil {
-			continue
-		}
-		survey.Place(vertex.ID(), resolution)
-	}
-
-	return survey
-}
-
 // reportMeasure is the measurement as the machine contract writes it.
 //
 // The subject is the id the run was asked about rather than the one the answer
@@ -305,6 +348,7 @@ func reportMeasure(
 	subject dfcad.ID,
 	entity dfcad.Entity,
 	measurement dfcad.Measurement,
+	chorded []chordedEntry,
 	tolerance string,
 	ok bool,
 ) measureResult {
@@ -313,6 +357,7 @@ func reportMeasure(
 		Subject:  string(subject),
 		Family:   familyOf(entity),
 		Derived:  ok,
+		Chorded:  chorded,
 	}
 
 	if digest, known := graph.Digest(); known {
@@ -348,6 +393,18 @@ func reportMeasure(
 
 	if bounds, computed := measurement.Bounds(); computed {
 		result.Bounds = &measuredBox{Min: bounds.Min[:], Max: bounds.Max[:], Unit: string(bounds.Unit)}
+	}
+
+	// Both are properties of a drawing, and almost no measurement is one: the
+	// figures above come from the arc itself, and the only thing which is ever
+	// drawn is the nesting of several rings. Writing them anyway would put a
+	// tolerance with no name and a deviation from nothing into every answer,
+	// which reads as an approximation where there was none.
+	if drawn, made := measurement.ChordTolerance(); made {
+		chord := declared(drawn)
+		result.Chord = &chord
+
+		result.Deviation = &measuredValue{Value: measurement.Deviation(), Unit: unit}
 	}
 
 	// A budget with nothing in it is left out rather than written empty. An

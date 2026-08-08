@@ -480,7 +480,7 @@ func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, bool) 
 	drawn, diags := c.graph.Topology().TessellateRegion(
 		node,
 		c.graph.Boundaries(),
-		bent(c.graph, node, c.shapes.position, c.shapes.tolerance, c.shapes.arcCentre, c.shapes.arcThrough),
+		bent(c.graph, c.shapes.position, c.shapes.tolerance, c.shapes.curvature(), node),
 		c.shapes.chord,
 	)
 	c.diags = append(c.diags, diags...)

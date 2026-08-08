@@ -38,9 +38,9 @@ type Evidence map[ID]*Claim
 // claims which put them there, the tolerance corners are judged coincident
 // against, and the registry the frames and their units are read from.
 //
-// The four travel together because every measurement needs all four, and
-// because an answer computed against some of them could not say what it was
-// computed against. A size is not a fact about a shape alone: it is a fact about
+// They travel together because every measurement needs them, and because an
+// answer computed against some of them could not say what it was computed
+// against. A size is not a fact about a shape alone: it is a fact about
 // a shape, read in a frame whose unit the registry declares, from positions
 // which are claims, judged against a tolerance a project wrote down
 // ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
@@ -61,6 +61,26 @@ type Survey struct {
 	// Tolerance is the name — never a number — of the tolerance corners are
 	// judged coincident and rings judged planar against.
 	Tolerance string
+
+	// Chord is the name — never a number — of the tolerance a curve is drawn
+	// to where an answer cannot be reached without straight segments: an
+	// overlay, a setback, a fit, and the nesting of several rings one of which
+	// bends.
+	//
+	// Empty is a survey which refuses such a question rather than answering it
+	// at a resolution nobody named, which is what every caller which named no
+	// chord gets and what the engine did before there was a name to give. It is
+	// never a fallback and never a default
+	// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)): how closely
+	// a curve has to be followed is a decision a project makes, and a figure
+	// computed to a resolution the engine picked would be an approximation
+	// nobody could judge.
+	//
+	// Nothing which can be computed from the arc itself reads it. An area, a
+	// length, a centroid and a bounding box are computed from the
+	// parameterisation, so naming a chord does not move them and not naming one
+	// does not stop them.
+	Chord string
 
 	// Registry is the vocabulary the frames, their units and the tolerance are
 	// read from.
@@ -188,6 +208,17 @@ type Measurement struct {
 	bounds    Box
 	hasBounds bool
 
+	// chord is the declared chord tolerance the rings were drawn to on the way
+	// to the answer, and deviation how far the worst of those segments fell
+	// from the curve it stood in for.
+	//
+	// Both are zero for a measurement no curve was drawn for, which is every
+	// measurement of a straight shape and every measurement of a single curved
+	// ring: the figures come from the arc itself, and nothing was approximated
+	// to reach them.
+	chord     Tolerance
+	deviation float64
+
 	// budget is the accumulated accuracy of the position claims every figure
 	// above was computed from.
 	budget Budget
@@ -239,6 +270,35 @@ func (m Measurement) Centroid() (Point, bool) { return m.centroid, m.hasCentroid
 // It needs only the corners, so it survives shapes which have no area: a ring
 // with a gap in it still reaches as far as it reaches.
 func (m Measurement) Bounds() (Box, bool) { return m.bounds, m.hasBounds }
+
+// ChordTolerance returns the declared tolerance the rings were drawn to on the
+// way to the answer, and whether anything was drawn at all.
+//
+// Almost nothing is. Every figure a measurement reports is computed from the arc
+// itself, so the only thing a drawing is ever needed for is deciding which of
+// several rings holds which — the even-odd nesting, which is taken at the
+// corners and cannot be taken at the corners of a ring which bulges past one
+// ([measurer.depths]). A measurement of a straight shape and a measurement of a
+// single curved ring both come back with nothing drawn.
+//
+// Where something was drawn, this and [Measurement.Deviation] are what say so.
+// An answer which silently chose a resolution for somebody's boundary is the
+// approximation an arc kept as an arc exists to prevent, and the figures are no
+// use to a caller who cannot tell one from the other.
+func (m Measurement) ChordTolerance() (Tolerance, bool) { return m.chord, m.chord.Name != "" }
+
+// Deviation returns how far the worst segment of that drawing falls from the
+// curve it stands in for, in the frame's linear unit.
+//
+// It is what was achieved rather than what was asked for, and it is always
+// within [Measurement.ChordTolerance]: a curve is divided into a whole number of
+// segments, so an arc which needs two and a bit gets three and follows the curve
+// more closely than it had to.
+//
+// It bounds the nesting and not the figures. The area of a curved ring is the
+// area of the arc, exact whatever this says; what the drawing decided is which
+// rings were taken away from which.
+func (m Measurement) Deviation() float64 { return m.deviation }
 
 // Budget returns the accumulated accuracy of the position claims the figures
 // were computed from.
@@ -533,6 +593,38 @@ func (g *Graph) Corners(entity Entity) iter.Seq[*Vertex] {
 	return sequence[*Vertex](nil)
 }
 
+// Bounding iterates the edges a measurement of entity is computed across, each
+// yielded once and in the order the thing reaches them.
+//
+// It is [Graph.Corners] for the other family, and it exists for the same reason:
+// an edge is where a curve is written, so a caller resolving the arcs of a shape
+// has to reach exactly the edges the answer will be read across. One built by
+// hand from a guess is a shape read partly as arcs and partly as the straight
+// lines between their ends, and nothing in the answer would say which was which.
+//
+// A semantic node reaches them through its loops, which is [Boundaries.Edges]; a
+// loop reaches them through the ids it names, in the order it names them; an
+// edge is itself; a vertex reaches none, because a corner has no side to bend.
+// An entity of no family reaches none.
+func (g *Graph) Bounding(entity Entity) iter.Seq[*Edge] {
+	if g == nil {
+		return sequence[*Edge](nil)
+	}
+
+	switch subject := entity.(type) {
+	case *SemanticNode:
+		return g.Boundaries().Edges(subject)
+	case *Loop:
+		return sequence(g.Topology().edgesOf(subject.Edges()))
+	case *Edge:
+		return sequence([]*Edge{subject})
+	case *Vertex:
+		return sequence[*Edge](nil)
+	}
+
+	return sequence[*Edge](nil)
+}
+
 // cornersOf is the vertices reached through a list of edges and then through a
 // list of vertices named directly, each held once and in the order they were
 // reached.
@@ -578,6 +670,35 @@ func (t *Topology) cornersOf(edges []ID, vertices ...ID) []*Vertex {
 
 	for _, id := range vertices {
 		held(id)
+	}
+
+	return out
+}
+
+// edgesOf is the edges a list of ids names, each held once and in the order they
+// were named.
+//
+// An id which names nothing this model holds is passed over rather than
+// reported, for the reason [Topology.cornersOf] passes one over: a loop naming
+// an edge which is not there is a load error already reported against the form
+// which wrote it.
+func (t *Topology) edgesOf(ids []ID) []*Edge {
+	out := make([]*Edge, 0, len(ids))
+
+	reached := make(map[ID]struct{}, len(ids))
+
+	for _, id := range ids {
+		if _, seen := reached[id]; seen {
+			continue
+		}
+
+		edge, ok := t.Edge(id)
+		if !ok {
+			continue
+		}
+
+		reached[id] = struct{}{}
+		out = append(out, edge)
 	}
 
 	return out
@@ -1357,7 +1478,8 @@ func (m *measurer) combine(region *SemanticNode, rings []*outline) {
 		return
 	}
 
-	if !m.straight(region, rings) {
+	depths, nested := m.depths(region, rings)
+	if !nested {
 		return
 	}
 
@@ -1370,7 +1492,7 @@ func (m *measurer) combine(region *SemanticNode, rings []*outline) {
 		}
 
 		sign := 1.0
-		if m.nesting(rings, i)%2 == 1 {
+		if depths[i]%2 == 1 {
 			sign = -1
 		}
 
@@ -1399,41 +1521,116 @@ func (m *measurer) combine(region *SemanticNode, rings []*outline) {
 	m.result.centroid, m.result.hasCentroid = pointScale(weighted, 1/area), true
 }
 
-// straight reports whether every ring of a region is one nesting can be judged
-// between, which is one made of straight edges, naming the first which bends.
+// depths counts, for each ring of a region, how many of the others hold it,
+// which is what the even-odd rule takes a ring's area away by.
 //
-// Nesting decides whether a ring is a hole by casting a ray from one ring at
-// another, and that ray is cast at the chords. A courtyard whose wall bows out
-// past a corner of the plate around it is inside the plate and outside its
-// chords, so the answer would flip on which side of a bulge a corner happened to
-// fall — an area which is wrong by a whole ring rather than by a sag.
+// Where nothing bends the count is taken at the corners, which is
+// [measurer.nesting] and is the count this package has always nested by. A
+// region of straight rings is measured identically whether or not the survey
+// names a chord, down to the last figure: nothing is drawn for it and nothing
+// reads the name.
 //
-// So it is refused rather than approximated. A region bounded by one ring which
-// bends is measured exactly ([outline.measure]); one bounded by several is a
-// shape this package does not yet nest, and saying so is what stops it being
-// answered wrongly.
-func (m *measurer) straight(region *SemanticNode, rings []*outline) bool {
+// Where something bends the count cannot be taken at the corners at all. Nesting
+// decides whether a ring is a hole by casting a ray from one ring at another,
+// and that ray is cast at the chords: a courtyard whose wall bows out past a
+// corner of the plate around it is inside the plate and outside its chords, so
+// the answer would flip on which side of a bulge a corner happened to fall — an
+// area wrong by a whole ring rather than by a sag.
+//
+// So the rings are drawn and the count is taken at the segments, to the chord
+// tolerance the survey names. A survey which names none is refused rather than
+// drawn at a resolution nobody chose, which is the same refusal this made before
+// there was a name to give — and the refusal now says which flag answers it.
+//
+// The drawing decides the nesting and nothing else. Every area summed afterwards
+// is the area of the arc, computed from the parameterisation and exact whatever
+// the chord tolerance was; what the chord bounds is which rings were taken away
+// from which, and [Measurement.Deviation] reports what it came to.
+func (m *measurer) depths(region *SemanticNode, rings []*outline) ([]int, bool) {
+	var bent bool
 	for _, one := range rings {
-		if !one.curved {
-			continue
+		if one.curved {
+			bent = true
+			break
 		}
-
-		m.add(Diagnostic{
-			Severity: SeverityError,
-			Span:     m.span,
-			Message: fmt.Sprintf(
-				"expected every loop bounding %s to be straight to nest its rings, found that %s bends along an arc",
-				nodeName(region), geometricName(loopTag, one.loop.id),
-			),
-			Hint: "a ring inside another is a hole and is taken away, and which ring is inside which is decided at the " +
-				"corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag; " +
-				"tessellate the region to a chord tolerance you name to nest it at the segments instead",
-		})
-
-		return false
 	}
 
-	return true
+	if !bent {
+		depths := make([]int, len(rings))
+		for i := range rings {
+			depths[i] = m.nesting(rings, i)
+		}
+		return depths, true
+	}
+
+	if m.survey.Chord == "" {
+		m.add(m.unnestable(region, rings))
+		return nil, false
+	}
+
+	tolerance, ok := m.chord(m.survey.Chord, m.span)
+	if !ok {
+		return nil, false
+	}
+
+	basis, ok := planeOf(rings[0].normal, rings[0].points[0])
+	if !ok {
+		return nil, false
+	}
+
+	figure := make([]contour, 0, len(rings))
+	for _, one := range rings {
+		points, _, deviation, ok := m.drawnRing(one, tolerance)
+		if !ok {
+			return nil, false
+		}
+
+		projected := make(contour, 0, len(points))
+		for _, point := range points {
+			projected = append(projected, basis.project(point))
+		}
+
+		figure = append(figure, projected)
+		m.result.deviation = math.Max(m.result.deviation, deviation)
+	}
+
+	m.result.chord = tolerance
+
+	depths := make([]int, len(figure))
+	for i := range figure {
+		for j, other := range figure {
+			if j != i && len(figure[i]) > 0 && other.holds(figure[i][0]) {
+				depths[i]++
+			}
+		}
+	}
+
+	return depths, true
+}
+
+// unnestable reports a region of several rings, one of which bends, which no
+// chord tolerance was named to nest at the segments.
+func (m *measurer) unnestable(region *SemanticNode, rings []*outline) Diagnostic {
+	var bends *outline
+	for _, one := range rings {
+		if one.curved {
+			bends = one
+			break
+		}
+	}
+
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     m.span,
+		Message: fmt.Sprintf(
+			"expected either every loop bounding %s to be straight or a chord tolerance to nest them at, found that %s "+
+				"bends along an arc and no chord tolerance named",
+			nodeName(region), geometricName(loopTag, bends.loop.id),
+		),
+		Hint: "a ring inside another is a hole and is taken away, and which ring is inside which is decided at the " +
+			"corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag; name " +
+			"the tolerance the curve may be drawn to so the nesting is decided at the segments instead",
+	}
 }
 
 // lengthOf records the total length of every ring's segments, which is the

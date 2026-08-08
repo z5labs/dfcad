@@ -39,22 +39,44 @@ investigates.
 
 Flags:
 
-	--within <id>            the thing the subject has to sit inside
-	                         (required)
-	--position <predicate>   the predicate a corner's position is claimed
-	                         under, which both outlines are read from
-	                         (required)
-	--tolerance <name>       the tolerance corners are judged coincident
-	                         against and rounded corners are drawn to
-	                         (required)
-	--clearance <distance>   how much room the subject has to keep between
-	                         itself and the envelope's boundary, in the linear
-	                         unit of the envelope's frame (default 0)
+	--within <id>              the thing the subject has to sit inside
+	                           (required)
+	--position <predicate>     the predicate a corner's position is claimed
+	                           under, which both outlines are read from
+	                           (required)
+	--tolerance <name>         the tolerance corners are judged coincident
+	                           against and rounded corners are drawn to
+	                           (required)
+	--clearance <distance>     how much room the subject has to keep between
+	                           itself and the envelope's boundary, in the
+	                           linear unit of the envelope's frame (default 0)
+	--arc-centre <predicate>   the predicate a curved edge's centre is claimed
+	                           under
+	--arc-through <predicate>  the predicate the point a curved edge passes
+	                           through is claimed under
+	--chord <name>             the tolerance a curved edge may be drawn to on
+	                           the way to the overlay
 
 Neither the predicate nor the tolerance has a default and neither ever will.
 Which predicate carries a position, and how close two corners have to be to be
 one corner, are things the project wrote down, and a value compiled in here
 would be the engine deciding one of them on a project's behalf.
+
+The last three are the vocabulary a curved outline is read under, and all three
+are needed to read one. The two predicates go together — a centre without a
+point on the curve leaves two arcs between the same two ends and does not say
+which was meant — and a fit is an overlay, which is computed over straight
+segments, so the curve has to become segments and --chord is where it is said
+how closely. What comes back then says which tolerance the outlines were drawn
+to and how far the drawing actually fell from the curve, which is a bound on the
+margin and not an uncertainty in it: a chord may lie a stated distance inside
+the wall, and that is a decision the run made rather than something nobody knows.
+
+A run which names none of them reads every edge as the straight line between its
+two ends. Where that discarded something the model states, the answer says so:
+"chorded" lists every edge which claims a position — which is how and only how a
+curve is written, because an edge has no position of its own — and a warning on
+stderr names each of them.
 
 The verdict distinguishes fitting from possibly fitting, and it is the reason
 the clearance is never reported on its own:
@@ -80,7 +102,10 @@ expressed in and the "declared-in" frame the subject was written in, the
 "decided", the "clearance" — required, actual, margin and the uncertainty of
 the margin — the "envelope", "proposal", "needed", "shared" and "spill"
 regions, and the "budget": the accuracy of the answer broken out by term, each
-naming the claims which contributed it.
+naming the claims which contributed it. Where either outline bent it also
+carries the "chord" tolerance it was drawn to and the "deviation" that drawing
+achieved, and where a curve went unread it carries "chorded": the edges which
+state one, each with the predicates it states it under.
 
 Exit code 1 is a question which could not be answered — an outline which could
 not be read, two frames with no measured chain between them, a clearance
@@ -178,6 +203,21 @@ type siteResult struct {
 	Shared *regionEntry `json:"shared,omitempty"`
 	Spill  *regionEntry `json:"spill,omitempty"`
 
+	// Chord is the tolerance the curves of either outline were drawn to on the
+	// way to the overlay, and Deviation how far the worst of those segments fell
+	// from the curve it stood in for.
+	//
+	// The deviation sits here rather than inside the clearance because it is not
+	// an uncertainty. It is a bound the run chose and stated, and folding it in
+	// beside a figure nobody decided would make a decision look like noise.
+	Chord     *toleranceEntry `json:"chord,omitempty"`
+	Deviation *measuredValue  `json:"deviation,omitempty"`
+
+	// Chorded is the edges of either outline which state a curve this run did
+	// not read, each with the predicates it states it under. Absent for a run
+	// which read every curve and for a model which claims none.
+	Chorded []chordedEntry `json:"chorded,omitempty"`
+
 	// Budget is the accuracy of the answer, broken out by term, over the
 	// position claims behind both outlines and the transform claims of every
 	// frame the subject was carried through.
@@ -219,6 +259,9 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	position := flags.String(flagPosition, "", "")
 	tolerance := flags.String(flagTolerance, "", "")
 	clearance := flags.Float64(flagClearance, 0, "")
+	centre := flags.String(flagArcCentre, "", "")
+	through := flags.String(flagArcThrough, "", "")
+	chord := flags.String(flagChord, "", "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -240,6 +283,10 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		given{flagPosition, *position},
 		given{flagTolerance, *tolerance},
 	); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	if err := arcVocabularyOf(*centre, *through); err != nil {
 		return usageError(cmd, err, stderr, true)
 	}
 
@@ -269,28 +316,26 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	// two surveys is a corner which can be in two places, and the two shapes
 	// being compared have to have been read the same way for the comparison to
 	// mean anything.
-	survey := dfcad.Survey{Tolerance: *tolerance, Registry: graph.Registry()}
-	for _, node := range []*dfcad.SemanticNode{proposed, inside} {
-		for vertex := range graph.Vertices(node) {
-			resolution, err := graph.Claims().Resolve(vertex.ID(), *position, graph.Registry())
-			if err != nil {
-				continue
-			}
-			survey.Place(vertex.ID(), resolution)
-		}
-	}
+	sides := asEntities(proposed, inside)
+	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through, chord: *chord}, sides...)
 
 	answer, diags := graph.Topology().FitWithin(proposed, inside, graph.Boundaries(), survey, dfcad.Siting{
 		Frames:    graph.Frames(),
 		Clearance: *clearance,
 	})
 
+	// What the survey could not bend, over both outlines: a clearance measured
+	// against a chord is measured against a line which is not the boundary, and
+	// which side of it the wall falls is the difference between fitting and not.
+	chorded, unread := chordedOf(graph, survey, sides...)
+	diags = append(diags, unread...)
+
 	// The diagnostics are for whoever wrote the model, so they go to stderr on
 	// every run and in every format, and whether any of them is an error is what
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportSite(cmd, graph, subject, envelope, answer, !refused)
+	result := reportSite(cmd, graph, subject, envelope, answer, chorded, !refused)
 
 	reportSiteFor(result, answer, globals, stderr)
 
@@ -317,6 +362,7 @@ func reportSite(
 	graph *dfcad.Graph,
 	subject, envelope dfcad.ID,
 	answer dfcad.Fit,
+	chorded []chordedEntry,
 	ok bool,
 ) siteResult {
 	result := siteResult{
@@ -324,6 +370,7 @@ func reportSite(
 		Subject:  string(subject),
 		Within:   string(envelope),
 		Sited:    ok,
+		Chorded:  chorded,
 	}
 
 	if digest, known := graph.Digest(); known {
@@ -345,6 +392,16 @@ func reportSite(
 
 	declaredTolerance := declared(within.Tolerance())
 	result.Tolerance = &declaredTolerance
+
+	// Written only where a curve was actually drawn: two outlines of straight
+	// edges were approximated nowhere, and a tolerance with no name beside a
+	// deviation from nothing would read as an approximation of them.
+	if drawn, made := answer.ChordTolerance(); made {
+		chord := declared(drawn)
+		result.Chord = &chord
+
+		result.Deviation = &measuredValue{Value: answer.Deviation(), Unit: string(answer.Unit())}
+	}
 
 	measured := clearanceEntry{
 		Required: answer.Required(),

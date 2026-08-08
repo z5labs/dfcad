@@ -149,7 +149,7 @@ func TestRunSiteReportsTheDigestItWasComputedAgainst(t *testing.T) {
 func TestAFitOfATreeWithNoDigestWritesNoDigestField(t *testing.T) {
 	// A graph assembled from no tree at all has no digest, which is the state a
 	// model that was never read from disk leaves behind.
-	result := reportSite(command{name: "site"}, nil, "site:S-103", "site:P-01", dfcad.Fit{}, false)
+	result := reportSite(command{name: "site"}, nil, "site:S-103", "site:P-01", dfcad.Fit{}, nil, false)
 
 	assert.Empty(t, result.Digest)
 
@@ -329,4 +329,80 @@ func TestRunSiteRefusals(t *testing.T) {
 			assert.Nil(t, result.Clearance)
 		})
 	}
+}
+
+// curvedFit runs site over the curved fixture, where the pavilion sits in the
+// bulge of the plot's frontage: inside the arc everywhere and outside the chord
+// between its two ends everywhere.
+func curvedFit(t *testing.T, expectedCode int, args ...string) (siteResult, string) {
+	t.Helper()
+
+	root := tree(t, curved())
+	stdout, stderr := invoke(t, expectedCode, root, siting(args...)...)
+
+	return listed[siteResult](t, stdout), stderr
+}
+
+// TestRunSiteReadsACurvedEnvelopeOrSaysItDidNot is its own function because the
+// two halves of it are one behaviour and they give opposite verdicts: the same
+// pavilion on the same plot fits or does not fit according to whether the run
+// read the boundary or the chord across it, which is the whole reason a chorded
+// answer cannot be a silent one.
+func TestRunSiteReadsACurvedEnvelopeOrSaysItDidNot(t *testing.T) {
+	curving := []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through"}
+
+	t.Run("decides against the chord and says which edge it chorded", func(t *testing.T) {
+		result, stderr := curvedFit(t, exitSuccess, "site:S-31")
+
+		require.True(t, result.Sited)
+		assert.Equal(t, "does-not-fit", result.Verdict, "the pavilion is outside the chord")
+
+		require.Len(t, result.Chorded, 1)
+		assert.Equal(t, "geom:E-21", result.Chorded[0].Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates)
+
+		assert.Nil(t, result.Chord, "nothing bent, because nothing read the bend")
+		assert.Contains(t, stderr, "geom:E-21")
+	})
+
+	t.Run("refuses to overlay the frontage until a chord tolerance names how closely", func(t *testing.T) {
+		result, stderr := curvedFit(t, exitCheck, append(curving, "site:S-31")...)
+
+		assert.False(t, result.Sited, "no verdict, rather than one decided against a shape nobody chose")
+		assert.Contains(t, stderr, "no chord tolerance named")
+	})
+
+	t.Run("decides against the frontage where the whole vocabulary is named", func(t *testing.T) {
+		result, _ := curvedFit(t, exitSuccess,
+			append(curving, "--chord", "chord-deviation", "site:S-31")...)
+
+		require.True(t, result.Sited)
+		assert.Equal(t, "fits", result.Verdict, "the pavilion is inside the arc the chord cut off")
+
+		require.NotNil(t, result.Chord)
+		assert.Equal(t, "chord-deviation", result.Chord.Name)
+
+		require.NotNil(t, result.Deviation)
+		assert.Positive(t, result.Deviation.Value)
+		assert.LessOrEqual(t, result.Deviation.Value, result.Chord.Value)
+		assert.Equal(t, "m", result.Deviation.Unit)
+
+		assert.Empty(t, result.Chorded)
+	})
+
+	t.Run("says nothing about curves for a model which claims none", func(t *testing.T) {
+		result, _ := fitted(t, exitSuccess, "site:S-103")
+
+		assert.Empty(t, result.Chorded)
+		assert.Nil(t, result.Chord)
+		assert.Nil(t, result.Deviation)
+	})
+}
+
+func TestRunSiteRefusesHalfTheArcVocabulary(t *testing.T) {
+	root := tree(t, curved())
+
+	_, stderr := invoke(t, exitUsage, root, siting("--arc-through", "arc-through", "site:S-31")...)
+
+	assert.Contains(t, stderr, "--arc-centre")
 }

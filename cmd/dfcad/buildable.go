@@ -29,19 +29,41 @@ claim changes it is the wrong one.
 
 Flags:
 
-	--setback <predicate>    the predicate an edge's setback distance is
-	                         claimed under (required)
-	--position <predicate>   the predicate a corner's position is claimed
-	                         under, which is what the boundary is read from
-	                         (required)
-	--tolerance <name>       the tolerance corners are judged coincident
-	                         against and rounded corners are drawn to
-	                         (required)
+	--setback <predicate>      the predicate an edge's setback distance is
+	                           claimed under (required)
+	--position <predicate>     the predicate a corner's position is claimed
+	                           under, which is what the boundary is read from
+	                           (required)
+	--tolerance <name>         the tolerance corners are judged coincident
+	                           against and rounded corners are drawn to
+	                           (required)
+	--arc-centre <predicate>   the predicate a curved edge's centre is claimed
+	                           under
+	--arc-through <predicate>  the predicate the point a curved edge passes
+	                           through is claimed under
+	--chord <name>             the tolerance a curved edge may be drawn to on
+	                           the way to the offset
 
-None of the three has a default and none of them ever will. Which predicate
-carries a setback, which carries a position, and how close two corners have to
-be to be one corner, are things the project wrote down, and a value compiled in
-here would be the engine deciding one of them on a project's behalf.
+None of the first three has a default and none of them ever will. Which
+predicate carries a setback, which carries a position, and how close two corners
+have to be to be one corner, are things the project wrote down, and a value
+compiled in here would be the engine deciding one of them on a project's behalf.
+
+The last three are the vocabulary a curved frontage is read under, and all three
+are needed to read one. The two predicates go together — a centre without a
+point on the curve leaves two arcs between the same two ends and does not say
+which was meant — and a setback is an offset, which is computed over straight
+segments, so the curve has to become segments and --chord is where it is said how
+closely. What comes back then says which tolerance it was drawn to and how far
+the drawing actually fell from the curve.
+
+A run which names none of them reads every edge as the straight line between its
+two ends. Where that discarded something the model states, the answer says so:
+"chorded" lists every edge which claims a position — which is how and only how a
+curve is written, because an edge has no position of its own — and a warning on
+stderr names each of them. A forty foot radius frontage arc through a right
+angle is some hundreds of square feet, which is the difference between a scheme
+which fits its plot and one which does not.
 
 Different setbacks per edge are the ordinary case: six metres at the road, four
 at the rear, three at each flank. Which edge is which is not modelled — a
@@ -66,7 +88,10 @@ in, the "tolerance" it was judged against, the "parcel" it was
 derived from, the "setbacks" applied one per edge, the "region" left buildable
 with the ring of every piece of it, and the "budget": the accuracy of the
 answer broken out by term, over the position claims and the setback claims
-together.
+together. Where the boundary bent it also carries the "chord" tolerance it was
+drawn to and the "deviation" that drawing achieved, and where a curve went
+unread it carries "chorded": the edges which state one, each with the predicates
+it states it under.
 
 Exit code 1 is a derivation which could not be made — an edge nothing states
 the setback of, two claims equally current about one, a boundary which could
@@ -166,6 +191,18 @@ type buildableResult struct {
 	// an answer, and omitting it would make it look like one which was never
 	// computed.
 	Region *regionEntry `json:"region,omitempty"`
+
+	// Chord is the tolerance the curves of the boundary were drawn to on the way
+	// to the offset, and Deviation how far the worst of those segments fell from
+	// the curve it stood in for. Both are absent for a parcel with nothing
+	// curved in it, which was approximated nowhere.
+	Chord     *toleranceEntry `json:"chord,omitempty"`
+	Deviation *measuredValue  `json:"deviation,omitempty"`
+
+	// Chorded is the edges of the boundary which state a curve this run did not
+	// read, each with the predicates it states it under. Absent for a run which
+	// read every curve and for a parcel which claims none.
+	Chorded []chordedEntry `json:"chorded,omitempty"`
 
 	// Budget is the accuracy of the answer, broken out by term, over the
 	// position claims which put the corners where they are and the setback
@@ -282,6 +319,9 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	setback := flags.String(flagSetback, "", "")
 	position := flags.String(flagPosition, "", "")
 	tolerance := flags.String(flagTolerance, "", "")
+	centre := flags.String(flagArcCentre, "", "")
+	through := flags.String(flagArcThrough, "", "")
+	chord := flags.String(flagChord, "", "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -303,6 +343,10 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, err, stderr, true)
 	}
 
+	if err := arcVocabularyOf(*centre, *through); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
 	subject, err := dfcad.ParseID(arguments[0])
 	if err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -315,26 +359,25 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, err, stderr, false)
 	}
 
-	survey := dfcad.Survey{Tolerance: *tolerance, Registry: graph.Registry()}
-	for vertex := range graph.Vertices(node) {
-		resolution, err := graph.Claims().Resolve(vertex.ID(), *position, graph.Registry())
-		if err != nil {
-			continue
-		}
-		survey.Place(vertex.ID(), resolution)
-	}
+	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through, chord: *chord}, node)
 
 	derived, diags := graph.Topology().BuildableOf(node, graph.Boundaries(), survey, dfcad.Setbacks{
 		Predicate: *setback,
 		Claims:    graph.Claims(),
 	})
 
+	// What the survey could not bend, reported beside the answer: a setback
+	// taken off a chord is taken off the wrong line, and saying which edge is a
+	// chord is what makes the figure one somebody can act on.
+	chorded, unread := chordedOf(graph, survey, node)
+	diags = append(diags, unread...)
+
 	// The diagnostics are for whoever wrote the model, so they go to stderr on
 	// every run and in every format, and whether any of them is an error is what
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportBuildable(cmd, graph, subject, derived, !refused)
+	result := reportBuildable(cmd, graph, subject, derived, chorded, !refused)
 
 	reportBuildableFor(result, derived, globals, stderr)
 
@@ -383,12 +426,14 @@ func reportBuildable(
 	graph *dfcad.Graph,
 	subject dfcad.ID,
 	derived dfcad.Buildable,
+	chorded []chordedEntry,
 	ok bool,
 ) buildableResult {
 	result := buildableResult{
 		envelope: newEnvelope(cmd.name),
 		Subject:  string(subject),
 		Derived:  ok,
+		Chorded:  chorded,
 	}
 
 	if digest, known := graph.Digest(); known {
@@ -406,6 +451,17 @@ func reportBuildable(
 
 	entry := declared(boundary.Tolerance())
 	result.Tolerance = &entry
+
+	// Written only where a curve was actually drawn, for the reason a
+	// measurement writes them only there: a parcel of straight edges was
+	// approximated nowhere, and a tolerance with no name beside a deviation from
+	// nothing would read as an approximation of it.
+	if drawn, made := boundary.ChordTolerance(); made {
+		chord := declared(drawn)
+		result.Chord = &chord
+
+		result.Deviation = &measuredValue{Value: boundary.Deviation(), Unit: string(boundary.Unit())}
+	}
 
 	parcel := regionOf(boundary)
 	result.Parcel = &parcel

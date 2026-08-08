@@ -172,6 +172,15 @@ type Region struct {
 	// than naming an edge which did not.
 	segments []BoundarySegment
 
+	// drawn is what the rings which bend were drawn to on the way to reading
+	// it, and how far the worst of those segments falls from the curve it
+	// stands in for.
+	//
+	// It is zero for a region with nothing curved in it and for one read
+	// without a chord tolerance at all, which are the same value for the same
+	// reason: nothing was approximated, so there is nothing to declare.
+	drawn drawing
+
 	// budget is the accumulated accuracy of the position claims behind it.
 	budget Budget
 }
@@ -328,6 +337,15 @@ func (s BoundarySegment) String() string {
 // drawn to it, so there is no default and no fallback
 // ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
 //
+// A boundary which bends is refused unless the survey names a chord tolerance
+// for it ([Survey.Chord]). An overlay is computed over straight segments, so a
+// curve has to become segments somewhere, and where that happens is a decision
+// the caller takes and states rather than one this makes on their behalf: a
+// survey which names a chord has decided to draw the curve and has said how
+// closely, and [Region.ChordTolerance] and [Region.Deviation] carry that
+// decision out with the answer. A survey which names none is refused, naming the
+// loop which bends.
+//
 // A node which references no loop is not malformed — a circuit group covers no
 // area — and comes back as a region which covers nothing.
 func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey Survey) (Region, []Diagnostic) {
@@ -335,7 +353,10 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 		return Region{}, nil
 	}
 
-	region, _, diags := t.regionOf(node, boundaries, survey, "", false)
+	region, drew, diags := t.regionOf(node, boundaries, survey, survey.Chord, survey.Chord != "")
+	if drew.drew {
+		region.drawn = drew
+	}
 
 	return region, diags
 }
@@ -350,6 +371,12 @@ func (t *Topology) RegionOf(node *SemanticNode, boundaries *Boundaries, survey S
 type drawing struct {
 	tolerance Tolerance
 	deviation float64
+
+	// drew reports whether a curve was actually drawn, which is a different
+	// question from whether a drawing was asked for: a region with nothing
+	// curved in it is drawn to itself, and a tolerance reported for it would
+	// say a boundary had been approximated which was not.
+	drew bool
 }
 
 // regionOf reads the area a node covers, drawing every ring which bends to the
@@ -451,6 +478,8 @@ func (t *Topology) regionOf(
 
 		bent = true
 	}
+
+	drew.drew = bent
 
 	if !m.coplanar(node, rings) {
 		return region, drew, m.diags
@@ -655,11 +684,13 @@ func (m *measurer) undrawn(node *SemanticNode, one *outline) Diagnostic {
 		Severity: SeverityError,
 		Span:     m.topology.namedAt(node.id, node.span),
 		Message: fmt.Sprintf(
-			"expected every loop bounding %s to be straight to read it as a plane figure, found that %s bends along an arc",
+			"expected either every loop bounding %s to be straight or a chord tolerance to draw them to, found that %s "+
+				"bends along an arc and no chord tolerance named",
 			nodeName(node), geometricName(loopTag, one.loop.id),
 		),
-		Hint: "an overlay is computed over straight segments; tessellate the region to a chord tolerance you name and " +
-			"operate on that, rather than having a resolution chosen for you here",
+		Hint: "an overlay is computed over straight segments, so the curve has to become segments somewhere; name the " +
+			"tolerance it may be drawn to and the answer carries what it was drawn to, rather than having a " +
+			"resolution chosen for you here",
 	}
 }
 
@@ -676,6 +707,27 @@ func (r Region) Unit() Unit { return r.unit }
 // Tolerance returns the declared tolerance the region's coincidence and
 // snapping are judged against.
 func (r Region) Tolerance() Tolerance { return r.tolerance }
+
+// ChordTolerance returns the declared tolerance the rings which bend were drawn
+// to on the way to reading the region, and whether any of them was drawn at all.
+//
+// It travels with the region because the region is an approximation of the
+// boundary wherever it is true, and an outline which does not say how closely it
+// follows the curve it came from is one nobody downstream can judge. A region
+// with nothing curved in it is not an approximation of anything and says so by
+// reporting none.
+func (r Region) ChordTolerance() (Tolerance, bool) {
+	return r.drawn.tolerance, r.drawn.tolerance.Name != ""
+}
+
+// Deviation returns how far the worst segment of that drawing falls from the
+// curve it stands in for, in [Region.Unit].
+//
+// It is what was achieved rather than what was asked for, and is always within
+// [Region.ChordTolerance]: a curve is divided into a whole number of segments, so
+// an arc which needs two and a bit gets three and follows the curve more closely
+// than it had to.
+func (r Region) Deviation() float64 { return r.drawn.deviation }
 
 // Pieces returns the connected parts the region covers.
 //

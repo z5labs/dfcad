@@ -149,6 +149,16 @@ type Fit struct {
 	required  float64
 	clearance float64
 
+	// chord is the declared chord tolerance the curves of either outline were
+	// drawn to on the way to the answer, and deviation how far the worst of
+	// those segments falls from the curve it stands in for.
+	//
+	// One tolerance covers both, because both outlines are read from one survey
+	// and a fit between two shapes drawn to different resolutions is a
+	// comparison of two approximations nobody stated the relationship between.
+	chord     Tolerance
+	deviation float64
+
 	// budget is the accumulated accuracy of every claim the answer was computed
 	// from, on both sides and along the frame chain between them.
 	budget Budget
@@ -198,6 +208,25 @@ func (f Fit) Frame() ID { return f.envelope.Frame() }
 // Unit returns the linear unit of that frame, which every distance here is in
 // and every area in the square of.
 func (f Fit) Unit() Unit { return f.envelope.Unit() }
+
+// ChordTolerance returns the declared tolerance the curves of either outline
+// were drawn to on the way to the answer, and whether either of them bent at
+// all.
+//
+// A fit is an overlay, so a curved outline has to become segments before there
+// is a question to answer at all. That the answer says which tolerance is what
+// separates a clearance measured against the wall from one measured against a
+// chord which may sit a stated distance inside it.
+func (f Fit) ChordTolerance() (Tolerance, bool) { return f.chord, f.chord.Name != "" }
+
+// Deviation returns how far the worst segment of that drawing falls from the
+// curve it stands in for, in [Fit.Unit].
+//
+// It is a bound on the outlines and not an accuracy of the answer, so it is
+// reported beside the margin rather than folded into [Fit.Budget]: a chord which
+// may lie ten millimetres inside the wall is a decision the caller made, and an
+// uncertainty is what nobody decided.
+func (f Fit) Deviation() float64 { return f.deviation }
 
 // Carried reports whether the proposal had to be brought across a frame chain
 // to be compared with the envelope.
@@ -409,6 +438,16 @@ func (t *Topology) FitWithin(
 		required:  siting.Clearance,
 		clearance: clearanceOf(carried, within, shared, beyond),
 	}
+
+	// The tolerance the outlines were drawn to, taken from whichever of them
+	// bent, and the worst deviation either of them achieved. Both were read
+	// from one survey, so a run which drew either drew both to the same name.
+	if tolerance, drawn := within.ChordTolerance(); drawn {
+		result.chord = tolerance
+	} else if tolerance, drawn := sited.ChordTolerance(); drawn {
+		result.chord = tolerance
+	}
+	result.deviation = math.Max(within.Deviation(), sited.Deviation())
 
 	result.budget.Merge(carried.budget)
 	result.budget.Merge(within.budget)

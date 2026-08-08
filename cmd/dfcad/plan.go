@@ -35,21 +35,39 @@ them so.
 
 Flags:
 
-	--annotate <predicate>   a predicate whose claims are reported on every
-	                         ring and on the edges bounding it; repeat it for
-	                         more than one (at least one required)
-	--position <predicate>   the predicate a corner's position is claimed
-	                         under, which the rings are read from (required)
-	--tolerance <name>       the tolerance corners are judged coincident
-	                         against (required)
+	--annotate <predicate>     a predicate whose claims are reported on every
+	                           ring and on the edges bounding it; repeat it for
+	                           more than one (at least one required)
+	--position <predicate>     the predicate a corner's position is claimed
+	                           under, which the rings are read from (required)
+	--tolerance <name>         the tolerance corners are judged coincident
+	                           against (required)
+	--arc-centre <predicate>   the predicate a curved edge's centre is claimed
+	                           under
+	--arc-through <predicate>  the predicate the point a curved edge passes
+	                           through is claimed under
+	--chord <name>             the tolerance a curved edge is drawn to
 
-None of the three has a default and none of them ever will. Which predicate
-carries a position, and how close two corners have to be to be one corner, are
-things the project wrote down. --annotate is the same rule applied to the
-question a sheet asks: whether a measurement is worth drawing is not something
-this engine can know, so the answer is that it is worth drawing if the caller
-asked for that predicate — which is what keeps the format from learning
+None of the first three has a default and none of them ever will. Which
+predicate carries a position, and how close two corners have to be to be one
+corner, are things the project wrote down. --annotate is the same rule applied
+to the question a sheet asks: whether a measurement is worth drawing is not
+something this engine can know, so the answer is that it is worth drawing if the
+caller asked for that predicate — which is what keeps the format from learning
 anything about drawing.
+
+The last three are the vocabulary a curved wall is read under, and all three are
+needed to read one. A ring is a list of points, so a curve has to become points
+somewhere, and --chord is where it is said how closely; the two predicates go
+together, because a centre without a point on the curve leaves two arcs between
+the same two ends and does not say which was meant.
+
+A run which names none of them draws every edge as the straight line between its
+two ends, and says so where the model states otherwise: "chorded" lists every
+edge which claims a position — which is how and only how a curve is written,
+because an edge has no position of its own — and a warning on stderr names each
+of them. A ring drawn straight through a curve is a drawing error rather than a
+rounding, and it is one nothing downstream can detect.
 
 Every claim comes back whole: its value and unit, what evidences it, how it was
 obtained, how well it is known and when. A rendered string is a claim, not a
@@ -76,7 +94,10 @@ source tree it was read from, the "frame" and "unit" it is expressed in, the
 "tolerance" it was judged against, the "annotating" predicates it was asked
 for, one "outlines" entry per contained node with its "region" and its
 "annotations", and the "budget": the accuracy of the rings, over the position
-claims which put every drawn corner where it is.
+claims which put every drawn corner where it is. Where a ring bent it also
+carries the "chord" tolerance it was drawn to and the "deviation" that drawing
+achieved, and where a curve went unread it carries "chorded": the edges which
+state one, each with the predicates it states it under.
 
 Exit code 1 is a plan a ring of which could not be read — a boundary which does
 not close, corners which are not in one plane, a tolerance the registry does
@@ -153,6 +174,22 @@ type planResult struct {
 	// and a caller collecting plans has to be able to say which question each
 	// object answers.
 	Annotating []string `json:"annotating"`
+
+	// Chord is the tolerance the curves of the rings were drawn to and
+	// Deviation how far the worst of those segments fell from the curve it
+	// stood in for, over every outline. Both are absent for a storey with
+	// nothing curved in it, which was approximated nowhere.
+	Chord     *toleranceEntry `json:"chord,omitempty"`
+	Deviation *measuredValue  `json:"deviation,omitempty"`
+
+	// Chorded is the edges of the rings which state a curve this run did not
+	// read, each with the predicates it states it under. Absent for a run which
+	// read every curve and for a storey which claims none.
+	//
+	// A ring drawn straight through a curve is a drawing error and not a
+	// rounding, and a sheet is the last place it would be noticed: it looks
+	// like a wall somebody meant.
+	Chorded []chordedEntry `json:"chorded,omitempty"`
 
 	// Outlines is one entry per contained node which has a ring, in id order.
 	// Empty rather than null for a subject which contains nothing drawable.
@@ -239,6 +276,9 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	flags.Var(annotate, flagAnnotate, "")
 	position := flags.String(flagPosition, "", "")
 	tolerance := flags.String(flagTolerance, "", "")
+	centre := flags.String(flagArcCentre, "", "")
+	through := flags.String(flagArcThrough, "", "")
+	chord := flags.String(flagChord, "", "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -266,6 +306,10 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		given{flagPosition, *position},
 		given{flagTolerance, *tolerance},
 	); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	if err := arcVocabularyOf(*centre, *through); err != nil {
 		return usageError(cmd, err, stderr, true)
 	}
 
@@ -299,25 +343,27 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	// A corner read against two surveys is a corner which can be in two places,
 	// and two rooms sharing a wall is where that shows up as a gap down the
 	// middle of a sheet.
-	survey := dfcad.Survey{Tolerance: *tolerance, Registry: graph.Registry()}
+	var rooms []dfcad.Entity
 	for contained := range graph.Descendants(node) {
-		for vertex := range graph.Vertices(contained.Node()) {
-			resolution, err := graph.Claims().Resolve(vertex.ID(), *position, graph.Registry())
-			if err != nil {
-				continue
-			}
-			survey.Place(vertex.ID(), resolution)
-		}
+		rooms = append(rooms, contained.Node())
 	}
 
+	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through, chord: *chord}, rooms...)
+
 	drawn, diags := graph.PlanOf(node, survey, dfcad.Annotations{Predicates: *annotate})
+
+	// What the survey could not bend, over every room which could be drawn: a
+	// ring run straight through a curve looks like a wall somebody meant, and a
+	// sheet is the last place anybody would catch it.
+	chorded, unread := chordedOf(graph, survey, rooms...)
+	diags = append(diags, unread...)
 
 	// The diagnostics are for whoever wrote the model, so they go to stderr on
 	// every run and in every format, and whether any of them is an error is what
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportPlan(cmd, graph, subject, *annotate, drawn, !refused)
+	result := reportPlan(cmd, graph, subject, *annotate, drawn, chorded, !refused)
 
 	reportPlanFor(result, drawn, globals, stderr)
 
@@ -345,6 +391,7 @@ func reportPlan(
 	subject dfcad.ID,
 	annotating []string,
 	drawn dfcad.Plan,
+	chorded []chordedEntry,
 	ok bool,
 ) planResult {
 	result := planResult{
@@ -352,6 +399,7 @@ func reportPlan(
 		Subject:    string(subject),
 		Planned:    ok,
 		Annotating: make([]string, 0, len(annotating)),
+		Chorded:    chorded,
 		Outlines:   make([]outlineEntry, 0, len(drawn.Outlines())),
 	}
 
@@ -373,6 +421,16 @@ func reportPlan(
 	if tolerance := drawn.Tolerance(); tolerance.Name != "" {
 		entry := declared(tolerance)
 		result.Tolerance = &entry
+	}
+
+	// Written only where a curve was actually drawn: a storey of straight walls
+	// was approximated nowhere, and a tolerance with no name beside a deviation
+	// from nothing would read as an approximation of it.
+	if made, bent := drawn.ChordTolerance(); bent {
+		chord := declared(made)
+		result.Chord = &chord
+
+		result.Deviation = &measuredValue{Value: drawn.Deviation(), Unit: string(drawn.Unit())}
 	}
 
 	for _, outline := range drawn.Outlines() {
