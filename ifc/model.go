@@ -260,6 +260,26 @@ type Product struct {
 	// Placement is where the product sits inside the spatial element which
 	// contains it.
 	Placement *Placement
+
+	// Representation is the product's shape, expressed in the coordinate system
+	// Placement establishes. A nil representation writes an absent
+	// Representation, which is what a product nobody has drawn has.
+	//
+	// It is the same field a [Spatial] carries and it is written the same way,
+	// because the schema makes no distinction: both are IfcProduct, and the
+	// attribute is at the same position in both attribute lists. A wall with a
+	// body and a room with one are one mechanism rather than two.
+	Representation *Representation
+
+	// Properties are the property sets attached to the product, each with the
+	// IfcRelDefinesByProperties which attaches it, exactly as a [Spatial]'s
+	// are.
+	//
+	// They are here for the reason they are there: a shape built from a
+	// measurement is worth no more than the measurement, and a receiving system
+	// surfaces the set beside the object so that whoever opens the file can see
+	// which.
+	Properties []PropertySet
 }
 
 // SpaceBoundary is IfcRelSpaceBoundary: the relationship between a space and

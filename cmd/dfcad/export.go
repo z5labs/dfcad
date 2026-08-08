@@ -67,8 +67,11 @@ Flags:
 	                           under
 	--arc-through <predicate>  the predicate the point a curved edge passes
 	                           through is claimed under
-	--height <predicate>       the predicate a space's height is claimed under,
+	--height <predicate>       the predicate a node's height is claimed under,
 	                           which is what a body is swept through
+	--thickness <predicate>    the predicate the thickness of a node drawn as a
+	                           line is claimed under, which is what widens its
+	                           run into a solid
 	--crs <predicate>          the predicate the identifier of the project's
 	                           coordinate reference system is written under
 	--crs-definition <predicate>
@@ -83,26 +86,49 @@ and the URL the project pins.
 The first three geometry flags go together or not at all. A run which names
 none exports the spatial structure and the identifiers and no shape, which is
 a correct IFC file and is what this command did before it could draw anything.
-A run which names all three draws every space it can: an IfcSpace carries a
-FootPrint representation built from the rings bounding it, holes and all, drawn
-to the chord tolerance named so a curved wall reaches the file as the curve it
-is rather than as a straight line nobody asked for.
+A run which names all three draws everything it can: a node bounded by rings
+carries a FootPrint representation built from them, holes and all, drawn to the
+chord tolerance named so a curved wall reaches the file as the curve it is
+rather than as a straight line nobody asked for.
 
---height is what adds a body. Where it names a predicate and a space's height
-resolves under it, the space additionally carries a SweptSolid representation —
+What is drawn is decided by a node's boundary and its declared geometry, never
+by its kind. A room and a countertop are both an area with a height over it,
+and the sweep which makes a solid of either is the same operation — so an
+element bounded by a ring is drawn exactly as a space is, and what its kind
+decides is only which entity the shape is written on.
+
+--height is what adds a body. Where it names a predicate and a node's height
+resolves under it, the node additionally carries a SweptSolid representation —
 the footprint extruded upwards, holes carried through as the profile's inner
 curves — and the two live in one shape definition. The footprint is what the
 model states and the body is a convenience built from a claim, which is why
 they are two representations rather than one: a reader wanting what the model
 says takes the FootPrint and never has to guess which of the two that was.
 
-There is no default height and there never will be. Which predicate carries a
-room's height is project vocabulary, and a run which names none exports
-footprints rather than failing — a two dimensional export is correct, and it is
-the one an author who has drawn plans and measured nothing should get. A space
-nothing claims a height of is exported the same way. A height which resolves to
-nought or less is refused naming the claim, because the depth a profile is
-swept through is a positive length measure and there is no zero-height solid.
+--thickness is the same for a node drawn as a line. A partition, a railing and
+a duct run are each authored as a centreline, because that is what they are —
+one run of the model, shared by whatever stands either side of it — and each is
+built as a solid, so the thickness claimed of the node is what turns the one
+into the other. Each straight segment of the run is widened by it, half either
+side, and swept upwards through the height: a rectangle per segment rather than
+one outline mitred around the whole run, because the joint where two segments
+meet is a detail the model does not state and is not this command's to invent.
+
+Neither has a default and there never will be one. Which predicate carries a
+room's height or a wall's thickness is project vocabulary, and a run which
+names none exports footprints rather than failing — a two dimensional export is
+correct, and it is the one an author who has drawn plans and measured nothing
+should get. A node nothing claims a height of is exported the same way, and one
+drawn as a line with no thickness claimed carries no shape at all: a centreline
+of no width is not a solid, and IFC has nowhere to put one. A height or a
+thickness which resolves to nought or less is refused naming the claim, because
+a solid is bounded by positive length measures.
+
+A node somebody claimed a height of whose type is classified as an IFC entity
+which cannot carry a shape — a relationship, a spatial element — is refused
+naming that claim and that entity. Such a node is still written as a proxy when
+nothing was claimed of it, which is what that entity is for; what it is not is a
+place to put a body the model asked for.
 
 --crs is what puts the project on the earth, and it has no default either. It
 names the predicate the root frame carries the identifier of its projected
@@ -137,11 +163,13 @@ off the name rather than the factor would otherwise read one as the other.
 Nothing is converted: a coordinate written in the source is that coordinate in
 the file.
 
-Where a body is written, the claim behind its height goes into the file beside
-it as a property set: the predicate, the value, the source, the method, the
-accuracy, the date and which step of the resolution rule chose it. That is what
-lets whoever opens the file tell a surveyed height from an assumed one without
-holding the model it came from.
+Where a body is written, each claim behind it goes into the file beside it as a
+property set: the predicate, the value, the source, the method, the accuracy,
+the date and which step of the resolution rule chose it. A height and a
+thickness are two sets rather than one, because they are two measurements — a
+wall's height may be surveyed and its thickness taken off a drawing. That is
+what lets whoever opens the file tell a surveyed figure from an assumed one
+without holding the model it came from.
 
 A space's boundaries reach the file as relationships, drawn or not. Every edge
 of a room's outline which names the element realising it is written as an
@@ -175,9 +203,10 @@ it to show.
 
 Exit code 1 is a model no artefact could be made of — one which pins no URL to
 derive identifiers from, one whose frames disagree about the linear unit, or a
-space whose shape was asked for and could not be drawn: a ring which does not
+node whose shape was asked for and could not be drawn: a ring which does not
 close, a corner nothing states the position of, a boundary which does not lie
-at one level, a height which is not a distance or is not positive. The object
+at one level, a height or a thickness which is not a distance or is not
+positive, a body claimed of something no entity here can carry one on. The object
 still comes back, with "derived" false and no files, so a caller reads
 why from the diagnostics on stderr rather than from an empty stream. Exit code
 3 is a destination inside the authored tree, which is refused before anything
@@ -304,6 +333,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	centre := flags.String(flagArcCentre, "", "")
 	through := flags.String(flagArcThrough, "", "")
 	height := flags.String(flagHeight, "", "")
+	thickness := flags.String(flagThickness, "", "")
 
 	crs := flags.String(flagCRS, "", "")
 	crsDefinition := flags.String(flagCRSDefinition, "", "")
@@ -324,6 +354,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		arcCentre:  *centre,
 		arcThrough: *through,
 		height:     *height,
+		thickness:  *thickness,
 	}
 
 	if err := shapeVocabularyOf(drawn); err != nil {
@@ -811,11 +842,14 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 			Products:  e.contained(e.products[id]),
 		}
 
-		// A space is the one thing drawn here, because it is the one thing a
-		// boundary is written of: a storey and a site are decompositions, and
-		// the outline of either is the outline of what it holds.
+		// Whether there is anything to draw is the node's boundary's to say and
+		// never its kind's. A storey and a site are decompositions and the
+		// outline of either is the outline of what it holds, so in practice
+		// neither references a loop and neither is drawn — but that is a fact
+		// about how such models are authored, and a storey somebody did bound
+		// and did measure the height of is a storey this draws.
 		var drawn dfcad.RegionTessellation
-		if e.shapes.complete() && node.Kind() == dfcad.KindSpace {
+		if e.shapes.complete() {
 			element.Representation, element.Properties, drawn = e.shaped(node)
 		}
 
@@ -847,17 +881,90 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode) []ifc.Product {
 	for _, node := range nodes {
 		entity, objectType := e.productEntity(node)
 
-		out = append(out, ifc.Product{
+		product := ifc.Product{
 			Entity:      entity,
 			GlobalID:    e.identify(node.ID()),
 			Name:        string(node.ID()),
 			Description: node.Label(),
 			ObjectType:  objectType,
 			Placement:   &ifc.Placement{},
-		})
+		}
+
+		if e.shapes.complete() {
+			e.carriable(node)
+			product.Representation, product.Properties = e.modelled(node)
+		}
+
+		out = append(out, product)
 	}
 
 	return out
+}
+
+// carriable refuses a node whose type declares an IFC entity which cannot carry
+// a shape, where the model claims a height of it.
+//
+// The proxy is the right answer to a classification this writer has no
+// attribute list for, and it stays the answer for everything nobody has
+// measured: a thing with no shape, written as an IfcBuildingElementProxy naming
+// its own type, is a complete statement of what the model holds. What it is not
+// is the right answer for a node somebody claimed a height of. The claim says a
+// body was meant, the classification says where it was meant to go, and the two
+// disagree — so this says which claim and which entity rather than writing the
+// body somewhere the model did not point at, or quietly dropping it.
+func (e *exporter) carriable(node *dfcad.SemanticNode) {
+	declared, held := e.registry.Type(node.Type())
+	if !held {
+		return
+	}
+
+	code, classified := declared.ClassifiedAs(classificationSystem)
+	if !classified {
+		return
+	}
+
+	if slices.Contains(ifc.Products(), ifc.Entity(strings.ToUpper(code))) {
+		return
+	}
+
+	claim, made := e.claimed(node, e.shapes.height)
+	if !made {
+		return
+	}
+
+	e.refuseAt(claim.Value().Span(), fmt.Sprintf(
+		"expected the type %s of %s to be classified as an entity which can carry a shape, found %s: %s states a body "+
+			"to draw and %s is not a thing to draw it on",
+		node.Type(), node.ID(), code, namedClaim(claim, e.shapes.height, node.ID()), code),
+		"classify the type as one of the entities this writer holds an attribute list for, or take the claim off the "+
+			"node: a thing with no shape reaches the file as a proxy, and one with a shape has to be something which "+
+			"can hold one")
+}
+
+// claimed is the claim a node makes under one predicate, where it makes one.
+//
+// It asks whether there is a claim rather than what the claim says, so a value
+// which would be refused for its shape, its unit or its sign is a claim here
+// all the same: the question is whether the author meant this node to have a
+// body, and a height written wrongly means it exactly as much as one written
+// well.
+func (e *exporter) claimed(node *dfcad.SemanticNode, predicate string) (*dfcad.Claim, bool) {
+	if predicate == "" {
+		return nil, false
+	}
+
+	resolution, _ := e.graph.Claims().Resolve(node.ID(), predicate, nil)
+
+	if claim, held := resolution.Claim(); held {
+		return claim, true
+	}
+
+	candidates := resolution.Candidates()
+	if len(candidates) == 0 {
+		return nil, false
+	}
+
+	return candidates[0], true
 }
 
 // zones is every zone the model declares, with the members assigned to it.
