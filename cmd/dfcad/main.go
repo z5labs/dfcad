@@ -391,7 +391,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 // from the process.
 func runOn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage())
+		_, _ = fmt.Fprint(stderr, usage())
 		return exitUsage
 	}
 
@@ -401,14 +401,14 @@ func runOn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// is still for a person, so it is still on stderr and stdout stays
 		// empty: a caller piping stdout gets a result object or nothing at
 		// all, and never a page of prose in place of one.
-		fmt.Fprint(stderr, usage())
+		_, _ = fmt.Fprint(stderr, usage())
 		return exitSuccess
 	}
 
 	cmd, ok := lookup(args[0])
 	if !ok {
-		fmt.Fprintf(stderr, "dfcad: unknown command %q\n\n", args[0])
-		fmt.Fprint(stderr, usage())
+		_, _ = fmt.Fprintf(stderr, "dfcad: unknown command %q\n\n", args[0])
+		_, _ = fmt.Fprint(stderr, usage())
 		return exitUsage
 	}
 

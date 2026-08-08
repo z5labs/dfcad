@@ -186,7 +186,7 @@ func replace(path string, src []byte) error {
 	}
 
 	if err := os.Rename(name, path); err != nil {
-		os.Remove(name)
+		_ = os.Remove(name)
 		return WriteError{Path: path, Err: err}
 	}
 
@@ -231,7 +231,7 @@ func stage(path string, src []byte) (string, error) {
 
 	name := tmp.Name()
 	if err := flush(tmp, src); err != nil {
-		os.Remove(name)
+		_ = os.Remove(name)
 		return "", WriteError{Path: path, Err: err}
 	}
 
@@ -240,7 +240,7 @@ func stage(path string, src []byte) (string, error) {
 	// readable as the one it was written from.
 	if info, err := os.Stat(path); err == nil {
 		if err := os.Chmod(name, info.Mode().Perm()); err != nil {
-			os.Remove(name)
+			_ = os.Remove(name)
 			return "", WriteError{Path: path, Err: err}
 		}
 	}
@@ -255,11 +255,11 @@ func stage(path string, src []byte) (string, error) {
 // at a file that was never written.
 func flush(f *os.File, src []byte) error {
 	if _, err := f.Write(src); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	return f.Close()

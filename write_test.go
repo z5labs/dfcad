@@ -77,7 +77,7 @@ func begin(t *testing.T, root string) *Tx {
 	require.Empty(t, diags)
 	require.NotNil(t, tx)
 
-	t.Cleanup(func() { tx.Close() })
+	t.Cleanup(func() { _ = tx.Close() })
 
 	return tx
 }

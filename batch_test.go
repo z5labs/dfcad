@@ -40,7 +40,7 @@ func batchApplied(t *testing.T, written string) ([]Applied, Commit, string) {
 	tx, diags, err := Begin(root)
 	require.NoError(t, err)
 	require.Empty(t, diags)
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	out, err := tx.Apply(batched(t, written))
 	require.NoError(t, err)
@@ -611,7 +611,7 @@ func TestTxApplyRefusesTheWholeBatchWhenOneOperationFails(t *testing.T) {
 
 	tx, _, err := Begin(root)
 	require.NoError(t, err)
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	// The last operation is the one which cannot be applied: the id it writes
 	// under is one the second operation already took.

@@ -215,7 +215,7 @@ func (g *globals) open() error {
 	if err != nil {
 		return RootError{Path: g.Root, Cause: err}
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 
 	info, err := root.Stat()
 	if err != nil {
@@ -287,12 +287,12 @@ func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, st
 				// person goes. Stdout stays empty: a run that produced no
 				// result writes no result object, and never writes prose
 				// instead of one.
-				fmt.Fprint(stderr, cmd.usage)
+				_, _ = fmt.Fprint(stderr, cmd.usage)
 				return nil, exitSuccess, true
 			}
 
-			fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
-			fmt.Fprint(stderr, cmd.usage)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
+			_, _ = fmt.Fprint(stderr, cmd.usage)
 			return nil, exitUsage, true
 		}
 
@@ -324,13 +324,13 @@ func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, st
 	}
 
 	if err := globals.validate(); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
-		fmt.Fprint(stderr, cmd.usage)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
+		_, _ = fmt.Fprint(stderr, cmd.usage)
 		return nil, exitUsage, true
 	}
 
 	if err := globals.open(); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return nil, exitLoad, true
 	}
 

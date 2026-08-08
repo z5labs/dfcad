@@ -283,7 +283,7 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 
 	if render(diags, stderr) {
 		if err := emit(stdout, result); err != nil {
-			fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 			return exitLoad
 		}
 		return exitCheck
@@ -291,10 +291,10 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 
 	var written bytes.Buffer
 	if err := gml.Write(&written, collection); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 
 		if err := emit(stdout, result); err != nil {
-			fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 			return exitLoad
 		}
 		return exitCheck
@@ -302,7 +302,7 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 
 	status, err := place(destination, written.Bytes())
 	if err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -313,7 +313,7 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	reportExportMap(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -327,7 +327,7 @@ func reportExportMap(result exportMapResult, globals *globals, stderr io.Writer)
 	}
 
 	for _, file := range result.Files {
-		fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, result.Schema)
+		_, _ = fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, result.Schema)
 	}
 }
 

@@ -260,7 +260,7 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	reportClaims(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -336,7 +336,7 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	reportConflicts(result.Conflicts, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -467,11 +467,11 @@ func reportClaims(result claimsResult, globals *globals, stderr io.Writer) {
 		// The claims themselves are already the result, on stdout, so the
 		// reading of them is progress rather than result.
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s: %s\n", claim.Predicate, spellClaim(claim))
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", claim.Predicate, spellClaim(claim))
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s of %s under %s, %d retracted\n",
+	_, _ = fmt.Fprintf(stderr, "%s of %s under %s, %d retracted\n",
 		plural(len(result.Claims), "claim"),
 		result.Subject,
 		plural(len(predicates), "predicate"),
@@ -495,7 +495,7 @@ func reportConflicts(conflicts []conflictEntry, globals *globals, stderr io.Writ
 		}
 
 		if globals.Verbosity >= verbosityProgress {
-			fmt.Fprintf(stderr, "%s %s: %s, %s\n",
+			_, _ = fmt.Fprintf(stderr, "%s %s: %s, %s\n",
 				conflict.Subject,
 				conflict.Predicate,
 				plural(len(conflict.Claims), "claim"),
@@ -504,7 +504,7 @@ func reportConflicts(conflicts []conflictEntry, globals *globals, stderr io.Writ
 		}
 	}
 
-	fmt.Fprintf(stderr, "%s across %s, %d ambiguous\n",
+	_, _ = fmt.Fprintf(stderr, "%s across %s, %d ambiguous\n",
 		plural(len(conflicts), "conflict"),
 		plural(len(subjects), "subject"),
 		ambiguous,

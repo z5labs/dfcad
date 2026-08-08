@@ -305,7 +305,7 @@ func runAddClaim(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec, err := written.spec(subject, predicate, tx.Graph().Registry())
 	if err != nil {
@@ -345,7 +345,7 @@ func runSupersede(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec, err := written.spec(subject, predicate, tx.Graph().Registry())
 	if err != nil {
@@ -409,7 +409,7 @@ func runDeprecateClaim(cmd command, args []string, _ io.Reader, stdout, stderr i
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	notices, err := tx.DeprecateClaim(id, replacement)
 	if err != nil {
@@ -586,6 +586,6 @@ func noticed(notices []dfcad.Notice) []noticeEntry {
 // carries the same bytes either way.
 func reportNotices(cmd command, notices []dfcad.Notice, stderr io.Writer) {
 	for _, notice := range notices {
-		fmt.Fprintf(stderr, "dfcad %s: %s: %s\n", cmd.name, notice.Kind, notice.Message())
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %s: %s\n", cmd.name, notice.Kind, notice.Message())
 	}
 }

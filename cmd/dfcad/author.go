@@ -154,7 +154,7 @@ func runAddNode(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec := dfcad.NodeSpec{
 		ID:       id,
@@ -178,7 +178,7 @@ func runAddNode(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, destination.Path)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, destination.Path)
 	}
 
 	return commitChange(cmd, tx, globals, stdout, stderr)
@@ -207,7 +207,7 @@ func runSetLabel(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	if err := tx.SetLabel(id, arguments[1]); err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -254,7 +254,7 @@ func runRetire(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	if !ok {
 		return exit
 	}
-	defer tx.Close()
+	defer func() { _ = tx.Close() }()
 
 	spec := dfcad.RetirementSpec{Date: when, Reason: *reason, SupersededBy: dfcad.ID(*replacement)}
 
@@ -318,7 +318,7 @@ func begin(cmd command, globals *globals, stderr io.Writer) (*dfcad.Tx, int, boo
 
 	tx, diags, err := dfcad.Begin(globals.Root)
 	if err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return nil, exitLoad, false
 	}
 
@@ -363,7 +363,7 @@ func apply(cmd command, tx *dfcad.Tx, globals *globals, stderr io.Writer) (dfcad
 	refused := render(diags, stderr)
 
 	if err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return dfcad.Commit{}, exitLoad, false
 	}
 
@@ -384,7 +384,7 @@ func apply(cmd command, tx *dfcad.Tx, globals *globals, stderr io.Writer) (dfcad
 // write command does.
 func emitted(cmd command, stdout, stderr io.Writer, result any) int {
 	if err := emit(stdout, result); err != nil {
-		fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
 		return exitLoad
 	}
 
@@ -412,7 +412,7 @@ func render(diags []dfcad.Diagnostic, stderr io.Writer) bool {
 // which reads one says the same way.
 func reportLoading(cmd command, globals *globals, stderr io.Writer) {
 	if globals.Verbosity >= verbosityProgress {
-		fmt.Fprintf(stderr, "dfcad %s: loading the model beneath %s\n", cmd.name, globals.Root)
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: loading the model beneath %s\n", cmd.name, globals.Root)
 	}
 }
 
@@ -426,7 +426,7 @@ func reportCommit(out dfcad.Commit, globals *globals, stderr io.Writer) {
 	// is on stdout — so it is behind the verbosity flag.
 	if globals.Verbosity >= verbosityProgress {
 		for _, file := range out.Files {
-			fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, join(spelledEffects(file.Effects, true)))
+			_, _ = fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, join(spelledEffects(file.Effects, true)))
 		}
 	}
 
@@ -438,7 +438,7 @@ func reportCommit(out dfcad.Commit, globals *globals, stderr io.Writer) {
 	// The files which would change rather than the ones which did, because a dry
 	// run wrote none whatever it would have written, and reporting that as "0
 	// files" says the change did nothing rather than that it was not made.
-	fmt.Fprintf(stderr, "%s %s: %s\n",
+	_, _ = fmt.Fprintf(stderr, "%s %s: %s\n",
 		written,
 		plural(len(out.Changed()), "file"),
 		join(spelledEffects(out.Effects(), false)),
