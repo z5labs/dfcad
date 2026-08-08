@@ -1732,9 +1732,11 @@ func (sitsInside) Declare() CheckDeclaration {
 // where the model puts a corner. The fix for a container shaped like that is to
 // draw the corner the notch needs, which is a corner the model wanted anyway.
 //
-// Where a failure says a thing reaches past the boundary is written in the two
-// axes the comparison was made in and never in three. The third component
-// decided nothing here, and a place which carried it would say that it had.
+// Where a failure says a thing reaches past the boundary is a coordinate of the
+// container's own frame, written with as many components as the model wrote its
+// positions with ([Region.printed]). The comparison is made in the plane's axes
+// and a place written in those would be a pair of numbers appearing nowhere in
+// the file; a reader has to be able to find the corner this is about.
 //
 // A point-based subject is judged in the container's plane, and a subject with a
 // plane of its own is refused unless the two planes are one ([Region.Difference]
@@ -1859,7 +1861,7 @@ func sittingRegion(
 			"expected %s to sit inside %s, found %s%s of it outside, reaching %s%s past the boundary at %s",
 			nodeName(node), container.ID(),
 			decimal(beyond.Area()), squareSuffix(enclosing.Unit()),
-			decimal(depth), unitSuffix(enclosing.Unit()), pointText(at, 2),
+			decimal(depth), unitSuffix(enclosing.Unit()), pointText(at, enclosing.printed()),
 		),
 		Hint:    outsideHint(declared, position),
 		Span:    graph.Nodes().named(node),
@@ -1887,6 +1889,12 @@ func sittingPoints(
 		return failures
 	}
 
+	// The boundary is projected into its own axes once and every placement is
+	// asked against that. A wall has as many corners as it has turns, and
+	// re-projecting the container's whole outline for each of them would be the
+	// whole of the work this does.
+	figure := enclosing.figure(enclosing.basis)
+
 	var (
 		furthest placement
 		depth    float64
@@ -1894,11 +1902,12 @@ func sittingPoints(
 	)
 
 	for _, one := range placements {
-		if enclosing.encloses(one.at) {
+		at := enclosing.basis.project(one.at)
+		if enclosedBy(at, figure) {
 			continue
 		}
 
-		if away := enclosing.away(one.at); !outside || away > depth {
+		if away := nearestTo(at, figure); !outside || away > depth {
 			furthest, depth, outside = one, away, true
 		}
 	}
@@ -1912,7 +1921,7 @@ func sittingPoints(
 		Message: fmt.Sprintf(
 			"expected %s to sit inside %s, found %s %s%s outside the boundary, at %s",
 			nodeName(node), container.ID(), furthest.name,
-			decimal(depth), unitSuffix(enclosing.Unit()), pointText(furthest.at, 2),
+			decimal(depth), unitSuffix(enclosing.Unit()), pointText(furthest.at, enclosing.printed()),
 		),
 		Hint:    outsideHint(declared, position),
 		Span:    furthest.span,

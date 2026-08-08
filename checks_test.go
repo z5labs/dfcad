@@ -702,7 +702,7 @@ func TestSitsInside(t *testing.T) {
 			instance: "site:S-102",
 			expected: []string{
 				"expected site:S-102 to sit inside site:L-01, found 4.0 m² of it outside, reaching 3.0 m past " +
-					"the boundary at (13.0 1.0)",
+					"the boundary at (13.0 1.0 0.0)",
 			},
 		},
 		{
@@ -715,7 +715,7 @@ func TestSitsInside(t *testing.T) {
 			instance: "site:L-02",
 			expected: []string{
 				"expected site:L-02 to sit inside site:O-01, found 6.0 m² of it outside, reaching 2.0 m past " +
-					"the boundary at (13.0 0.0)",
+					"the boundary at (13.0 0.0 0.0)",
 			},
 		},
 		{
@@ -728,7 +728,7 @@ func TestSitsInside(t *testing.T) {
 			instance: "site:W-02",
 			expected: []string{
 				"expected site:W-02 to sit inside site:L-01, found geom:V-63 3.0 m outside the boundary, " +
-					"at (13.0 5.5)",
+					"at (13.0 5.5 0.0)",
 			},
 		},
 		{
@@ -740,7 +740,7 @@ func TestSitsInside(t *testing.T) {
 			name:     "reports a device set out past the footprint it is written within",
 			instance: "site:D-02",
 			expected: []string{
-				"expected site:D-02 to sit inside site:L-01, found it 2.0 m outside the boundary, at (12.0 2.0)",
+				"expected site:D-02 to sit inside site:L-01, found it 2.0 m outside the boundary, at (12.0 2.0 0.0)",
 			},
 		},
 		{
@@ -768,7 +768,7 @@ func TestSitsInside(t *testing.T) {
 			name:     "reports the same distance where the accuracy is narrow enough to tell it from nothing",
 			instance: "site:D-06",
 			expected: []string{
-				"expected site:D-06 to sit inside site:L-01, found it 0.25 m outside the boundary, at (10.25 5.0)",
+				"expected site:D-06 to sit inside site:L-01, found it 0.25 m outside the boundary, at (10.25 5.0 0.0)",
 			},
 		},
 		{
