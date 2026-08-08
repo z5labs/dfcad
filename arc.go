@@ -533,6 +533,9 @@ func (t *Topology) TessellateRegion(
 	}
 
 	region, drew, diags := t.regionOf(node, boundaries, survey, chord, true)
+	if drew.drew {
+		region.drawn = drew
+	}
 
 	return RegionTessellation{region: region, tolerance: drew.tolerance, deviation: drew.deviation}, diags
 }
@@ -1029,4 +1032,194 @@ func (b *bend) points(divisions int) []Point {
 // holds reports whether a point on the arc's circle is within its sweep.
 func (b *bend) holds(point Point) bool {
 	return b.turn(pointSub(point, b.centre)) <= b.sweep
+}
+
+// UnreadArc is one edge which states a curve that nothing read, together with
+// the predicates it states it under.
+//
+// It is the answer to a question a caller cannot ask any other way. Which
+// predicates carry an arc is vocabulary the consuming repository owns and
+// nothing here knows ([Arc]), so an invocation which names none has no way to
+// tell a model of straight walls from one whose walls curve — and reads the
+// second as the first, silently, reporting the chord between two corners as
+// though it were the wall. That is a figure which can be out by a third and
+// carries nothing saying so.
+//
+// What is recognisable without the vocabulary is the shape of the claim. An edge
+// has no position of its own — its ends are its vertices, and an arc is written
+// as a centre and a point on the curve because those are the only positions
+// which are the edge's ([Arc.Through]) — so a position claimed on an edge is a
+// curve or it is nothing. That is what this reports, and it reports the
+// predicate names it found rather than deciding what they mean: naming them is
+// the fix, and the answer is what to name.
+type UnreadArc struct {
+	// edge is the edge which states it.
+	edge *Edge
+
+	// predicates are the predicates it states a position under, in name order
+	// and each named once.
+	predicates []string
+
+	// span is where the edge was written, which a diagnostic about it points
+	// at.
+	span Span
+}
+
+// Edge returns the edge which states the curve.
+func (a UnreadArc) Edge() *Edge { return a.edge }
+
+// Predicates returns the predicates it states a position under, in name order
+// and each named once.
+func (a UnreadArc) Predicates() []string { return slices.Clone(a.predicates) }
+
+// Span returns where the edge was written.
+func (a UnreadArc) Span() Span { return a.span }
+
+// String renders the finding as a person reads it.
+func (a UnreadArc) String() string {
+	id := ID("")
+	if a.edge != nil {
+		id = a.edge.ID()
+	}
+
+	return fmt.Sprintf("%s states a position under %s and was read as the straight line between its ends",
+		geometricName(edgeTag, id), join(a.predicates, "and"))
+}
+
+// UnreadArcs reports the edges bounding the subjects which state a curve this
+// survey did not read, and a warning for each.
+//
+// It is what stops a chorded boundary being a silent one. Every figure computed
+// from a survey which does not bend an edge is a figure about the chord, and the
+// difference is not small: a four metre wall bowed into a semicircular bay
+// encloses half as much again as the straight line across it, and a forty foot
+// frontage arc through a right angle is hundreds of square feet. An answer which
+// discarded a claim the model carries and said nothing is worse than one which
+// refused, because nobody goes looking for it.
+//
+// An edge the survey bends is not reported. Naming the vocabulary is the fix, so
+// a run which named it has nothing to be told; a run which named it and could
+// not resolve one of the two claims on some edge is told about that edge, which
+// is exactly the case an answer would otherwise be quietly straight in.
+//
+// The warning is a warning and never an error. Reading a curve as a chord is a
+// decision worth reporting and there are answers which want it — a rough
+// take-off, a model whose author has not written the arcs yet — and refusing
+// them would trade one wrong default for another. What is not on offer is not
+// saying.
+//
+// The order is by edge id, so two runs over one model produce the same list and
+// a diff between them means something. A subject reached twice contributes its
+// edges once.
+func (g *Graph) UnreadArcs(survey Survey, subjects ...Entity) ([]UnreadArc, []Diagnostic) {
+	if g == nil {
+		return nil, nil
+	}
+
+	found := make(map[ID]UnreadArc)
+
+	for _, subject := range subjects {
+		for edge := range g.Bounding(subject) {
+			if edge == nil {
+				continue
+			}
+			if _, seen := found[edge.ID()]; seen {
+				continue
+			}
+			if _, bent := survey.Curvature[edge.ID()]; bent {
+				continue
+			}
+
+			predicates := g.positioned(edge.ID(), survey.Registry)
+			if len(predicates) == 0 {
+				continue
+			}
+
+			found[edge.ID()] = UnreadArc{
+				edge:       edge,
+				predicates: predicates,
+				span:       g.Topology().namedAt(edge.ID(), edge.Span()),
+			}
+		}
+	}
+
+	arcs := make([]UnreadArc, 0, len(found))
+	for _, arc := range found {
+		arcs = append(arcs, arc)
+	}
+
+	slices.SortFunc(arcs, func(a, b UnreadArc) int {
+		return strings.Compare(string(a.edge.ID()), string(b.edge.ID()))
+	})
+
+	diags := make([]Diagnostic, 0, len(arcs))
+	for _, arc := range arcs {
+		diags = append(diags, arc.diagnostic())
+	}
+
+	return arcs, diags
+}
+
+// positioned is the predicates a subject states a position under, in name order
+// and each named once.
+//
+// The order is the registry's iteration order, which is by name, so a subject
+// which states two is reported the same way whichever order they were written
+// in and two runs over one model diff to nothing.
+//
+// A retracted claim states nothing. Resolution never considers one, so a curve
+// whose only statement has been withdrawn is a curve nobody is claiming and
+// reporting it would send an author looking for an arc which is no longer there.
+func (g *Graph) positioned(subject ID, registry *Registry) []string {
+	if registry == nil {
+		return nil
+	}
+
+	under := make(map[string]bool)
+	for claim := range g.Claims().Of(subject) {
+		if claim.Rank() == RankDeprecated {
+			continue
+		}
+
+		declared, held := registry.Predicate(claim.Predicate())
+		if !held || declared.Shape != ShapeCoordinate {
+			continue
+		}
+
+		under[claim.Predicate()] = true
+	}
+
+	if len(under) == 0 {
+		return nil
+	}
+
+	var out []string
+	for predicate := range registry.Predicates() {
+		if under[predicate.Name] {
+			out = append(out, predicate.Name)
+		}
+	}
+
+	return out
+}
+
+// diagnostic is the warning one unread curve reports.
+func (a UnreadArc) diagnostic() Diagnostic {
+	id := ID("")
+	if a.edge != nil {
+		id = a.edge.ID()
+	}
+
+	return Diagnostic{
+		Severity: SeverityWarning,
+		Span:     a.span,
+		Message: fmt.Sprintf(
+			"expected the predicates a curved edge is written under to read %s as it was authored, found none named "+
+				"and a position claimed on it under %s",
+			geometricName(edgeTag, id), join(a.predicates, "and"),
+		),
+		Hint: "an edge has no position of its own, so a position claimed on one is the centre of the arc it bends " +
+			"along and a point that arc passes through; this answer is about the straight line between its two ends " +
+			"until those predicates are named",
+	}
 }

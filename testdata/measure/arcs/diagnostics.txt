@@ -1,4 +1,4 @@
-testdata/measure/arcs/model.dfc:328:1: error: expected every loop bounding site:S-31 to be straight to nest its rings, found that geom:L-31 bends along an arc
+testdata/measure/arcs/model.dfc:328:1: error: expected either every loop bounding site:S-31 to be straight or a chord tolerance to nest them at, found that geom:L-31 bends along an arc and no chord tolerance named
 328 | (node site:S-31
     | ^^^^^^^^^^^^^^^
 329 |   (label "Floor plate with a round courtyard")
@@ -6,4 +6,4 @@ testdata/measure/arcs/model.dfc:328:1: error: expected every loop bounding site:
     ... 5 lines omitted
 335 |   (boundary geom:L-31))
     | ^^^^^^^^^^^^^^^^^^^^^^^
-    = hint: a ring inside another is a hole and is taken away, and which ring is inside which is decided at the corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag; tessellate the region to a chord tolerance you name to nest it at the segments instead
+    = hint: a ring inside another is a hole and is taken away, and which ring is inside which is decided at the corners; a bulge which reaches past one is a whole ring counted the wrong way rather than a sag; name the tolerance the curve may be drawn to so the nesting is decided at the segments instead

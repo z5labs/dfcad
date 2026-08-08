@@ -6,6 +6,7 @@
 package main
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -420,4 +421,185 @@ func TestRunMeasureHumanOutputNeverChangesStdout(t *testing.T) {
 	assert.NotContains(t, humanReport, "corners known to")
 	assert.Contains(t, loudReport, "corners known to")
 	assert.Contains(t, loudReport, "independent 0.004 m")
+}
+
+// curvedMeasurement runs measure over the curved fixture with the vocabulary the
+// case names, rather than through [computed], which fixes the position and
+// tolerance of the straight fixture's registry.
+func curvedMeasurement(t *testing.T, expectedCode int, files map[string]string, args ...string) (measureResult, string) {
+	t.Helper()
+
+	root := tree(t, files)
+	stdout, stderr := invoke(t, expectedCode, root, append([]string{
+		"measure",
+		"--position", "position",
+		"--tolerance", "coincident",
+	}, args...)...)
+
+	return listed[measureResult](t, stdout), stderr
+}
+
+// TestRunMeasureReadsACurvedEdgeOrSaysItDidNot is its own function because the
+// two halves of it are one behaviour: a run which names the vocabulary measures
+// the wall, and a run which does not measures the chord and says so. Either
+// answer on its own is the failure.
+func TestRunMeasureReadsACurvedEdgeOrSaysItDidNot(t *testing.T) {
+	// The plot's road frontage bows out along an arc of radius twenty-six over a
+	// chord of twenty. Read as the chord it is a twenty by twelve rectangle;
+	// read as the arc it is that plus the circular segment the bow encloses,
+	// which is written as the closed form rather than as a decimal: an
+	// expectation written as 26.8 says nothing about where it came from.
+	const chorded = 240.0
+	bulge := frontageBulge()
+
+	t.Run("measures the chord and says which edge it chorded", func(t *testing.T) {
+		result, stderr := curvedMeasurement(t, exitSuccess, curved(), "site:P-01")
+
+		require.NotNil(t, result.Area)
+		assert.InDelta(t, chorded, result.Area.Value, 1e-9)
+
+		require.Len(t, result.Chorded, 1, "one of the plot's four edges states a curve")
+		assert.Equal(t, "geom:E-21", result.Chorded[0].Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates,
+			"the predicates to name, which is what makes the report actionable")
+		assert.NotEmpty(t, result.Chorded[0].Span.String())
+
+		assert.Contains(t, stderr, "geom:E-21", "and a person is told the same thing")
+	})
+
+	t.Run("measures the arc where the vocabulary is named", func(t *testing.T) {
+		result, _ := curvedMeasurement(t, exitSuccess, curved(),
+			"--arc-centre", "arc-centre", "--arc-through", "arc-through", "site:P-01")
+
+		require.NotNil(t, result.Area)
+		assert.InDelta(t, chorded+bulge, result.Area.Value, 1e-9,
+			"the figure is the closed form of the arc and not of any drawing of it")
+
+		assert.Empty(t, result.Chorded, "there is nothing left unread to report")
+		assert.Nil(t, result.Chord, "nothing was drawn to reach the figure")
+		assert.Nil(t, result.Deviation)
+	})
+
+	t.Run("says nothing about curves for a model which claims none", func(t *testing.T) {
+		result, stderr := computed(t, exitSuccess, model(), "site:P-01")
+
+		assert.Empty(t, result.Chorded, "a plot of straight edges has no curve to go unread")
+		assert.Nil(t, result.Chord)
+		assert.Nil(t, result.Deviation)
+		assert.NotContains(t, stderr, "curved edge")
+	})
+}
+
+// TestRunMeasureNestsCurvedRingsAtAChordItIsGiven is its own function because
+// the chord does something different here from anywhere else: it decides the
+// nesting and never the figure, and the figure it does not decide is the one
+// worth asserting.
+func TestRunMeasureNestsCurvedRingsAtAChordItIsGiven(t *testing.T) {
+	curving := []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through"}
+
+	t.Run("refuses a region of several rings one of which bends", func(t *testing.T) {
+		result, stderr := curvedMeasurement(t, exitCheck, curved(), append(curving, "site:S-01")...)
+
+		assert.False(t, result.Derived)
+		assert.Contains(t, stderr, "no chord tolerance named")
+	})
+
+	t.Run("nests them where a chord is named and still measures the arcs", func(t *testing.T) {
+		result, _ := curvedMeasurement(t, exitSuccess, curved(),
+			append(curving, "--chord", "chord-deviation", "site:S-01")...)
+
+		require.NotNil(t, result.Area)
+
+		// A ten metre plate with a round courtyard of radius two taken out of
+		// the middle of it.
+		assert.InDelta(t, 100-4*math.Pi, result.Area.Value, 1e-9)
+
+		require.NotNil(t, result.Chord)
+		assert.Equal(t, "chord-deviation", result.Chord.Name)
+
+		require.NotNil(t, result.Deviation)
+		assert.Positive(t, result.Deviation.Value)
+		assert.LessOrEqual(t, result.Deviation.Value, result.Chord.Value)
+		assert.Equal(t, "m", result.Deviation.Unit)
+	})
+}
+
+func TestRunMeasureRefusesHalfTheArcVocabulary(t *testing.T) {
+	testCases := []struct {
+		name string
+		args []string
+		says string
+	}{
+		{
+			name: "a centre with no point on the curve",
+			args: []string{"--arc-centre", "arc-centre", "site:P-01"},
+			says: "--arc-through",
+		},
+		{
+			name: "a point on the curve with no centre",
+			args: []string{"--arc-through", "arc-through", "site:P-01"},
+			says: "--arc-centre",
+		},
+	}
+
+	root := tree(t, curved())
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, stderr := invoke(t, exitUsage, root, append([]string{
+				"measure", "--position", "position", "--tolerance", "coincident",
+			}, testCase.args...)...)
+
+			assert.Contains(t, stderr, testCase.says)
+		})
+	}
+}
+
+// TestRunMeasureNamesAPredicateOnceHoweverOftenItIsClaimed is its own function
+// because what it asserts is a property of the list rather than a figure: a
+// curve re-surveyed is two claims under one predicate, and an author told to
+// name that predicate twice would be told to fix a model in which nothing is
+// wrong.
+//
+// The retracted claim is the case which makes it worth asserting. Resolution
+// never considers one, so a report which counted it would be reporting a
+// statement nobody is making.
+func TestRunMeasureNamesAPredicateOnceHoweverOftenItIsClaimed(t *testing.T) {
+	const surveyed = `  (arc-centre
+    (value (16.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-19"))`
+
+	// The first setting-out of the bay, retracted in favour of the as-built
+	// check which replaced it.
+	const resurveyed = `  (arc-centre
+    (id site:M-0101)
+    (value (16.0 2.05 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-19")
+    (rank deprecated)
+    (superseded-by site:M-0102))
+  (arc-centre
+    (id site:M-0102)
+    (value (16.0 2.0 0.0) m)
+    (source "As-built check AB-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-05-06"))`
+
+	files := curved()
+
+	written := files["entities/geometry.dfc"]
+	require.Contains(t, written, surveyed)
+	files["entities/geometry.dfc"] = strings.Replace(written, surveyed, resurveyed, 1)
+
+	result, _ := curvedMeasurement(t, exitSuccess, files, "site:S-41")
+
+	require.Len(t, result.Chorded, 1)
+	assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates,
+		"one entry per predicate, however many claims are written under it")
 }

@@ -7,6 +7,7 @@ package dfcad
 
 import (
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 )
@@ -258,6 +259,16 @@ type Plan struct {
 	// outlines are the contained nodes which have a ring, in id order.
 	outlines []Outline
 
+	// chord is the declared chord tolerance the rings which bend were drawn
+	// to, and deviation how far the worst of those segments falls from the
+	// curve it stands in for.
+	//
+	// One tolerance covers the whole sheet, because every ring is read from one
+	// survey: two rooms sharing a curved party wall drawn to two resolutions
+	// would leave a gap down the middle of it which nobody authored.
+	chord     Tolerance
+	deviation float64
+
 	// budget is the accumulated accuracy of the position claims behind every
 	// ring drawn.
 	budget Budget
@@ -275,6 +286,23 @@ func (p Plan) Unit() Unit { return p.unit }
 
 // Tolerance returns what corners were judged coincident against.
 func (p Plan) Tolerance() Tolerance { return p.tolerance }
+
+// ChordTolerance returns the declared tolerance the rings which bend were drawn
+// to, and whether any of them bent at all.
+//
+// A ring is a list of points, so a curve on a sheet is always an approximation
+// of the wall; this is what says how good an approximation, and its absence is
+// what says there was nothing to approximate. A plan which does not carry it and
+// whose subject has curved walls is a sheet drawn straight through them, which
+// [Graph.UnreadArcs] is what reports.
+func (p Plan) ChordTolerance() (Tolerance, bool) { return p.chord, p.chord.Name != "" }
+
+// Deviation returns how far the worst segment of that drawing falls from the
+// curve it stands in for, in [Plan.Unit].
+//
+// It is what was achieved rather than what was asked for, and is always within
+// [Plan.ChordTolerance].
+func (p Plan) Deviation() float64 { return p.deviation }
 
 // Outlines returns the contained nodes which have a ring, in id order.
 //
@@ -400,6 +428,11 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 		})
 
 		plan.budget.Merge(region.Budget())
+
+		if tolerance, drawn := region.ChordTolerance(); drawn {
+			plan.chord = tolerance
+			plan.deviation = math.Max(plan.deviation, region.Deviation())
+		}
 	}
 
 	return plan, diags

@@ -144,7 +144,7 @@ func TestRunBuildableReportsTheDigestItWasDerivedFrom(t *testing.T) {
 func TestABuildableOfATreeWithNoDigestWritesNoDigestField(t *testing.T) {
 	// A graph assembled from no tree at all has no digest, which is the state a
 	// model that was never read from disk leaves behind.
-	result := reportBuildable(command{name: "buildable"}, nil, "site:P-01", dfcad.Buildable{}, false)
+	result := reportBuildable(command{name: "buildable"}, nil, "site:P-01", dfcad.Buildable{}, nil, false)
 
 	assert.Empty(t, result.Digest)
 
@@ -334,4 +334,78 @@ func TestRunBuildableAttributesTheBoundaryToItsEdges(t *testing.T) {
 	// of the model runs there.
 	require.NotNil(t, result.Region)
 	assert.Empty(t, result.Region.Boundary)
+}
+
+// TestRunBuildableReadsACurvedFrontageOrSaysItDidNot is its own function because
+// the two halves of it are one behaviour: a run which names the vocabulary sets
+// back from the frontage, and a run which does not sets back from the chord and
+// says so. Either answer on its own is the failure — and this is the query where
+// it costs the most, because the answer is a permission decision.
+func TestRunBuildableReadsACurvedFrontageOrSaysItDidNot(t *testing.T) {
+	curving := []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through"}
+
+	t.Run("derives over the chord and says which edge it chorded", func(t *testing.T) {
+		result, stderr := derived(t, exitSuccess, curved(), "site:P-01")
+
+		require.True(t, result.Derived)
+		require.NotNil(t, result.Parcel)
+		assert.InDelta(t, 240.0, result.Parcel.Area, 0.25, "the plot read as the chord of its frontage")
+
+		require.Len(t, result.Chorded, 1)
+		assert.Equal(t, "geom:E-21", result.Chorded[0].Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates)
+
+		assert.Nil(t, result.Chord, "nothing bent, because nothing read the bend")
+		assert.Contains(t, stderr, "geom:E-21")
+	})
+
+	t.Run("refuses to draw the frontage until a chord tolerance names how closely", func(t *testing.T) {
+		result, stderr := derived(t, exitCheck, curved(), append(curving, "site:P-01")...)
+
+		assert.False(t, result.Derived, "no region, rather than one offset at a resolution nobody chose")
+		assert.Contains(t, stderr, "no chord tolerance named")
+	})
+
+	t.Run("derives over the frontage where the whole vocabulary is named", func(t *testing.T) {
+		result, _ := derived(t, exitSuccess, curved(),
+			append(curving, "--chord", "chord-deviation", "site:P-01")...)
+
+		require.True(t, result.Derived)
+		require.NotNil(t, result.Parcel)
+		require.NotNil(t, result.Region)
+
+		// The plot is the rectangle plus the circular segment the frontage bows
+		// out into, and what is buildable is more than the sixty-four square
+		// metres the chorded plot leaves.
+		// The drawn frontage lies inside the curve everywhere, so the parcel it
+		// bounds is a little smaller than the arc encloses and never larger.
+		assert.Less(t, result.Parcel.Area, 240+frontageBulge())
+		assert.InDelta(t, 240+frontageBulge(), result.Parcel.Area, 0.2)
+		assert.Greater(t, result.Region.Area, 64.0, "a curved frontage is buildable area nobody had")
+
+		require.NotNil(t, result.Chord)
+		assert.Equal(t, "chord-deviation", result.Chord.Name)
+
+		require.NotNil(t, result.Deviation)
+		assert.Positive(t, result.Deviation.Value)
+		assert.LessOrEqual(t, result.Deviation.Value, result.Chord.Value)
+
+		assert.Empty(t, result.Chorded)
+	})
+
+	t.Run("says nothing about curves for a plot which claims none", func(t *testing.T) {
+		result, _ := derived(t, exitSuccess, model(), "site:P-01")
+
+		assert.Empty(t, result.Chorded)
+		assert.Nil(t, result.Chord)
+		assert.Nil(t, result.Deviation)
+	})
+}
+
+func TestRunBuildableRefusesHalfTheArcVocabulary(t *testing.T) {
+	root := tree(t, curved())
+
+	_, stderr := invoke(t, exitUsage, root, deriving("--arc-centre", "arc-centre", "site:P-01")...)
+
+	assert.Contains(t, stderr, "--arc-through")
 }

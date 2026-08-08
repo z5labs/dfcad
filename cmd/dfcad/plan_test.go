@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 
@@ -541,4 +542,100 @@ func TestRunPlanHumanOutputStaysOffStdout(t *testing.T) {
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(quiet.Bytes(), &payload))
 	assert.NotContains(t, strings.ToLower(quiet.String()), "outlines,")
+}
+
+// curvedPlan runs plan over the curved fixture's level, which holds the floor
+// plate with the round courtyard in it.
+func curvedPlan(t *testing.T, expectedExit int, args ...string) (planResult, string) {
+	t.Helper()
+
+	root := tree(t, curved())
+	stdout, stderr := invoke(t, expectedExit, root, append([]string{
+		"plan",
+		"--annotate", "arc-centre",
+		"--position", "position",
+		"--tolerance", "coincident",
+	}, args...)...)
+
+	if stdout == "" {
+		return planResult{}, stderr
+	}
+
+	return listed[planResult](t, stdout), stderr
+}
+
+// TestRunPlanDrawsACurvedRingOrSaysItDidNot is its own function because a sheet
+// is where a chorded boundary is least visible: a ring run straight through a
+// curve looks like a wall somebody meant, and nothing downstream of the drawing
+// can tell that it was not.
+func TestRunPlanDrawsACurvedRingOrSaysItDidNot(t *testing.T) {
+	curving := []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through"}
+
+	t.Run("draws the chords and says which edge it chorded", func(t *testing.T) {
+		result, stderr := curvedPlan(t, exitSuccess, "site:L-02")
+
+		require.True(t, result.Planned, "a bay read as its chord is a ring, and the wrong one")
+		require.Len(t, result.Outlines, 1)
+
+		// Four by four, which is the room without its bay: the sheet would be
+		// drawn with a straight east wall and nothing in it would say so.
+		assert.InDelta(t, 16.0, result.Outlines[0].Region.Area, 1e-9)
+
+		require.Len(t, result.Chorded, 1)
+		assert.Equal(t, "geom:E-42", result.Chorded[0].Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates)
+
+		assert.Nil(t, result.Chord, "nothing bent, because nothing read the bend")
+		assert.Contains(t, stderr, "geom:E-42")
+	})
+
+	t.Run("refuses to draw a curved ring until a chord tolerance names how closely", func(t *testing.T) {
+		result, stderr := curvedPlan(t, exitCheck, append(curving, "site:L-02")...)
+
+		assert.False(t, result.Planned, "no ring, rather than one drawn at a resolution nobody chose")
+		assert.Contains(t, stderr, "no chord tolerance named")
+	})
+
+	t.Run("draws the curve where the whole vocabulary is named", func(t *testing.T) {
+		result, _ := curvedPlan(t, exitSuccess, append(curving, "--chord", "chord-deviation", "site:L-02")...)
+
+		require.True(t, result.Planned)
+		require.Len(t, result.Outlines, 1)
+
+		// Four by four with a semicircular bay of radius two on one side, drawn
+		// as chords which lie inside the curve everywhere.
+		region := result.Outlines[0].Region
+		assert.Greater(t, region.Area, 16.0, "the bay is on the sheet now")
+		assert.Less(t, region.Area, 16+2*math.Pi, "and the chords of it lie inside the curve")
+
+		require.Len(t, region.Pieces, 1)
+		assert.Greater(t, len(region.Pieces[0].Outer), 4, "a drawn bay is more than the room's four corners")
+
+		require.NotNil(t, result.Chord)
+		assert.Equal(t, "chord-deviation", result.Chord.Name)
+
+		require.NotNil(t, result.Deviation)
+		assert.Positive(t, result.Deviation.Value)
+		assert.LessOrEqual(t, result.Deviation.Value, result.Chord.Value)
+
+		assert.Empty(t, result.Chorded)
+	})
+
+	t.Run("says nothing about curves for a storey which claims none", func(t *testing.T) {
+		result, _ := planned(t, exitSuccess, wholeStorey("site:L-01")...)
+
+		assert.Empty(t, result.Chorded)
+		assert.Nil(t, result.Chord)
+		assert.Nil(t, result.Deviation)
+	})
+}
+
+func TestRunPlanRefusesHalfTheArcVocabulary(t *testing.T) {
+	root := tree(t, curved())
+
+	_, stderr := invoke(t, exitUsage, root,
+		"plan", "--annotate", "arc-centre", "--position", "position", "--tolerance", "coincident",
+		"--arc-centre", "arc-centre", "site:L-02")
+
+	assert.Contains(t, stderr, "--arc-through")
 }

@@ -235,7 +235,11 @@ func runTessellate(cmd command, args []string, _ io.Reader, stdout, stderr io.Wr
 	}
 
 	drawn, diags := graph.Topology().TessellateRegion(
-		node, graph.Boundaries(), bent(graph, node, *position, *tolerance, *centre, *through), *chord)
+		node,
+		graph.Boundaries(),
+		bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through}, node),
+		*chord,
+	)
 
 	// The diagnostics are for whoever wrote the model, so they go to stderr on
 	// every run and in every format, and whether any of them is an error is what
@@ -271,7 +275,28 @@ func arcVocabularyOf(centre, through string) error {
 	return nil
 }
 
-// bent is where every corner of the boundary is and which of its edges bend,
+// arcs is the vocabulary a curved edge is read under: the two predicates an arc
+// is written in, and the tolerance it may be drawn to where an answer cannot be
+// reached without straight segments.
+//
+// The three travel together because a run which named some of them has said
+// something incomplete: two predicates without a chord is a curve which can be
+// measured and not overlaid, and a chord without the predicates is a resolution
+// named for a curve nothing will read. Which of them a command needs is the
+// command's, and [arcVocabularyOf] is where each says so.
+type arcs struct {
+	// centre is the predicate an arc's centre is claimed under, and through the
+	// predicate the point it passes through is claimed under.
+	centre  string
+	through string
+
+	// chord is the tolerance a curve is drawn to where straight segments are
+	// unavoidable. Empty is a run which refuses such a question rather than
+	// answering it at a resolution nobody named.
+	chord string
+}
+
+// bent is where every corner of the subjects is and which of their edges bend,
 // read under the predicates the run named.
 //
 // The arcs are read only where the run named the vocabulary they are written in.
@@ -279,41 +304,105 @@ func arcVocabularyOf(centre, through string) error {
 // model nobody has claimed a curve in is made entirely of — so an absent
 // predicate is a model with nothing to bend rather than a drawing missing its
 // curves ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+// What it is not is a model whose curves may go unmentioned: [dfcad.Graph.UnreadArcs]
+// is the other half of that, and every command which builds a survey here
+// reports what this could not read.
+//
+// More than one subject is one survey and not several. A corner read against two
+// surveys is a corner which can be in two places, and two shapes being compared
+// — a proposal and the envelope it has to sit in, two rooms either side of a
+// party wall — is exactly where that shows up as a gap nobody authored.
 //
 // A corner or an arc whose claim does not resolve is not placed and is not
-// refused here. Whether it was needed is the drawing's question, and it answers
+// refused here. Whether it was needed is the answer's question, and it answers
 // it with a diagnostic naming the corner or the edge and the shape it belonged
 // to — which is more than this could say.
-func bent(graph *dfcad.Graph, node *dfcad.SemanticNode, position, tolerance, centre, through string) dfcad.Survey {
-	survey := dfcad.Survey{Tolerance: tolerance, Registry: graph.Registry()}
+func bent(graph *dfcad.Graph, position, tolerance string, curved arcs, subjects ...dfcad.Entity) dfcad.Survey {
+	survey := dfcad.Survey{Tolerance: tolerance, Chord: curved.chord, Registry: graph.Registry()}
 
-	for vertex := range graph.Vertices(node) {
-		resolution, err := graph.Claims().Resolve(vertex.ID(), position, graph.Registry())
-		if err != nil {
-			continue
+	for _, subject := range subjects {
+		for vertex := range graph.Corners(subject) {
+			resolution, err := graph.Claims().Resolve(vertex.ID(), position, graph.Registry())
+			if err != nil {
+				continue
+			}
+			survey.Place(vertex.ID(), resolution)
 		}
-		survey.Place(vertex.ID(), resolution)
 	}
 
-	if centre == "" || through == "" {
+	if curved.centre == "" || curved.through == "" {
 		return survey
 	}
 
-	for edge := range graph.Edges(node) {
-		at, err := graph.Claims().Resolve(edge.ID(), centre, graph.Registry())
-		if err != nil {
-			continue
-		}
+	for _, subject := range subjects {
+		for edge := range graph.Bounding(subject) {
+			at, err := graph.Claims().Resolve(edge.ID(), curved.centre, graph.Registry())
+			if err != nil {
+				continue
+			}
 
-		on, err := graph.Claims().Resolve(edge.ID(), through, graph.Registry())
-		if err != nil {
-			continue
-		}
+			on, err := graph.Claims().Resolve(edge.ID(), curved.through, graph.Registry())
+			if err != nil {
+				continue
+			}
 
-		survey.Bend(edge.ID(), at, on)
+			survey.Bend(edge.ID(), at, on)
+		}
 	}
 
 	return survey
+}
+
+// chordedEntry is one edge which states a curve the run did not read, as the
+// machine contract writes it.
+//
+// It is in the answer and not only on stderr because it is part of the answer:
+// every figure beside it is about the straight line between that edge's two ends
+// rather than about the wall, and a consumer comparing a computed area against a
+// surveyor's has to be able to see that from the object it is comparing.
+type chordedEntry struct {
+	// Edge is the id of the edge which states it.
+	Edge string `json:"edge"`
+
+	// Predicates are the predicates it states a position under, which is what
+	// to name to have the curve read.
+	Predicates []string `json:"predicates"`
+
+	// Span is where that edge was written.
+	Span dfcad.Span `json:"span"`
+}
+
+// chordedOf is the unread curves as the machine contract writes them, and the
+// warnings which say the same thing to whoever wrote the model.
+//
+// Both come back because they are the same finding for two readers, and neither
+// is derived by parsing the other: the diagnostics go to stderr on every run and
+// in every format, and the entries go into the object on stdout.
+func chordedOf(graph *dfcad.Graph, survey dfcad.Survey, subjects ...dfcad.Entity) ([]chordedEntry, []dfcad.Diagnostic) {
+	unread, diags := graph.UnreadArcs(survey, subjects...)
+	if len(unread) == 0 {
+		return nil, diags
+	}
+
+	entries := make([]chordedEntry, 0, len(unread))
+	for _, arc := range unread {
+		entry := chordedEntry{Predicates: arc.Predicates(), Span: arc.Span()}
+		if edge := arc.Edge(); edge != nil {
+			entry.Edge = string(edge.ID())
+		}
+		entries = append(entries, entry)
+	}
+
+	return entries, diags
+}
+
+// asEntities is a list of nodes as the thing a survey is built over.
+func asEntities(nodes ...*dfcad.SemanticNode) []dfcad.Entity {
+	out := make([]dfcad.Entity, 0, len(nodes))
+	for _, node := range nodes {
+		out = append(out, node)
+	}
+	return out
 }
 
 // reportTessellate is the drawing as the machine contract writes it.

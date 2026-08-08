@@ -327,10 +327,25 @@
 // declares and return a [Tessellation] carrying both the segments and the
 // tolerance they were drawn to, so what a drawing is good for can be read off
 // it. The same arc and the same tolerance give the same points every time. What
-// will not happen is a curve becoming segments on the way to an answer: an
-// overlay is computed over straight edges, so [Topology.RegionOf] refuses a
-// curved boundary and says to draw it deliberately rather than drawing it for
-// you.
+// will not happen is a curve becoming segments on the way to an answer nobody
+// asked to have drawn: an overlay is computed over straight edges, so
+// [Topology.RegionOf] refuses a curved boundary until the survey names the
+// tolerance it may be drawn to ([Survey.Chord]), and the [Region] which comes
+// back then says what it was drawn to ([Region.ChordTolerance]) and how far the
+// drawing fell from the curve ([Region.Deviation]). The one place a measurement
+// needs the same is the even-odd nesting of several rings, which is decided at
+// the corners and cannot be where a bulge reaches past one; the figures it nests
+// are still the arcs', exact whatever the chord was.
+//
+// The other half of that is [Graph.UnreadArcs], which is what stops a chorded
+// boundary being a silent one. A caller who never named the vocabulary an arc is
+// written under has no way to tell a model of straight walls from one whose
+// walls curve, and reads the second as the first — reporting the chord between
+// two corners as though it were the wall, which can be out by a third. What is
+// recognisable without the vocabulary is the shape of the claim: an edge has no
+// position of its own, so a position claimed on one is a curve or it is nothing.
+// That is what it reports, as a warning naming the edge and the predicates to
+// name, beside whichever answer was computed.
 //
 // [Topology.TessellateRegion] is the same for a whole semantic node, and is what
 // an export goes through: it draws every ring bounding the node at once and

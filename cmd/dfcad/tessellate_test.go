@@ -40,6 +40,16 @@ const curvedRegistry = `(project
   (geometry absent)
   (description "A group of things administered together, which has no shape."))
 
+(type OfficeStorey
+  (kind Storey)
+  (geometry solid)
+  (description "One floor plate of a building."))
+
+(type Parcel
+  (kind Site)
+  (geometry area)
+  (description "A plot of land with a boundary and a planning regime over it."))
+
 (predicate position
   (unit m)
   (shape coordinate)
@@ -57,6 +67,11 @@ const curvedRegistry = `(project
   (shape coordinate)
   (dimension 3)
   (description "A point a curved edge passes through between its two ends."))
+
+(predicate setback
+  (unit m)
+  (shape scalar)
+  (description "How far back from the boundary edge it is written on a structure has to sit."))
 
 (tolerance coincident
   (value 0.005 m)
@@ -189,14 +204,268 @@ const curvedModel = `(vertex geom:V-01
   (type MeetingRoom)
   (geometry area)
   (frame frame:building)
+  (within site:L-01)
   (boundary geom:L-01)
   (boundary geom:L-11))
+
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type OfficeStorey)
+  (geometry solid)
+  (frame frame:building))
 
 (node site:Z-01
   (label "The estate the plate is part of")
   (kind Zone)
   (type Campus)
   (geometry absent))
+
+; A second level holding one room whose east wall bows out into a bay.
+;
+; It is a level of its own because the plate above it has a courtyard bounded by
+; two arcs and nothing else: read as chords that ring is two corners on one line,
+; which is a refusal rather than a drawing. A bay is the ordinary case — a ring
+; which reads perfectly well as chords and is the wrong shape.
+(node site:L-02
+  (label "Level 2")
+  (kind Storey)
+  (type OfficeStorey)
+  (geometry solid)
+  (frame frame:building))
+
+(vertex geom:V-41
+  (frame frame:building)
+  (position
+    (value (12.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+(vertex geom:V-42
+  (frame frame:building)
+  (position
+    (value (16.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+(vertex geom:V-43
+  (frame frame:building)
+  (position
+    (value (16.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+(vertex geom:V-44
+  (frame frame:building)
+  (position
+    (value (12.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(edge geom:E-41 (frame frame:building) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42
+  (label "Bay window")
+  (frame frame:building)
+  (vertices geom:V-42 geom:V-43)
+  (arc-centre
+    (value (16.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-19"))
+  (arc-through
+    (value (18.0 2.0 0.0) m)
+    (source "Setting-out report SO-2026-011, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-02-19")))
+(edge geom:E-43 (frame frame:building) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (frame frame:building) (vertices geom:V-44 geom:V-41))
+
+(loop geom:L-41
+  (label "Bay room boundary")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+
+(node site:S-41
+  (label "Room with a bay window")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-02)
+  (boundary geom:L-41))
+
+; A plot whose road frontage bows out into the street along an arc of radius
+; twenty-six, with a setback written on each of its four edges.
+;
+; The bulge is the whole of the fixture. Read as the chord between its two ends
+; the plot is a rectangle of 240 m2; read as the arc it is a circular segment
+; more than that, which is where a scheme either does or does not fit.
+(vertex geom:V-21
+  (label "Plot, south-west corner")
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+(vertex geom:V-22
+  (label "Plot, south-east corner")
+  (frame frame:building)
+  (position
+    (value (40.0 0.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+(vertex geom:V-23
+  (label "Plot, north-east corner")
+  (frame frame:building)
+  (position
+    (value (40.0 12.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+(vertex geom:V-24
+  (label "Plot, north-west corner")
+  (frame frame:building)
+  (position
+    (value (20.0 12.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11")))
+
+(edge geom:E-21
+  (label "Plot, road frontage")
+  (frame frame:building)
+  (vertices geom:V-21 geom:V-22)
+  (arc-centre
+    (value (30.0 24.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-11"))
+  (arc-through
+    (value (30.0 -2.0 0.0) m)
+    (source "Boundary survey BS-2026-004, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.006 m))
+    (date "2026-03-11"))
+  (setback
+    (value 5.0 m)
+    (source "Planning consent PC-2026-014, condition 1")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-22
+  (label "Plot, east flank")
+  (frame frame:building)
+  (vertices geom:V-22 geom:V-23)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-014, condition 2")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-23
+  (label "Plot, rear")
+  (frame frame:building)
+  (vertices geom:V-23 geom:V-24)
+  (setback
+    (value 3.0 m)
+    (source "Planning consent PC-2026-014, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-24
+  (label "Plot, west flank")
+  (frame frame:building)
+  (vertices geom:V-24 geom:V-21)
+  (setback
+    (value 2.0 m)
+    (source "Planning consent PC-2026-014, condition 4")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(loop geom:L-21
+  (label "Plot boundary")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+
+(node site:P-01
+  (label "Plot one")
+  (kind Site)
+  (type Parcel)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-21))
+
+; A pavilion sitting in the bulge: entirely inside the arc and entirely outside
+; the chord between its ends, which is what makes siting it a question the arc
+; decides.
+(vertex geom:V-31
+  (frame frame:building)
+  (position
+    (value (29.0 -1.5 0.0) m)
+    (source "Design drawing DR-2026-004, Acme Architects")
+    (method method:estimate)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-20")))
+(vertex geom:V-32
+  (frame frame:building)
+  (position
+    (value (31.0 -1.5 0.0) m)
+    (source "Design drawing DR-2026-004, Acme Architects")
+    (method method:estimate)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-20")))
+(vertex geom:V-33
+  (frame frame:building)
+  (position
+    (value (31.0 -0.5 0.0) m)
+    (source "Design drawing DR-2026-004, Acme Architects")
+    (method method:estimate)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-20")))
+(vertex geom:V-34
+  (frame frame:building)
+  (position
+    (value (29.0 -0.5 0.0) m)
+    (source "Design drawing DR-2026-004, Acme Architects")
+    (method method:estimate)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-20")))
+
+(edge geom:E-31 (frame frame:building) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (frame frame:building) (vertices geom:V-32 geom:V-33))
+(edge geom:E-33 (frame frame:building) (vertices geom:V-33 geom:V-34))
+(edge geom:E-34 (frame frame:building) (vertices geom:V-34 geom:V-31))
+
+(loop geom:L-31
+  (label "Pavilion outline")
+  (frame frame:building)
+  (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34))
+
+(node site:S-31
+  (label "Pavilion")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-31))
 `
 
 // curved is the fixture tree the drawings below are read out of.
@@ -544,4 +813,19 @@ func TestRunTessellateAttributesEveryChordToTheEdgeItApproximates(t *testing.T) 
 		chords += count
 	}
 	assert.Equal(t, len(result.Region.Pieces[0].Holes[0]), chords)
+}
+
+// frontageBulge is how much area the curved fixture's road frontage bows out
+// into the street: the circular segment an arc of radius twenty-six cuts off a
+// chord of twenty.
+//
+// It is written as the closed form rather than as a decimal because the whole
+// point of what it is asserted against is that the arithmetic agrees with the
+// circle rather than with a drawing of it.
+func frontageBulge() float64 {
+	const radius, halfChord = 26.0, 10.0
+
+	sweep := 2 * math.Asin(halfChord/radius)
+
+	return radius * radius / 2 * (sweep - math.Sin(sweep))
 }
