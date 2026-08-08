@@ -541,13 +541,18 @@ func (w *writer) spatial(elements []Spatial, under reference) ([]value, error) {
 	written := make([]value, 0, len(elements))
 
 	for _, element := range elements {
-		tail, known := spatialElements[element.Entity]
+		count, known := spatialElements[element.Entity]
 		if !known {
 			return nil, UnknownEntityError{
 				Entity:   element.Entity,
 				Position: "a spatial element",
 				Known:    keys(spatialElements),
 			}
+		}
+
+		tail, err := elevated(element, count)
+		if err != nil {
+			return nil, err
 		}
 
 		placement, err := w.placement(element.Placement, under)
@@ -573,7 +578,7 @@ func (w *writer) spatial(elements []Spatial, under reference) ([]value, error) {
 			optionalText(element.LongName),
 			optionalEnumeration(string(element.Composition)),
 		}
-		attributes = append(attributes, absents(tail)...)
+		attributes = append(attributes, tail...)
 
 		at, err := w.rooted(element.Entity, element.GlobalID, attributes)
 		if err != nil {
@@ -1305,6 +1310,38 @@ func encode(attributes []value) (string, error) {
 	}
 
 	return string(dst), nil
+}
+
+// elevated is the tail of a spatial element's attribute list: count optional
+// attributes, of which the storey's first is the one this package has a field
+// for.
+//
+// It is the one place the tables above are not the whole answer, and it is
+// deliberately the only one. IfcBuildingStorey's tail is a single attribute
+// and that attribute is Elevation, so writing the field means writing the
+// first of the absents rather than adding a second table of positions — and
+// an entity whose tail this package fills in wholly from a field would not
+// need to be in the table at all.
+//
+// An [Spatial.Elevation] on anything else is refused rather than dropped. The
+// tail of a site begins with RefLatitude and the tail of a space with
+// PredefinedType, so writing a number there would put a length into an
+// attribute the schema gives another meaning, which a lenient reader takes at
+// face value.
+func elevated(element Spatial, count int) ([]value, error) {
+	tail := absents(count)
+
+	if element.Elevation == nil {
+		return tail, nil
+	}
+
+	if element.Entity != EntityBuildingStorey {
+		return nil, ElevationOnNonStoreyError{Entity: element.Entity, Of: element.GlobalID}
+	}
+
+	tail[0] = optionalReal(element.Elevation)
+
+	return tail, nil
 }
 
 // absents is count optional attributes which are not written.

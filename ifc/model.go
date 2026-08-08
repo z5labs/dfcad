@@ -187,6 +187,21 @@ type Spatial struct {
 	// value writes an absent attribute.
 	Composition Composition
 
+	// Elevation is IfcBuildingStorey's own attribute: how far the storey's
+	// datum stands above the building's, in the file's length unit.
+	//
+	// It is a pointer rather than a float because zero is a value it
+	// genuinely takes — the ground floor of a building is at nought, and a
+	// storey nobody has related to the building's datum is at nothing at all,
+	// and a file cannot say which is which if the two are written the same.
+	//
+	// Only an [EntityBuildingStorey] may carry one. Elevation is the tail of
+	// IfcBuildingStorey's attribute list and of no other spatial element's,
+	// so one set on a site, a building or a space is
+	// [ElevationOnNonStoreyError] rather than a number written into whichever
+	// optional attribute happened to sit in that position.
+	Elevation *float64
+
 	// Placement is where the element's own coordinate system sits inside its
 	// parent's. A nil placement writes an absent ObjectPlacement, which is
 	// what an element nobody has located yet has.

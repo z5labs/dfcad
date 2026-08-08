@@ -50,6 +50,16 @@ or an interface — is written as the entity its type declares a classification
 under in the "IFC4" system, and as an IfcBuildingElementProxy naming its type in
 ObjectType where the type declares none, which is what that entity is for.
 
+A storey declaring a frame is written at the elevation that frame's chain to the
+root puts it at, and everything in it is placed relative to that. It is what
+makes a building authored a level at a time — every level drawn in its own plan
+frame, so every corner of it at nought — come out as levels stacked rather than
+as levels interpenetrating. A storey declaring no frame is written at the
+building's datum with no elevation stated at all, which is what a level nobody
+has related to the building has. A storey whose frame does not reach the root is
+refused naming the frame: an export which cannot say where a level sits writes
+no file, rather than a file with every level flat on the ground.
+
 Flags:
 
 	--out <path>               where to write the file (default: beneath
@@ -824,6 +834,11 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 	for _, node := range nodes {
 		id := node.ID()
 
+		// The elevation is read before the children are walked, so that a
+		// chain which cannot be walked is reported against the storey it was
+		// declared on rather than after everything beneath it.
+		elevation := e.elevation(node)
+
 		element := ifc.Spatial{
 			Entity:      spatialEntity(node.Kind()),
 			GlobalID:    e.identify(id),
@@ -831,13 +846,17 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 			LongName:    node.Label(),
 			ObjectType:  node.Type(),
 			Composition: ifc.CompositionElement,
-			// Nothing here is placed anywhere but at its parent's origin. A
-			// node carries no position — a position is claimed of a corner,
-			// not of a room — so a placement with coordinates in it would be a
-			// number this command made up. What the chain of placements does
-			// carry is the structure: moving a building moves everything in
-			// it.
-			Placement: &ifc.Placement{},
+			Elevation:   elevation,
+			// A storey stands at the elevation its frame chain puts it at, and
+			// everything else is placed at its parent's origin. A node carries
+			// no position of its own — a position is claimed of a corner, not
+			// of a room — so the only coordinate this may write is one the
+			// model already states, and a storey authored in its own plan
+			// frame states exactly one: how far that frame's datum stands
+			// above the root's. What the chain of placements carries beside it
+			// is the structure, which is what makes moving a building move
+			// everything in it.
+			Placement: standing(elevation),
 			Children:  e.decompose(e.children[id]),
 			Products:  e.contained(e.products[id]),
 		}
@@ -872,6 +891,76 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode) []ifc.Spatial {
 	}
 
 	return out
+}
+
+// elevation is how far a storey's frame stands above the root's, and is nil
+// for anything which is not a storey, for a storey declaring no frame, and for
+// one whose chain this refused to walk.
+//
+// It is the origin of the storey's frame carried into the root frame, which is
+// the whole of what "the elevation of a level" means in a model authored a
+// plan at a time: every corner of that level is written at nought in its own
+// frame, and the height of the level is the transform between that frame and
+// the one below it. Reading it from the chain rather than from the corners is
+// what makes a model whose levels are authored in one frame come out unchanged
+// — an identity chain gives an identity result — and what makes a model whose
+// levels are authored in their own frames stop interpenetrating.
+//
+// Only the third coordinate is read. A plan frame offset horizontally from the
+// root, or turned against it, is a thing this does not carry: IfcBuildingStorey
+// states an elevation and nothing else about where its frame sits, and writing
+// half of a rigid transform into the placement would put the storey's contents
+// somewhere the model does not say. A frame chain which is more than a lift is
+// a story of its own.
+func (e *exporter) elevation(node *dfcad.SemanticNode) *float64 {
+	if node.Kind() != dfcad.KindStorey {
+		return nil
+	}
+
+	frame, declared := node.Frame()
+	if !declared {
+		return nil
+	}
+
+	frames := e.graph.Frames()
+
+	root, rooted := frames.Root()
+	if !rooted {
+		e.refuse(node, fmt.Sprintf(
+			"expected the frame %s of storey %s to reach a root frame to write the elevation of the storey, found "+
+				"that this model declares none", frame, node.ID()),
+			"a frame with no (parent ...) is the root every other frame is measured against; declare one, or take "+
+				"the (frame ...) off the storey and it is written at the building's datum")
+		return nil
+	}
+
+	origin, err := frames.TransformPoint(dfcad.Point{}, frame, root.ID)
+	if err != nil {
+		e.refuse(node, fmt.Sprintf(
+			"expected to walk the frame chain from %s to %s to write the elevation of storey %s, found %s",
+			frame, root.ID, node.ID(), err),
+			"a storey whose frame does not reach the root has no elevation this can state, and writing it flat "+
+				"would stack it inside the storey below")
+		return nil
+	}
+
+	// The point comes back in the root frame's linear unit, which is the unit
+	// the file states: an export whose frames disagree on one is refused
+	// before the walk begins
+	// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
+	elevation := origin[2]
+
+	return &elevation
+}
+
+// standing is where a spatial element's own coordinate system sits inside its
+// parent's: at the parent's origin, or at the elevation a storey's frame chain
+// put it at.
+func standing(elevation *float64) *ifc.Placement {
+	if elevation == nil {
+		return &ifc.Placement{}
+	}
+	return &ifc.Placement{Location: ifc.Point{Z: *elevation}}
 }
 
 // contained is a list of products standing in one spatial element.
