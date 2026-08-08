@@ -1,0 +1,14 @@
+; A file which stops in the middle of a node, which is what an interrupted write
+; or a bad merge leaves behind.
+;
+; It is here for the fmt stage's other branch. A file which is merely not
+; canonical has no line to report, because what is wrong with it is the whole
+; file's shape; a file which does not parse carries a diagnostic with a span,
+; and that span is the one the fmt filter has to read out of the output
+; contract. Nothing in the model root beside this one exercises it, because a
+; file which does not parse also stops the model loading — which is why this
+; root exists apart from that one.
+(node
+  site:S-003
+  (label "Meeting Room C"
+  (kind Space)
