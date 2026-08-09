@@ -1,0 +1,66 @@
+; The vocabulary the model beside it is checked against: a storey divided into
+; living rooms and a garage, and an appraised figure about the living part of it.
+;
+; The figure is a predicate rather than a number written into a rule. It is the
+; single most externally consequential value a residential model carries — it
+; came from an appraisal, on a date, by a method, to an accuracy — and a rule
+; which held it would be holding a measurement, which is what a claim is for.
+(project
+  (label "Stated figure fixture")
+  (globalid-namespace "https://example.org/models/stated"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate gross-living-area
+  (unit m2)
+  (shape scalar)
+  (description "The living area of a storey, as an appraisal states it."))
+
+(predicate frontage
+  (unit m)
+  (shape scalar)
+  (description "How far a storey reaches along the street, which is a length and not an area."))
+
+(predicate remark
+  (shape text)
+  (description "A note somebody left on a thing."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, and how close two corners are one corner."))
+
+(tolerance area-sum
+  (value 0.05 m2)
+  (description "How far the parts of a whole may fail to add up to it."))
+
+(type Level
+  (kind Storey)
+  (geometry area)
+  (description "One storey of a building, with the outline of its floor plate."))
+
+(type LivingSpace
+  (kind Space)
+  (geometry area)
+  (description "A room of the living part of a dwelling."))
+
+(type Garage
+  (kind Space)
+  (geometry area)
+  (description "A room a car is kept in, which is a Space exactly as a bedroom is."))
+
+(type LivingArea
+  (kind Zone)
+  (geometry absent)
+  (description "The rooms an appraisal counts as living area, grouped by hand."))

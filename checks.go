@@ -82,6 +82,26 @@ const (
 	// one kind.
 	kindParameter = "kind"
 
+	// typeParameter narrows a check over what a node contains to the contents
+	// declared as one type.
+	//
+	// It is the narrowing kindParameter cannot make. A kind is the closed set
+	// the engine compiles in, so a garage and a bedroom are both Space and no
+	// rule about kinds can tell them apart; which types exist is the consuming
+	// repository's ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)),
+	// and it is the only vocabulary in the model which already draws that line.
+	typeParameter = "type"
+
+	// memberOfParameter narrows a check over what a node contains to the
+	// contents which are members of one zone.
+	//
+	// It is not spelled `zone`, which [staysClearOfZone] already writes for a
+	// zone the subject must *not* be in. One tag meaning "in this one" on one
+	// check and "not in this one" on the next is the reading mistake the shared
+	// names in this block exist to prevent, and the relation is what a reader
+	// has to get right — so the relation is what the tag says.
+	memberOfParameter = "member-of"
+
 	// containerParameter is the node whose shape a subject has to lie inside.
 	//
 	// It is written rather than taken from what the subject is `within`, because
@@ -980,7 +1000,7 @@ func (containedAreasDoNotOverlap) Run(subject CheckSubject) []Failure {
 
 	wanted, _ := symbolOf(subject, kindParameter)
 
-	shapes, out := shapesWithin(graph, node, wanted, tolerance, position)
+	shapes, _, out := shapesWithin(graph, node, narrowing{kind: wanted}, tolerance, position)
 
 	for i, one := range shapes {
 		for _, other := range shapes[i+1:] {
@@ -1023,8 +1043,9 @@ type containedAreasSum struct{}
 func (containedAreasSum) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "contained-areas-sum",
-		Description: "The areas of the nodes written within the subject add up to the subject's own area, within " +
-			"the named area tolerance.",
+		Description: "The areas of the nodes written within the subject add up to the subject's own area, or to a " +
+			"figure claimed of it under a named predicate, within the named area tolerance. The set summed can be " +
+			"narrowed to the contents of one kind, of one type, or to the members of one zone.",
 		Parameters: []CheckParameter{
 			{
 				Name:        toleranceParameter,
@@ -1046,11 +1067,32 @@ func (containedAreasSum) Declare() CheckDeclaration {
 				Description: "The predicate a corner's position is claimed under, which is what the shapes are read from.",
 			},
 			{
+				Name:     predicateParameter,
+				Type:     ParameterPredicate,
+				Required: false,
+				Description: "The predicate the figure the contents are summed against is claimed under. The sum is " +
+					"compared with the subject's own area where it is left out.",
+			},
+			{
 				Name:     kindParameter,
 				Type:     ParameterKind,
 				Required: false,
 				Description: "Sums only the contents of this kind. Every content with a shape is summed where it is " +
 					"left out.",
+			},
+			{
+				Name:     typeParameter,
+				Type:     ParameterTypeName,
+				Required: false,
+				Description: "Sums only the contents declared as this type, which is the narrowing a kind cannot " +
+					"make: a garage and a bedroom are both Space.",
+			},
+			{
+				Name:     memberOfParameter,
+				Type:     ParameterID,
+				Required: false,
+				Description: "Sums only the contents which are members of this zone, so a set nothing else in the " +
+					"model distinguishes can be named once and summed.",
 			},
 		},
 		Forms:      []SubjectForm{SubjectNode},
@@ -1069,6 +1111,45 @@ func (containedAreasSum) Declare() CheckDeclaration {
 // Nothing was subdivided, so there is no subdivision to disagree with the whole,
 // and a check which reported the whole area as missing would fail every node
 // somebody has not got round to splitting up yet.
+//
+// # What the sum is compared against
+//
+// The subject's own boundary, or a figure claimed of it under the predicate the
+// rule names. The second is the comparison the outline cannot make: an appraised
+// gross living area is a figure about part of a storey, the storey's outline is
+// that part plus the garage, and the two differ by the garage every time the
+// model is right.
+//
+// The figure is a claim rather than a number written into the rule
+// ([0011](docs/decisions/0011-assertions-are-named-parameterised-checks.md)), so
+// it keeps the source it came from, the method behind it, its accuracy and its
+// date — and superseding it is an edit to the claim rather than to every rule
+// which reads it. The accuracy is used: two figures which differ by less than
+// the stated uncertainty of the one written down do not disagree, so the
+// declared tolerance is the floor under the band and the claim's own one sigma
+// widens it where it is wider. The contents' uncertainty is not combined in.
+// A sum of many regions has no one sensitivity to carry a corner budget across
+// by, and a band computed as though it had would be a figure of nothing.
+//
+// A subject stating no figure under the named predicate is left alone, which is
+// the rule [claimAgreesWithGeometry] makes for the same reason: a number nobody
+// has written down yet is an ordinary state of a model being written. Falling
+// back to the outline would be worse than silence — it would answer a question
+// the rule did not ask, and fail every storey with a garage in it.
+//
+// # What is summed
+//
+// Everything written directly within the subject which has a shape, narrowed by
+// any of kind, type and zone membership the rule names. All three narrow
+// together: a rule naming two of them sums what satisfies both.
+//
+// A narrowed sum says what it summed. Every node it added and every node the
+// narrowing left out is a related location on the failure, and the hint counts
+// both — because a subset total which agrees is the one answer this check cannot
+// tell apart from a correct one, and the composition is the only evidence there
+// is. An unnarrowed sum says nothing of the sort: it summed everything, the
+// contents are already the model's own answer to what it contains, and listing
+// them would bury the discrepancy the failure is about.
 func (containedAreasSum) Run(subject CheckSubject) []Failure {
 	node, ok := subject.Subject().(*SemanticNode)
 	if !ok {
@@ -1129,9 +1210,24 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 		}}
 	}
 
-	wanted, _ := symbolOf(subject, kindParameter)
+	// The figure the sum is judged against is read before anything is summed, so
+	// that a rule naming a predicate nothing is claimed under costs no work and
+	// a rule naming a zone which is not one is reported as itself rather than as
+	// a total which came out wrong.
+	against, decides, failures := summedAgainst(subject, node, whole)
+	if len(failures) > 0 {
+		return failures
+	}
+	if !decides {
+		return nil
+	}
 
-	shapes, failures := shapesWithin(graph, node, wanted, tolerance, position)
+	narrowed, failures := narrowingOf(subject, graph)
+	if len(failures) > 0 {
+		return failures
+	}
+
+	shapes, left, failures := shapesWithin(graph, node, narrowed, tolerance, position)
 	if len(failures) > 0 {
 		return failures
 	}
@@ -1176,8 +1272,13 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 		return elsewhere
 	}
 
-	discrepancy := parts - whole.Area()
-	if math.Abs(discrepancy) <= declared.Value {
+	band := declared.Value
+	if against.sigma > band {
+		band = against.sigma
+	}
+
+	discrepancy := parts - against.value
+	if math.Abs(discrepancy) <= band {
 		return nil
 	}
 
@@ -1188,18 +1289,136 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 
 	return []Failure{{
 		Message: fmt.Sprintf(
-			"expected what %s contains to add up to its own %s%s, found %s%s, which is %s%s %s the whole",
-			nodeName(node), decimal(whole.Area()), squareSuffix(whole.Unit()),
+			"expected what %s contains to add up to %s%s, found %s%s, which is %s%s %s %s",
+			nodeName(node), against.wording, squareSuffix(whole.Unit()),
 			decimal(parts), squareSuffix(whole.Unit()),
-			decimal(math.Abs(discrepancy)), squareSuffix(whole.Unit()), sense,
+			decimal(math.Abs(discrepancy)), squareSuffix(whole.Unit()), sense, against.noun,
 		),
 		Hint: fmt.Sprintf(
-			"the sum is of the %s it contains which have a shape, judged against the tolerance %s, which is %s %s; "+
-				"either a part is drawn wrong or the whole is",
-			plural(len(shapes), "node"), declared.Name, decimal(declared.Value), declared.Unit,
+			"the sum is of the %s%s, judged against the tolerance %s, which is %s %s; "+
+				"either a part is drawn wrong or %s is",
+			plural(len(shapes), "node"), summedOver(narrowed, left), declared.Name,
+			decimal(declared.Value), declared.Unit, against.blame,
 		),
-		Span: graph.Nodes().named(node),
+		Span:    graph.Nodes().named(node),
+		Related: composition(graph, narrowed, shapes, left, against.related),
 	}}
+}
+
+// summed is what a total is judged against: the figure, how far it says it is
+// known, how a failure names it and where a reader is sent to look at it.
+//
+// They travel together because they are one decision made in one place. A
+// failure which named the subject's own outline and compared against a claim, or
+// pointed at a claim it did not use, would be two answers to "what did this
+// disagree with" — which is the only question a reader of this check has.
+type summed struct {
+	// value is the figure the contents are summed against.
+	value float64
+
+	// sigma is the one standard uncertainty of that figure where it states one,
+	// and zero where it does not. It widens the band and never narrows it: an
+	// unstated accuracy is unknown rather than zero
+	// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
+	sigma float64
+
+	// wording is what the message calls the figure, up to but not including the
+	// unit — "its own 24.0" or "the gross-living-area claimed of it, 925.75".
+	wording string
+
+	// noun is what the figure is called after the discrepancy: the whole, or the
+	// figure.
+	noun string
+
+	// blame is what the hint says might be wrong besides a part.
+	blame string
+
+	// related is where the figure is written, for a failure about a claim.
+	related []RelatedLocation
+}
+
+// summedAgainst is the figure the contents of node are to add up to, whether the
+// rule as written decides anything, and what stopped it deciding.
+//
+// The three are separate answers because "there is nothing to compare" and
+// "there is something and it is the wrong sort of thing" are different outcomes:
+// a storey nobody has appraised yet is left alone, and a rule naming a predicate
+// which carries prose is reported.
+//
+// A rule which names no predicate is judged against the subject's own outline,
+// which is every rule written before this check learned to read a claim.
+func summedAgainst(subject CheckSubject, node *SemanticNode, whole Region) (summed, bool, []Failure) {
+	own := summed{
+		value:   whole.Area(),
+		wording: "its own " + decimal(whole.Area()),
+		noun:    "the whole",
+		blame:   "the whole",
+	}
+
+	predicate, named := symbolOf(subject, predicateParameter)
+	if !named {
+		return own, true, nil
+	}
+
+	graph := subject.Graph()
+
+	resolution, err := graph.Claims().Resolve(node.ID(), predicate, graph.Registry())
+	if err != nil {
+		// Two equally current claims under a strict predicate are the conflict
+		// register's to report, and summing against one of them would be picking
+		// a winner this check has no rule for.
+		return summed{}, false, nil
+	}
+
+	claim, stated := currentClaim(resolution)
+	if !stated {
+		return summed{}, false, nil
+	}
+
+	value := claim.Value()
+	figure, numeric := value.Scalar()
+	if !numeric {
+		return summed{}, false, []Failure{{
+			Message: fmt.Sprintf(
+				"expected the %s claimed of %s to be a number its contents could be summed against, found %s",
+				predicate, nodeName(node), describeShape(value.Shape()),
+			),
+			Hint: "a figure a set of areas adds up to is one number; the predicate this rule names carries something " +
+				"else, so the rule as written cannot be decided either way",
+			Span:    claim.Span(),
+			Related: []RelatedLocation{{Span: graph.Nodes().named(node), Message: "the node its contents would be summed into"}},
+		}}
+	}
+
+	if wanted := squareUnit(whole.Unit()); value.Unit() != wanted {
+		return summed{}, false, []Failure{{
+			Message: fmt.Sprintf(
+				"expected the %s claimed of %s in %s, the square of the unit it is drawn in, found %s %s",
+				predicate, nodeName(node), wanted, decimal(figure), value.Unit(),
+			),
+			Hint: "nothing here converts between units, so a figure written in one and a sum of areas measured in " +
+				"another are two numbers which cannot be compared",
+			Span:    claim.Span(),
+			Related: []RelatedLocation{{Span: graph.Nodes().named(node), Message: "the node its contents would be summed into"}},
+		}}
+	}
+
+	// The claim's own accuracy widens the band and the contents' does not. The
+	// corners a region is read from carry a distance budget, and carrying one
+	// across to an area needs a sensitivity — the length of the boundary it is
+	// displaced along — which a sum over many regions does not have one of.
+	var budget Budget
+	budget.Add(claim)
+	sigma, _ := sigmaIn(budget, value.Unit())
+
+	return summed{
+		value:   figure,
+		sigma:   sigma,
+		wording: fmt.Sprintf("the %s claimed of it, %s", predicate, decimal(figure)),
+		noun:    "the figure",
+		blame:   "the figure",
+		related: []RelatedLocation{{Span: claim.Span(), Message: "the figure it is summed against is claimed here"}},
+	}, true, nil
 }
 
 // crossFrameBudgetHolds is the check that expressing something in another frame
@@ -2400,6 +2619,139 @@ type contained struct {
 	region Region
 }
 
+// omitted is one node the narrowing kept out of the set, and why in the words a
+// failure repeats.
+//
+// The reason travels with the node because "these were left out" is only
+// evidence when it says on what grounds: a reader checking a living-area total
+// has to tell the garage the rule meant to drop from the bedroom it dropped by
+// accident, and the two are the same line of the model until the grounds are
+// said.
+type omitted struct {
+	node   *SemanticNode
+	reason string
+}
+
+// narrowing is which of the things written within a node a check over its
+// contents is about.
+//
+// The three narrowings hold together rather than one at a time. A kind is the
+// closed set the engine compiles in, a type is the consuming repository's
+// vocabulary and a zone is a set the model states by hand, and a question worth
+// asking routinely needs two of them: the Spaces of one type, or the Spaces some
+// zone lists.
+type narrowing struct {
+	// kind is the kind a content must be of, and is empty where the rule named
+	// none.
+	kind string
+
+	// declaredType is the type a content must be declared as, and is empty where
+	// the rule named none.
+	declaredType string
+
+	// zone is the zone a content must be a member of, and is empty where the
+	// rule named none.
+	zone ID
+}
+
+// narrows reports whether the rule asked for any of the contents to be left out.
+func (n narrowing) narrows() bool {
+	return n.kind != "" || n.declaredType != "" || n.zone != ""
+}
+
+// omits reports why a content is not in the set, and whether it is out of it.
+//
+// The first ground found is the one reported. A node can fail two of the three
+// at once and saying so would be a longer answer to the same question — what
+// would have to change for it to be summed — which the first ground already
+// answers.
+func (n narrowing) omits(node *SemanticNode) (string, bool) {
+	switch {
+	case n.kind != "" && string(node.Kind()) != n.kind:
+		return fmt.Sprintf("it is of kind %s and the sum is of kind %s", node.Kind(), n.kind), true
+
+	case n.declaredType != "" && node.Type() != n.declaredType:
+		if node.Type() == "" {
+			return fmt.Sprintf("it declares no type and the sum is of type %s", n.declaredType), true
+		}
+		return fmt.Sprintf("it is of type %s and the sum is of type %s", node.Type(), n.declaredType), true
+
+	case n.zone != "" && !slices.Contains(node.MemberOf(), n.zone):
+		return fmt.Sprintf("it is not a member of %s", n.zone), true
+	}
+
+	return "", false
+}
+
+// describe says what the set summed has in common, for a hint which has to state
+// the grounds the total was taken on.
+//
+// Each ground is a phrase which reads after "those", so that a set of one and a
+// set of many are described by the same sentence: a hint whose grammar depended
+// on the count would be two hints, and the one which fires on the model with a
+// single room in it is the one nobody proof-reads.
+func (n narrowing) describe() string {
+	var grounds []string
+	if n.kind != "" {
+		grounds = append(grounds, "of kind "+n.kind)
+	}
+	if n.declaredType != "" {
+		grounds = append(grounds, "of type "+n.declaredType)
+	}
+	if n.zone != "" {
+		grounds = append(grounds, "which are members of "+string(n.zone))
+	}
+	return join(grounds, "and")
+}
+
+// narrowingOf reads the narrowing a rule wrote, and reports a zone which is not
+// one.
+//
+// The zone is resolved here rather than where it is used because a rule naming
+// something which is not a zone has no set to sum at all: every content would
+// fail the membership test, the total would come out zero, and the failure would
+// be about a discrepancy the size of the whole rather than about the one word
+// which is wrong.
+func narrowingOf(subject CheckSubject, graph *Graph) (narrowing, []Failure) {
+	var narrowed narrowing
+
+	narrowed.kind, _ = symbolOf(subject, kindParameter)
+	narrowed.declaredType, _ = symbolOf(subject, typeParameter)
+
+	written, named := symbolOf(subject, memberOfParameter)
+	if !named {
+		return narrowed, nil
+	}
+
+	zone, held := graph.Node(ID(written))
+	if !held {
+		return narrowing{}, []Failure{{
+			Message: fmt.Sprintf(
+				"expected a zone this model holds, found %s, which names no node of it",
+				written,
+			),
+			Hint: "the zone whose members are summed is a node of kind Zone; a sum narrowed to the members of " +
+				"nothing is a total of nothing",
+		}}
+	}
+
+	if zone.Kind() != KindZone {
+		return narrowing{}, []Failure{{
+			Message: fmt.Sprintf(
+				"expected a node of kind %s, found %s, which is %s",
+				KindZone, written, kindName(zone.Kind()),
+			),
+			Hint: "membership is what a zone is for: a sum narrowed to the members of something which is not a " +
+				"zone is narrowed to nothing, because nothing declares membership of it",
+			Related: []RelatedLocation{{Span: graph.Nodes().named(zone), Message: "the node it names is written here"}},
+		}}
+	}
+
+	narrowed.zone = zone.ID()
+
+	return narrowed, nil
+}
+
 // shapesWithin reads the shape of everything written within node, in the order
 // the containment index holds them, and reports what stopped any of them being
 // read.
@@ -2413,17 +2765,22 @@ type contained struct {
 // and answering the second with the first is how a gate reports a model sound
 // because it measured nothing.
 //
-// kind narrows the contents to those of one kind, and is empty where the rule
-// named none.
-func shapesWithin(graph *Graph, node *SemanticNode, kind, tolerance, position string) ([]contained, []Failure) {
+// What comes back second is what the narrowing kept out, in the same order, so
+// that a check which has to say what it was about can say both halves. A content
+// with no outline is not in it: it was left out by having nothing to contribute
+// rather than by the rule, and listing it as a decision the rule made would be
+// telling a reader to go and change something which is already right.
+func shapesWithin(graph *Graph, node *SemanticNode, narrowed narrowing, tolerance, position string) ([]contained, []omitted, []Failure) {
 	var (
 		shapes   []contained
+		left     []omitted
 		failures []Failure
 	)
 
 	for related := range graph.Contains(node) {
 		child := related.Node()
-		if kind != "" && string(child.Kind()) != kind {
+		if reason, out := narrowed.omits(child); out {
+			left = append(left, omitted{node: child, reason: reason})
 			continue
 		}
 
@@ -2440,7 +2797,57 @@ func shapesWithin(graph *Graph, node *SemanticNode, kind, tolerance, position st
 		shapes = append(shapes, contained{node: child, region: region})
 	}
 
-	return shapes, failures
+	return shapes, left, failures
+}
+
+// summedOver is what the hint says the total was taken over: which of the
+// contents, on what grounds, and how many the grounds left out.
+//
+// An unnarrowed sum says only that it summed what has a shape. It summed
+// everything, so there is no set to describe and no exclusion to account for,
+// and a sentence saying so would be words between a reader and the discrepancy.
+func summedOver(narrowed narrowing, left []omitted) string {
+	if !narrowed.narrows() {
+		return " it contains with a shape"
+	}
+
+	return fmt.Sprintf(
+		" it contains with a shape, narrowed to those %s and leaving %s out",
+		narrowed.describe(), plural(len(left), "node"),
+	)
+}
+
+// composition is where a reader looks to see what a narrowed sum was taken over:
+// every node it added, every node the narrowing left out and why, after whatever
+// the figure itself pointed at.
+//
+// An unnarrowed sum contributes none of it. The set is everything the subject
+// contains, which the model already says in one place, and a related location
+// per room would push the one line worth reading — where the figure it disagreed
+// with is written — off the end of a list of them.
+func composition(graph *Graph, narrowed narrowing, shapes []contained, left []omitted, figure []RelatedLocation) []RelatedLocation {
+	if !narrowed.narrows() {
+		return figure
+	}
+
+	out := make([]RelatedLocation, 0, len(figure)+len(shapes)+len(left))
+	out = append(out, figure...)
+
+	for _, one := range shapes {
+		out = append(out, RelatedLocation{
+			Span:    graph.Nodes().named(one.node),
+			Message: "summed into the total",
+		})
+	}
+
+	for _, one := range left {
+		out = append(out, RelatedLocation{
+			Span:    graph.Nodes().named(one.node),
+			Message: "left out of the sum: " + one.reason,
+		})
+	}
+
+	return out
 }
 
 // shapeOf reads the shape one node covers, judged against a named tolerance and
