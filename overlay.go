@@ -456,13 +456,21 @@ func (t *Topology) regionOf(
 		return region, drew, m.diags
 	}
 
+	// A run is read before the tolerance is judged, because nothing it produces
+	// was computed against one. [measurer.untolerated] is about an overlay —
+	// which corners are one corner, and how far an offset is drawn — and a chain
+	// has no area for either to be run over, so demanding a tolerance here would
+	// refuse a door for the want of a number nothing would have applied to it,
+	// under a message about an area the door does not have. Where the tolerance
+	// really is wrong the assembly has already said so, in the vocabulary of the
+	// loop rather than of the arithmetic over it.
+	if open {
+		return m.runOf(node, region, rings, drew, draw)
+	}
+
 	if !m.applicable() {
 		m.add(m.untolerated(node))
 		return region, drew, m.diags
-	}
-
-	if open {
-		return m.runOf(node, region, rings, drew, draw)
 	}
 
 	var bent bool
