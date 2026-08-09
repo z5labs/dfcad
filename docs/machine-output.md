@@ -1174,7 +1174,7 @@ model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
 | `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
 | `chord` | object, optional | The tolerance the curves were drawn to, same shape. It travels with the answer because a list of points that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. Absent, with `deviation`, for a node which references no loop: nothing was drawn for one, so there is no tolerance it was drawn to. |
-| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. Absent with `chord`, and absent on its own wherever `chorded` is written. |
+| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. Absent wherever `chord` is absent, and absent on its own wherever `chorded` is written. |
 | `deviation.unit` | string, optional | The frame's linear unit. |
 | `chorded[].edge` | string | An edge of the boundary which states a curve this run did not read. Absent for a run which read every curve and for a node whose boundary claims none. |
 | `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |
@@ -2809,7 +2809,7 @@ field of its own that [`export`](#export) does.
 |-------|------|---------|
 | `schema` | string, optional | The version of GML the document conforms to: `GML 3.2.1`. Absent on a refusal, because nothing was written in any version. |
 | `chord` | object, optional | The tolerance the document's curves were drawn to: `name`, `value` and `unit`. Of the document rather than of any feature in it. Absent for a run which drew nothing. |
-| `deviation.value` | number | How far the worst segment of the worst feature actually falls from the curve it stands in for. Absent with `chord`, and absent on its own wherever `chorded` is written. |
+| `deviation.value` | number | How far the worst segment of the worst feature actually falls from the curve it stands in for. Absent wherever `chord` is absent, and absent on its own wherever `chorded` is written. |
 | `deviation.unit` | string, optional | The unit the chord tolerance is declared in, which is the frame's: a tolerance in any other unit refuses the drawing outright, so every region in a document which was written shares this one. |
 | `chorded[].edge` | string | An edge of a drawn region which states a curve this run did not read, each edge once however many features reach it. Absent for a run which read every curve and for a model which claims none. |
 | `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |

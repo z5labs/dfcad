@@ -639,6 +639,32 @@ func TestRunExportMapReadsACurvedEdgeOrSaysItDidNot(t *testing.T) {
 		assert.NotContains(t, stderr, "curved edge")
 	})
 
+	t.Run("names it on a run which refused the georeference and wrote nothing", func(t *testing.T) {
+		// A curve nothing read is a fact about the model rather than about the
+		// file, so a run which also cannot say where the model is has two
+		// things wrong with it. Reporting one of them sends the author back to
+		// fix the registry, run again, and only then find the wall.
+		files := mapModel()
+		files["registry.dfc"] = strings.Replace(files["registry.dfc"],
+			`(parent frame:site-grid)`,
+			`(parent frame:site-grid)
+  (crs "EPSG:6543")`, 1)
+
+		result, _, stderr := mapping(t, exitCheck, files, mapFlagsWithoutArcs()...)
+
+		require.False(t, result.Derived)
+		assert.Empty(t, result.Files)
+
+		require.Len(t, result.Chorded, 1)
+		assert.Equal(t, "geom:E-22", result.Chorded[0].Edge)
+
+		assert.Contains(t, stderr, "geom:E-22")
+		assert.Contains(t, stderr, "frame:building", "and the georeference is still refused")
+
+		assert.Nil(t, result.Chord, "nothing was drawn, so there is no tolerance it was drawn to")
+		assert.Nil(t, result.Deviation)
+	})
+
 	t.Run("reports an edge two features share once", func(t *testing.T) {
 		result, _, _ := mapping(t, exitSuccess, mapModel(), mapFlagsWithoutArcs()...)
 

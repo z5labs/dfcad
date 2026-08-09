@@ -432,12 +432,19 @@ func drawnMap(graph *dfcad.Graph, drawn shapes, sited georeference) (gml.Collect
 	// the identifier has and where it is written are properties of the model,
 	// and two exports which answered those differently would disagree about
 	// where one model is.
+	out := &cartographer{graph: graph, shapes: drawn}
+
 	placed, refused := georeferenced(graph.Registry(), graph.Frames(), sited)
 	if len(refused) > 0 {
-		return gml.Collection{}, tessellated{}, refused
-	}
+		// A georeference which cannot be written is the end of the document,
+		// and nothing below is worth walking for. The curves nothing read are
+		// still worth reading for: they are a fact about the model rather than
+		// about the file, so an author whose registry is wrong and whose walls
+		// are unread is told both at once rather than sent back twice.
+		out.unread(out.drawable())
 
-	out := &cartographer{graph: graph, shapes: drawn}
+		return gml.Collection{}, out.tessellated, append(refused, out.diags...)
+	}
 
 	root, rooted := graph.Frames().Root()
 	if rooted {
@@ -533,17 +540,21 @@ func (c *cartographer) unsited(root dfcad.Frame, placed *recordedCRS) {
 	})
 }
 
-// features is every region the model holds, in id order.
+// drawable is every node the model gave an outline to, in id order.
 //
 // Everything the model gives an outline to is drawn, whatever its kind. A
 // boundary is the model saying where a thing is, and a command which wrote the
 // rooms and left out the plot they stand on would be answering a question
 // about kinds which the model already answered by drawing both.
 //
-// The walk is in id order rather than in the order the files were read, so the
+// The order is by id rather than by the order the files were read, so the
 // document is a property of the model rather than of which file a node
 // happened to be written in.
-func (c *cartographer) features(rooted bool) []gml.Feature {
+//
+// It is its own method because it is asked twice for two reasons: once to draw
+// the layer, and once to say which curves nothing read — and the second is
+// asked even where the first cannot be.
+func (c *cartographer) drawable() []*dfcad.SemanticNode {
 	var nodes []*dfcad.SemanticNode
 
 	for node := range c.graph.Nodes().All() {
@@ -557,6 +568,14 @@ func (c *cartographer) features(rooted bool) []gml.Feature {
 	}
 
 	slices.SortFunc(nodes, byNodeID)
+
+	return nodes
+}
+
+// features is every region the model holds, drawn, in the order [drawable]
+// reaches them.
+func (c *cartographer) features(rooted bool) []gml.Feature {
+	nodes := c.drawable()
 
 	c.unread(nodes)
 
