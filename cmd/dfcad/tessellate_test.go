@@ -752,6 +752,89 @@ func TestRunTessellateReadsArcsOnlyWhereItWasToldHowTheyAreWritten(t *testing.T)
 		"the ring which came to nothing without its arcs is the one named")
 }
 
+// straightened runs tessellate without naming the two predicates an arc is
+// written under, which is how a caller who does not know the model carries
+// curves runs it and is the run the disclosure below is about.
+func straightened(t *testing.T, expectedCode int, files map[string]string, args ...string) (tessellateResult, string) {
+	t.Helper()
+
+	root := tree(t, files)
+	stdout, stderr := invoke(t, expectedCode, root, append([]string{
+		"tessellate",
+		"--position", "position",
+		"--tolerance", "coincident",
+	}, args...)...)
+
+	return listed[tessellateResult](t, stdout), stderr
+}
+
+// TestRunTessellateReadsACurvedEdgeOrSaysItDidNot is its own function because
+// the halves of it are one behaviour: a run which names the vocabulary draws the
+// wall and says how closely, and a run which does not draws the chord and says
+// that it did. Either answer on its own is the failure.
+//
+// The deviation is the whole of it. A drawing is an artefact somebody keeps, and
+// a deviation of nothing beside a named chord tolerance is an affirmative
+// statement that the drawing followed the curve exactly — which is precisely the
+// field a consumer would assert on to prove that it had.
+func TestRunTessellateReadsACurvedEdgeOrSaysItDidNot(t *testing.T) {
+	t.Run("names the edge it chorded and reports no deviation from a curve it never read", func(t *testing.T) {
+		result, stderr := straightened(t, exitSuccess, curved(), "--chord", "chord-deviation", "site:P-01")
+
+		require.True(t, result.Derived)
+
+		require.Len(t, result.Chorded, 1, "one of the plot's four edges states a curve")
+		assert.Equal(t, "geom:E-21", result.Chorded[0].Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates,
+			"the predicates to name, which is what makes the report actionable")
+		assert.NotEmpty(t, result.Chorded[0].Span.String())
+
+		// The tolerance asked for still travels with the drawing: what was
+		// asked for is still what was asked for.
+		require.NotNil(t, result.Chord)
+		assert.Equal(t, "chord-deviation", result.Chord.Name)
+
+		assert.Nil(t, result.Deviation,
+			"the frontage was run straight through, so nothing here achieved anything against it")
+
+		// And the drawing really is the chord, which is what makes a deviation
+		// of nothing a claim about a shape the answer does not hold.
+		require.NotNil(t, result.Region)
+		assert.Len(t, result.Region.Pieces[0].Outer, 4, "the bow became the straight line between its ends")
+		assert.InDelta(t, 240.0, result.Region.Area, 1e-9)
+
+		assert.Contains(t, stderr, "geom:E-21", "and a person is told the same thing")
+	})
+
+	t.Run("reports what it achieved where the vocabulary is named", func(t *testing.T) {
+		result, _ := drawn(t, exitSuccess, curved(), "--chord", "chord-deviation", "site:P-01")
+
+		assert.Empty(t, result.Chorded, "there is nothing left unread to report")
+
+		require.NotNil(t, result.Chord)
+		require.NotNil(t, result.Deviation)
+		assert.Positive(t, result.Deviation.Value)
+		assert.LessOrEqual(t, result.Deviation.Value, result.Chord.Value,
+			"a curve is divided into a whole number of segments, so it is followed at least as closely as asked")
+
+		assert.Greater(t, result.Region.Area, 240.0, "the frontage bows out into the street")
+	})
+
+	t.Run("says nothing about curves for a boundary which claims none", func(t *testing.T) {
+		result, stderr := straightened(t, exitSuccess, curved(), "--chord", "chord-deviation", "site:S-31")
+
+		assert.Empty(t, result.Chorded, "the pavilion is four straight walls")
+
+		// The answer a model carrying no arc claims gets is the answer it got
+		// before: a drawing which followed four straight edges departed from
+		// them by nothing, and that zero is true.
+		require.NotNil(t, result.Deviation)
+		assert.Zero(t, result.Deviation.Value)
+
+		assert.NotContains(t, stderr, "curved edge")
+	})
+}
+
 // TestRunTessellateSummarisesItselfForAPerson is its own function because what
 // it asserts is which stream a rendering goes to rather than what the rendering
 // says: stdout is the same bytes whether or not anybody asked to read the run.

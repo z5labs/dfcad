@@ -1174,8 +1174,11 @@ model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
 | `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
 | `chord` | object, optional | The tolerance the curves were drawn to, same shape. It travels with the answer because a list of points that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. Absent, with `deviation`, for a node which references no loop: nothing was drawn for one, so there is no tolerance it was drawn to. |
-| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. Absent with `chord`. |
+| `deviation.value` | number | How far the worst segment of the drawing actually falls from the curve it stands in for. Absent with `chord`, and absent on its own wherever `chorded` is written. |
 | `deviation.unit` | string, optional | The frame's linear unit. |
+| `chorded[].edge` | string | An edge of the boundary which states a curve this run did not read. Absent for a run which read every curve and for a node whose boundary claims none. |
+| `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |
+| `chorded[].span` | object | Where that edge was written. |
 | `region` | object, optional | What the drawing came to. Written for a drawing that succeeded whether or not it covers anything. Same shape as [`buildable`](#buildable)'s `region`. |
 | `region.area` | number | What it covers, holes taken away, in the square of `unit`. It is the area of the segments and not of the curves — `measure` is what computes the exact figure, from the arcs themselves. |
 | `region.empty` | bool | Whether it covers nothing. |
@@ -1191,10 +1194,20 @@ gets three, and follows the curve more closely than it had to. The deviation is 
 the chord tolerance, and it is reported so that a caller can check the approximation it got
 against the one it asked for rather than assuming the bound was met exactly.
 
+**A drawing never reports a `deviation` it did not achieve.** A run which did not name
+`--arc-centre` and `--arc-through` over a boundary whose edges claim a curve drew the straight
+line between two corners rather than the wall, and its distance from that wall is however far
+the wall bows — a figure this run has no vocabulary to compute. So no `deviation` is written
+at all, and `chorded` is written instead, naming the edges and the predicates to name. Zero is
+the one answer that must not be given: beside a named `chord` it is an affirmative statement
+that the curve was followed exactly, and it is precisely the field a consumer would assert on
+to prove that it had. `chord` is still written, because what a caller asked for is part of what
+it got.
+
 **A boundary with nothing curved in it is drawn to itself, unchanged** — the same rings, the
 same orientation, `deviation` zero — so this is one command rather than one for curved
-outlines and another for straight ones. `chord` is still reported for such a run, because
-what a caller asked for is part of what it got. A node which references **no loop** is the
+outlines and another for straight ones. That zero is the true one: four straight edges were
+followed exactly. A node which references **no loop** is the
 other case and reads differently: it is **exit `0`** with `derived` true and an empty
 `region`, and neither `chord` nor `deviation` is written, because nothing was drawn. A campus
 and a warranty have no outline, which is not a fault in either of them.
@@ -2781,6 +2794,8 @@ field of its own that [`export`](#export) does.
   "derived": true,
   "digest": "9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a",
   "schema": "GML 3.2.1",
+  "chord": { "name": "facet", "value": 0.1, "unit": "m" },
+  "deviation": { "value": 0.0416, "unit": "m" },
   "files": [
     {
       "path": ".dfcad/export/9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a/model.gml",
@@ -2793,10 +2808,30 @@ field of its own that [`export`](#export) does.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `schema` | string, optional | The version of GML the document conforms to: `GML 3.2.1`. Absent on a refusal, because nothing was written in any version. |
+| `chord` | object, optional | The tolerance the document's curves were drawn to: `name`, `value` and `unit`. Of the document rather than of any feature in it. Absent for a run which drew nothing. |
+| `deviation.value` | number | How far the worst segment of the worst feature actually falls from the curve it stands in for. Absent with `chord`, and absent on its own wherever `chorded` is written. |
+| `deviation.unit` | string, optional | The unit the chord tolerance is declared in, which is the frame's: a tolerance in any other unit refuses the drawing outright, so every region in a document which was written shares this one. |
+| `chorded[].edge` | string | An edge of a drawn region which states a curve this run did not read, each edge once however many features reach it. Absent for a run which read every curve and for a model which claims none. |
+| `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |
+| `chorded[].span` | object | Where that edge was written. |
 
 Everything else — `derived`, `digest`, `files[]` — is the shared shape, with the meanings
 documented there. There is no `identifiers`: this format derives no identifier of the
 project's, and the id of every node written is a property of the feature it was written as.
+
+**`chord` and `deviation` are here because the file carries neither.** A GML document is
+positions, so a reader holding one cannot tell a ring which follows its curve to a tenth of a
+metre from one drawn coarsely — and a map is drawn once and read for years. They are what a
+downstream check reads to assert that the layer it was handed was drawn to the tolerance it
+intended.
+
+**A feature drawn straight through a curve nothing read is a boundary in the wrong place**, in
+a file somebody keeps. A run which did not name `--arc-centre` and `--arc-through` over a model
+whose edges claim curves writes `chorded` and no `deviation` at all, for the reason
+[`tessellate`](#tessellate) does: a deviation of nothing beside a named `chord` would be this
+command saying the boundary is in the right place. `chorded` is written on a refusal too — a
+curve nothing read is a fact about the model rather than about the file, and a run which
+refused for some other reason has that wrong with it as well.
 
 **The default destination is the same directory `export` writes into**, keyed by the same
 digest, so the artefacts of one revision sit together and `.dfcad` remains a thing which can
