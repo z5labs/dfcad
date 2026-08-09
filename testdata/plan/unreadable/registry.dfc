@@ -1,0 +1,32 @@
+(project
+  (label "Plan fixture: rings which cannot be read")
+  (globalid-namespace "https://example.org/models/plan-unreadable"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type OfficeStorey (kind Storey) (geometry solid) (description "One floor plate of a building."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room used for meetings."))
+
+(predicate area
+  (unit m2)
+  (shape scalar)
+  (description "How much floor a space has."))
+
+(predicate caption
+  (shape text)
+  (description "What a sheet prints against a thing."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(tolerance coincident
+  (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))

@@ -178,10 +178,10 @@ Answering: what level 1 looks like in plan, with the area claimed on each room.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad plan site:L-01 --annotate area` | 7369 | 7236 |
-| **the whole path** | **7369** | **7236** |
+| `dfcad plan site:L-01 --annotate area` | 7918 | 7799 |
+| **the whole path** | **7918** | **7799** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 7600 tokens. Claimed at 2 times cheaper than reading the model.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 8000 tokens. Claimed at 2 times cheaper than reading the model.
 
 ## Where the tokens go
 
@@ -217,7 +217,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | the same question by way of a whole retrieval | 26.8×, 28.0× | 4.7×, 5.0× |
 | the same question answered from the geometry rather than from a claim | 22.4×, 23.6× | 4.0×, 4.2× |
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
-| reading a storey as an annotated plan | 2.8×, 2.9× | 0.5×, 0.5× |
+| reading a storey as an annotated plan | 2.6×, 2.7× | 0.5×, 0.5× |
 
 One figure per encoding, in the order of the table above.
 

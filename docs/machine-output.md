@@ -1433,7 +1433,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `unit` | string, optional | That frame's linear unit. Every coordinate here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
 | `annotating` | array | The predicates the run asked for, in the order it named them and with a repeat written once. |
-| `outlines` | array | One entry per contained node that has a ring, in id order. Empty rather than null for a subject that contains nothing drawable. |
+| `outlines` | array | One entry per contained node that was drawn, in id order. Empty rather than null for a subject that contains nothing drawable. |
 | `outlines[].node` | string | The id of the node the rings were read from, which is what names them. |
 | `outlines[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `outlines[].kind` | string, optional | The kind it declares. |
@@ -1444,7 +1444,14 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
 | `outlines[].annotations[].anchor.vertices` | array, optional | The edge's two corners, in the order the edge was authored. Absent for a node anchor. |
 | `outlines[].annotations[].anchor.rings` | array, optional | The loops bounding the node, in the order it references them. Absent for an edge anchor. |
-| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
+| `undrawn` | array, optional | One entry per contained node that was **not** drawn, in id order. Absent for a subject every node of which was drawn — a key a consumer has to read to learn nothing is one that should not be there. |
+| `undrawn[].node` | string | The id of the node that was not drawn. |
+| `undrawn[].label` | string, optional | What it is called. Absent where it is called nothing. |
+| `undrawn[].kind` | string, optional | The kind it declares. |
+| `undrawn[].type` | string, optional | The type it declares. |
+| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read. A closed set of two. |
+| `undrawn[].annotations` | array | The claims reported on it, in the same order and the same shape as an outline's. Empty rather than null. A node that references no loop has no edges, so what it carries is exactly its own claims and no edge anchors. |
+| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
 
 Beside `anchor`, every annotation carries the claim object `get` writes — `id`, `predicate`,
 `value`, `source`, `method`, `accuracy`, `date`, `rank` and `span` — so a claim on a plan
@@ -1482,11 +1489,38 @@ its own accuracy, because each is a separate statement about a separate quantity
 a room's area with a wall's fire rating would produce a figure of nothing at all
 ([0006](decisions/0006-accuracy-is-one-sigma.md)).
 
-Which nodes are drawn is every descendant of the subject that references at least one loop,
-however deep: a room inside a storey and an alcove inside that room are both places somebody
-draws. The subject itself is not drawn — the question is what is in it. A node with no
-boundary contributes nothing, because it has no ring: a doorway written as a line, a circuit
-group and a warranty are all ordinary and none of them is an outline.
+Which nodes are drawn is every descendant of the subject that references at least one loop
+this run could read, however deep: a room inside a storey and an alcove inside that room are
+both places somebody draws. The subject itself is not drawn — the question is what is in it.
+
+**Nothing the subject contains is dropped.** Every descendant that was not drawn comes back
+under `undrawn`, named, with what it is, why it was not drawn and the claims written on it —
+so `outlines` and `undrawn` account between them for every node the subject holds, and a
+renderer that drew every outline and listed every undrawn node has drawn or named the whole
+storey. A circuit group has no edges and is ordinary; a ring that does not close is a defect;
+both are things somebody put inside that storey. This is the one place the payload could omit
+an authored fact without saying so, and the failure it would cause has no downstream symptom
+at all: the sheet renders, looks complete, and is missing a door.
+
+**The reason is a token and the detail is a diagnostic.** `reason` says which of the two
+applies, because that is what decides whether anybody has to act — nobody fixes a circuit
+group, somebody fixes a ring that will not close — and a consumer deciding that should read a
+field rather than match prose. Where the reason is a defect, the diagnostics on stderr carry
+the loop, the file, the position and the size of the gap, which is where anything an author
+acts on belongs; a second copy of it on stdout would be a second thing to keep true.
+
+**An undrawable node degrades on its own and never refuses the storey**, whichever way it is
+undrawable. The other rooms are still drawn and the object still comes back. Whether the *run*
+succeeded is the separate question the diagnostics answer, and the two are kept apart so a
+caller can draw the seven rooms it has while it fixes the eighth. A ring that does not close
+and a ring that crosses itself are treated identically — they are two spellings of one
+mistake, and behaving differently between them would let which of the two a model happens to
+hold decide how much of the sheet comes back.
+
+An `undrawn` entry is **not** an outline covering nothing, and the two must not be conflated.
+An open run of edges — a doorway, a railing — legitimately covers no area and is drawn from
+`region.boundary`, so it is an outline with `region.empty` true; a consumer that read "no
+area" as "not drawn" would leave every door off the sheet.
 
 A subject that is not a place is a **usage error** — exit `3`, with nothing on stdout. A zone
 holds its members by membership and contains nothing, so answering "nothing is in here" for
@@ -1496,11 +1530,15 @@ reason it is one in `claims`.
 
 A storey containing nothing with an outline is **exit `0`** with `outlines` empty: that is the
 truthful answer to what it looks like in plan, and it is reported so that it cannot be read as
-a plan that was never computed. **Exit `1`** is a plan a ring of which could not be read — a
-boundary that does not close, corners that are not in one plane, a tolerance the registry does
-not declare in the frame's unit. The other rooms are still drawn and the object still comes
-back with `planned` false, because a sheet with one room missing is more use than no sheet and
-the diagnostics on stderr say which room to fix.
+a plan that was never computed. A storey holding a node that references no loop is exit `0`
+too, with that node under `undrawn`: nothing is wrong with a circuit group, and a diagnostic
+about one would be a diagnostic about a model in which nothing is wrong.
+
+**Exit `1`** is a plan a ring of which could not be read — a boundary that does not close, one
+that crosses itself, corners that are not in one plane, a tolerance the registry does not
+declare in the frame's unit. The other rooms are still drawn and the object still comes back
+with `planned` false and the room named under `undrawn`, because a sheet with one room missing
+is more use than no sheet and the diagnostics on stderr say which room to fix.
 
 ### `check`
 

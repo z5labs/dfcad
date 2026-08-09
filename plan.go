@@ -102,7 +102,8 @@ func (a Anchor) Vertices() (start, end ID, ok bool) {
 // order the node references them.
 //
 // It is empty for an edge anchor, and for a node which references no loop —
-// which nothing on a plan does, because a node with no ring is not drawn.
+// which is what a claim carried by an entry of [Plan.Undrawn] is anchored to
+// where the reason is [UndrawnNoBoundary].
 func (a Anchor) Rings() []ID { return slices.Clone(a.rings) }
 
 // String renders the anchor as a person reads it: what the claim is written on
@@ -222,6 +223,114 @@ func (o Outline) String() string {
 	)
 }
 
+// UndrawnReason is why a node inside a plan's subject was not drawn.
+//
+// It is a closed set of two, because there are exactly two ways a plan can fail
+// to draw something it was asked about: the model gives the node no edges at
+// all, or it gives edges which could not be read. Which of the two it is decides
+// who acts on it — the first is ordinary and nobody has to do anything, the
+// second is a defect whose position the diagnostics carry — and a consumer which
+// could not tell them apart would have to decide by reading prose.
+type UndrawnReason string
+
+// The reasons a node inside a plan's subject was not drawn.
+const (
+	// UndrawnNoBoundary is a node which references no loop. A circuit group, a
+	// warranty and a lighting schedule are all ordinary and none of them has
+	// edges, so this is a shape the model never gave rather than one it gave
+	// wrongly.
+	UndrawnNoBoundary UndrawnReason = "no-boundary"
+
+	// UndrawnUnreadableBoundary is a node which references loops the run could
+	// not read: a ring which does not close, one which crosses itself, corners
+	// which are not in one plane, a curve the invocation named no chord
+	// tolerance for. Every one of those is reported as a diagnostic naming the
+	// loop, the file and the position, which is where an author reads what to
+	// change.
+	UndrawnUnreadableBoundary UndrawnReason = "unreadable-boundary"
+)
+
+// Description is the reason as a person reads it.
+//
+// It is a phrase rather than a sentence, so that a renderer can put it after
+// whatever it is a reason about. It says which of the two reasons applies and
+// nothing more: the detail — which loop, where it was written, how wide the gap
+// is — is in the diagnostics, because that is where anything an author has to
+// act on belongs and a second copy of it here would be a second thing to keep
+// true.
+func (r UndrawnReason) Description() string {
+	switch r {
+	case UndrawnNoBoundary:
+		return "references no loop"
+	case UndrawnUnreadableBoundary:
+		return "its boundary could not be read"
+	}
+	return "it was not drawn"
+}
+
+// Undrawn is one node inside a plan's subject which the plan could not draw,
+// with why, and with the claims written on it anyway.
+//
+// It is the other half of [Plan.Outlines] rather than a footnote to it. Together
+// the two account for every node the subject contains, which is the property
+// that makes a sheet checkable: a renderer which drew every outline and listed
+// every [Undrawn] has drawn or named everything the model puts inside that
+// storey, and a caption nobody drew is a line on the sheet rather than an
+// absence nothing records.
+//
+// The claims come back whichever way the node was undrawn, because they are
+// authored facts and being unable to draw the thing they are written on is not a
+// reason to withhold them. What cannot come back is an edge anchor for a node
+// which has no edges — a node with no loop has none, so what it carries is
+// exactly its own claims.
+//
+// The zero Undrawn names nothing, and every method below works on it.
+type Undrawn struct {
+	// node is the contained node which was not drawn.
+	node *SemanticNode
+
+	// reason is why it was not.
+	reason UndrawnReason
+
+	// annotations are the claims reported on it, in the same anchor order an
+	// outline's are.
+	annotations []Annotation
+}
+
+// Node returns the contained node which was not drawn.
+func (u Undrawn) Node() *SemanticNode { return u.node }
+
+// Subject returns the id of that node.
+func (u Undrawn) Subject() ID {
+	if u.node == nil {
+		return ""
+	}
+	return u.node.ID()
+}
+
+// Reason returns why it was not drawn.
+func (u Undrawn) Reason() UndrawnReason { return u.reason }
+
+// Annotations returns the claims reported on it, in anchor order.
+func (u Undrawn) Annotations() []Annotation { return slices.Clone(u.annotations) }
+
+// String renders it as a person reads it: what it is, why it is not on the sheet
+// and how much is written on it.
+func (u Undrawn) String() string {
+	if u.node == nil {
+		return "nothing"
+	}
+
+	name := string(u.node.ID())
+	if label := u.node.Label(); label != "" {
+		name = fmt.Sprintf("%s (%s)", name, label)
+	}
+
+	return fmt.Sprintf("%s: not drawn, %s, %s",
+		name, u.reason.Description(), plural(len(u.annotations), "claim"),
+	)
+}
+
 // Plan is a spatial node's contents drawn as rings, with the claims the
 // invocation asked for anchored to what they are written on.
 //
@@ -256,8 +365,16 @@ type Plan struct {
 	// tolerance is what corners were judged coincident against.
 	tolerance Tolerance
 
-	// outlines are the contained nodes which have a ring, in id order.
+	// outlines are the contained nodes which were drawn, in id order.
 	outlines []Outline
+
+	// undrawn are the contained nodes which were not, in id order, each with
+	// why and with what is written on it.
+	//
+	// It is beside the outlines rather than derived from their absence, because
+	// the absence is exactly what a consumer cannot see: a node dropped from the
+	// answer looks identical to a node the model does not hold.
+	undrawn []Undrawn
 
 	// chord is the declared chord tolerance the rings which bend were drawn
 	// to, and deviation how far the worst of those segments falls from the
@@ -304,25 +421,45 @@ func (p Plan) ChordTolerance() (Tolerance, bool) { return p.chord, p.chord.Name 
 // [Plan.ChordTolerance].
 func (p Plan) Deviation() float64 { return p.deviation }
 
-// Outlines returns the contained nodes which have a ring, in id order.
+// Outlines returns the contained nodes which were drawn, in id order.
 //
 // The order is by id rather than by the order the walk read them, so that it is
 // a property of what the model says rather than of which file each node happens
 // to be written in. Moving a room between files leaves the answer identical.
 func (p Plan) Outlines() []Outline { return slices.Clone(p.outlines) }
 
-// Empty reports whether nothing the subject contains has a ring.
+// Undrawn returns the contained nodes which were not drawn, in id order, each
+// with why it was not and with the claims written on it.
+//
+// It and [Plan.Outlines] partition everything the subject contains: every node
+// the walk reached is in exactly one of them, so a consumer which reads both has
+// seen the whole of what the model puts inside that storey. Nothing is dropped,
+// which is the property this exists for — a node omitted from an answer reads
+// identically to a node the model does not hold, and a doorway missing from a
+// sheet is not a difference anybody notices downstream.
+func (p Plan) Undrawn() []Undrawn { return slices.Clone(p.undrawn) }
+
+// Empty reports whether nothing the subject contains was drawn.
 //
 // It is a state of the answer and not a failure. A storey nobody has outlined
 // yet contains nothing drawable, which is the truthful answer to what it looks
-// like in plan.
+// like in plan. It says nothing about [Plan.Undrawn], which may well hold
+// entries for a plan which is empty: a storey holding one room whose ring does
+// not close draws nothing and has something to say about why.
 func (p Plan) Empty() bool { return len(p.outlines) == 0 }
 
 // Annotations returns how many claims the plan reports in total.
+//
+// The claims of an undrawn node are counted, because they were reported. They
+// are facts somebody authored about something the subject contains, and the plan
+// hands them back whether or not it could draw the thing they are written on.
 func (p Plan) Annotations() int {
 	var count int
 	for _, outline := range p.outlines {
 		count += len(outline.annotations)
+	}
+	for _, undrawn := range p.undrawn {
+		count += len(undrawn.annotations)
 	}
 	return count
 }
@@ -344,19 +481,32 @@ func (p Plan) String() string {
 		return "nothing was planned"
 	}
 
-	if p.Empty() {
+	if p.Empty() && len(p.undrawn) == 0 {
 		return fmt.Sprintf("%s contains nothing with an outline", p.subject)
 	}
 
-	return fmt.Sprintf("%s: %s, %s",
+	summary := fmt.Sprintf("%s: %s, %s",
 		p.subject,
 		plural(len(p.outlines), "outline"),
 		plural(p.Annotations(), "claim"),
 	)
+
+	// Said only where there is something to say, so that a storey every node of
+	// which drew reads exactly as it always did.
+	if len(p.undrawn) > 0 {
+		summary += fmt.Sprintf(", %d not drawn", len(p.undrawn))
+	}
+
+	return summary
 }
 
-// Report renders the plan with each outline under it, which is the detail
-// somebody reading a terminal asked for rather than the summary.
+// Report renders the plan with each outline under it and then everything it
+// could not draw, which is the detail somebody reading a terminal asked for
+// rather than the summary.
+//
+// What was not drawn comes last rather than in id order among the outlines,
+// because it is a different answer: the outlines are the sheet, and this is the
+// list of what is missing from it.
 func (p Plan) Report() string {
 	var out strings.Builder
 
@@ -365,6 +515,15 @@ func (p Plan) Report() string {
 		out.WriteString("\n  ")
 		out.WriteString(outline.String())
 		for _, annotation := range outline.annotations {
+			out.WriteString("\n    ")
+			out.WriteString(annotation.String())
+		}
+	}
+
+	for _, undrawn := range p.undrawn {
+		out.WriteString("\n  ")
+		out.WriteString(undrawn.String())
+		for _, annotation := range undrawn.annotations {
 			out.WriteString("\n    ")
 			out.WriteString(annotation.String())
 		}
@@ -383,19 +542,37 @@ func (p Plan) Report() string {
 // anywhere.
 //
 // Which nodes are drawn is every descendant of the subject which references at
-// least one loop, however deep — a room inside a storey and an alcove inside
-// that room are both places somebody draws. A node with no boundary contributes
-// nothing, because it has no ring: a doorway written as a line, a circuit group
-// and a warranty are all ordinary and none of them is an outline. The subject
-// itself is not drawn; the question is what is in it.
+// least one loop the run could read, however deep — a room inside a storey and
+// an alcove inside that room are both places somebody draws. The subject itself
+// is not drawn; the question is what is in it.
+//
+// **Nothing the subject contains is dropped.** Every descendant which was not
+// drawn comes back in [Plan.Undrawn], named, with an [UndrawnReason] saying
+// which of the two ways it was undrawable and with the claims written on it. A
+// circuit group has no edges and is ordinary; a room whose ring does not close
+// is a defect; both are things somebody put inside this storey, and a query
+// which answered by omitting them would be reporting a sheet as complete which
+// is missing a door. That failure has no downstream symptom at all — the sheet
+// renders, looks right, and the doorway is simply not on it — which is why the
+// engine says so here rather than leaving it to be noticed.
 //
 // Every ring is read with [Topology.RegionOf], so everything which refuses a
-// region refuses one here — a ring which does not close, corners which are not
-// in one plane, a tolerance the registry does not declare in the frame's unit.
-// One such room does not refuse the plan: its diagnostic is collected, its
-// outline comes back covering nothing, and the rest of the storey is still
-// drawn. A sheet with one room missing is more use than no sheet, and the
-// diagnostic says which room to fix.
+// region refuses one here — a ring which does not close, one which crosses
+// itself, corners which are not in one plane, a tolerance the registry does not
+// declare in the frame's unit, a curve no chord tolerance was named for.
+//
+// **An undrawable node degrades per node and never refuses the storey**, whether
+// it is undrawable for a reason an author can fix or for no reason at all. Its
+// diagnostics are collected, it comes back under [Plan.Undrawn] rather than as an
+// outline covering nothing, and every other node is still drawn. That is one
+// rule for every case rather than one per shape of defect: a ring which crosses
+// itself and a ring which does not close are two spellings of the same mistake,
+// and behaving differently between them would make which of the two a model
+// happens to hold decide how much of the sheet comes back. Whether the *run*
+// succeeded is the separate question the diagnostics answer — an unreadable
+// boundary is an error and a caller which treats one as a refusal still refuses
+// — and separating the two is what lets a caller draw the seven rooms it has
+// while it fixes the eighth.
 //
 // The claims reported are the live ones under each predicate [Annotations]
 // names, on the node itself and on each edge of its boundary. Nothing is
@@ -417,9 +594,40 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 
 	var diags []Diagnostic
 
-	for _, contained := range g.drawn(node) {
+	for _, contained := range g.contained(node) {
+		// A node the model gives no edges raises no diagnostic. A circuit group
+		// covers no area and a warranty has no shape, and a query which
+		// complained about one would complain about most models; whether a node
+		// which declares a shape ought to reference a boundary is a question
+		// about the model, which is a check's to ask and not a query's. What is
+		// wrong today is not that it goes unreported to whoever wrote the file —
+		// it is that it goes unreported to whoever draws the sheet, and this is
+		// where that is fixed.
+		if !g.outlined(contained) {
+			plan.undrawn = append(plan.undrawn, Undrawn{
+				node:        contained,
+				reason:      UndrawnNoBoundary,
+				annotations: g.annotated(contained, predicates),
+			})
+			continue
+		}
+
 		region, found := g.Topology().RegionOf(contained, g.Boundaries(), survey)
 		diags = append(diags, found...)
+
+		// A boundary which could not be read is named as undrawn rather than
+		// handed back as an outline covering nothing. The two are not the same
+		// answer: an open run of edges legitimately covers nothing and is drawn
+		// from its segments, and a consumer which read "no area" as "not drawn"
+		// would leave every railing and doorway off the sheet.
+		if refused(found) {
+			plan.undrawn = append(plan.undrawn, Undrawn{
+				node:        contained,
+				reason:      UndrawnUnreadableBoundary,
+				annotations: g.annotated(contained, predicates),
+			})
+			continue
+		}
 
 		plan.outlines = append(plan.outlines, Outline{
 			node:        contained,
@@ -427,6 +635,10 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 			annotations: g.annotated(contained, predicates),
 		})
 
+		// Over the rings which were drawn, because the budget is the accuracy of
+		// the lines a sheet carries. A ring which was refused put no corner
+		// anywhere, and its position claims accumulated into the figure would be
+		// an accuracy for geometry nobody is drawing.
 		plan.budget.Merge(region.Budget())
 
 		if tolerance, drawn := region.ChordTolerance(); drawn {
@@ -438,29 +650,22 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 	return plan, diags
 }
 
-// drawn is everything node contains which has a ring, in id order.
+// contained is everything node contains, in id order.
 //
 // The walk is the containment one and reaches all the way down, so a storey's
-// rooms and the alcoves inside those rooms are both in it. The filter is the
-// boundary reference and not the kind: what makes something drawable is that
-// the model says where its edges are, and an element which is outlined is as
-// drawable as a room.
-func (g *Graph) drawn(node *SemanticNode) []*SemanticNode {
+// rooms and the alcoves inside those rooms are both in it. Nothing is filtered
+// out: what a plan can draw is decided per node by [Graph.outlined] and by
+// whether its boundary read, and both answers are reported rather than used to
+// shorten this list.
+//
+// The order is by id so that both lists a plan comes back with are properties of
+// what the model says rather than of which file each node happens to be written
+// in.
+func (g *Graph) contained(node *SemanticNode) []*SemanticNode {
 	var out []*SemanticNode
 
 	for related := range g.Descendants(node) {
-		contained := related.Node()
-
-		outlined := false
-		for range g.Boundaries().Loops(contained) {
-			outlined = true
-			break
-		}
-		if !outlined {
-			continue
-		}
-
-		out = append(out, contained)
+		out = append(out, related.Node())
 	}
 
 	slices.SortFunc(out, func(a, b *SemanticNode) int {
@@ -470,8 +675,25 @@ func (g *Graph) drawn(node *SemanticNode) []*SemanticNode {
 	return out
 }
 
-// annotated is the claims reported on one drawn node: those written on the node
-// itself, then those written on each edge of its boundary.
+// outlined reports whether the model says where a node's edges are.
+//
+// The test is the boundary reference and not the kind: what makes something
+// drawable is that the model gives it edges, and an element which is outlined is
+// as drawable as a room.
+func (g *Graph) outlined(node *SemanticNode) bool {
+	for range g.Boundaries().Loops(node) {
+		return true
+	}
+	return false
+}
+
+// annotated is the claims reported on one contained node: those written on the
+// node itself, then those written on each edge of its boundary.
+//
+// It is asked of a node which was not drawn as well as of one which was, and it
+// answers the same way. A node with no loop has no edge anchors and contributes
+// its own claims; a node whose ring would not read still names its edges, and
+// what is written on them is still what somebody wrote.
 //
 // The node comes first because it is the thing being drawn and its claims are
 // about the whole of it — a name, an area, an occupancy — while an edge's are

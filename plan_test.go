@@ -28,18 +28,44 @@ const (
 // with no outline and a zone which is not a place at all.
 const planFixtureRoot = "testdata/plan/storey"
 
-// planFixture is the storey fixture loaded, with the survey every ring below is
-// read against.
+// planUnreadableRoot is a second storey, holding one room which reads, one
+// whose ring does not close and one whose ring crosses itself.
+//
+// It is a fixture of its own because every case reading the storey above
+// requires that model to be clean, and a defect added to it would be asserted
+// against by every one of them rather than by the cases which are about it.
+const planUnreadableRoot = "testdata/plan/unreadable"
+
+// planFixture is a fixture loaded, with the survey every ring below is read
+// against.
 type planFixture struct {
 	graph  *Graph
 	survey Survey
 }
 
-// storey loads the fixture, failing the test where any pass reports anything.
+// storey loads the ordinary fixture, failing the test where any pass reports
+// anything.
 func storey(t *testing.T) planFixture {
 	t.Helper()
 
-	graph, diags := LoadGraph(planFixtureRoot)
+	return planModel(t, planFixtureRoot)
+}
+
+// unreadable loads the fixture whose rings will not read. It loads clean too:
+// what is wrong with those rings is a question about corners and a tolerance,
+// which nothing answers until a survey asks.
+func unreadable(t *testing.T) planFixture {
+	t.Helper()
+
+	return planModel(t, planUnreadableRoot)
+}
+
+// planModel loads one fixture, failing the test where any pass reports
+// anything.
+func planModel(t *testing.T, root string) planFixture {
+	t.Helper()
+
+	graph, diags := LoadGraph(root)
 	require.Empty(t, diagnosticMessages(diags), "the fixture loads clean")
 
 	// One survey over every corner of the model rather than one per room. A
@@ -77,6 +103,16 @@ func drawnIDs(plan Plan) []string {
 	return out
 }
 
+// undrawnIDs is the id of each node the plan could not draw, which is what a
+// case asserting about what was named rather than drawn reads.
+func undrawnIDs(plan Plan) []string {
+	out := make([]string, 0, len(plan.Undrawn()))
+	for _, undrawn := range plan.Undrawn() {
+		out = append(out, string(undrawn.Subject()))
+	}
+	return out
+}
+
 // annotated is every claim of one outline as "predicate value @ anchor", which
 // is the whole of what a reported claim says in one readable line.
 func annotated(plan Plan, node ID) []string {
@@ -86,13 +122,36 @@ func annotated(plan Plan, node ID) []string {
 		if outline.Subject() != node {
 			continue
 		}
-		for _, annotation := range outline.Annotations() {
-			out = append(out, fmt.Sprintf("%s %s @ %s",
-				annotation.Predicate(), spelledValue(annotation.Claim().Value()), annotation.Anchor(),
-			))
-		}
+		out = append(out, spelledAnnotations(outline.Annotations())...)
 	}
 
+	return out
+}
+
+// undrawnAnnotations is the same for a node the plan could not draw, which
+// carries its claims the same way an outline does.
+func undrawnAnnotations(plan Plan, node ID) []string {
+	var out []string
+
+	for _, undrawn := range plan.Undrawn() {
+		if undrawn.Subject() != node {
+			continue
+		}
+		out = append(out, spelledAnnotations(undrawn.Annotations())...)
+	}
+
+	return out
+}
+
+// spelledAnnotations is a list of reported claims as the two readers above
+// spell them.
+func spelledAnnotations(annotations []Annotation) []string {
+	out := make([]string, 0, len(annotations))
+	for _, annotation := range annotations {
+		out = append(out, fmt.Sprintf("%s %s @ %s",
+			annotation.Predicate(), spelledValue(annotation.Claim().Value()), annotation.Anchor(),
+		))
+	}
 	return out
 }
 
@@ -155,19 +214,120 @@ func TestPlanOf(t *testing.T) {
 	}
 }
 
-// TestPlanOfLeavesOutWhatHasNoRing is its own function because it is about what
-// is absent from the answer rather than about what one entry says.
-func TestPlanOfLeavesOutWhatHasNoRing(t *testing.T) {
+// TestPlanOfNamesWhatItCouldNotDraw is its own function because it is about the
+// second of the two lists a plan comes back with rather than about what one
+// outline says.
+//
+// The circuit group is contained by the storey and carries a caption somebody
+// wrote for a sheet. It references no loop at all, so there is nothing of it to
+// draw — which is ordinary rather than a defect, and is not a reason to answer as
+// though the model did not hold it.
+func TestPlanOfNamesWhatItCouldNotDraw(t *testing.T) {
 	plan, diags := storey(t).plan(t, "site:L-01", planArea, planCaption)
 
+	require.Empty(t, diagnosticMessages(diags), "a node with no shape is not a defect in the model")
+
+	// It is not an outline, because there is no ring to be one.
+	assert.NotContains(t, drawnIDs(plan), "site:C-01")
+
+	require.Equal(t, []string{"site:C-01"}, undrawnIDs(plan))
+
+	undrawn := plan.Undrawn()[0]
+	assert.Equal(t, ID("site:C-01"), undrawn.Subject())
+	assert.Equal(t, UndrawnNoBoundary, undrawn.Reason())
+	require.NotNil(t, undrawn.Node())
+	assert.Equal(t, "Level 1 lighting circuit", undrawn.Node().Label())
+
+	// The caption is still returned. It is a fact somebody authored about
+	// something inside this storey, and being unable to draw the thing it is
+	// written on is not a reason to withhold it.
+	assert.Equal(t, []string{`caption "C-01" @ node site:C-01`}, undrawnAnnotations(plan, "site:C-01"))
+}
+
+// TestPlanOfAccountsForEveryNodeItContains is its own function because it
+// asserts a property of the pair of lists rather than of either one: nothing the
+// subject holds is dropped, which is the whole of what a sheet drawn from this
+// answer depends on.
+func TestPlanOfAccountsForEveryNodeItContains(t *testing.T) {
+	fixture := storey(t)
+
+	plan, diags := fixture.plan(t, "site:L-01", planArea, planCaption)
 	require.Empty(t, diagnosticMessages(diags))
 
-	// The circuit group is contained by the storey and carries a caption
-	// somebody wrote for a sheet. It references no loop at all, so there is
-	// nothing of it to draw — and that is ordinary rather than a defect in the
-	// model.
-	assert.NotContains(t, drawnIDs(plan), "site:C-01")
-	assert.Empty(t, annotated(plan, "site:C-01"))
+	node, ok := fixture.graph.Node("site:L-01")
+	require.True(t, ok)
+
+	var contained []string
+	for related := range fixture.graph.Descendants(node) {
+		contained = append(contained, string(related.Node().ID()))
+	}
+
+	reported := append(drawnIDs(plan), undrawnIDs(plan)...)
+
+	assert.ElementsMatch(t, contained, reported,
+		"every node the storey contains is drawn or is named as not drawn, and none is both")
+	assert.Len(t, reported, len(contained))
+}
+
+// TestPlanOfNamesARingItCouldNotRead is its own function because it is about a
+// storey with defects in it, which is a different model from the one every case
+// above reads.
+//
+// The choice it pins down is the one the whole answer turns on: a node the plan
+// cannot draw degrades per node and never refuses the storey, whichever way it
+// is undrawable. A ring which does not close and a ring which crosses itself are
+// two spellings of one mistake, and behaving differently between them would let
+// which of the two a model happens to hold decide how much of the sheet comes
+// back.
+func TestPlanOfNamesARingItCouldNotRead(t *testing.T) {
+	plan, diags := unreadable(t).plan(t, "site:L-01", planCaption)
+
+	// The defects are reported, because they are defects and whoever wrote the
+	// file has to hear about them.
+	assert.NotEmpty(t, diagnosticMessages(diags))
+
+	t.Run("draws the rooms which read and refuses neither of the others outright", func(t *testing.T) {
+		assert.Equal(t, []string{"site:R-01"}, drawnIDs(plan))
+		assert.Equal(t, []string{`caption "MR-A" @ node site:R-01, ring geom:L-01`}, annotated(plan, "site:R-01"))
+	})
+
+	t.Run("names both unreadable rings the same way", func(t *testing.T) {
+		require.Equal(t, []string{"site:R-02", "site:R-03"}, undrawnIDs(plan))
+
+		for _, undrawn := range plan.Undrawn() {
+			assert.Equal(t, UndrawnUnreadableBoundary, undrawn.Reason(), undrawn.Subject())
+		}
+	})
+
+	t.Run("hands back the claims written on them", func(t *testing.T) {
+		assert.Equal(t, []string{`caption "MR-B" @ node site:R-02, ring geom:L-11`},
+			undrawnAnnotations(plan, "site:R-02"))
+		assert.Equal(t, []string{`caption "MR-C" @ node site:R-03, ring geom:L-21`},
+			undrawnAnnotations(plan, "site:R-03"))
+	})
+
+	t.Run("does not hand back a region covering nothing", func(t *testing.T) {
+		// An outline covering nothing is what an open run of edges legitimately
+		// comes back as, so a consumer which read one as "not drawn" would leave
+		// every doorway and railing off the sheet. A ring which would not read is
+		// named as undrawn instead, and the two answers stay distinguishable.
+		for _, outline := range plan.Outlines() {
+			assert.NotContains(t, []ID{"site:R-02", "site:R-03"}, outline.Subject())
+		}
+	})
+}
+
+// TestPlanOfBudgetsOnlyTheRingsItDrew is its own function because it is about
+// what the budget is over rather than about which nodes came back.
+func TestPlanOfBudgetsOnlyTheRingsItDrew(t *testing.T) {
+	plan, _ := unreadable(t).plan(t, "site:L-01", planCaption)
+
+	require.Len(t, plan.Outlines(), 1)
+
+	// Room A has four corners and nothing else contributed. A ring which was
+	// refused put no corner anywhere, and its position claims accumulated into
+	// the figure would be an accuracy for geometry nobody is drawing.
+	assert.Len(t, plan.Budget().Terms(), 4)
 }
 
 // TestPlanOfReportsWhatEachClaimIsWrittenOn is its own function because the
@@ -305,9 +465,21 @@ func TestPlanOfIsDeterministic(t *testing.T) {
 		assert.Equal(t, annotated(first, outline.Subject()), annotated(second, outline.Subject()))
 	}
 
+	// What was not drawn is ordered by the same rule and carries its claims in
+	// the same order, so a consumer diffing two runs diffs the whole answer to
+	// nothing rather than most of it.
+	assert.Equal(t, undrawnIDs(first), undrawnIDs(second))
+	for _, undrawn := range first.Undrawn() {
+		assert.Equal(t,
+			undrawnAnnotations(first, undrawn.Subject()),
+			undrawnAnnotations(second, undrawn.Subject()),
+		)
+	}
+
 	// The order is by id, which is a property of what the model says rather
 	// than of which file each node was written in.
 	assert.Equal(t, []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"}, drawnIDs(first))
+	assert.Equal(t, []string{"site:C-01"}, undrawnIDs(first))
 }
 
 // TestPlanOfBudgetsTheGeometryAndNotTheAnnotations is its own function because
@@ -354,6 +526,7 @@ func TestPlanOfAZeroValueAnswersNothing(t *testing.T) {
 
 	assert.True(t, plan.Empty())
 	assert.Empty(t, plan.Outlines())
+	assert.Empty(t, plan.Undrawn())
 	assert.Zero(t, plan.Annotations())
 	assert.Equal(t, "nothing was planned", plan.String())
 	assert.Equal(t, "nothing was planned", plan.Report())
@@ -361,6 +534,14 @@ func TestPlanOfAZeroValueAnswersNothing(t *testing.T) {
 	var outline Outline
 	assert.Equal(t, ID(""), outline.Subject())
 	assert.Equal(t, "nothing", outline.String())
+
+	var undrawn Undrawn
+	assert.Nil(t, undrawn.Node())
+	assert.Equal(t, ID(""), undrawn.Subject())
+	assert.Equal(t, UndrawnReason(""), undrawn.Reason())
+	assert.Empty(t, undrawn.Annotations())
+	assert.Equal(t, "nothing", undrawn.String())
+	assert.Equal(t, "it was not drawn", UndrawnReason("").Description())
 
 	var annotation Annotation
 	assert.Equal(t, "", annotation.Predicate())
@@ -393,11 +574,16 @@ func TestPlanOfRendersForAPerson(t *testing.T) {
 
 	require.Empty(t, diagnosticMessages(diags))
 
-	assert.Equal(t, "site:L-01: 5 outlines, 6 claims", plan.String())
+	// The circuit group is the seventh claim and the one node not drawn. The
+	// summary says both, because a sheet drawn from this answer is missing
+	// something and nothing else on the line would say so.
+	assert.Equal(t, "site:L-01: 5 outlines, 7 claims, 1 not drawn", plan.String())
 
 	report := plan.Report()
 	assert.Contains(t, report, "site:R-01 (Meeting Room A): 12.0 m², 3 claims")
 	assert.Contains(t, report, "caption on node site:R-01, ring geom:L-01, from")
+	assert.Contains(t, report, "site:C-01 (Level 1 lighting circuit): not drawn, references no loop, 1 claim")
+	assert.Contains(t, report, "caption on node site:C-01, from")
 }
 
 // TestKindSpatial is its own function because it is about the closed set of

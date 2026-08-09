@@ -190,11 +190,102 @@ const planEntities = `(node site:B-01
 `
 
 // planFixture is the tree the runs below are made against.
+//
+// Every node it holds is drawable, which is what makes it the fixture the
+// unchanged-answer case is asserted against: an object written from it carries
+// no "undrawn" key at all.
 func planFixture() map[string]string {
 	return map[string]string{
 		"registry.dfc":          planRegistry,
 		"entities/model.dfc":    planEntities,
 		"entities/geometry.dfc": planGeometry,
+	}
+}
+
+// planUndrawableTypes is the one type the fixture below adds: a thing which is
+// somewhere and has no shape at all, which is what `(geometry absent)` says.
+const planUndrawableTypes = `
+(type CircuitGroup (kind Element) (geometry absent) (description "Outlets served by one circuit."))
+`
+
+// planUndrawableEntities is a node inside the storey which references no loop
+// and carries a caption somebody wrote for a sheet.
+//
+// It is ordinary rather than a defect — a circuit group covers no area — and it
+// is the case that used to leave the sheet without saying so.
+const planUndrawableEntities = `
+(node site:C-01
+  (label "Level 1 lighting circuit")
+  (kind Element)
+  (type CircuitGroup)
+  (frame frame:building)
+  (within site:L-01)
+  (caption
+    (value "C-01")
+    (source "Electrical schedule ES-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+`
+
+// planUnreadableGeometry is three walls of a rectangle and no fourth. The
+// traversal ends two metres from the corner it began at, which is a gap and not
+// a rounding.
+const planUnreadableGeometry = `
+(vertex geom:V-31 (frame frame:building)
+  (position (value (0.0 10.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-32 (frame frame:building)
+  (position (value (4.0 10.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-33 (frame frame:building)
+  (position (value (4.0 12.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-34 (frame frame:building)
+  (position (value (0.0 12.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-31 (frame frame:building) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (frame frame:building) (vertices geom:V-32 geom:V-33))
+(edge geom:E-33 (frame frame:building) (vertices geom:V-33 geom:V-34))
+
+(loop geom:L-31 (frame frame:building) (edges geom:E-31 geom:E-32 geom:E-33))
+`
+
+// planUnreadableEntities is the room that ring is meant to bound, carrying a
+// caption of its own.
+const planUnreadableEntities = `
+(node site:R-03
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-31)
+  (caption
+    (value "MR-C")
+    (source "Room schedule RS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+`
+
+// undrawableFixture is the tree above with the circuit group added, which is a
+// node nothing is wrong with and nothing can draw.
+func undrawableFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          planRegistry + planUndrawableTypes,
+		"entities/model.dfc":    planEntities + planUndrawableEntities,
+		"entities/geometry.dfc": planGeometry,
+	}
+}
+
+// unreadableFixture is the tree above with a room whose ring does not close,
+// which is a node something is wrong with.
+func unreadableFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          planRegistry,
+		"entities/model.dfc":    planEntities + planUnreadableEntities,
+		"entities/geometry.dfc": planGeometry + planUnreadableGeometry,
 	}
 }
 
@@ -289,6 +380,107 @@ func TestRunPlan(t *testing.T) {
 			assert.True(t, result.Planned)
 		})
 	}
+}
+
+// TestRunPlanNamesANodeItCannotDraw is its own function because it is about a
+// model with a node in it nothing can draw, which is a different tree from the
+// one every case above reads.
+//
+// The circuit group is inside the storey, carries a caption somebody wrote for a
+// sheet, and references no loop. It used to leave the answer with no entry, no
+// diagnostic and exit 0 — which is a sheet that renders, looks complete and is
+// missing something, and is the one failure nothing downstream can detect.
+func TestRunPlanNamesANodeItCannotDraw(t *testing.T) {
+	t.Chdir(tree(t, undrawableFixture()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess,
+		run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr), stderr.String())
+
+	result := listed[planResult](t, stdout.String())
+
+	t.Run("still succeeds, because a node with no shape is not a defect", func(t *testing.T) {
+		assert.True(t, result.Planned)
+		assert.Equal(t, []string{"site:D-01", "site:R-01", "site:R-02"}, outlined(result))
+	})
+
+	t.Run("names it, with what it is and why it is not on the sheet", func(t *testing.T) {
+		require.Len(t, result.Undrawn, 1)
+
+		undrawn := result.Undrawn[0]
+		assert.Equal(t, "site:C-01", undrawn.Node)
+		assert.Equal(t, "Level 1 lighting circuit", undrawn.Label)
+		assert.Equal(t, "Element", undrawn.Kind)
+		assert.Equal(t, "CircuitGroup", undrawn.Type)
+		assert.Equal(t, "no-boundary", undrawn.Reason)
+	})
+
+	t.Run("hands back the claim written on it, whole", func(t *testing.T) {
+		require.Len(t, result.Undrawn[0].Annotations, 1)
+
+		annotation := result.Undrawn[0].Annotations[0]
+		assert.Equal(t, "caption", annotation.Predicate)
+		assert.Equal(t, "node", annotation.Anchor.Kind)
+		assert.Equal(t, "site:C-01", annotation.Anchor.ID)
+		assert.Empty(t, annotation.Anchor.Rings, "a node with no loop is anchored to no ring")
+		assert.Equal(t, "Electrical schedule ES-2026-001", annotation.Source)
+	})
+}
+
+// TestRunPlanNamesARingItCouldNotRead is its own function because the reason is
+// a different one — one an author fixes — and the run it produces is a refusal
+// rather than an answer.
+func TestRunPlanNamesARingItCouldNotRead(t *testing.T) {
+	t.Chdir(tree(t, unreadableFixture()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitCheck, run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr))
+
+	result := listed[planResult](t, stdout.String())
+
+	t.Run("refuses the run and draws the rest of the storey anyway", func(t *testing.T) {
+		assert.False(t, result.Planned)
+		assert.Equal(t, []string{"site:D-01", "site:R-01", "site:R-02"}, outlined(result))
+	})
+
+	t.Run("says which reason in the object rather than only on stderr", func(t *testing.T) {
+		require.Len(t, result.Undrawn, 1)
+
+		assert.Equal(t, "site:R-03", result.Undrawn[0].Node)
+		assert.Equal(t, "unreadable-boundary", result.Undrawn[0].Reason)
+
+		// The detail belongs to the diagnostic, which is where an author reads
+		// what to change: the loop, the file, the position and the size of the
+		// gap. The object says which reason, which is what a consumer decides on.
+		assert.Contains(t, stderr.String(), "geom:L-31")
+		assert.Contains(t, stderr.String(), "to close")
+	})
+
+	t.Run("hands back the claim written on it", func(t *testing.T) {
+		require.Len(t, result.Undrawn[0].Annotations, 1)
+		assert.Equal(t, "caption", result.Undrawn[0].Annotations[0].Predicate)
+	})
+
+	t.Run("does not also report it as an outline covering nothing", func(t *testing.T) {
+		assert.NotContains(t, outlined(result), "site:R-03")
+	})
+}
+
+// TestRunPlanSaysNothingAboutUndrawnNodesWhereEverythingDrew is its own function
+// because it asserts an absence from the object: a storey every node of which
+// was drawn produces exactly the bytes it always did.
+func TestRunPlanSaysNothingAboutUndrawnNodesWhereEverythingDrew(t *testing.T) {
+	t.Chdir(tree(t, planFixture()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess,
+		run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr), stderr.String())
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &payload))
+
+	assert.NotContains(t, payload, "undrawn",
+		"a key a consumer has to read to learn nothing is a key which should not be there")
 }
 
 // TestRunPlanCarriesTheProvenanceOfEveryClaim is its own function because it is
@@ -528,17 +720,40 @@ func TestRunPlanRefusesAnIDNothingHolds(t *testing.T) {
 // TestRunPlanWritesTheSameBytesTwice is its own function because determinism is
 // a promise about the whole payload rather than about any entry of it.
 func TestRunPlanWritesTheSameBytesTwice(t *testing.T) {
-	t.Chdir(tree(t, planFixture()))
-
-	written := make([]string, 2)
-	for i := range written {
-		var stdout, stderr bytes.Buffer
-		require.Equal(t, exitSuccess,
-			run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr), stderr.String())
-		written[i] = stdout.String()
+	testCases := []struct {
+		name         string
+		fixture      map[string]string
+		expectedExit int
+	}{
+		{name: "over a storey every node of which draws", fixture: planFixture(), expectedExit: exitSuccess},
+		{name: "over one holding a node with no shape", fixture: undrawableFixture(), expectedExit: exitSuccess},
+		{name: "over one holding a ring which will not read", fixture: unreadableFixture(), expectedExit: exitCheck},
 	}
 
-	assert.Equal(t, written[0], written[1])
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, testCase.fixture))
+
+			written := make([]string, 2)
+			digests := make([]string, 2)
+			for i := range written {
+				var stdout, stderr bytes.Buffer
+				require.Equal(t, testCase.expectedExit,
+					run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr), stderr.String())
+
+				written[i] = stdout.String()
+				digests[i] = listed[planResult](t, stdout.String()).Digest
+			}
+
+			assert.Equal(t, written[0], written[1])
+
+			// The digest keys the answer to the source tree it was read from,
+			// and what could not be drawn is not part of the tree. A model
+			// holding an undrawable node is keyed the way any other is.
+			assert.Equal(t, digests[0], digests[1])
+			assert.NotEmpty(t, digests[0])
+		})
+	}
 }
 
 // TestRunPlanHumanOutputStaysOffStdout is its own function because the two

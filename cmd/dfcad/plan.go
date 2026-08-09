@@ -82,27 +82,52 @@ The subject is a place rather than a grouping. A zone holds its members by
 membership and contains nothing, so asking for the plan of one is a usage error
 rather than an empty answer.
 
-A node with no boundary contributes nothing, because it has no ring: a doorway
-written as a line, a circuit group and a warranty are all ordinary and none of
-them is an outline. A storey containing nothing with an outline is an empty
-result and exit 0 — the truthful answer to what it looks like in plan.
+Nothing the subject contains is dropped. A node this cannot draw is reported in
+"undrawn" — its id, what it is, why it was not drawn, and the claims written on
+it — rather than left out: a circuit group and a warranty have no edges and are
+ordinary, a ring which does not close is a defect, and both are things somebody
+put inside the storey. A sheet drawn from an answer which omitted one renders,
+looks complete and is missing a door, which is a failure nothing downstream can
+detect.
+
+An undrawable node degrades per node and never refuses the storey, whichever way
+it is undrawable: the other rooms are still drawn and the object still comes
+back. Whether the run succeeded is the separate question the diagnostics answer.
+A node which references no loop is ordinary and reports nothing, so a storey
+holding one is still exit 0; a boundary which could not be read is an error, so
+a storey holding one is "planned" false and exit 1 — and a ring which does not
+close and a ring which crosses itself are treated the same way, because they are
+two spellings of one mistake.
+
+A storey containing nothing with an outline is an empty result and exit 0 — the
+truthful answer to what it looks like in plan.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object plan writes carries "subject", "planned" and the "digest" of the
 source tree it was read from, the "frame" and "unit" it is expressed in, the
 "tolerance" it was judged against, the "annotating" predicates it was asked
-for, one "outlines" entry per contained node with its "region" and its
-"annotations", and the "budget": the accuracy of the rings, over the position
-claims which put every drawn corner where it is. Where a ring bent it also
-carries the "chord" tolerance it was drawn to and the "deviation" that drawing
-achieved, and where a curve went unread it carries "chorded": the edges which
-state one, each with the predicates it states it under.
+for, one "outlines" entry per contained node which was drawn with its "region"
+and its "annotations", and the "budget": the accuracy of the rings, over the
+position claims which put every drawn corner where it is. Where a ring bent it
+also carries the "chord" tolerance it was drawn to and the "deviation" that
+drawing achieved, and where a curve went unread it carries "chorded": the edges
+which state one, each with the predicates it states it under.
+
+Where something inside the subject was not drawn it also carries "undrawn": one
+entry per such node, in id order, with its id, its label, kind and type, its
+"annotations", and a "reason" — "no-boundary" for a node the model gives no
+edges, "unreadable-boundary" for one whose edges this run could not read.
+"outlines" and "undrawn" account between them for everything the subject
+contains, so a renderer which drew every outline and listed every undrawn node
+has drawn or named the whole storey. The key is absent for a storey every node
+of which was drawn.
 
 Exit code 1 is a plan a ring of which could not be read — a boundary which does
-not close, corners which are not in one plane, a tolerance the registry does
-not declare in the frame's unit. The other rooms are still drawn and the object
-still comes back, with "planned" false, so a caller reads which room to fix
+not close, one which crosses itself, corners which are not in one plane, a
+tolerance the registry does not declare in the frame's unit. The other rooms
+are still drawn and the object still comes back, with "planned" false and the
+room named under "undrawn", so a caller reads which room to fix from that and
 from the diagnostics on stderr rather than from an empty stream.
 `
 
@@ -191,9 +216,21 @@ type planResult struct {
 	// like a wall somebody meant.
 	Chorded []chordedEntry `json:"chorded,omitempty"`
 
-	// Outlines is one entry per contained node which has a ring, in id order.
+	// Outlines is one entry per contained node which was drawn, in id order.
 	// Empty rather than null for a subject which contains nothing drawable.
 	Outlines []outlineEntry `json:"outlines"`
+
+	// Undrawn is one entry per contained node which was not drawn, in id order,
+	// each saying why and carrying the claims written on it. Absent for a
+	// subject every node of which was drawn.
+	//
+	// It and `outlines` account between them for everything the subject
+	// contains. A node dropped from the answer reads exactly like a node the
+	// model does not hold, and a sheet drawn from an answer which dropped one
+	// renders, looks complete and is missing a door — which is a failure with no
+	// downstream symptom at all, and so is one this object has to state rather
+	// than leave to be noticed.
+	Undrawn []undrawnEntry `json:"undrawn,omitempty"`
 
 	// Budget is the accuracy of the rings, over the position claims which put
 	// every drawn corner where it is. It is the accuracy of the geometry and
@@ -222,6 +259,45 @@ type outlineEntry struct {
 	// Annotations are the claims reported on it, the node's own first and then
 	// those of each edge of its boundary. Empty rather than null for a room
 	// nobody has written anything on.
+	Annotations []annotationEntry `json:"annotations"`
+}
+
+// undrawnEntry is one contained node the plan could not draw, with why and with
+// what is written on it.
+//
+// It carries the same identification an outline does, because a consumer reading
+// it is answering the same question — what is this and what does a sheet say
+// about it — of something it cannot put a polygon against.
+type undrawnEntry struct {
+	// Node is the id of the node which was not drawn.
+	Node string `json:"node"`
+
+	// Label is what it is called, absent where it is called nothing. Kind and
+	// Type are what it is.
+	Label string `json:"label,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	Type  string `json:"type,omitempty"`
+
+	// Reason is why it was not drawn: `no-boundary` for a node which references
+	// no loop, `unreadable-boundary` for one whose loops the run could not read.
+	//
+	// It is a token and not a sentence. Which of the two applies is what decides
+	// whether anybody has to act — a circuit group has no edges and is ordinary,
+	// a ring which does not close is a defect — and that decision belongs to a
+	// consumer reading a field rather than to one matching prose. Where the
+	// reason is a defect, the diagnostics on stderr carry the loop, the file, the
+	// position and the size of the gap, which is where anything an author acts on
+	// belongs and where a second copy of it would be a second thing to keep true.
+	Reason string `json:"reason"`
+
+	// Annotations are the claims reported on it, in the same order an outline's
+	// are. Empty rather than null, and populated whichever way the node was
+	// undrawable: a caption somebody wrote for a sheet is a fact they authored,
+	// and being unable to draw the thing it is written on is not a reason to
+	// withhold it.
+	//
+	// A node which references no loop has no edges, so what it carries is exactly
+	// its own claims and no edge anchors.
 	Annotations []annotationEntry `json:"annotations"`
 }
 
@@ -437,6 +513,13 @@ func reportPlan(
 		result.Outlines = append(result.Outlines, outlineOf(outline))
 	}
 
+	// Written only where something was not drawn, so that a storey every node of
+	// which drew produces exactly the object it always did. An empty list here
+	// would be a key a consumer had to read to learn nothing.
+	for _, undrawn := range drawn.Undrawn() {
+		result.Undrawn = append(result.Undrawn, undrawnOf(undrawn))
+	}
+
 	// A storey nobody has outlined yet accumulated nothing, and an empty budget
 	// object — no terms, no combined figure and no reason for there being none —
 	// reads as a plan whose rings are known exactly. It is left out instead, the
@@ -463,6 +546,28 @@ func outlineOf(outline dfcad.Outline) outlineEntry {
 	}
 
 	for _, annotation := range outline.Annotations() {
+		entry.Annotations = append(entry.Annotations, annotationOf(annotation))
+	}
+
+	return entry
+}
+
+// undrawnOf is one node the plan could not draw, as the machine contract writes
+// it.
+func undrawnOf(undrawn dfcad.Undrawn) undrawnEntry {
+	entry := undrawnEntry{
+		Node:        string(undrawn.Subject()),
+		Reason:      string(undrawn.Reason()),
+		Annotations: make([]annotationEntry, 0, len(undrawn.Annotations())),
+	}
+
+	if node := undrawn.Node(); node != nil {
+		entry.Label = node.Label()
+		entry.Kind = string(node.Kind())
+		entry.Type = node.Type()
+	}
+
+	for _, annotation := range undrawn.Annotations() {
 		entry.Annotations = append(entry.Annotations, annotationOf(annotation))
 	}
 
