@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -1039,4 +1040,89 @@ func TestRegionSegmentStrings(t *testing.T) {
 	assert.Contains(t, produced[0].String(), "operation")
 
 	assert.Equal(t, "operation", SegmentOriginOperation.String())
+}
+
+// TestRegionOfAnOpenRun is its own function because a run is not a region with
+// no area in it: the answer it produces carries a boundary and no pieces, and
+// producing it is not a refusal of anything.
+func TestRegionOfAnOpenRun(t *testing.T) {
+	model := loadMeasuredRoot(t, boundaryFixture("run"))
+
+	railing, ok := model.nodes.Node("site:D-02")
+	require.True(t, ok)
+
+	region, diags := model.topology.RegionOf(railing, model.boundaries, model.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags), "an open run is a shape and not a defect")
+
+	t.Run("covers nothing, and says so rather than refusing", func(t *testing.T) {
+		assert.True(t, region.Empty())
+		assert.Zero(t, region.Area())
+		assert.Empty(t, region.Pieces())
+		assert.Equal(t, ID("site:D-02"), region.Subject())
+	})
+
+	t.Run("attributes every straight run of it to the edge it was written as", func(t *testing.T) {
+		segments := region.Segments()
+		require.Len(t, segments, 2)
+
+		for i, expected := range []ID{"geom:E-21", "geom:E-22"} {
+			require.NotNil(t, segments[i].Edge())
+			assert.Equal(t, expected, segments[i].Edge().ID())
+			assert.Equal(t, SegmentOriginEdge, segments[i].Origin())
+			assert.False(t, segments[i].Reversed())
+			assert.Equal(t, 0, segments[i].Ring())
+		}
+
+		// The last run arrives at the free end of the chain rather than wrapping
+		// back onto the corner it started from, which is the whole difference
+		// between a run and a ring.
+		assert.Equal(t, Point{4, 3, 0}, segments[0].From())
+		assert.Equal(t, Point{6, 3, 0}, segments[0].To())
+		assert.Equal(t, Point{6, 3, 0}, segments[1].From())
+		assert.Equal(t, Point{6, 5, 0}, segments[1].To())
+	})
+
+	t.Run("carries the accuracy behind the corners it was read from", func(t *testing.T) {
+		assert.NotEmpty(t, region.Budget().Terms())
+	})
+}
+
+// TestRegionOfAnOpenRunIsNotJudgedAgainstAnOverlayTolerance is its own function
+// because what it asserts is that one diagnostic is absent while another is
+// present, which a count alone would not tell apart.
+//
+// The tolerance an overlay needs is what decides which corners are one corner
+// and how far an offset is drawn. A run has no area for either to be computed
+// over, so refusing one for the want of that number would refuse a door under a
+// message about an area the door does not have — beside the diagnostic which is
+// actually true, from the assembly, in the vocabulary of the loop.
+func TestRegionOfAnOpenRunIsNotJudgedAgainstAnOverlayTolerance(t *testing.T) {
+	model := loadMeasuredRoot(t, boundaryFixture("run"))
+
+	unnamed := model.survey
+	unnamed.Tolerance = "no-such-tolerance"
+
+	railing, ok := model.nodes.Node("site:D-02")
+	require.True(t, ok)
+
+	_, diags := model.topology.RegionOf(railing, model.boundaries, unnamed)
+
+	require.Len(t, diags, 1, "the tolerance is reported once, by the pass whose job it is")
+	assert.Contains(t, diags[0].Message, "no-such-tolerance")
+	assert.NotContains(t, diags[0].Message, "area")
+
+	// And the room beside it is still refused for the overlay it cannot be
+	// computed for, which is the diagnostic this one is not.
+	room, ok := model.nodes.Node("site:S-101")
+	require.True(t, ok)
+
+	_, roomDiags := model.topology.RegionOf(room, model.boundaries, unnamed)
+
+	var untolerated bool
+	for _, diagnostic := range roomDiags {
+		if strings.Contains(diagnostic.Message, "to compute the area") {
+			untolerated = true
+		}
+	}
+	assert.True(t, untolerated)
 }

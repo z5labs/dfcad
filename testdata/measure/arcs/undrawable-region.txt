@@ -16,10 +16,10 @@ testdata/measure/arcs/model.dfc:68:1: error: expected a chord tolerance in the u
 74 |   (boundary geom:L-01))
    | ^^^^^^^^^^^^^^^^^^^^^^^
    = hint: how closely a curve has to be followed is a decision a project writes down; there is no default for it, and one compiled in here would be the engine choosing the resolution of somebody else's drawing
-testdata/measure/arcs/model.dfc:248:7: error: expected the arc geom:E-31 to be drawable to the tolerance hair-chord-deviation, which is 1e-12 m, found that following it that closely takes more than 65536 segments
-248 | (edge geom:E-31
+testdata/measure/arcs/model.dfc:264:7: error: expected the arc geom:E-31 to be drawable to the tolerance hair-chord-deviation, which is 1e-12 m, found that following it that closely takes more than 65536 segments
+264 | (edge geom:E-31
     |       ^^^^^^^^^
     = hint: a tolerance far finer than the coordinates the arc was surveyed to draws a curve to a resolution nothing behind it supports; the number of points it takes is the symptom and not the problem
-testdata/measure/arcs/registry.dfc:54:12: note: the tolerance is declared here
-54 | (tolerance hair-chord-deviation
+testdata/measure/arcs/registry.dfc:59:12: note: the tolerance is declared here
+59 | (tolerance hair-chord-deviation
    |            ^^^^^^^^^^^^^^^^^^^^

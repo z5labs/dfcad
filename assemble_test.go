@@ -218,3 +218,126 @@ func TestAssembleNothing(t *testing.T) {
 	assert.False(t, assembly.Closed())
 	assert.Empty(t, assembly.Steps())
 }
+
+// assembleAllRuns assembles every loop of a fixture as an open run, in the
+// order the walk read them, and renders what the assemblies had to say.
+//
+// It is [assembleAll] with the one requirement a run does not have, and it
+// covers every loop for the reason that one does: a fixture holding four shapes
+// which are not a chain should report on four of them.
+func assembleAllRuns(t *testing.T, name string) (map[ID]Assembly, string) {
+	t.Helper()
+
+	model := loadBoundaryModel(t, name)
+
+	assemblies := make(map[ID]Assembly)
+
+	var diags []Diagnostic
+	for loop := range model.topology.Loops() {
+		assembly, found := model.topology.AssembleRun(loop, model.positions, closureTolerance, model.registry)
+
+		assemblies[loop.ID()] = assembly
+		diags = append(diags, found...)
+	}
+
+	return assemblies, renderBoundaryDiagnostics(t, diags)
+}
+
+func TestAssembleRun(t *testing.T) {
+	testCases := []struct {
+		name    string
+		fixture string
+	}{
+		{
+			name:    "names a branch, an edge walked twice, a run in two pieces and a chain written out of order",
+			fixture: "run-refused",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, got := assembleAllRuns(t, testCase.fixture)
+
+			assert.Equal(t, expectedBoundaryDiagnostics(t, testCase.fixture, got), got)
+		})
+	}
+}
+
+// TestAssembleRunWalksAnOpenChain is its own function because the assertion is
+// the assembled run rather than a diagnostic: which edge the walk runs through
+// at each step, which way round it runs, and that reaching the far end of it is
+// not a failure to close.
+func TestAssembleRunWalksAnOpenChain(t *testing.T) {
+	model := loadBoundaryModel(t, "run")
+
+	railing, ok := model.topology.Loop("geom:L-12")
+	require.True(t, ok)
+
+	assembly, diags := model.topology.AssembleRun(railing, model.positions, closureTolerance, model.registry)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags), "an open run is not a loop with a gap in it")
+
+	t.Run("comes back open, and says which tolerance judged its corners", func(t *testing.T) {
+		assert.True(t, assembly.Open())
+		assert.False(t, assembly.Closed(), "a chain does not return to where it began")
+		assert.Equal(t, closureTolerance, assembly.Tolerance().Name)
+	})
+
+	t.Run("walks each edge from the corner the last one ended at", func(t *testing.T) {
+		steps := assembly.Steps()
+		require.Len(t, steps, 2)
+
+		assert.Equal(t, ID("geom:V-03"), steps[0].From())
+		assert.Equal(t, steps[0].To(), steps[1].From())
+		assert.Equal(t, ID("geom:V-22"), steps[1].To())
+	})
+
+	t.Run("begins at the corner it shares with the room, which is one vertex", func(t *testing.T) {
+		room, ok := model.topology.Loop("geom:L-01")
+		require.True(t, ok)
+
+		ring, diags := model.topology.Assemble(room, model.positions, closureTolerance, model.registry)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+		require.True(t, ring.Closed())
+
+		// The railing does not restate the corner's coordinate: it names the
+		// same vertex the room's south wall leaves, so moving that vertex moves
+		// the wall and the railing together and neither can drift from the
+		// other.
+		var shared bool
+		for _, step := range ring.Steps() {
+			if step.From() == assembly.Steps()[0].From() {
+				shared = true
+			}
+		}
+		assert.True(t, shared, "the run begins at a corner of the room's ring")
+	})
+
+	t.Run("walks a chain of one edge", func(t *testing.T) {
+		doorway, ok := model.topology.Loop("geom:L-11")
+		require.True(t, ok)
+
+		run, diags := model.topology.AssembleRun(doorway, model.positions, closureTolerance, model.registry)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		require.Len(t, run.Steps(), 1)
+		assert.True(t, run.Open())
+		assert.False(t, run.Closed())
+	})
+}
+
+// TestAssembleRunOfARingIsBothOpenAndClosed is its own function because it is
+// the one case where the two answers differ from each other rather than one of
+// them being absent: the edges were read as a chain, and the chain came back to
+// where it started.
+func TestAssembleRunOfARingIsBothOpenAndClosed(t *testing.T) {
+	model := loadBoundaryModel(t, "run")
+
+	room, ok := model.topology.Loop("geom:L-01")
+	require.True(t, ok)
+
+	assembly, diags := model.topology.AssembleRun(room, model.positions, closureTolerance, model.registry)
+
+	assert.Empty(t, renderBoundaryDiagnostics(t, diags), "a ring walked as a run is refused for nothing")
+	assert.True(t, assembly.Open())
+	assert.True(t, assembly.Closed())
+}

@@ -281,6 +281,15 @@
 // which says so and no recorded number left behind to go stale (see
 // docs/decisions/0009-derived-values-are-never-written-back.md).
 //
+// A node whose declared geometry is `line` is read as open runs rather than as
+// rings. Its loops are the same authoring and are refused for the same four
+// things — an edge walked twice, a corner where three edges meet, a shape in two
+// pieces, an order the chain is not walked in — and are not asked to close: a
+// door, a railing and a wall run each begin somewhere and end somewhere else.
+// What one of them measures is a length and a bounding box, with no area and no
+// centroid, and [Topology.AssembleRun] is [Topology.Assemble] with that one
+// requirement dropped.
+//
 // [Graph.Measure] is the whole of that in one call, dispatching on whichever
 // family an id names, and [Graph.Corners] is the vertices a survey for it has to
 // carry. They are here so that a caller asking how big something is does not
@@ -374,6 +383,14 @@
 // outwards for a setback, inwards for a clearance — from one construction, so an
 // inward offset which eats the shape returns a region covering nothing rather
 // than the inside-out shape offsetting each edge on its own would give.
+//
+// A node drawn as a line reads back as a region with no pieces and a boundary:
+// it covers nothing, so there is no area for an operation to be computed over,
+// and every straight run of it names the edge it was written as, the way it was
+// walked and the two corners it runs between — which is the attribution a ring's
+// boundary carries and is what a sheet draws the run from. Covering nothing is a
+// state of that answer and not a refusal, which is what keeps one open run in a
+// storey from refusing the plan of the storey or the map of the model.
 //
 // The same refusals apply as everywhere else in this package, and for the same
 // reasons. A ring which crosses itself or encloses nothing is a diagnostic and

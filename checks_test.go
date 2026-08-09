@@ -892,3 +892,33 @@ func encloses(outer, inner Span) bool {
 		outer.Start.Offset <= inner.Start.Offset &&
 		inner.End.Offset <= outer.End.Offset
 }
+
+// TestBoundaryLoopsCloseDoesNotAskARunToClose is its own function because it
+// asserts that a check declines to run rather than that it ran and passed, and
+// because the difference between those two is the whole of what a node drawn as
+// a line needed.
+func TestBoundaryLoopsCloseDoesNotAskARunToClose(t *testing.T) {
+	graph := loadCheckFixture(t, "satisfied")
+
+	loop, ok := graph.Topology().Loop("geom:L-15")
+	require.True(t, ok, "the fixture holds the partition's run")
+
+	t.Run("passes over a loop every node bounded by it draws as a line", func(t *testing.T) {
+		// The run is a single edge and does not come back to where it began, so
+		// a check which read it as a ring would report a gap the length of the
+		// partition.
+		assembly, _ := graph.Topology().Assemble(loop, nil, "boundary-closure", graph.Registry())
+		require.False(t, assembly.Closed(), "read as a ring, this loop does not close")
+
+		run := graph.Rules().Run()
+		assert.Empty(t, reportedBy(run, "boundary-loops-close", "geom:L-15"))
+	})
+
+	t.Run("still asks a loop a room is bounded by to close", func(t *testing.T) {
+		store, ok := graph.Topology().Loop("geom:L-13")
+		require.True(t, ok)
+
+		assert.False(t, walkedAsRun(graph, store), "a room's outline is a ring whoever asks")
+		assert.True(t, walkedAsRun(graph, loop))
+	})
+}

@@ -603,3 +603,28 @@ func TestRunMeasureNamesAPredicateOnceHoweverOftenItIsClaimed(t *testing.T) {
 	assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates,
 		"one entry per predicate, however many claims are written under it")
 }
+
+// TestRunMeasureOfAnOpenRun is its own function because the figures it asserts
+// are the ones a chain has: it reaches a length and it encloses nothing, and
+// both of those are an answer rather than a refusal.
+func TestRunMeasureOfAnOpenRun(t *testing.T) {
+	root := tree(t, planFixture())
+	stdout, stderr := invoke(t, exitSuccess, root, measuring("site:D-01")...)
+
+	result := listed[measureResult](t, stdout)
+
+	assert.True(t, result.Derived, stderr)
+	assert.Equal(t, "site:D-01", result.Subject)
+	assert.Equal(t, familyNode, result.Family)
+
+	require.NotNil(t, result.Length)
+	assert.InDelta(t, 1.6, result.Length.Value, 1e-9, "0.9 through the opening and 0.7 beyond it")
+	assert.Equal(t, "m", result.Length.Unit)
+
+	// And no area. A door is not a room, and reporting nought square metres for
+	// one would be a figure about a shape nobody drew.
+	assert.Nil(t, result.Area)
+	assert.Nil(t, result.Centroid)
+
+	require.NotNil(t, result.Bounds)
+}

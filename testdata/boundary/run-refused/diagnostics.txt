@@ -1,0 +1,31 @@
+testdata/boundary/run-refused/geometry.dfc:26:7: error: expected every corner of the run geom:L-41 to meet at most two of its edges, found geom:V-42, where 3 meet
+26 | (loop geom:L-41
+   |       ^^^^^^^^^
+   = hint: a run is a simple chain: each corner but its two ends joins the edge the traversal arrives by and the one it leaves by, so a corner joining a third is a branch and not a chain
+testdata/boundary/run-refused/geometry.dfc:29:10: note: geom:E-41 meets it here
+29 |   (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+   |          ^^^^^^^^^
+testdata/boundary/run-refused/geometry.dfc:29:20: note: geom:E-42 meets it here
+29 |   (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+   |                    ^^^^^^^^^
+testdata/boundary/run-refused/geometry.dfc:29:40: note: geom:E-44 meets it here
+29 |   (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+   |                                        ^^^^^^^^^
+testdata/boundary/run-refused/geometry.dfc:35:30: error: expected an edge the run geom:L-42 does not already traverse, found geom:E-41 a second time
+35 |   (edges geom:E-41 geom:E-42 geom:E-41))
+   |                              ^^^^^^^^^
+   = hint: a run is a simple chain: it runs through each of its edges once, so an edge written twice is a chain which doubles back along itself
+testdata/boundary/run-refused/geometry.dfc:35:10: note: first traversed here
+35 |   (edges geom:E-41 geom:E-42 geom:E-41))
+   |          ^^^^^^^^^
+testdata/boundary/run-refused/geometry.dfc:50:7: error: expected the edges of the run geom:L-43 to form one chain, found 2 separate ones
+50 | (loop geom:L-43
+   |       ^^^^^^^^^
+   = hint: a run is one connected chain; a node drawn as a line whose shape is in more than one piece references one loop per piece, written (boundary <loop-id>) once for each
+testdata/boundary/run-refused/geometry.dfc:74:20: error: expected the edges of the run geom:L-44 in the order it is traversed, found geom:E-63, which does not begin at geom:V-62, where geom:E-61 ended
+74 |   (edges geom:E-61 geom:E-63 geom:E-62))
+   |                    ^^^^^^^^^
+   = hint: these edges do form one chain, but not in this order; the order of a run's edges is the order the run is walked, and is never sorted
+testdata/boundary/run-refused/geometry.dfc:57:9: note: the corner the traversal had reached
+57 | (vertex geom:V-62 (frame frame:building))
+   |         ^^^^^^^^^

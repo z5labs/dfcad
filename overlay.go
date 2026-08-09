@@ -437,9 +437,11 @@ func (t *Topology) regionOf(
 		drew.tolerance = tolerance
 	}
 
+	open := drawnAsLine(node)
+
 	var rings []*outline
 	for _, loop := range loops {
-		assembled, ok := m.ring(loop)
+		assembled, ok := m.assembled(loop, open)
 		if !ok {
 			continue
 		}
@@ -452,6 +454,18 @@ func (t *Topology) regionOf(
 		// rings which happened to assemble is an answer about a shape with a
 		// piece missing, and nothing in the result says which piece.
 		return region, drew, m.diags
+	}
+
+	// A run is read before the tolerance is judged, because nothing it produces
+	// was computed against one. [measurer.untolerated] is about an overlay —
+	// which corners are one corner, and how far an offset is drawn — and a chain
+	// has no area for either to be run over, so demanding a tolerance here would
+	// refuse a door for the want of a number nothing would have applied to it,
+	// under a message about an area the door does not have. Where the tolerance
+	// really is wrong the assembly has already said so, in the vocabulary of the
+	// loop rather than of the arithmetic over it.
+	if open {
+		return m.runOf(node, region, rings, drew, draw)
 	}
 
 	if !m.applicable() {
@@ -545,6 +559,70 @@ func (t *Topology) regionOf(
 	return region, drew, m.diags
 }
 
+// runOf reads what a node drawn as a line states: the open runs its loops walk,
+// each attributed run by run to the edge it was written as.
+//
+// A run covers nothing, so the region comes back with no pieces and is not
+// ready: an offset, a union and an intersection are all operations over an area,
+// and a chain has none for them to be computed against. That is a state of the
+// answer and not a refusal — nothing is diagnosed, because a door being a line
+// is what the model says about it — and it is what keeps one open run in a
+// storey from refusing the plan of the storey or the map of the model.
+//
+// What it does carry is the boundary. Every straight run of the chain names the
+// edge it was written as, with the direction the walk ran through it and the two
+// corners it runs between, which is the same attribution a ring's boundary gets
+// and is what a sheet draws the run from. A claim written on one of those edges
+// reaches the run it is about by the route it already reaches a room's wall by.
+//
+// A run which bends is drawn or refused on the same terms a ring is: an arc kept
+// as an arc is not a set of coordinates, so a caller which wants points names the
+// chord tolerance they may be drawn to and gets back what they were drawn to.
+func (m *measurer) runOf(
+	node *SemanticNode,
+	region Region,
+	rings []*outline,
+	drew drawing,
+	draw bool,
+) (Region, drawing, []Diagnostic) {
+	var bent bool
+	for _, one := range rings {
+		if !one.curved {
+			continue
+		}
+
+		if !draw {
+			m.add(m.undrawn(node, one))
+			return region, drew, m.diags
+		}
+
+		bent = true
+	}
+
+	drew.drew = bent
+
+	segments := segmentsOf(rings)
+
+	if bent {
+		segments = nil
+		for i, one := range rings {
+			points, starts, deviation, ok := m.drawnRing(one, drew.tolerance)
+			if !ok {
+				return region, drawing{tolerance: drew.tolerance}, m.diags
+			}
+
+			segments = append(segments, drawnSegmentsOf(one, i, points, starts)...)
+			drew.deviation = math.Max(drew.deviation, deviation)
+		}
+	}
+
+	region.dimension = rings[0].dimension
+	region.budget = m.result.budget
+	region.segments = segments
+
+	return region, drew, m.diags
+}
+
 // nestings counts, for each ring of a region, how many of the others hold it.
 //
 // Where nothing bent the count is taken at the corners, which is
@@ -584,11 +662,21 @@ func (m *measurer) nestings(figure []contour, rings []*outline, bent bool) []int
 // corner. Reading the pair from the same index rather than from the edge's own
 // written direction is what makes a ring traversed backwards come out running
 // the way the ring does.
+//
+// An open run holds one corner more than it has edges, because the chain ends
+// somewhere no edge leaves, so the last run arrives at that corner rather than
+// wrapping onto the first. The indexing is otherwise identical, which is what
+// makes a run's boundary attributable on exactly the terms a ring's is.
 func segmentsOf(rings []*outline) []BoundarySegment {
 	var segments []BoundarySegment
 
 	for index, one := range rings {
-		if len(one.points) != len(one.edges) || len(one.reversed) != len(one.edges) {
+		corners := len(one.edges)
+		if one.open {
+			corners++
+		}
+
+		if len(one.points) != corners || len(one.reversed) != len(one.edges) {
 			continue
 		}
 
@@ -616,17 +704,25 @@ func segmentsOf(rings []*outline) []BoundarySegment {
 // straight edge on either side of it.
 //
 // The ring closes, so the last run of the last step arrives back at the first
-// corner. Only a closed ring reaches here: a ring which does not close encloses
-// no area, and [Topology.regionOf] has already refused it.
+// corner. A ring which does not close encloses no area and [Topology.regionOf]
+// has already refused it; an open run does not close on purpose, and its last
+// step stops at the corner the chain ends at instead of wrapping.
 func drawnSegmentsOf(one *outline, index int, points []Point, starts []int) []BoundarySegment {
 	if len(points) == 0 || len(starts) != len(one.edges) || len(one.reversed) != len(one.edges) {
 		return nil
 	}
 
+	// A drawn run holds the corner it ends at as its last point, which is the
+	// arrival of the last segment rather than the departure of another.
+	last := len(points)
+	if one.open {
+		last--
+	}
+
 	var segments []BoundarySegment
 
 	for i, edge := range one.edges {
-		end := len(points)
+		end := last
 		if i+1 < len(starts) {
 			end = starts[i+1]
 		}

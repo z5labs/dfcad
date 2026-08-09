@@ -21,6 +21,11 @@
   (geometry area)
   (description "An enclosed room used for meetings."))
 
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces."))
+
 (predicate position
   (unit m)
   (shape coordinate)

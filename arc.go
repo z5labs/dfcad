@@ -561,14 +561,14 @@ func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, []int,
 	var points []Point
 	var deviation float64
 
-	starts := make([]int, 0, len(out.points))
+	starts := make([]int, 0, len(out.bends))
 
-	for i, point := range out.points {
+	for i := range out.bends {
 		starts = append(starts, len(points))
 
 		curve := out.bends[i]
 		if curve == nil {
-			points = append(points, point)
+			points = append(points, out.points[i])
 			continue
 		}
 
@@ -581,6 +581,14 @@ func (m *measurer) drawnRing(out *outline, tolerance Tolerance) ([]Point, []int,
 		// is written once, by the step it begins.
 		points = append(points, segment.points[:len(segment.points)-1]...)
 		deviation = math.Max(deviation, segment.deviation)
+	}
+
+	// An open run ends at a corner no step of it begins, and no step after it
+	// will write that corner down. It is written here rather than left to the
+	// caller because a run whose drawing stopped an edge short is a wall drawn
+	// short, and nothing downstream would say which one.
+	if out.open {
+		points = append(points, out.points[len(out.points)-1])
 	}
 
 	return points, starts, deviation, true

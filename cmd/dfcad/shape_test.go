@@ -1099,3 +1099,25 @@ func TestRunExportNamesTheQuantityBehindAnAmbiguousClaim(t *testing.T) {
 		})
 	}
 }
+
+// TestRunExportGivesAnOpenRunARepresentationOnTheSameTermsAnAreaGetsOne is its
+// own function because what it asserts is a symmetry between two shapes rather
+// than a property of either.
+//
+// The partition's boundary is an open chain — two edges which begin at one
+// corner and end at another, never returning — and the countertop's is a ring.
+// Both reach the file with a footprint and a body, and neither is asked for
+// anything the other is not: an outline, and the claims which turn the outline
+// into a solid.
+func TestRunExportGivesAnOpenRunARepresentationOnTheSameTermsAnAreaGetsOne(t *testing.T) {
+	source := exportElements(t)
+
+	for _, subject := range []string{"Kitchen counter", "Kitchen partition", "Stair railing"} {
+		assert.Contains(t, source, subject, "the model states a shape for %s", subject)
+	}
+
+	assert.Equal(t, 3, strings.Count(source, "'FootPrint','Curve2D'"),
+		"the ring and the two runs each carry the outline the model states")
+	assert.Equal(t, 3, strings.Count(source, "'Body','SweptSolid'"),
+		"and each carries the body the claims about it make of that outline")
+}

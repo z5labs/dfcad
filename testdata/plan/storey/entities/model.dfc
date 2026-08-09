@@ -70,6 +70,9 @@
     (accuracy (independent 0.02 m2))
     (date "2026-05-06")))
 
+; A doorway is drawn as a line, so what it references is an open run of edges
+; and not a ring. Requiring it to close would be requiring it to be a rectangle
+; standing beside the wall rather than an opening through it.
 (node site:D-01
   (label "Doorway into Room A")
   (kind Element)
@@ -77,9 +80,35 @@
   (geometry line)
   (frame frame:building)
   (within site:L-01)
+  (boundary geom:L-21)
   (caption
     (value "D-01")
     (source "Door schedule DS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+
+; A run of two edges, which begins at the corner the party wall ends at.
+(node site:H-01
+  (label "Railing off the corridor")
+  (kind Element)
+  (type Railing)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-22))
+
+; A thing which is somewhere and has no shape at all. It is contained by the
+; storey and carries a claim somebody wrote, and it is not an outline, which is
+; ordinary rather than a defect in the model.
+(node site:C-01
+  (label "Level 1 lighting circuit")
+  (kind Element)
+  (type CircuitGroup)
+  (frame frame:building)
+  (within site:L-01)
+  (caption
+    (value "C-01")
+    (source "Electrical schedule ES-2026-001")
     (method method:schedule)
     (date "2026-03-01")))
 

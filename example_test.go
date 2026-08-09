@@ -557,7 +557,7 @@ func ExampleGraph_Assertions() {
 	// boundary-loops-close (tolerance boundary-closure)
 	// within-resolves: The node the subject is written within is one the model holds, and the containment hierarchy permits it as a parent of the subject's kind.
 	// required-claim: The subject carries a claim under the named predicate which is still asserted, so the predicate has a resolvable value on it.
-	// boundary-loops-close: Every loop bounding the subject closes: traversing its edges returns to the vertex it started from, within the named tolerance.
+	// boundary-loops-close: Every loop bounding the subject closes: traversing its edges returns to the vertex it started from, within the named tolerance. A loop every node bounded by it draws as a line is an open run and is not asked to close.
 }
 
 func ExampleResolveAssertions() {
@@ -1238,6 +1238,50 @@ func ExampleTopology_Assemble() {
 	//   geom:E-06: geom:V-05 to geom:V-06, reversed: false
 	//   geom:E-07: geom:V-06 to geom:V-03, reversed: false
 	//   geom:E-02: geom:V-03 to geom:V-02, reversed: true
+}
+
+// ExampleTopology_AssembleRun reads a loop as the open run of edges it walks,
+// which is the shape a node declaring the geometry form `line` has.
+//
+// A door, a window, a railing, a wall run and a duct all begin somewhere and end
+// somewhere else. Asking one of them to close would be asking it to be a
+// rectangle standing beside the wall rather than a run along it, so the one
+// requirement dropped here is that requirement — every other refusal a loop is
+// read under is made exactly as it is of a ring.
+func ExampleTopology_AssembleRun() {
+	root := "testdata/boundary/run"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	topology, _ := dfcad.LoadTopology(root, registry)
+	claims, _ := dfcad.LoadClaims(root, registry)
+
+	positions := make(dfcad.Positions)
+	for vertex := range topology.Vertices() {
+		resolution, _ := claims.Resolve(vertex.ID(), "position", registry)
+		if value, ok := resolution.Value(); ok {
+			positions[vertex.ID()] = value
+		}
+	}
+
+	railing, _ := topology.Loop("geom:L-12")
+
+	assembly, _ := topology.AssembleRun(railing, positions, "boundary-closure", registry)
+
+	// Open, and not closed. The two answers are different questions: the first
+	// is how the edges were read and the second is whether the walk came back to
+	// where it began.
+	fmt.Printf("%s open: %t, closed: %t\n", railing.ID(), assembly.Open(), assembly.Closed())
+
+	// The chain begins at the corner the room's south wall ends at, so moving
+	// that vertex moves the wall and the railing together.
+	for _, step := range assembly.Steps() {
+		fmt.Printf("  %s: %s to %s\n", step.Edge().ID(), step.From(), step.To())
+	}
+
+	// Output:
+	// geom:L-12 open: true, closed: false
+	//   geom:E-21: geom:V-03 to geom:V-21
+	//   geom:E-22: geom:V-21 to geom:V-22
 }
 
 // ExampleTopology_MeasureRegion answers how big a room is from the boundary it
@@ -3068,10 +3112,20 @@ func ExampleGraph_PlanOf() {
 			outline.Node().Kind(), outline.Subject(), outline.Region().Area(), plan.Unit())
 	}
 
+	// A node drawn as a line covers nothing and is still drawn: its boundary is
+	// an open run of edges rather than a ring, and the runs of it carry the same
+	// attribution a room's do.
+	var room dfcad.Outline
+	for _, outline := range plan.Outlines() {
+		if outline.Subject() == "site:R-01" {
+			room = outline
+		}
+	}
+
 	// Every claim says what it is written on. An edge anchor names its two
 	// corners in the order the edge was authored, so a dimension knows which
 	// pair of corners it runs between without anybody matching coordinates.
-	for _, annotation := range plan.Outlines()[1].Annotations() {
+	for _, annotation := range room.Annotations() {
 		value := annotation.Claim().Value()
 
 		// A caption is a text claim and a dimension a scalar one. Both are
@@ -3095,8 +3149,10 @@ func ExampleGraph_PlanOf() {
 	fmt.Printf("the rings are known to ±%.3f %s\n", combined.Standard(), combined.Unit)
 
 	// Output:
-	// site:L-01: 3 outlines, 11 claims
+	// site:L-01: 5 outlines, 13 claims
 	// Space site:A-01 covers 1.0 m²
+	// Element site:D-01 covers 0.0 m²
+	// Element site:H-01 covers 0.0 m²
 	// Space site:R-01 covers 12.0 m²
 	// Space site:R-02 covers 12.0 m²
 	//   area: 12.00 m2 — node site:R-01, ring geom:L-01
@@ -3106,7 +3162,7 @@ func ExampleGraph_PlanOf() {
 	//   wall-length: 3.00 m — edge geom:E-02, geom:V-02 to geom:V-03
 	//   wall-length: 3.02 m — edge geom:E-02, geom:V-02 to geom:V-03
 	//   wall-length: 4.00 m — edge geom:E-03, geom:V-03 to geom:V-04
-	// the rings are known to ±0.013 m
+	// the rings are known to ±0.024 m
 }
 
 func ExampleTopology_FitWithin() {

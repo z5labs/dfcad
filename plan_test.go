@@ -119,8 +119,10 @@ func TestPlanOf(t *testing.T) {
 			subject:    "site:L-01",
 			predicates: []string{planArea},
 			// The alcove is a space inside a space, so a walk which stopped at
-			// the storey's own children would leave it off the sheet.
-			expectedOutlines: []string{"site:A-01", "site:R-01", "site:R-02"},
+			// the storey's own children would leave it off the sheet. The
+			// doorway and the railing are drawn as lines, and a run is drawn
+			// beside a ring rather than instead of one.
+			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"},
 		},
 		{
 			name:             "draws what one room contains rather than the room",
@@ -132,7 +134,7 @@ func TestPlanOf(t *testing.T) {
 			name:             "draws the whole building through the storey below it",
 			subject:          "site:B-01",
 			predicates:       []string{planArea},
-			expectedOutlines: []string{"site:A-01", "site:R-01", "site:R-02"},
+			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"},
 		},
 		{
 			name:             "draws nothing for a room nothing is inside",
@@ -160,11 +162,12 @@ func TestPlanOfLeavesOutWhatHasNoRing(t *testing.T) {
 
 	require.Empty(t, diagnosticMessages(diags))
 
-	// The doorway is contained by the storey, is written as a line and carries
-	// a caption somebody wrote for a sheet. It has no outline, so it is not an
-	// outline — and that is ordinary rather than a defect in the model.
-	assert.NotContains(t, drawnIDs(plan), "site:D-01")
-	assert.Empty(t, annotated(plan, "site:D-01"))
+	// The circuit group is contained by the storey and carries a caption
+	// somebody wrote for a sheet. It references no loop at all, so there is
+	// nothing of it to draw — and that is ordinary rather than a defect in the
+	// model.
+	assert.NotContains(t, drawnIDs(plan), "site:C-01")
+	assert.Empty(t, annotated(plan, "site:C-01"))
 }
 
 // TestPlanOfReportsWhatEachClaimIsWrittenOn is its own function because the
@@ -304,7 +307,7 @@ func TestPlanOfIsDeterministic(t *testing.T) {
 
 	// The order is by id, which is a property of what the model says rather
 	// than of which file each node was written in.
-	assert.Equal(t, []string{"site:A-01", "site:R-01", "site:R-02"}, drawnIDs(first))
+	assert.Equal(t, []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"}, drawnIDs(first))
 }
 
 // TestPlanOfBudgetsTheGeometryAndNotTheAnnotations is its own function because
@@ -390,7 +393,7 @@ func TestPlanOfRendersForAPerson(t *testing.T) {
 
 	require.Empty(t, diagnosticMessages(diags))
 
-	assert.Equal(t, "site:L-01: 3 outlines, 5 claims", plan.String())
+	assert.Equal(t, "site:L-01: 5 outlines, 6 claims", plan.String())
 
 	report := plan.Report()
 	assert.Contains(t, report, "site:R-01 (Meeting Room A): 12.0 m², 3 claims")
@@ -422,4 +425,84 @@ func TestKindSpatial(t *testing.T) {
 	}
 
 	assert.Equal(t, len(Kinds())-1, len(SpatialKinds()), "every kind but the zone is a place")
+}
+
+// TestPlanOfDrawsAnOpenRun is its own function because what an open run
+// contributes to a sheet is a different shape of answer from a room's: it
+// covers nothing, and the whole of what a renderer draws it from is the runs of
+// its boundary.
+func TestPlanOfDrawsAnOpenRun(t *testing.T) {
+	plan, diags := storey(t).plan(t, "site:L-01", planArea, planCaption, planLength)
+
+	// The storey holds an open run and is planned anyway. One door does not
+	// refuse a floor.
+	require.Empty(t, diagnosticMessages(diags), "an open run is not a defect in the storey holding it")
+
+	var railing Outline
+	for _, outline := range plan.Outlines() {
+		if outline.Subject() == "site:H-01" {
+			railing = outline
+		}
+	}
+	require.Equal(t, ID("site:H-01"), railing.Subject())
+
+	t.Run("covers nothing and is drawn from its boundary", func(t *testing.T) {
+		assert.True(t, railing.Region().Empty())
+		assert.Zero(t, railing.Region().Area())
+
+		segments := railing.Region().Segments()
+		require.Len(t, segments, 2)
+
+		for i, expected := range []ID{"geom:E-22", "geom:E-23"} {
+			require.NotNil(t, segments[i].Edge())
+			assert.Equal(t, expected, segments[i].Edge().ID())
+			assert.Equal(t, SegmentOriginEdge, segments[i].Origin())
+		}
+
+		assert.Equal(t, Point{4, 3, 0}, segments[0].From())
+		assert.Equal(t, Point{6, 5, 0}, segments[1].To())
+	})
+
+	t.Run("carries the claims written on it and on the edges of its run", func(t *testing.T) {
+		assert.Equal(t, []string{
+			`caption "D-01" @ node site:D-01, ring geom:L-21`,
+			`wall-length 0.9 m @ edge geom:E-21, geom:V-21 to geom:V-22`,
+		}, annotated(plan, "site:D-01"))
+	})
+
+	t.Run("draws the rooms it sits among exactly as before", func(t *testing.T) {
+		var room Outline
+		for _, outline := range plan.Outlines() {
+			if outline.Subject() == "site:R-01" {
+				room = outline
+			}
+		}
+
+		assert.InDelta(t, 12.0, room.Region().Area(), 1e-9)
+	})
+}
+
+// TestDeriveOverAModelHoldingAnOpenRun is its own function because what it
+// asserts is an absence which reaches every command that draws an artefact: a
+// storey with a door in it derives clean, so the map of the model is written
+// rather than refused.
+func TestDeriveOverAModelHoldingAnOpenRun(t *testing.T) {
+	graph, diags := LoadGraph(planFixtureRoot)
+	require.Empty(t, diagnosticMessages(diags), "the fixture loads clean")
+
+	prints, derived := graph.Derive(Derivation{Position: planPosition, Tolerance: planTolerance})
+
+	assert.Empty(t, diagnosticMessages(derived), "one open run does not refuse the whole derivation")
+
+	// The run itself has no footprint, because a footprint is an area and a
+	// chain covers none. That is what it has rather than a defect it caused.
+	_, held := prints.Of("site:H-01")
+	assert.False(t, held)
+
+	room, held := prints.Of("site:R-01")
+	require.True(t, held, "the rooms beside it are derived exactly as before")
+
+	area, hasArea := room.Area()
+	require.True(t, hasArea)
+	assert.InDelta(t, 12.0, area, 1e-9)
 }
