@@ -921,21 +921,19 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 	return m.assembled(loop, false)
 }
 
-// run assembles a loop as the open chain its edges walk, which is what a node
-// declaring the geometry form `line` is drawn as.
+// assembled reads a loop as a ring or, where open, as the open chain its edges
+// walk — which is what a node declaring the geometry form `line` is drawn as.
 //
-// It is [measurer.ring] with the closure requirement dropped and nothing else
-// changed: the same edges, the same corners, the same arcs, the same accuracy,
-// and the same refusal of a branch, a doubled edge or a shape in two pieces. A
-// chain encloses nothing, so what comes back has a length and a bounding box and
-// no area — which is not a failure to measure it but the whole of what there is
-// to measure.
-func (m *measurer) run(loop *Loop) (*outline, bool) {
-	return m.assembled(loop, true)
-}
-
-// assembled is the reading both share, with open saying whether the edges are
-// walked as a ring or as a chain.
+// The open reading is [measurer.ring] with the closure requirement dropped and
+// nothing else changed: the same edges, the same corners, the same arcs, the
+// same accuracy, and the same refusal of a branch, a doubled edge or a shape in
+// two pieces. A chain encloses nothing, so what comes back has a length and a
+// bounding box and no area — which is not a failure to measure it but the whole
+// of what there is to measure.
+//
+// It takes the reading as an argument rather than being two methods because its
+// callers take it as one: which of the two a node gets is its declared geometry,
+// which is read once and threaded through every loop bounding it.
 func (m *measurer) assembled(loop *Loop, open bool) (*outline, bool) {
 	assemble := m.topology.Assemble
 	if open {
