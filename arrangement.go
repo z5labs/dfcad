@@ -156,8 +156,36 @@ func distanceToSegment(point, a, b vec) float64 {
 	return point.sub(a.add(along.scale(at))).length()
 }
 
-// nestedIn reports whether one ring lies inside another, and whether the two
-// are arranged so that the question has an answer at all.
+// nesting is how one ring of a region sits against another: the two answers the
+// even-odd rule can be applied to, and the two ways there is no answer to apply
+// it to.
+//
+// The two refusals are told apart because they are different things to have
+// drawn and want different things said back. Rings which cross are two shapes
+// overlapping in part; rings which cannot be told apart are one boundary written
+// twice. Reporting either as the other sends whoever reads it to the wrong
+// loop.
+type nesting int
+
+const (
+	// ringBeside is a ring which lies outside the other one, touching it or
+	// not. Both are added.
+	ringBeside nesting = iota
+
+	// ringWithin is a ring the whole of which lies inside the other one, which
+	// is what makes it a hole in it.
+	ringWithin
+
+	// ringsCrossing is two rings each of which holds part of the other and
+	// neither of which holds the whole of it.
+	ringsCrossing
+
+	// ringsIndistinct is a ring no point of which is off the other's boundary,
+	// so there is nothing to decide which of them is inside which.
+	ringsIndistinct
+)
+
+// nestedIn reports how one ring sits inside, beside or across another.
 //
 // Every probe of the inner ring which is not on the outer ring's boundary is
 // asked, and they have to agree. Asking one point is what a nesting used to be
@@ -170,9 +198,11 @@ func distanceToSegment(point, a, b vec) float64 {
 //
 // Disagreement is the two rings crossing: neither holds the whole of the other,
 // so neither is a hole in the other and the even-odd rule has nothing to say
-// about them. That comes back undecided rather than as a number, because the
-// number would be an area no shape has.
-func nestedIn(inner, outer contour, tolerance float64) (bool, bool) {
+// about them. Nothing to disagree — every probe on the other ring's boundary —
+// is the two rings being one boundary as far as this can tell. Both come back
+// as a refusal rather than as a number, because the number would be an area no
+// shape has.
+func nestedIn(inner, outer contour, tolerance float64) nesting {
 	var inside, answered bool
 
 	for _, probe := range probesOf(inner) {
@@ -188,11 +218,18 @@ func nestedIn(inner, outer contour, tolerance float64) (bool, bool) {
 		}
 
 		if held != inside {
-			return false, false
+			return ringsCrossing
 		}
 	}
 
-	return inside, answered
+	switch {
+	case !answered:
+		return ringsIndistinct
+	case inside:
+		return ringWithin
+	default:
+		return ringBeside
+	}
 }
 
 // probesOf is the points a ring is tested against another ring by: every corner

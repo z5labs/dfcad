@@ -638,11 +638,14 @@ func (m *measurer) runOf(
 // same area for the same node: both nest by this, and both refuse the same
 // arrangement.
 //
-// Two rings which cross are refused. Neither is inside the other, so neither is
-// a hole in it, and an even-odd sum over them is an area with the overlap
-// counted twice or not at all. It is the same refusal a total which comes out
-// at nothing gets, for the same reason: the rings are not the boundary of one
-// region, and a figure computed from them would look like an answer.
+// An arrangement the rule cannot be applied to is refused, and the two of them
+// are told apart. Two rings which cross are two shapes overlapping in part:
+// neither is inside the other, so neither is a hole in it, and an even-odd sum
+// over them is an area with the overlap counted twice or not at all. Two rings
+// nothing tells apart are one boundary written twice. Both get the refusal a
+// total which comes out at nothing gets, for the same reason: the rings are not
+// the boundary of one region, and a figure computed from them would look like an
+// answer.
 //
 // It is taken at the segments a curve was drawn as, which is the whole reason a
 // curved region has to be drawn before it can be nested at all: a courtyard
@@ -669,14 +672,15 @@ func (m *measurer) nestings(node *SemanticNode, rings []*outline, figure []conto
 				continue
 			}
 
-			inside, decided := nestedIn(figure[i], figure[j], tolerance)
-			if !decided {
+			switch nestedIn(figure[i], figure[j], tolerance) {
+			case ringWithin:
+				depths[i]++
+			case ringsCrossing:
 				m.add(m.crossingRings(node, rings[i], rings[j]))
 				return nil, false
-			}
-
-			if inside {
-				depths[i]++
+			case ringsIndistinct:
+				m.add(m.indistinctRings(node, rings[i], rings[j]))
+				return nil, false
 			}
 		}
 	}

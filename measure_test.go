@@ -508,25 +508,47 @@ func TestMeasureNestsRingsWhichMeetWithoutOneHoldingTheOther(t *testing.T) {
 	}
 }
 
-// TestMeasureRefusesRingsWhichCross is its own function because the assertion is
-// a refusal beside an absence: two rings which overlap in part are neither
-// nested nor beside one another, so the even-odd rule has nothing to say about
-// them, and what has to come back is the pair named rather than a figure.
-func TestMeasureRefusesRingsWhichCross(t *testing.T) {
+// TestMeasureRefusesRingsItCannotNest is its own function because the assertion
+// is a refusal beside an absence: rings the even-odd rule cannot be applied to
+// have to come back as the pair named rather than as a figure.
+//
+// The two refusals are separate cases because they are different things to have
+// drawn. Two rings which overlap in part are two shapes; two rings nothing tells
+// apart are one boundary written twice, and a diagnostic which called that a
+// crossing would send whoever read it looking for an overlap which is not there.
+func TestMeasureRefusesRingsItCannotNest(t *testing.T) {
 	got := measureRegions(t, "abutting")
 	assert.Equal(t, expectedMeasureDiagnostics(t, "abutting", got), got)
 
+	testCases := []struct {
+		name   string
+		region ID
+	}{
+		{
+			name:   "names the two rings which cross rather than summing them",
+			region: "site:S-11",
+		},
+		{
+			name:   "names the two rings nothing tells apart rather than nesting one in the other",
+			region: "site:S-12",
+		},
+	}
+
 	model := loadMeasuredModel(t, "abutting")
 
-	measurement, diags := model.measure(t, "site:S-11")
-	assert.NotEmpty(t, diags, "a refusal says why")
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			measurement, diags := model.measure(t, testCase.region)
+			assert.NotEmpty(t, diags, "a refusal says why")
 
-	area, ok := measurement.Area()
-	assert.False(t, ok)
-	assert.Zero(t, area)
+			area, ok := measurement.Area()
+			assert.False(t, ok)
+			assert.Zero(t, area)
 
-	_, ok = measurement.Centroid()
-	assert.False(t, ok)
+			_, ok = measurement.Centroid()
+			assert.False(t, ok)
+		})
+	}
 }
 
 // TestMeasureAndRegionAgreeAboutOneShape is its own function because what it

@@ -246,6 +246,17 @@
   (boundary geom:L-21)
   (boundary geom:L-31))
 
+; One boundary written twice: the counter return's ring, walked each way round.
+; Nothing tells the two apart, so nothing says which of them holds the other.
+(node site:S-12
+  (label "One ring written twice")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-11)
+  (boundary geom:L-14))
+
 ; Two rings which share nothing: sixteen square metres and four, and twenty
 ; between them.
 (vertex geom:V-41

@@ -1889,6 +1889,30 @@ func (m *measurer) crossingRings(region *SemanticNode, first, second *outline) D
 	}
 }
 
+// indistinctRings reports two rings of one region which nothing tells apart: no
+// point of the one is off the other's boundary, so there is nothing to decide
+// which of them is inside which.
+//
+// It is a different thing to have drawn from two rings which cross, and says so.
+// Two loops running along one another are one boundary written twice — the same
+// wall referenced by two loops, or a ring left behind by an edit — and reporting
+// them as crossing would send whoever reads it looking for an overlap which is
+// not there.
+func (m *measurer) indistinctRings(region *SemanticNode, first, second *outline) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     m.span,
+		Message: fmt.Sprintf(
+			"expected every loop bounding %s to be inside another or beside it, found no point of %s off the boundary "+
+				"of %s, which leaves nothing to decide which of the two holds the other",
+			nodeName(region), geometricName(loopTag, first.loop.id), geometricName(loopTag, second.loop.id),
+		),
+		Hint: "a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where " +
+			"the whole of it is inside that one; two loops drawn along one another are one boundary written twice, " +
+			"which bounds the region once",
+	}
+}
+
 // walked is the corners the traversal passes through, in the order it reaches
 // them: the corner each step leaves, and — for an open run, which does not come
 // back to where it began — the corner the last step arrives at.
