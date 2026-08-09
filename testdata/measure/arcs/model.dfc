@@ -73,6 +73,22 @@
   (frame frame:building)
   (boundary geom:L-01))
 
+; A partition which runs along the south wall and on around the bay, drawn as a
+; line: an open chain of the same two edges the room is bounded by, one of which
+; bends. It shares the edges rather than restating them, so the bay moving moves
+; the room and the partition together.
+(loop geom:L-03
+  (label "Partition run along the bay")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02))
+(node site:W-01
+  (label "Partition along the bay")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (boundary geom:L-03))
+
 ; The same four edges written in the order the ring runs the other way round,
 ; which traverses the bay window from the far end. A bulge belongs to the wall
 ; and not to the traversal, so the same curve bows out of both and the two

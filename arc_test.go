@@ -1468,3 +1468,69 @@ func TestAStraightRegionMeasuresTheSameWhetherOrNotAChordIsNamed(t *testing.T) {
 
 	assert.Equal(t, read, named)
 }
+
+// TestTessellateRegionDrawsACurvedOpenRun is its own function because what a
+// drawn run produces is a boundary and no pieces, which every assertion in
+// [TestTessellateRegion] is the other way round about.
+//
+// A partition which follows a bay is one straight edge and one which bends. It
+// is authored as a chain of the same two edges the room is bounded by, so the
+// bay moving moves both — and the chords it is drawn as name the edge they stand
+// in for rather than arriving as anonymous coordinates.
+func TestTessellateRegionDrawsACurvedOpenRun(t *testing.T) {
+	model := loadMeasuredModel(t, "arcs")
+
+	partition, ok := model.nodes.Node("site:W-01")
+	require.True(t, ok)
+
+	t.Run("refuses to draw a run which bends where no chord tolerance is named", func(t *testing.T) {
+		_, diags := model.topology.RegionOf(partition, model.boundaries, model.survey)
+
+		require.Len(t, diags, 1)
+		assert.Equal(t, SeverityError, diags[0].Severity)
+		assert.Contains(t, diags[0].Message, "geom:L-03")
+	})
+
+	drawn, diags := model.topology.TessellateRegion(partition, model.boundaries, model.survey, chordTolerance)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	t.Run("says what it drew the curve to", func(t *testing.T) {
+		assert.Equal(t, chordTolerance, drawn.ChordTolerance().Name)
+		assert.Greater(t, drawn.Deviation(), 0.0)
+		assert.LessOrEqual(t, drawn.Deviation(), drawn.ChordTolerance().Value)
+	})
+
+	t.Run("covers nothing and attributes every chord to the edge it stands in for", func(t *testing.T) {
+		assert.True(t, drawn.Empty())
+		assert.Zero(t, drawn.Area())
+
+		segments := drawn.Region().Segments()
+		require.NotEmpty(t, segments)
+
+		var straight, bent int
+		for _, segment := range segments {
+			require.NotNil(t, segment.Edge())
+
+			switch segment.Origin() {
+			case SegmentOriginEdge:
+				straight++
+				assert.Equal(t, ID("geom:E-01"), segment.Edge().ID())
+			case SegmentOriginArc:
+				bent++
+				assert.Equal(t, ID("geom:E-02"), segment.Edge().ID())
+			default:
+				t.Errorf("a run of an authored boundary named no edge: %s", segment)
+			}
+		}
+
+		assert.Equal(t, 1, straight, "the south wall is one straight run")
+		assert.Greater(t, bent, 1, "the bay is drawn as several chords of the arc it bends along")
+	})
+
+	t.Run("ends at the far corner of the chain rather than turning back", func(t *testing.T) {
+		segments := drawn.Region().Segments()
+
+		assert.Equal(t, pointOf(t, model.survey.Positions["geom:V-01"]), segments[0].From())
+		assert.Equal(t, pointOf(t, model.survey.Positions["geom:V-03"]), segments[len(segments)-1].To())
+	})
+}

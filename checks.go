@@ -132,7 +132,8 @@ func (boundaryLoopsClose) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "boundary-loops-close",
 		Description: "Every loop bounding the subject closes: traversing its edges returns to the vertex it " +
-			"started from, within the named tolerance.",
+			"started from, within the named tolerance. A loop every node bounded by it draws as a line is an open " +
+			"run and is not asked to close.",
 		Parameters: []CheckParameter{
 			{
 				Name:        toleranceParameter,
@@ -166,6 +167,14 @@ func (boundaryLoopsClose) Declare() CheckDeclaration {
 // vertex identity alone and a gap is reported as one whose size could not be
 // measured — which is what is true, rather than a silent pass on a model nobody
 // gave coordinates for.
+//
+// A loop every node bounded by it draws as a line is passed over. The check
+// declares that it does not apply to a node drawn as a line, and the loop that
+// node references is the same shape reached from the other end: asking it to
+// close would be this check answering two ways about one loop, and the answer a
+// consuming registry would see is whichever of its two rules happened to route
+// the loop. A loop nothing bounds is still asked to close — nothing says it is a
+// run, and a loop nobody has referenced yet is a ring being written.
 func (boundaryLoopsClose) Run(subject CheckSubject) []Failure {
 	tolerance, ok := symbolOf(subject, toleranceParameter)
 	if !ok {
@@ -185,6 +194,10 @@ func (boundaryLoopsClose) Run(subject CheckSubject) []Failure {
 
 	var out []Failure
 	for _, loop := range loops {
+		if walkedAsRun(graph, loop) {
+			continue
+		}
+
 		survey := positionSurvey(graph, tolerance, position, verticesOf(graph, loop))
 
 		assembly, diags := graph.Topology().Assemble(loop, survey.Positions, tolerance, graph.Registry())
@@ -213,6 +226,31 @@ func (boundaryLoopsClose) Run(subject CheckSubject) []Failure {
 	}
 
 	return out
+}
+
+// walkedAsRun reports whether a loop is walked as an open run rather than as a
+// ring, which is true of one every node bounded by it draws as a line.
+//
+// Every, and not any. A loop shared by a room and a door is the room's boundary
+// and has to close for the room's sake, and passing it over because something
+// else read it as a chain would drop a real defect on the strength of an
+// unrelated reference. That is a model saying two things about one loop, which
+// [Topology.Assemble] and [Topology.AssembleRun] cannot both be right about — and
+// a check which reported nothing would hide it rather than leave it to be found.
+//
+// A loop nothing bounds is not a run. Nothing has said what it is yet, and a
+// loop being written is a ring until something says otherwise.
+func walkedAsRun(graph *Graph, loop *Loop) bool {
+	var bounded bool
+
+	for node := range graph.Boundaries().Bounded(loop) {
+		bounded = true
+		if !drawnAsLine(node) {
+			return false
+		}
+	}
+
+	return bounded
 }
 
 // claimAgreesWithGeometry is the check that a measurement written down still

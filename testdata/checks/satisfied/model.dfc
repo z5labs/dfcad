@@ -96,6 +96,22 @@
   (edges geom:E-13 geom:E-14 geom:E-15 geom:E-16)
   (assert boundary-loops-close (tolerance boundary-closure) (position position)))
 
+; The partition, which is drawn as a line and so is an open run of edges: it
+; begins at one corner of the level and ends somewhere else, and the loop it is
+; written as is not asked to close. The rule about closing is stated on that
+; loop, which is the form that would refuse it if a run were read as a ring.
+(vertex geom:V-21 (label "Partition run, free end") (frame frame:building)
+  (position (value (3.0 6.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-21 (label "Partition run, first leg") (frame frame:building) (vertices geom:V-06 geom:V-21))
+
+(loop geom:L-15
+  (label "Partition run")
+  (frame frame:building)
+  (edges geom:E-21)
+  (assert boundary-loops-close (tolerance boundary-closure) (position position)))
+
 (edge geom:E-17 (label "Setback, side 1") (frame frame:building) (vertices geom:V-14 geom:V-15))
 (edge geom:E-18 (label "Setback, side 2") (frame frame:building) (vertices geom:V-15 geom:V-16))
 (edge geom:E-19 (label "Setback, side 3") (frame frame:building) (vertices geom:V-16 geom:V-17))
@@ -152,7 +168,8 @@
   (type Partition)
   (geometry line)
   (frame frame:building)
-  (within site:L-01))
+  (within site:L-01)
+  (boundary geom:L-15))
 
 (node site:Z-90
   (label "Northern setback")

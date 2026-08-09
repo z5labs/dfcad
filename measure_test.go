@@ -1091,3 +1091,102 @@ func TestMeasurementString(t *testing.T) {
 		"site:S-01: area 12.0 m², length 14.0 m, centroid (2.0 1.5 0.0), bounds (0.0 0.0 0.0) to (4.0 3.0 0.0)",
 		measurement.String())
 }
+
+// TestMeasureRegionOfAnOpenRun is its own function because what a run measures
+// is a different set of figures from what a region measures, not a variation on
+// them: there is a length and a box and there is deliberately no area.
+func TestMeasureRegionOfAnOpenRun(t *testing.T) {
+	model := loadMeasuredRoot(t, boundaryFixture("run"))
+
+	t.Run("measures how far a run of two edges reaches", func(t *testing.T) {
+		railing, ok := model.nodes.Node("site:D-02")
+		require.True(t, ok)
+
+		measurement, diags := model.topology.MeasureRegion(railing, model.boundaries, model.survey)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags), "a run is not a loop with a gap in it")
+
+		length, computed := measurement.Length()
+		require.True(t, computed)
+		assert.InDelta(t, 4.0, length, 1e-9, "two metres out and two metres along")
+
+		// And no closing side. A perimeter would have counted the way back from
+		// the free end to the corner it started at, which is a side nobody drew.
+		_, hasArea := measurement.Area()
+		assert.False(t, hasArea, "a chain encloses nothing")
+
+		_, hasCentroid := measurement.Centroid()
+		assert.False(t, hasCentroid, "there is no area to take the centroid of")
+
+		bounds, hasBounds := measurement.Bounds()
+		require.True(t, hasBounds)
+		assert.Equal(t, Point{4, 3, 0}, bounds.Min)
+		assert.Equal(t, Point{6, 5, 0}, bounds.Max)
+	})
+
+	t.Run("measures a run of one edge", func(t *testing.T) {
+		doorway, ok := model.nodes.Node("site:D-01")
+		require.True(t, ok)
+
+		measurement, diags := model.topology.MeasureRegion(doorway, model.boundaries, model.survey)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		length, computed := measurement.Length()
+		require.True(t, computed)
+		assert.InDelta(t, 0.9, length, 1e-9)
+	})
+
+	t.Run("carries the accuracy of the corners which put the run where it is", func(t *testing.T) {
+		railing, ok := model.nodes.Node("site:D-02")
+		require.True(t, ok)
+
+		measurement, _ := model.topology.MeasureRegion(railing, model.boundaries, model.survey)
+
+		assert.NotEmpty(t, measurement.Budget().Terms(), "the run is as well known as its corners are")
+	})
+
+	t.Run("still measures the room beside it as a region", func(t *testing.T) {
+		room, ok := model.nodes.Node("site:S-101")
+		require.True(t, ok)
+
+		measurement, diags := model.topology.MeasureRegion(room, model.boundaries, model.survey)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		area, hasArea := measurement.Area()
+		require.True(t, hasArea)
+		assert.InDelta(t, 12.0, area, 1e-9)
+	})
+}
+
+// TestMeasureRegionOfAnOpenRunMovesWithTheCornerItShares is its own function
+// because the assertion is about two shapes at once: the run and the wall it
+// begins at are one vertex, so surveying that vertex somewhere else moves both.
+func TestMeasureRegionOfAnOpenRunMovesWithTheCornerItShares(t *testing.T) {
+	model := loadMeasuredRoot(t, boundaryFixture("run"))
+
+	railing, ok := model.nodes.Node("site:D-02")
+	require.True(t, ok)
+
+	before, diags := model.topology.MeasureRegion(railing, model.boundaries, model.survey)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	length, computed := before.Length()
+	require.True(t, computed)
+	require.InDelta(t, 4.0, length, 1e-9)
+
+	// The room's south-east corner moves a metre east. Nothing about the
+	// railing is edited, and the railing is a metre shorter, because it names
+	// that corner rather than restating where it was.
+	moved := model.survey
+	moved.Positions = Positions{}
+	for id, value := range model.survey.Positions {
+		moved.Positions[id] = value
+	}
+	moved.Positions["geom:V-03"] = CoordinateValue([]float64{5, 3, 0}, "m")
+
+	after, diags := model.topology.MeasureRegion(railing, model.boundaries, moved)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	length, computed = after.Length()
+	require.True(t, computed)
+	assert.InDelta(t, 3.0, length, 1e-9, "the run followed the corner the wall moved")
+}

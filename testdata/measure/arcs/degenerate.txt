@@ -10,8 +10,8 @@ testdata/measure/arcs/model.dfc:46:1: note: the edge is written here
    ... 13 lines omitted
 61 |     (date "2026-02-19")))
    | ^^^^^^^^^^^^^^^^^^^^^^^^^
-testdata/measure/arcs/registry.dfc:42:12: note: the tolerance is declared here
-42 | (tolerance boundary-closure
+testdata/measure/arcs/registry.dfc:47:12: note: the tolerance is declared here
+47 | (tolerance boundary-closure
    |            ^^^^^^^^^^^^^^^^
 testdata/measure/arcs/model.dfc:46:7: error: expected the arc the edge geom:E-02 bends along to describe a curve, found the point it passes through, (7.0 2.0 0.0) lying 1.0 m off the circle of radius 2.0 m about it
 46 | (edge geom:E-02
@@ -25,8 +25,8 @@ testdata/measure/arcs/model.dfc:46:1: note: the edge is written here
    ... 13 lines omitted
 61 |     (date "2026-02-19")))
    | ^^^^^^^^^^^^^^^^^^^^^^^^^
-testdata/measure/arcs/registry.dfc:42:12: note: the tolerance is declared here
-42 | (tolerance boundary-closure
+testdata/measure/arcs/registry.dfc:47:12: note: the tolerance is declared here
+47 | (tolerance boundary-closure
    |            ^^^^^^^^^^^^^^^^
 testdata/measure/arcs/model.dfc:46:7: error: expected the arc the edge geom:E-02 bends along to describe a curve, found the point it passes through, (4.0 4.0 0.0), in line with its centre and geom:V-02
 46 | (edge geom:E-02
@@ -40,8 +40,8 @@ testdata/measure/arcs/model.dfc:46:1: note: the edge is written here
    ... 13 lines omitted
 61 |     (date "2026-02-19")))
    | ^^^^^^^^^^^^^^^^^^^^^^^^^
-testdata/measure/arcs/registry.dfc:42:12: note: the tolerance is declared here
-42 | (tolerance boundary-closure
+testdata/measure/arcs/registry.dfc:47:12: note: the tolerance is declared here
+47 | (tolerance boundary-closure
    |            ^^^^^^^^^^^^^^^^
 testdata/measure/arcs/model.dfc:45:7: error: expected the arc the edge geom:E-01 bends along to describe a curve, found the point it passes through, (4.5 -1.5 0.0), past the end it reaches at geom:V-02
 45 | (edge geom:E-01 (label "Bay room, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
@@ -50,8 +50,8 @@ testdata/measure/arcs/model.dfc:45:7: error: expected the arc the edge geom:E-01
 testdata/measure/arcs/model.dfc:45:1: note: the edge is written here
 45 | (edge geom:E-01 (label "Bay room, south wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-testdata/measure/arcs/registry.dfc:42:12: note: the tolerance is declared here
-42 | (tolerance boundary-closure
+testdata/measure/arcs/registry.dfc:47:12: note: the tolerance is declared here
+47 | (tolerance boundary-closure
    |            ^^^^^^^^^^^^^^^^
 testdata/measure/arcs/model.dfc:46:7: error: expected the arc the edge geom:E-02 bends along to describe a curve, found geom:V-03 lying 1.7888543819998317 m out of the plane its centre, geom:V-02 and the point it passes through make
 46 | (edge geom:E-02
@@ -65,8 +65,8 @@ testdata/measure/arcs/model.dfc:46:1: note: the edge is written here
    ... 13 lines omitted
 61 |     (date "2026-02-19")))
    | ^^^^^^^^^^^^^^^^^^^^^^^^^
-testdata/measure/arcs/registry.dfc:42:12: note: the tolerance is declared here
-42 | (tolerance boundary-closure
+testdata/measure/arcs/registry.dfc:47:12: note: the tolerance is declared here
+47 | (tolerance boundary-closure
    |            ^^^^^^^^^^^^^^^^
 testdata/measure/arcs/model.dfc:46:7: error: expected the arc the edge geom:E-02 bends along to describe a curve, found no centre it could read in the unit of the frame
 46 | (edge geom:E-02
@@ -80,6 +80,6 @@ testdata/measure/arcs/model.dfc:46:1: note: the edge is written here
    ... 13 lines omitted
 61 |     (date "2026-02-19")))
    | ^^^^^^^^^^^^^^^^^^^^^^^^^
-testdata/measure/arcs/registry.dfc:42:12: note: the tolerance is declared here
-42 | (tolerance boundary-closure
+testdata/measure/arcs/registry.dfc:47:12: note: the tolerance is declared here
+47 | (tolerance boundary-closure
    |            ^^^^^^^^^^^^^^^^

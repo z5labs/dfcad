@@ -63,3 +63,34 @@
 (loop geom:L-01 (frame frame:building) (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
 (loop geom:L-02 (frame frame:building) (edges geom:E-05 geom:E-06 geom:E-07 geom:E-02))
 (loop geom:L-11 (frame frame:building) (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+
+; The doorway through the party wall, and the railing off the corridor's south
+; corner. Neither is a ring: each is an open run of edges, which is what the
+; geometry form `line` declares, and each is drawn from the corners below the
+; same way a room is drawn from its own.
+(vertex geom:V-21 (frame frame:building)
+  (position (value (4.0 1.0 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+(vertex geom:V-22 (frame frame:building)
+  (position (value (4.0 1.9 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+(vertex geom:V-23 (frame frame:building)
+  (position (value (6.0 3.0 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+(vertex geom:V-24 (frame frame:building)
+  (position (value (6.0 5.0 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+
+; The opening itself, jamb to jamb along the party wall.
+(edge geom:E-21 (frame frame:building) (vertices geom:V-21 geom:V-22)
+  (wall-length (value 0.9 m) (source "Door schedule DS-2026-001") (method method:schedule)
+    (accuracy (independent 0.005 m)) (date "2026-03-01")))
+
+; The railing leaves geom:V-03, which is the corner the party wall ends at and
+; the corner both rooms are drawn from. Moving that vertex moves the wall and
+; the railing together, because it is one vertex and not a coordinate copied.
+(edge geom:E-22 (frame frame:building) (vertices geom:V-03 geom:V-23))
+(edge geom:E-23 (frame frame:building) (vertices geom:V-23 geom:V-24))
+
+(loop geom:L-21 (frame frame:building) (edges geom:E-21))
+(loop geom:L-22 (frame frame:building) (edges geom:E-22 geom:E-23))

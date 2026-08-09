@@ -1,0 +1,148 @@
+; A room, an opening through one of its walls, and a railing which starts at one
+; of its corners.
+;
+; The room is a region and closes. The other two are drawn as lines, so what
+; each of them references is an open run of edges: a chain which begins
+; somewhere and ends somewhere else, and which is refused for everything a loop
+; is refused for except not coming back to where it began.
+;
+; The railing is the point of the sharing. It begins at geom:V-03, which is also
+; the room's south-east corner, so moving that corner moves the wall and the
+; railing together — the relation is the shared vertex, not a second statement
+; of the same coordinate.
+(node site:S-101
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+
+(node site:D-01
+  (label "Doorway into Room B")
+  (kind Element)
+  (type Doorway)
+  (geometry line)
+  (frame frame:building)
+  (boundary geom:L-11))
+
+(node site:D-02
+  (label "Railing off the south-east corner")
+  (kind Element)
+  (type Doorway)
+  (geometry line)
+  (frame frame:building)
+  (boundary geom:L-12))
+
+(vertex geom:V-01
+  (label "Room B, north-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-02
+  (label "Room B, north-east corner")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-03
+  (label "Room B, south-east corner")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-04
+  (label "Room B, south-west corner")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))
+
+(vertex geom:V-11
+  (label "Doorway, north jamb")
+  (frame frame:building)
+  (position
+    (value (4.0 1.0 0.0) m)
+    (source "Fit-out drawing FD-2026-004")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-03-02")))
+
+(vertex geom:V-12
+  (label "Doorway, south jamb")
+  (frame frame:building)
+  (position
+    (value (4.0 1.9 0.0) m)
+    (source "Fit-out drawing FD-2026-004")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-03-02")))
+
+(vertex geom:V-21
+  (label "Railing, first return")
+  (frame frame:building)
+  (position
+    (value (6.0 3.0 0.0) m)
+    (source "Fit-out drawing FD-2026-004")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-03-02")))
+
+(vertex geom:V-22
+  (label "Railing, free end")
+  (frame frame:building)
+  (position
+    (value (6.0 5.0 0.0) m)
+    (source "Fit-out drawing FD-2026-004")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-03-02")))
+
+(edge geom:E-01 (label "Room B, north wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+
+(edge geom:E-02 (label "Room B, east wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
+
+(edge geom:E-03 (label "Room B, south wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+
+(edge geom:E-04 (label "Room B, west wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+
+; The opening, jamb to jamb, along the east wall.
+(edge geom:E-11 (label "Doorway opening") (frame frame:building) (vertices geom:V-11 geom:V-12))
+
+; The railing, which leaves the room's south-east corner and turns once.
+(edge geom:E-21 (label "Railing, first run") (frame frame:building) (vertices geom:V-03 geom:V-21))
+
+(edge geom:E-22 (label "Railing, second run") (frame frame:building) (vertices geom:V-21 geom:V-22))
+
+(loop geom:L-01
+  (label "Meeting Room B boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; One edge is a run. A chain has two loose ends and nothing says how many edges
+; lie between them.
+(loop geom:L-11
+  (label "Doorway run")
+  (frame frame:building)
+  (edges geom:E-11))
+
+(loop geom:L-12
+  (label "Railing run")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22))

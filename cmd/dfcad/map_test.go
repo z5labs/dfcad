@@ -818,3 +818,63 @@ func TestRunExportMapWritesWhereItWasTold(t *testing.T) {
 	assert.Equal(t, destination, result.Files[0].Path)
 	assert.FileExists(t, destination)
 }
+
+// withAnOpenRun is the map fixture with a partition drawn as a line added to
+// the storey: two edges which begin at a corner of Meeting Room A and end
+// somewhere else, referenced by a node whose declared geometry is `line`.
+func withAnOpenRun() map[string]string {
+	files := mapModel()
+
+	files["registry.dfc"] += `
+(type Partition
+  (kind Element)
+  (geometry line)
+  (description "A non-loadbearing wall between spaces."))
+`
+
+	files["geometry/level-01.dfc"] += `
+(vertex geom:V-31 (frame frame:building) (position (value (4.0 6.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-32 (frame frame:building) (position (value (2.0 6.0 0.0) m) (source "Interior control set IC-1") (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-31 (frame frame:building) (vertices geom:V-13 geom:V-31))
+(edge geom:E-32 (frame frame:building) (vertices geom:V-31 geom:V-32))
+
+(loop geom:L-31 (frame frame:building) (edges geom:E-31 geom:E-32))
+`
+
+	files["entities/site.dfc"] += `
+(node site:W-01
+  (label "Partition off Meeting Room A")
+  (kind Element)
+  (type Partition)
+  (geometry line)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-31))
+`
+
+	return files
+}
+
+// TestRunExportMapWritesAModelHoldingAnOpenRun is its own function because what
+// it asserts is that a file comes out at all.
+//
+// One open run used to refuse the whole export: the run does not close, closure
+// was the only reading of a loop there was, and the diagnostic that produced
+// stopped the map of every feature in the model. A door is not a defect in the
+// site it stands on.
+func TestRunExportMapWritesAModelHoldingAnOpenRun(t *testing.T) {
+	result, _, stderr := mapping(t, exitSuccess, withAnOpenRun(), mapFlags()...)
+
+	require.True(t, result.Derived, stderr)
+	require.Len(t, result.Files, 1)
+
+	source := mapArtefact(t, result)
+
+	// The rooms and the plot are drawn exactly as they were. The run itself
+	// covers no ground, so there is no feature for it — which is what it has
+	// rather than a failure it caused.
+	assert.Contains(t, source, "site:S-101")
+	assert.Contains(t, source, "site:P-01")
+	assert.NotContains(t, source, "site:W-01")
+}

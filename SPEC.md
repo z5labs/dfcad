@@ -307,7 +307,7 @@ known tag when one is close.
 | `label`       | `0..1` | A string. Display text; changing it changes nothing else.                        |
 | `kind`        | `1`    | One of the seven members of `kind`.                                              |
 | `type`        | `1`    | A type name declared in the type registry.                                       |
-| `geometry`    | `0..1` | One of `point`, `line`, `area`, `surface`, `solid`. Omitted means the node has no geometry, which is a distinct and ordinary state. |
+| `geometry`    | `0..1` | One of `point`, `line`, `area`, `surface`, `solid`. Omitted means the node has no geometry, which is a distinct and ordinary state. `line` makes each loop the node references an open run rather than a ring; see [6.4](#64-loop). |
 | `frame`       | `0..1` | A frame id. A node declared in two frames is unrepresentable, which is the point. |
 | `within`      | `0..1` | The id of the node that strictly contains this one.                              |
 | `member-of`   | `0..n` | A zone node id. Membership is many-to-many and never implies containment.        |
@@ -420,6 +420,25 @@ It is the order in which the loop is traversed.
 Whether the edges form a closed, connected, simple cycle is a **load check**, not a
 syntactic one, and it is performed against a named tolerance from the tolerance registry.
 Syntactically, any non-empty ordered list of edge ids is a well-formed `loop`.
+
+**Closure is a question about the node, not about the loop.** A loop referenced by a node
+whose `geometry` is `line` is read as an **open run**: a chain which begins at one corner
+and ends at another, and which is not asked to come back to where it started. A door, a
+window, a railing, a wall run and a duct are each that shape, and drawing one as a ring
+would be drawing a rectangle beside the wall rather than a run along it.
+
+Nothing else about the reading changes. An edge written twice, a corner where three edges
+meet, edges in two disconnected pieces and edges written in an order the chain is not
+walked in are each refused of a run exactly as they are of a ring — the four refusals are
+about the edges and not about the ends. What a run has that a ring does not is two loose
+ends, and having them is what a run is.
+
+Which reading a loop gets is the geometry form of the nodes bounded by it. A loop every
+such node draws as a line is an open run; a loop any of them draws as an area, a surface or
+a solid is a ring, and one nothing references yet is a ring. The consequences follow from
+that reading: a run measures a length and no area, `boundary-loops-close` passes over it,
+and a query which draws it — a plan, a map, an export — reports it per node rather than
+refusing the whole answer because one node in it is a chain.
 
 ### 6.5 Claims
 

@@ -15,6 +15,8 @@
 (type MeetingRoom (kind Space) (geometry area) (description "An enclosed room used for meetings."))
 (type Alcove (kind Space) (geometry area) (description "A recess off a room."))
 (type Doorway (kind Element) (geometry line) (description "An opening formed through a partition."))
+(type Railing (kind Element) (geometry line) (description "A guarded run along an edge or a level change."))
+(type CircuitGroup (kind Element) (geometry absent) (description "Outlets served by one circuit."))
 
 (predicate area
   (unit m2)

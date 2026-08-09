@@ -94,6 +94,11 @@ type Assembly struct {
 	// closed reports whether the ring closes.
 	closed bool
 
+	// open reports whether the edges were read as an open run rather than as a
+	// ring, which is what [Topology.AssembleRun] does and [Topology.Assemble]
+	// does not.
+	open bool
+
 	// tolerance is the declared tolerance closure was judged against. The zero
 	// value belongs to an assembly whose tolerance name no registry file
 	// declares, which is a diagnostic of its own.
@@ -118,6 +123,15 @@ func (a Assembly) Steps() []Step { return slices.Clone(a.steps) }
 // further apart than the tolerance the assembly was judged against, which is what
 // [Assembly.Tolerance] reports.
 func (a Assembly) Closed() bool { return a.closed }
+
+// Open reports whether the edges were read as an open run rather than as a
+// ring.
+//
+// It is a fact about the reading and not about the edges. A run whose two ends
+// happen to meet is both open and closed — it was read as a chain, and the chain
+// came back to where it began — and a caller drawing it has to know which of the
+// two questions it is holding the answer to.
+func (a Assembly) Open() bool { return a.open }
 
 // Tolerance returns the declared tolerance closure was judged against.
 //
@@ -170,6 +184,53 @@ func (a Assembly) Tolerance() Tolerance { return a.tolerance }
 // Diagnostics come back in the order the pass found them. Collecting them into a
 // [Diagnostics] is what puts them in reporting order.
 func (t *Topology) Assemble(loop *Loop, positions Positions, tolerance string, registry *Registry) (Assembly, []Diagnostic) {
+	return t.assemble(loop, positions, tolerance, registry, false)
+}
+
+// AssembleRun reads a loop as the open run of edges its traversal walks, and is
+// [Topology.Assemble] with the one requirement a run does not have: that the
+// walk returns to the corner it began at.
+//
+// A door, a window, a railing, a wall run and a duct are each an open chain of
+// edges rather than a region, which is what the geometry form `line` declares.
+// The edges are written the way a loop's are — ordered, in one frame, resolving
+// to edges this model holds — because a run is the same authoring and not a
+// second one: a chain and a ring differ in whether the last edge ends where the
+// first began, and in nothing else.
+//
+// So every refusal [Topology.Assemble] makes is made here too. An edge written
+// twice doubles back, a corner where three edges meet is a branch, and edges in
+// two disconnected pieces are two runs; none of the three is fixed by closing
+// anything, and each is refused with the same distinction drawn between it and
+// the others. What is not refused is the loose end: a chain has exactly two of
+// them, and having them is what a run *is* rather than a mistake in one.
+//
+// Order is still the order the run is walked, and edges written in some other
+// order are reported as being in the wrong order rather than as a gap — the same
+// diagnostic a ring gets, for the same reason. A run whose ends happen to meet
+// is a ring somebody drew as a chain: it comes back closed as well as open, and
+// nothing is refused for it.
+//
+// [Assembly.Open] reports which of the two readings produced an assembly, and
+// [Assembly.Closed] whether the walk came back to where it started.
+func (t *Topology) AssembleRun(loop *Loop, positions Positions, tolerance string, registry *Registry) (Assembly, []Diagnostic) {
+	return t.assemble(loop, positions, tolerance, registry, true)
+}
+
+// assemble is the walk both readings share, with open saying whether the ends
+// are required to meet.
+//
+// It is one pass rather than two because a run and a ring are one authoring:
+// every refusal but closure is the same refusal, and a second copy of it would
+// be a second answer to "is this a branch" the day either learned something the
+// other did not.
+func (t *Topology) assemble(
+	loop *Loop,
+	positions Positions,
+	tolerance string,
+	registry *Registry,
+	open bool,
+) (Assembly, []Diagnostic) {
 	if loop == nil {
 		return Assembly{}, nil
 	}
@@ -177,7 +238,8 @@ func (t *Topology) Assemble(loop *Loop, positions Positions, tolerance string, r
 	a := &assembler{
 		topology:  t,
 		positions: positions,
-		assembly:  Assembly{loop: loop},
+		assembly:  Assembly{loop: loop, open: open},
+		open:      open,
 		unit:      frameUnit(registry, loop.frame),
 	}
 
@@ -228,6 +290,10 @@ type assembler struct {
 	// declares.
 	declared bool
 
+	// open reports whether the edges are being read as an open run, in which
+	// the two loose ends are what the shape is rather than a gap in it.
+	open bool
+
 	// unit is the unit of the loop's frame, which everything is measured in.
 	// Empty where the frame is not one the registry declares, which leaves every
 	// gap unmeasurable.
@@ -249,6 +315,21 @@ type assembler struct {
 // loopName names the loop for a diagnostic.
 func (a *assembler) loopName() string {
 	return geometricName(loopTag, a.assembly.loop.id)
+}
+
+// shape is the word a diagnostic calls the edges by: a loop read as a ring is a
+// loop, and one read as an open chain is a run.
+//
+// It is one word rather than a message per reading because the mistakes are the
+// same mistakes. An edge written twice is an edge written twice whichever way
+// the edges were going to be walked, and telling somebody about it in a
+// vocabulary their file does not use is how a diagnostic sends them looking for
+// a ring they never wrote.
+func (a *assembler) shape() string {
+	if a.open {
+		return "run"
+	}
+	return "loop"
 }
 
 // mismatched reports a tolerance which cannot be applied to this loop because it
@@ -319,15 +400,21 @@ func (a *assembler) simple() bool {
 			continue
 		}
 
+		hint := "a loop is a simple cycle: it runs through each of its edges once, so an edge written twice is a ring " +
+			"which doubles back along itself"
+		if a.open {
+			hint = "a run is a simple chain: it runs through each of its edges once, so an edge written twice is a " +
+				"chain which doubles back along itself"
+		}
+
 		a.add(Diagnostic{
 			Severity: SeverityError,
 			Span:     a.assembly.loop.at[i],
 			Message: fmt.Sprintf(
-				"expected an edge the loop %s does not already traverse, found %s a second time",
-				a.loopName(), edge.id,
+				"expected an edge the %s %s does not already traverse, found %s a second time",
+				a.shape(), a.loopName(), edge.id,
 			),
-			Hint: "a loop is a simple cycle: it runs through each of its edges once, so an edge written twice is a ring " +
-				"which doubles back along itself",
+			Hint:    hint,
 			Related: []RelatedLocation{{Span: a.assembly.loop.at[at], Message: "first traversed here"}},
 		})
 		return false
@@ -392,6 +479,8 @@ func (a *assembler) merge() {
 // A corner met by one edge is not reported here. That is a chain with two loose
 // ends, which is a gap, and [assembler.traverse] reports it as one with the
 // distance across it — which is the number the author needs and this cannot say.
+// Read as a run those loose ends are the shape rather than a gap, and nothing
+// reports them at all.
 func (a *assembler) ring() bool {
 	// The corners are collected in the order the edges reach them so that what
 	// is reported is a property of the loop rather than of a map's iteration.
@@ -418,15 +507,21 @@ func (a *assembler) ring() bool {
 	}
 
 	if rings := a.rings(corners); rings > 1 {
+		found, hint := "ring", "a loop is one simple cycle; a region bounded by more than one ring references one "+
+			"loop per ring, written (boundary <loop-id>) once for each"
+		if a.open {
+			found, hint = "chain", "a run is one connected chain; a node drawn as a line whose shape is in more than "+
+				"one piece references one loop per piece, written (boundary <loop-id>) once for each"
+		}
+
 		a.add(Diagnostic{
 			Severity: SeverityError,
 			Span:     a.topology.namedAt(a.assembly.loop.id, a.assembly.loop.span),
 			Message: fmt.Sprintf(
-				"expected the edges of the loop %s to form one ring, found %d separate ones",
-				a.loopName(), rings,
+				"expected the edges of the %s %s to form one %s, found %d separate ones",
+				a.shape(), a.loopName(), found, rings,
 			),
-			Hint: "a loop is one simple cycle; a region bounded by more than one ring references one loop per ring, " +
-				"written (boundary <loop-id>) once for each",
+			Hint: hint,
 		})
 		return false
 	}
@@ -447,15 +542,21 @@ func (a *assembler) branching(corner ID, degree int) Diagnostic {
 		})
 	}
 
+	want, hint := "two", "a loop is a simple cycle: each corner joins the edge the traversal arrives by and the one "+
+		"it leaves by, so a corner joining a third is a branch and not a ring"
+	if a.open {
+		want, hint = "at most two", "a run is a simple chain: each corner but its two ends joins the edge the "+
+			"traversal arrives by and the one it leaves by, so a corner joining a third is a branch and not a chain"
+	}
+
 	return Diagnostic{
 		Severity: SeverityError,
 		Span:     a.topology.namedAt(a.assembly.loop.id, a.assembly.loop.span),
 		Message: fmt.Sprintf(
-			"expected every corner of the loop %s to meet two of its edges, found %s, where %d meet",
-			a.loopName(), a.cornerName(corner), degree,
+			"expected every corner of the %s %s to meet %s of its edges, found %s, where %d meet",
+			a.shape(), a.loopName(), want, a.cornerName(corner), degree,
 		),
-		Hint: "a loop is a simple cycle: each corner joins the edge the traversal arrives by and the one it leaves by, " +
-			"so a corner joining a third is a branch and not a ring",
+		Hint:    hint,
 		Related: related,
 	}
 }
@@ -534,14 +635,19 @@ func (a *assembler) traverse() {
 		steps = append(steps, Step{edge: edge, from: from, to: to, reversed: from != edge.start})
 	}
 
-	if !a.same(to, steps[0].from) {
+	// The closing seam is a break for a ring and the far end of the chain for a
+	// run. Whether the walk came back to where it started is recorded either
+	// way, because a run whose ends happen to meet is a fact about the run and
+	// not about the reading of it.
+	joined := a.same(to, steps[0].from)
+	if !joined && !a.open {
 		breaks = append(breaks, breakage{index: 0, from: to, to: steps[0].from})
 	}
 
 	a.assembly.steps = steps
-	a.assembly.closed = len(breaks) == 0
+	a.assembly.closed = len(breaks) == 0 && joined
 
-	if a.assembly.closed {
+	if len(breaks) == 0 {
 		return
 	}
 
@@ -549,7 +655,14 @@ func (a *assembler) traverse() {
 	// [assembler.ring] has already rejected every shape which is not one. So the
 	// walk failed on the order alone, which is one fact about the loop and is
 	// reported once rather than once per seam.
-	if a.isRing() {
+	//
+	// A run reaches here for the same reason and always: [assembler.ring] has
+	// left it one connected piece with no corner meeting three edges, which is a
+	// chain or a cycle, and either of those walked in the order it is written
+	// joins at every seam. So a seam which did not join is the order, and
+	// reporting a gap across it would send the author to move a corner which is
+	// where they put it.
+	if a.open || a.isRing() {
 		a.add(a.disordered(breaks[0]))
 		return
 	}
@@ -579,23 +692,29 @@ func (a *assembler) isRing() bool {
 	return true
 }
 
-// disordered reports edges which form one ring but are not written in the order
-// the ring is walked.
+// disordered reports edges which form one ring, or one chain, but are not
+// written in the order it is walked.
 func (a *assembler) disordered(seam breakage) Diagnostic {
 	arrived := a.edges[len(a.edges)-1]
 	if seam.index > 0 {
 		arrived = a.edges[seam.index-1]
 	}
 
+	hint := "these edges do form one ring, but not in this order; the order of a loop's edges is the order the loop " +
+		"is traversed, and is never sorted"
+	if a.open {
+		hint = "these edges do form one chain, but not in this order; the order of a run's edges is the order the " +
+			"run is walked, and is never sorted"
+	}
+
 	return Diagnostic{
 		Severity: SeverityError,
 		Span:     a.assembly.loop.at[seam.index],
 		Message: fmt.Sprintf(
-			"expected the edges of the loop %s in the order it is traversed, found %s, which does not begin at %s, where %s ended",
-			a.loopName(), a.edges[seam.index].id, a.cornerName(seam.from), arrived.id,
+			"expected the edges of the %s %s in the order it is traversed, found %s, which does not begin at %s, where %s ended",
+			a.shape(), a.loopName(), a.edges[seam.index].id, a.cornerName(seam.from), arrived.id,
 		),
-		Hint: "these edges do form one ring, but not in this order; the order of a loop's edges is the order the loop " +
-			"is traversed, and is never sorted",
+		Hint: hint,
 		Related: []RelatedLocation{
 			{Span: a.topology.namedAt(seam.from, Span{}), Message: "the corner the traversal had reached"},
 		},

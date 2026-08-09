@@ -1,0 +1,74 @@
+; The four shapes an open run is refused for, one loop each.
+;
+; None of them is a loose end. A run has two of those and having them is what a
+; run is; these are a branch, an edge walked twice, a shape in two pieces and a
+; chain whose edges are written in some order other than the one it is walked
+; in — every one of which a ring is refused for too, and none of which is fixed
+; by closing anything.
+(vertex geom:V-41 (frame frame:building))
+
+(vertex geom:V-42 (frame frame:building))
+
+(vertex geom:V-43 (frame frame:building))
+
+(vertex geom:V-44 (frame frame:building))
+
+(edge geom:E-41 (frame frame:building) (vertices geom:V-41 geom:V-42))
+
+(edge geom:E-42 (frame frame:building) (vertices geom:V-42 geom:V-43))
+
+(edge geom:E-43 (frame frame:building) (vertices geom:V-43 geom:V-44))
+
+; The spur. Three edges meet at geom:V-42, which is a branch and not a corner of
+; a chain.
+(edge geom:E-44 (frame frame:building) (vertices geom:V-42 geom:V-44))
+
+(loop geom:L-41
+  (label "The chain with a spur off it")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+
+; A chain which doubles back along the edge it came in on.
+(loop geom:L-42
+  (label "The chain which walks one edge twice")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-41))
+
+(vertex geom:V-51 (frame frame:building))
+
+(vertex geom:V-52 (frame frame:building))
+
+(vertex geom:V-53 (frame frame:building))
+
+(vertex geom:V-54 (frame frame:building))
+
+(edge geom:E-51 (frame frame:building) (vertices geom:V-51 geom:V-52))
+
+(edge geom:E-52 (frame frame:building) (vertices geom:V-53 geom:V-54))
+
+; Two chains, neither of which touches the other, in one loop.
+(loop geom:L-43
+  (label "The two chains written as one run")
+  (frame frame:building)
+  (edges geom:E-51 geom:E-52))
+
+(vertex geom:V-61 (frame frame:building))
+
+(vertex geom:V-62 (frame frame:building))
+
+(vertex geom:V-63 (frame frame:building))
+
+(vertex geom:V-64 (frame frame:building))
+
+(edge geom:E-61 (frame frame:building) (vertices geom:V-61 geom:V-62))
+
+(edge geom:E-62 (frame frame:building) (vertices geom:V-62 geom:V-63))
+
+(edge geom:E-63 (frame frame:building) (vertices geom:V-63 geom:V-64))
+
+; One chain, written in an order it is not walked in. Nothing is missing and no
+; corner has to move, which is why this is not a gap.
+(loop geom:L-44
+  (label "The chain written out of order")
+  (frame frame:building)
+  (edges geom:E-61 geom:E-63 geom:E-62))

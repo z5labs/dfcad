@@ -90,6 +90,27 @@ const planGeometry = `(vertex geom:V-01 (frame frame:building)
 
 (loop geom:L-01 (frame frame:building) (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
 (loop geom:L-02 (frame frame:building) (edges geom:E-05 geom:E-06 geom:E-07 geom:E-02))
+
+; The doorway through the party wall. Its shape is an open run of edges along
+; the wall it pierces, which does not close and is not asked to: a ring here
+; would be a rectangle standing beside the wall rather than an opening through
+; it.
+(vertex geom:V-21 (frame frame:building)
+  (position (value (4.0 1.0 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+(vertex geom:V-22 (frame frame:building)
+  (position (value (4.0 1.9 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+(vertex geom:V-23 (frame frame:building)
+  (position (value (4.0 2.6 0.0) m) (source "Fit-out drawing FD-2026-004") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-02")))
+
+(edge geom:E-21 (frame frame:building) (vertices geom:V-21 geom:V-22)
+  (wall-length (value 0.9 m) (source "Door schedule DS-2026-001") (method method:schedule)
+    (accuracy (independent 0.005 m)) (date "2026-03-01")))
+(edge geom:E-22 (frame frame:building) (vertices geom:V-22 geom:V-23))
+
+(loop geom:L-21 (frame frame:building) (edges geom:E-21 geom:E-22))
 `
 
 // planEntities is the storey, what it holds, an empty storey beside it and a
@@ -159,7 +180,8 @@ const planEntities = `(node site:B-01
   (type Doorway)
   (geometry line)
   (frame frame:building)
-  (within site:L-01))
+  (within site:L-01)
+  (boundary geom:L-21))
 
 (node site:Z-01
   (label "Level 1 occupancy zone")
@@ -243,7 +265,7 @@ func TestRunPlan(t *testing.T) {
 		{
 			name:             "reports every ring the storey contains, in id order",
 			args:             wholeStorey("site:L-01"),
-			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedOutlines: []string{"site:D-01", "site:R-01", "site:R-02"},
 		},
 		{
 			name:             "reports a storey nobody has outlined as no rings at all",
@@ -253,7 +275,7 @@ func TestRunPlan(t *testing.T) {
 		{
 			name:             "reaches through the building to the storey below it",
 			args:             wholeStorey("site:B-01"),
-			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedOutlines: []string{"site:D-01", "site:R-01", "site:R-02"},
 		},
 	}
 
@@ -535,7 +557,7 @@ func TestRunPlanHumanOutputStaysOffStdout(t *testing.T) {
 		spokenErr.String())
 
 	assert.Equal(t, quiet.String(), spoken.String())
-	assert.Contains(t, spokenErr.String(), "site:L-01: 2 outlines")
+	assert.Contains(t, spokenErr.String(), "site:L-01: 3 outlines")
 	assert.Contains(t, spokenErr.String(), "Meeting Room A")
 
 	// Whatever a person is shown, no JSON value on stdout carries it.
@@ -638,4 +660,50 @@ func TestRunPlanRefusesHalfTheArcVocabulary(t *testing.T) {
 		"--arc-centre", "arc-centre", "site:L-02")
 
 	assert.Contains(t, stderr, "--arc-through")
+}
+
+// TestRunPlanDrawsAnOpenRun is its own function because what an open run
+// contributes to the contract is a different shape of entry from a room's: no
+// pieces, no area, and a boundary which is the whole of what a sheet draws it
+// from.
+func TestRunPlanDrawsAnOpenRun(t *testing.T) {
+	result, stderr := planned(t, exitSuccess, wholeStorey("site:L-01")...)
+
+	// One door does not refuse the storey. The plan is written, the rooms are
+	// in it, and nothing was reported against the model.
+	require.True(t, result.Planned, stderr)
+
+	var doorway outlineEntry
+	for _, outline := range result.Outlines {
+		if outline.Node == "site:D-01" {
+			doorway = outline
+		}
+	}
+	require.Equal(t, "site:D-01", doorway.Node)
+
+	t.Run("covers nothing, and says so rather than being left out", func(t *testing.T) {
+		assert.True(t, doorway.Region.Empty)
+		assert.Zero(t, doorway.Region.Area)
+		assert.Empty(t, doorway.Region.Pieces)
+		assert.Equal(t, "Element", doorway.Kind)
+	})
+
+	t.Run("names the edge behind every straight run of it, in walked order", func(t *testing.T) {
+		require.Len(t, doorway.Region.Boundary, 2)
+
+		assert.Equal(t, "geom:E-21", doorway.Region.Boundary[0].Edge)
+		assert.Equal(t, "edge", doorway.Region.Boundary[0].Origin)
+		assert.Equal(t, []float64{4.0, 1.0, 0.0}, doorway.Region.Boundary[0].From)
+		assert.Equal(t, []float64{4.0, 1.9, 0.0}, doorway.Region.Boundary[0].To)
+
+		// The last run arrives at the far end of the chain rather than turning
+		// back onto the corner it began at, which is the whole difference
+		// between a run and a ring.
+		assert.Equal(t, "geom:E-22", doorway.Region.Boundary[1].Edge)
+		assert.Equal(t, []float64{4.0, 2.6, 0.0}, doorway.Region.Boundary[1].To)
+	})
+
+	t.Run("carries the claims written on the edges of the run", func(t *testing.T) {
+		assert.Equal(t, []string{"wall-length @ edge geom:E-21"}, anchored(result, "site:D-01"))
+	})
 }

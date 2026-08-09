@@ -475,6 +475,14 @@ func (t *Topology) MeasureLoop(loop *Loop, survey Survey) (Measurement, []Diagno
 // courtyard subtract without anything in the model having to say which loop is
 // the outside one.
 //
+// A node which declares the geometry form `line` is read as open runs instead.
+// Its loops are the same authoring — ordered edges, refused for a branch, a
+// doubled edge or a shape in two pieces — and are walked as chains rather than
+// as rings, so what comes back is how far the run reaches and the box around it,
+// with no area and no centroid. A door, a railing and a wall run are each that
+// shape, and requiring one of them to close would be requiring it to be
+// something else.
+//
 // A region which references no loop is not malformed — a circuit group and a
 // warranty have no outline — and measures nothing.
 func (t *Topology) MeasureRegion(region *SemanticNode, boundaries *Boundaries, survey Survey) (Measurement, []Diagnostic) {
@@ -491,9 +499,11 @@ func (t *Topology) MeasureRegion(region *SemanticNode, boundaries *Boundaries, s
 
 	m := t.measuring(region.id, frame, region.span, survey)
 
+	open := drawnAsLine(region)
+
 	var rings []*outline
 	for _, loop := range loops {
-		assembled, ok := m.ring(loop)
+		assembled, ok := m.assembled(loop, open)
 		if !ok {
 			continue
 		}
@@ -511,9 +521,32 @@ func (t *Topology) MeasureRegion(region *SemanticNode, boundaries *Boundaries, s
 		return m.result, m.diags
 	}
 
+	if open {
+		m.along(rings)
+		return m.result, m.diags
+	}
+
 	m.combine(region, rings)
 
 	return m.result, m.diags
+}
+
+// drawnAsLine reports whether a node declares the geometry form which is an open
+// run of edges rather than a region.
+//
+// It is one predicate rather than the comparison written wherever it is needed,
+// because the two places which read it — the measurement and the region — have
+// to agree. A node measured as a chain and read as a ring would be one shape
+// with two answers, and the second of them would be a gap reported against a
+// door for not being a room.
+func drawnAsLine(node *SemanticNode) bool {
+	if node == nil {
+		return false
+	}
+
+	geometry, _ := node.Geometry()
+
+	return geometry == GeometryLine
 }
 
 // Measure measures whatever an id named, whichever family holds it: a semantic
@@ -814,6 +847,17 @@ type outline struct {
 	// an area needs.
 	closed bool
 
+	// open is whether the edges were read as an open run rather than as a ring,
+	// which is what a node drawn as a line declares.
+	//
+	// It changes two things and nothing else. points carries one corner more
+	// than there are edges, because a run ends at a corner no step leaves; and
+	// there is no area, no centroid and no plane, because a chain encloses
+	// nothing. Everything else — the bounds, the length along it, the accuracy
+	// behind its corners and the edge each straight run was written as — is read
+	// exactly as a ring's is.
+	open bool
+
 	// last is the corner the traversal ended at, finish where that is and
 	// finished whether there was a position to read it at.
 	//
@@ -874,7 +918,31 @@ type outline struct {
 // collinear is a ring, and reporting it as one is what lets the area diagnostic
 // be about the shape rather than about the reading.
 func (m *measurer) ring(loop *Loop) (*outline, bool) {
-	assembly, diags := m.topology.Assemble(loop, m.survey.Positions, m.survey.Tolerance, m.survey.Registry)
+	return m.assembled(loop, false)
+}
+
+// run assembles a loop as the open chain its edges walk, which is what a node
+// declaring the geometry form `line` is drawn as.
+//
+// It is [measurer.ring] with the closure requirement dropped and nothing else
+// changed: the same edges, the same corners, the same arcs, the same accuracy,
+// and the same refusal of a branch, a doubled edge or a shape in two pieces. A
+// chain encloses nothing, so what comes back has a length and a bounding box and
+// no area — which is not a failure to measure it but the whole of what there is
+// to measure.
+func (m *measurer) run(loop *Loop) (*outline, bool) {
+	return m.assembled(loop, true)
+}
+
+// assembled is the reading both share, with open saying whether the edges are
+// walked as a ring or as a chain.
+func (m *measurer) assembled(loop *Loop, open bool) (*outline, bool) {
+	assemble := m.topology.Assemble
+	if open {
+		assemble = m.topology.AssembleRun
+	}
+
+	assembly, diags := assemble(loop, m.survey.Positions, m.survey.Tolerance, m.survey.Registry)
 	m.add(diags...)
 
 	steps := assembly.Steps()
@@ -882,18 +950,23 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 		return nil, false
 	}
 
-	out := &outline{loop: loop, closed: assembly.Closed(), bends: make([]*bend, len(steps))}
+	out := &outline{loop: loop, open: open, closed: assembly.Closed(), bends: make([]*bend, len(steps))}
 	for _, step := range steps {
 		out.corners = append(out.corners, step.From())
 		out.edges = append(out.edges, step.Edge())
 		out.reversed = append(out.reversed, step.Reversed())
 	}
 
+	// The end of the walk is read before the corners are, because a run ends at
+	// a corner no step leaves and a run with no position for it is a run which
+	// cannot be drawn — which is [measurer.locate]'s diagnostic and not a corner
+	// quietly left out of the figure.
+	out.last = steps[len(steps)-1].To()
+
 	if !m.locate(loop, out) {
 		return nil, false
 	}
 
-	out.last = steps[len(steps)-1].To()
 	if written, ok := m.at(out.last); ok {
 		out.finish, out.finished = asPoint(written), true
 	}
@@ -904,14 +977,17 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 
 	out.measure()
 	out.bounds.Unit = m.unit
-	m.contribute(out.corners)
+	m.contribute(out.walked())
 	m.contribute(edgeIDs(out.edges))
 
-	if !assembly.Closed() {
+	if open || !assembly.Closed() {
 		// The gap is already reported, by the pass whose job it is and with the
 		// distance across it. What follows from it — that there is no area — is
 		// the same mistake, and saying it again in this file's vocabulary would
-		// send whoever reads it looking for a second thing to fix.
+		// send whoever reads it looking for a second thing to fix. A run has no
+		// area for a different reason and no diagnostic at all: a chain is not a
+		// region, and saying so would be reporting a model in which nothing is
+		// wrong.
 		out.hasArea = false
 		return out, true
 	}
@@ -928,11 +1004,18 @@ func (m *measurer) ring(loop *Loop) (*outline, bool) {
 // Both are reported once per ring, naming every corner they are about. A loop
 // nobody has surveyed would otherwise produce one diagnostic per corner, saying
 // the same thing about a model in which one thing is missing.
+//
+// The corners are the ones the walk passes through, which for an open run is one
+// more than there are edges: a chain ends somewhere no step leaves, and a corner
+// left out of this would be a run drawn a whole edge short with nothing saying
+// so.
 func (m *measurer) locate(loop *Loop, out *outline) bool {
 	var missing []string
 	var components [][]float64
 
-	for _, corner := range out.corners {
+	walked := out.walked()
+
+	for _, corner := range walked {
 		written, ok := m.at(corner)
 		if !ok {
 			missing = append(missing, string(corner))
@@ -941,13 +1024,18 @@ func (m *measurer) locate(loop *Loop, out *outline) bool {
 		components = append(components, written)
 	}
 
+	shape := "loop"
+	if out.open {
+		shape = "run"
+	}
+
 	if len(missing) > 0 {
 		m.add(Diagnostic{
 			Severity: SeverityError,
 			Span:     m.topology.namedAt(loop.id, loop.span),
 			Message: fmt.Sprintf(
-				"expected a position for every corner of the loop %s, found none for %s",
-				geometricName(loopTag, loop.id), join(missing, "and"),
+				"expected a position for every corner of the %s %s, found none for %s",
+				shape, geometricName(loopTag, loop.id), join(missing, "and"),
 			),
 			Hint: m.positionHint(),
 		})
@@ -962,10 +1050,10 @@ func (m *measurer) locate(loop *Loop, out *outline) bool {
 
 		m.add(Diagnostic{
 			Severity: SeverityError,
-			Span:     m.topology.namedAt(out.corners[i], loop.span),
+			Span:     m.topology.namedAt(walked[i], loop.span),
 			Message: fmt.Sprintf(
-				"expected every corner of the loop %s to be written with %d components, found %s with %d",
-				geometricName(loopTag, loop.id), dimension, out.corners[i], len(written),
+				"expected every corner of the %s %s to be written with %d components, found %s with %d",
+				shape, geometricName(loopTag, loop.id), dimension, walked[i], len(written),
 			),
 			Hint: "nothing here is padded: a corner written with fewer components than the others is a position in a " +
 				"different space, not the same one with a zero left out",
@@ -974,14 +1062,20 @@ func (m *measurer) locate(loop *Loop, out *outline) bool {
 	}
 
 	if dimension < 2 {
+		hint := "a ring is a plane figure; corners written along one axis enclose nothing to measure"
+		if out.open {
+			hint = "a run is drawn in a plane; corners written with one component are positions along a line and not " +
+				"anywhere a sheet can put them"
+		}
+
 		m.add(Diagnostic{
 			Severity: SeverityError,
 			Span:     m.topology.namedAt(loop.id, loop.span),
 			Message: fmt.Sprintf(
-				"expected the corners of the loop %s to be written with at least two components, found %d",
-				geometricName(loopTag, loop.id), dimension,
+				"expected the corners of the %s %s to be written with at least two components, found %d",
+				shape, geometricName(loopTag, loop.id), dimension,
 			),
-			Hint: "a ring is a plane figure; corners written along one axis enclose nothing to measure",
+			Hint: hint,
 		})
 		return false
 	}
@@ -1633,6 +1727,20 @@ func (m *measurer) unnestable(region *SemanticNode, rings []*outline) Diagnostic
 	}
 }
 
+// along records a measurement made from the open runs a node drawn as a line is
+// assembled from: how far they reach in total, and the box which holds them.
+//
+// It is [measurer.combine] for a shape which encloses nothing, and it is a
+// separate pass rather than a flag through that one because there is nothing of
+// that one to run. Nesting, coplanarity and the even-odd rule are all questions
+// about which ring is inside which, and a chain is inside nothing; a run whose
+// two ends happen to meet is still a run, and calling it a region because it
+// closed would give a door an area nobody drew.
+func (m *measurer) along(rings []*outline) {
+	m.lengthOf(rings)
+	m.boundsOf(rings)
+}
+
 // lengthOf records the total length of every ring's segments, which is the
 // length of the whole of a region's boundary.
 func (m *measurer) lengthOf(rings []*outline) {
@@ -1773,6 +1881,23 @@ func (m *measurer) nesting(rings []*outline, index int) int {
 	return depth
 }
 
+// walked is the corners the traversal passes through, in the order it reaches
+// them: the corner each step leaves, and — for an open run, which does not come
+// back to where it began — the corner the last step arrives at.
+//
+// It is what a ring's corners and a run's corners have in common, and it is a
+// method rather than a second slice on the outline so that the pairing of a
+// corner with the edge leaving it stays exact. corners, edges, reversed and
+// bends are one per step and index each other; this is one longer for a run and
+// indexes nothing but points.
+func (r *outline) walked() []ID {
+	if !r.open || r.last == "" {
+		return r.corners
+	}
+
+	return append(slices.Clone(r.corners), r.last)
+}
+
 // measure computes everything a ring's corners and its arcs decide.
 //
 // The arcs are accounted for exactly and are never drawn. A ring which bends is
@@ -1781,6 +1906,13 @@ func (m *measurer) nesting(rings []*outline, index int) int {
 // computed from the parameterisation. So the sag of a curve is in the answer at
 // full precision rather than at whatever resolution somebody would have
 // tessellated it to.
+//
+// An open run stops after the length and the bounds. There is one segment per
+// edge and never one back from the last corner to the first, so the length is
+// how far the run reaches rather than a perimeter with an imaginary side in it;
+// and a chain has no vector area, so there is no plane, no area and no centroid
+// to compute from one. Each of those is absent rather than zero, which is what
+// [Measurement.Area] reporting false says.
 func (r *outline) measure() {
 	r.bounds = boxOf(r.points)
 	for _, curve := range r.bends {
@@ -1802,9 +1934,13 @@ func (r *outline) measure() {
 	// running the way the ring does adds and one running against it takes away.
 	var segments Point
 
+	// One segment per edge. A ring has as many corners as edges and the last
+	// segment wraps back onto the first corner; a run has one corner more and
+	// the last segment arrives at it, so the same index runs both without a
+	// closing side being invented for the chain.
 	count := len(r.shifted)
-	for i, point := range r.shifted {
-		next := r.shifted[(i+1)%count]
+	for i := range r.bends {
+		point, next := r.shifted[i], r.shifted[(i+1)%count]
 
 		if curve := r.bends[i]; curve != nil {
 			r.perimeter += curve.length()
@@ -1814,6 +1950,16 @@ func (r *outline) measure() {
 		}
 
 		r.normal = pointAdd(r.normal, pointCross(point, next))
+	}
+
+	if r.open {
+		// A chain encloses nothing, so there is no plane to read a projection
+		// from and no area to take a centroid of. The axis is still set, from
+		// the box rather than from a normal, so that anything which asks the run
+		// which axis to drop gets the one which cannot collapse it.
+		r.normal, r.magnitude = Point{}, 0
+		r.axis = flattest(r.bounds)
+		return
 	}
 
 	r.normal = pointAdd(r.normal, segments)
