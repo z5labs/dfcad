@@ -341,7 +341,12 @@ method and accuracy, and the same resolution and conflict rules ([6.2](#62-verte
   (geometry point)
   (frame site:grid)
   (within site:L1)
-  (position (3d 12.4 8.15 0.9 m) (source survey) (method total-station) (accuracy 0.01 m)))
+  (position
+    (value (12.4 8.15 0.9) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
 ```
 
 An electrical panel, a septic tank lid, a condenser, an air handler, a receptacle and a

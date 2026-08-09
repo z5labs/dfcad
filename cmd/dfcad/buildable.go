@@ -228,9 +228,12 @@ type regionEntry struct {
 	// area and has no boundary to attribute.
 	//
 	// Absent for every region read from loops and for every region an operation
-	// produced, which is what tells a thing with a position from a thing with
-	// an outline. A consumer placing a symbol reads this; one drawing a ring
-	// reads `pieces`, and neither has to look at the other to know which it is.
+	// over an area produced, which is what tells a thing with a position from a
+	// thing with an outline. A consumer placing a symbol reads this; one
+	// drawing a ring reads `pieces`, and neither has to look at the other to
+	// know which it is. Carrying a region into another frame is not one of
+	// those operations and keeps it: a point goes in a point and comes out a
+	// point.
 	At []float64 `json:"at,omitempty"`
 
 	// Boundary is which edge produced each straight run of the boundary, in the

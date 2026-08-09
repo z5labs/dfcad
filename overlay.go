@@ -947,8 +947,11 @@ func (r Region) Empty() bool { return len(r.pieces) == 0 }
 // every model has and most devices are not at.
 //
 // It is absent for every region read from loops and for every region an
-// operation produced. A shape which covers an area is located by its corners,
-// and one point standing for it would be a centroid this does not claim to be.
+// operation over an area produced. A shape which covers an area is located by
+// its corners, and one point standing for it would be a centroid this does not
+// claim to be. [Region.In] is the exception, and is not one of those
+// operations: carrying a thing into another frame moves it and does not change
+// what it is, so a point goes in a point and comes out a point.
 func (r Region) Location() (Point, bool) { return r.location, r.located }
 
 // Segments returns the straight runs of the region's boundary, in the order the
