@@ -1,0 +1,630 @@
+; Regions of two rings which meet without one being inside the other, and the
+; arrangements either side of them.
+;
+; The counter is the shape this fixture is for: a four-metre square with a
+; four-by-two return along one side of it, abutting it along part of a wall and
+; meeting it at a corner. The two rings are the same two rings in every one of
+; the four nodes which reference them, and the loops differ only in which of
+; the return's corners the edge list is written from and which way round it
+; runs. Twenty-four square metres is a property of the shape, so all four
+; measure twenty-four.
+
+; The counter body: four metres square, sixteen square metres.
+(vertex geom:V-01
+  (label "Counter body, corner 1")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Counter body, corner 2")
+  (frame frame:building)
+  (position
+    (value (8.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Counter body, corner 3")
+  (frame frame:building)
+  (position
+    (value (8.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Counter body, corner 4")
+  (frame frame:building)
+  (position
+    (value (4.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Counter body, side 1") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Counter body, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Counter body, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Counter body, side 4") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Counter body boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; The return: four by two, eight square metres. It shares the corner geom:V-01
+; with the body and runs along part of the body's side geom:E-04, which is what
+; puts two of its corners on the body's boundary.
+(vertex geom:V-11
+  (label "Counter return, far corner")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-12
+  (label "Counter return, far corner 2")
+  (frame frame:building)
+  (position
+    (value (0.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-13
+  (label "Counter return, inner corner")
+  (frame frame:building)
+  (position
+    (value (4.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-11 (label "Counter return, side 1") (frame frame:building) (vertices geom:V-01 geom:V-11))
+(edge geom:E-12 (label "Counter return, side 2") (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-13 (label "Counter return, side 3") (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-14 (label "Counter return, side 4") (frame frame:building) (vertices geom:V-13 geom:V-01))
+
+; The same ring written four ways. The first corner of each is what a nesting
+; used to be decided at: a corner of the other ring, a point on an edge of it,
+; a point clear of it, and the first of those again walked the other way round.
+(loop geom:L-11
+  (label "Counter return boundary, from the shared corner")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+(loop geom:L-12
+  (label "Counter return boundary, from the corner on the body's wall")
+  (frame frame:building)
+  (edges geom:E-14 geom:E-11 geom:E-12 geom:E-13))
+(loop geom:L-13
+  (label "Counter return boundary, from the corner clear of the body")
+  (frame frame:building)
+  (edges geom:E-12 geom:E-13 geom:E-14 geom:E-11))
+(loop geom:L-14
+  (label "Counter return boundary, walked the other way round")
+  (frame frame:building)
+  (edges geom:E-14 geom:E-13 geom:E-12 geom:E-11))
+
+(node site:S-01
+  (label "Counter, its return written from the shared corner")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-11))
+
+(node site:S-02
+  (label "Counter, its return written from the corner on the body's wall")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-12))
+
+(node site:S-03
+  (label "Counter, its return written from the corner clear of the body")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-13))
+
+(node site:S-04
+  (label "Counter, its return walked the other way round")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (boundary geom:L-14))
+
+; Two rings which cross. Neither is inside the other, so neither is a hole in
+; it, and there is no even-odd sum over them which is the area of anything.
+(vertex geom:V-21
+  (label "Crossing plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (20.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-22
+  (label "Crossing plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (24.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-23
+  (label "Crossing plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (24.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-24
+  (label "Crossing plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (20.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-21 (label "Crossing plate, side 1") (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (label "Crossing plate, side 2") (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (label "Crossing plate, side 3") (frame frame:building) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (label "Crossing plate, side 4") (frame frame:building) (vertices geom:V-24 geom:V-21))
+(loop geom:L-21
+  (label "Crossing plate boundary")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+(vertex geom:V-31
+  (label "Crossing plate 2, corner 1")
+  (frame frame:building)
+  (position
+    (value (22.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-32
+  (label "Crossing plate 2, corner 2")
+  (frame frame:building)
+  (position
+    (value (26.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-33
+  (label "Crossing plate 2, corner 3")
+  (frame frame:building)
+  (position
+    (value (26.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-34
+  (label "Crossing plate 2, corner 4")
+  (frame frame:building)
+  (position
+    (value (22.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-31 (label "Crossing plate 2, side 1") (frame frame:building) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (label "Crossing plate 2, side 2") (frame frame:building) (vertices geom:V-32 geom:V-33))
+(edge geom:E-33 (label "Crossing plate 2, side 3") (frame frame:building) (vertices geom:V-33 geom:V-34))
+(edge geom:E-34 (label "Crossing plate 2, side 4") (frame frame:building) (vertices geom:V-34 geom:V-31))
+(loop geom:L-31
+  (label "Crossing plate 2 boundary")
+  (frame frame:building)
+  (edges geom:E-31 geom:E-32 geom:E-33 geom:E-34))
+
+(node site:S-11
+  (label "Two plates which cross")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-21)
+  (boundary geom:L-31))
+
+; Two rings which share nothing: sixteen square metres and four, and twenty
+; between them.
+(vertex geom:V-41
+  (label "Disjoint plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (40.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-42
+  (label "Disjoint plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (44.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-43
+  (label "Disjoint plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (44.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-44
+  (label "Disjoint plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (40.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-41 (label "Disjoint plate, side 1") (frame frame:building) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42 (label "Disjoint plate, side 2") (frame frame:building) (vertices geom:V-42 geom:V-43))
+(edge geom:E-43 (label "Disjoint plate, side 3") (frame frame:building) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (label "Disjoint plate, side 4") (frame frame:building) (vertices geom:V-44 geom:V-41))
+(loop geom:L-41
+  (label "Disjoint plate boundary")
+  (frame frame:building)
+  (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+(vertex geom:V-51
+  (label "Disjoint plate 2, corner 1")
+  (frame frame:building)
+  (position
+    (value (46.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-52
+  (label "Disjoint plate 2, corner 2")
+  (frame frame:building)
+  (position
+    (value (48.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-53
+  (label "Disjoint plate 2, corner 3")
+  (frame frame:building)
+  (position
+    (value (48.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-54
+  (label "Disjoint plate 2, corner 4")
+  (frame frame:building)
+  (position
+    (value (46.0 2.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-51 (label "Disjoint plate 2, side 1") (frame frame:building) (vertices geom:V-51 geom:V-52))
+(edge geom:E-52 (label "Disjoint plate 2, side 2") (frame frame:building) (vertices geom:V-52 geom:V-53))
+(edge geom:E-53 (label "Disjoint plate 2, side 3") (frame frame:building) (vertices geom:V-53 geom:V-54))
+(edge geom:E-54 (label "Disjoint plate 2, side 4") (frame frame:building) (vertices geom:V-54 geom:V-51))
+(loop geom:L-51
+  (label "Disjoint plate 2 boundary")
+  (frame frame:building)
+  (edges geom:E-51 geom:E-52 geom:E-53 geom:E-54))
+
+(node site:S-21
+  (label "Two plates which share nothing")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-41)
+  (boundary geom:L-51))
+
+; Two rings which meet at one corner and nowhere else.
+(vertex geom:V-61
+  (label "Touching plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (60.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-62
+  (label "Touching plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (64.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-63
+  (label "Touching plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (64.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-64
+  (label "Touching plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (60.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-61 (label "Touching plate, side 1") (frame frame:building) (vertices geom:V-61 geom:V-62))
+(edge geom:E-62 (label "Touching plate, side 2") (frame frame:building) (vertices geom:V-62 geom:V-63))
+(edge geom:E-63 (label "Touching plate, side 3") (frame frame:building) (vertices geom:V-63 geom:V-64))
+(edge geom:E-64 (label "Touching plate, side 4") (frame frame:building) (vertices geom:V-64 geom:V-61))
+(loop geom:L-61
+  (label "Touching plate boundary")
+  (frame frame:building)
+  (edges geom:E-61 geom:E-62 geom:E-63 geom:E-64))
+(vertex geom:V-71
+  (label "Touching plate 2, corner 2")
+  (frame frame:building)
+  (position
+    (value (66.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-72
+  (label "Touching plate 2, corner 3")
+  (frame frame:building)
+  (position
+    (value (66.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-73
+  (label "Touching plate 2, corner 4")
+  (frame frame:building)
+  (position
+    (value (64.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-71 (label "Touching plate 2, side 1") (frame frame:building) (vertices geom:V-63 geom:V-71))
+(edge geom:E-72 (label "Touching plate 2, side 2") (frame frame:building) (vertices geom:V-71 geom:V-72))
+(edge geom:E-73 (label "Touching plate 2, side 3") (frame frame:building) (vertices geom:V-72 geom:V-73))
+(edge geom:E-74 (label "Touching plate 2, side 4") (frame frame:building) (vertices geom:V-73 geom:V-63))
+(loop geom:L-71
+  (label "Touching plate 2 boundary, from the shared corner")
+  (frame frame:building)
+  (edges geom:E-71 geom:E-72 geom:E-73 geom:E-74))
+
+(node site:S-31
+  (label "Two plates which meet at one corner")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-61)
+  (boundary geom:L-71))
+
+; Two rings either side of one wall, which is one edge walked by both of them.
+(vertex geom:V-81
+  (label "Party wall plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (80.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-82
+  (label "Party wall plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (84.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-83
+  (label "Party wall plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (84.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-84
+  (label "Party wall plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (80.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-81 (label "Party wall plate, side 1") (frame frame:building) (vertices geom:V-81 geom:V-82))
+(edge geom:E-82 (label "The party wall") (frame frame:building) (vertices geom:V-82 geom:V-83))
+(edge geom:E-83 (label "Party wall plate, side 3") (frame frame:building) (vertices geom:V-83 geom:V-84))
+(edge geom:E-84 (label "Party wall plate, side 4") (frame frame:building) (vertices geom:V-84 geom:V-81))
+(loop geom:L-81
+  (label "Party wall plate boundary")
+  (frame frame:building)
+  (edges geom:E-81 geom:E-82 geom:E-83 geom:E-84))
+(vertex geom:V-91
+  (label "Party wall plate 2, corner 2")
+  (frame frame:building)
+  (position
+    (value (86.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-92
+  (label "Party wall plate 2, corner 3")
+  (frame frame:building)
+  (position
+    (value (86.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-91 (label "Party wall plate 2, side 1") (frame frame:building) (vertices geom:V-82 geom:V-91))
+(edge geom:E-92 (label "Party wall plate 2, side 2") (frame frame:building) (vertices geom:V-91 geom:V-92))
+(edge geom:E-93 (label "Party wall plate 2, side 3") (frame frame:building) (vertices geom:V-92 geom:V-83))
+(loop geom:L-91
+  (label "Party wall plate 2 boundary")
+  (frame frame:building)
+  (edges geom:E-91 geom:E-92 geom:E-93 geom:E-82))
+
+(node site:S-41
+  (label "Two plates either side of one wall")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-81)
+  (boundary geom:L-91))
+
+; A plate with a courtyard in it, written both ways round. Which way a ring
+; runs says nothing about whether it is a hole.
+(vertex geom:V-101
+  (label "Nested plate, corner 1")
+  (frame frame:building)
+  (position
+    (value (100.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-102
+  (label "Nested plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (110.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-103
+  (label "Nested plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (110.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-104
+  (label "Nested plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (100.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-101 (label "Nested plate, side 1") (frame frame:building) (vertices geom:V-101 geom:V-102))
+(edge geom:E-102 (label "Nested plate, side 2") (frame frame:building) (vertices geom:V-102 geom:V-103))
+(edge geom:E-103 (label "Nested plate, side 3") (frame frame:building) (vertices geom:V-103 geom:V-104))
+(edge geom:E-104 (label "Nested plate, side 4") (frame frame:building) (vertices geom:V-104 geom:V-101))
+(loop geom:L-101
+  (label "Nested plate boundary")
+  (frame frame:building)
+  (edges geom:E-101 geom:E-102 geom:E-103 geom:E-104))
+(vertex geom:V-111
+  (label "Courtyard, corner 1")
+  (frame frame:building)
+  (position
+    (value (103.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-112
+  (label "Courtyard, corner 2")
+  (frame frame:building)
+  (position
+    (value (107.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-113
+  (label "Courtyard, corner 3")
+  (frame frame:building)
+  (position
+    (value (107.0 7.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-114
+  (label "Courtyard, corner 4")
+  (frame frame:building)
+  (position
+    (value (103.0 7.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-111 (label "Courtyard, side 1") (frame frame:building) (vertices geom:V-111 geom:V-112))
+(edge geom:E-112 (label "Courtyard, side 2") (frame frame:building) (vertices geom:V-112 geom:V-113))
+(edge geom:E-113 (label "Courtyard, side 3") (frame frame:building) (vertices geom:V-113 geom:V-114))
+(edge geom:E-114 (label "Courtyard, side 4") (frame frame:building) (vertices geom:V-114 geom:V-111))
+(loop geom:L-111
+  (label "Courtyard boundary, running the way the plate does")
+  (frame frame:building)
+  (edges geom:E-111 geom:E-112 geom:E-113 geom:E-114))
+(loop geom:L-112
+  (label "Courtyard boundary, running against the plate")
+  (frame frame:building)
+  (edges geom:E-114 geom:E-113 geom:E-112 geom:E-111))
+
+(node site:S-51
+  (label "Plate with a courtyard written the way the plate runs")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-101)
+  (boundary geom:L-111))
+
+(node site:S-52
+  (label "Plate with a courtyard written against the plate")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-101)
+  (boundary geom:L-112))

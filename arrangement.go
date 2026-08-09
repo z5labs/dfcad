@@ -124,6 +124,95 @@ func (c contour) holds(point vec) bool {
 	return winding != 0
 }
 
+// touches reports whether a point lies on the ring's own boundary, no further
+// from one of its segments than the tolerance two positions are one position
+// within.
+//
+// It is what makes [contour.holds] safe to ask: the winding count is exact for
+// a point off the boundary and arbitrary for one on it, so a point this reports
+// is one the count is never taken at.
+func (c contour) touches(point vec, tolerance float64) bool {
+	for i, a := range c {
+		if distanceToSegment(point, a, c[(i+1)%len(c)]) <= tolerance {
+			return true
+		}
+	}
+	return false
+}
+
+// distanceToSegment is how far a point lies from the nearest point of a
+// segment, which is a perpendicular where the foot of it falls between the two
+// ends and the distance to the nearer end otherwise.
+func distanceToSegment(point, a, b vec) float64 {
+	along := b.sub(a)
+
+	length := along.dot(along)
+	if length == 0 {
+		return point.sub(a).length()
+	}
+
+	at := min(max(point.sub(a).dot(along)/length, 0), 1)
+
+	return point.sub(a.add(along.scale(at))).length()
+}
+
+// nestedIn reports whether one ring lies inside another, and whether the two
+// are arranged so that the question has an answer at all.
+//
+// Every probe of the inner ring which is not on the outer ring's boundary is
+// asked, and they have to agree. Asking one point is what a nesting used to be
+// decided by, and the point asked was the corner the traversal happened to
+// start from — so a ring whose first corner fell on the other ring's boundary
+// was nested or not nested according to which corner somebody wrote the loop
+// down from, and two rectangles abutting along a wall cancelled instead of
+// unioning. Rotating a loop's edge list cannot change a consensus taken over
+// all of its corners, which is what makes the answer a property of the shape.
+//
+// Disagreement is the two rings crossing: neither holds the whole of the other,
+// so neither is a hole in the other and the even-odd rule has nothing to say
+// about them. That comes back undecided rather than as a number, because the
+// number would be an area no shape has.
+func nestedIn(inner, outer contour, tolerance float64) (bool, bool) {
+	var inside, answered bool
+
+	for _, probe := range probesOf(inner) {
+		if outer.touches(probe, tolerance) {
+			continue
+		}
+
+		held := outer.holds(probe)
+
+		if !answered {
+			inside, answered = held, true
+			continue
+		}
+
+		if held != inside {
+			return false, false
+		}
+	}
+
+	return inside, answered
+}
+
+// probesOf is the points a ring is tested against another ring by: every corner
+// of it, and then the midpoint of every segment.
+//
+// The midpoints are what keep a ring whose every corner falls on the other
+// ring's boundary answerable — a square inscribed in another at its edge
+// midpoints has no corner off it, and every one of its own midpoints is
+// strictly inside.
+func probesOf(c contour) []vec {
+	probes := make([]vec, 0, 2*len(c))
+
+	probes = append(probes, c...)
+	for i, point := range c {
+		probes = append(probes, point.add(c[(i+1)%len(c)]).scale(0.5))
+	}
+
+	return probes
+}
+
 // reversed is the ring traversed the other way round, which turns what is
 // inside it into a hole and back.
 func (c contour) reversed() contour {

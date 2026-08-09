@@ -533,7 +533,12 @@ func (t *Topology) regionOf(
 	// which is the same even-odd rule a measurement takes its area away by.
 	// Nothing in the model declares which ring is the outside one, and this is
 	// where that is worked out rather than asked for.
-	for i, depth := range m.nestings(figure, rings, bent) {
+	depths, nested := m.nestings(node, rings, figure)
+	if !nested {
+		return region, drew, m.diags
+	}
+
+	for i, depth := range depths {
 		figure[i] = oriented(figure[i], depth%2 == 0)
 	}
 
@@ -623,34 +628,60 @@ func (m *measurer) runOf(
 	return region, drew, m.diags
 }
 
-// nestings counts, for each ring of a region, how many of the others hold it.
+// nestings counts, for each ring of a region, how many of the others hold it,
+// which is what the even-odd rule takes a ring's area away by.
 //
-// Where nothing bent the count is taken at the corners, which is
-// [measurer.nesting] and is the same count [Topology.MeasureRegion] nests by.
-// Where something bent it is taken at the segments the curve was drawn as, and
-// that is the whole reason a curved region has to be drawn before it can be
-// nested at all: a courtyard whose wall bows out past a corner of the plate
-// around it is inside the plate and outside the polygon of its chords, so a
-// count taken at the corners would flip on which side of a bulge a corner
-// happened to fall — a region wrong by a whole ring rather than by a sag, which
-// is what [measurer.straight] refuses rather than approximates.
-func (m *measurer) nestings(figure []contour, rings []*outline, bent bool) []int {
+// The count is taken over the whole of a ring against the whole of another
+// ([nestedIn]) rather than at one corner of it, so it is a property of the two
+// shapes and not of the corner either loop was written down from. That is what
+// makes a region measured here and a region read by [Topology.RegionOf] the
+// same area for the same node: both nest by this, and both refuse the same
+// arrangement.
+//
+// Two rings which cross are refused. Neither is inside the other, so neither is
+// a hole in it, and an even-odd sum over them is an area with the overlap
+// counted twice or not at all. It is the same refusal a total which comes out
+// at nothing gets, for the same reason: the rings are not the boundary of one
+// region, and a figure computed from them would look like an answer.
+//
+// It is taken at the segments a curve was drawn as, which is the whole reason a
+// curved region has to be drawn before it can be nested at all: a courtyard
+// whose wall bows out past a corner of the plate around it is inside the plate
+// and outside the polygon of its chords, so a count taken at the corners of the
+// chords alone would flip on which side of a bulge a corner happened to fall —
+// a region wrong by a whole ring rather than by a sag.
+func (m *measurer) nestings(node *SemanticNode, rings []*outline, figure []contour) ([]int, bool) {
+	// A ring is judged to be on another ring's boundary within the same
+	// tolerance two corners are judged to be one corner within, and within
+	// nothing at all where the registry declares no tolerance this measurement
+	// can apply — there is no default here any more than anywhere else
+	// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
+	var tolerance float64
+	if m.applicable() {
+		tolerance = m.tolerance.Value
+	}
+
 	depths := make([]int, len(figure))
 
 	for i := range figure {
-		if !bent {
-			depths[i] = m.nesting(rings, i)
-			continue
-		}
+		for j := range figure {
+			if j == i {
+				continue
+			}
 
-		for j, other := range figure {
-			if j != i && len(figure[i]) > 0 && other.holds(figure[i][0]) {
+			inside, decided := nestedIn(figure[i], figure[j], tolerance)
+			if !decided {
+				m.add(m.crossingRings(node, rings[i], rings[j]))
+				return nil, false
+			}
+
+			if inside {
 				depths[i]++
 			}
 		}
 	}
 
-	return depths
+	return depths, true
 }
 
 // segmentsOf is the straight runs of every assembled ring, in the order the
