@@ -141,7 +141,21 @@ func readFeature(t *testing.T, member tree) (Feature, string) {
 			"a property and the geometry are in the feature's own namespace")
 
 		if child.XMLName.Local == "geometry" {
-			feature.Surfaces, crs = readSurfaces(t, only(t, child, Namespace, "MultiSurface"))
+			// A feature carries one geometry, and which of the two kinds it is
+			// is read off the element rather than told to this reader. A
+			// document holding both under one property would fail here, which
+			// is what a second opinion is for.
+			require.Len(t, child.Children, 1, "a geometry property holds one geometry")
+
+			switch shape := child.Children[0]; shape.XMLName.Local {
+			case "MultiSurface":
+				feature.Surfaces, crs = readSurfaces(t, shape)
+			case "MultiPoint":
+				feature.Points, crs = readPoints(t, shape)
+			default:
+				t.Fatalf("unexpected geometry: %s", shape.XMLName.Local)
+			}
+
 			continue
 		}
 
@@ -192,6 +206,26 @@ func readSurfaces(t *testing.T, surfaces tree) ([]Polygon, string) {
 	}
 
 	return out, attributeOf(t, surfaces, "", "srsName")
+}
+
+// readPoints is the positions of one multi point, and the system they are in.
+func readPoints(t *testing.T, points tree) ([]Position, string) {
+	t.Helper()
+
+	require.Equal(t, strconv.Itoa(Dimension), attributeOf(t, points, "", "srsDimension"))
+
+	var out []Position
+
+	for _, member := range points.Children {
+		require.Equal(t, "pointMember", member.XMLName.Local)
+
+		at := readPositions(t, only(t, only(t, member, Namespace, "Point"), Namespace, "pos").Text)
+		require.Len(t, at, 1, "a point is one position")
+
+		out = append(out, at[0])
+	}
+
+	return out, attributeOf(t, points, "", "srsName")
 }
 
 // readRing is the positions of one ring.

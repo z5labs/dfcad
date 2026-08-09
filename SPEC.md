@@ -307,7 +307,7 @@ known tag when one is close.
 | `label`       | `0..1` | A string. Display text; changing it changes nothing else.                        |
 | `kind`        | `1`    | One of the seven members of `kind`.                                              |
 | `type`        | `1`    | A type name declared in the type registry.                                       |
-| `geometry`    | `0..1` | One of `point`, `line`, `area`, `surface`, `solid`. Omitted means the node has no geometry, which is a distinct and ordinary state. `line` makes each loop the node references an open run rather than a ring; see [6.4](#64-loop). |
+| `geometry`    | `0..1` | One of `point`, `line`, `area`, `surface`, `solid`. Omitted means the node has no geometry, which is a distinct and ordinary state. `point` makes the node's own position claim its whole shape; see below. `line` makes each loop the node references an open run rather than a ring; see [6.4](#64-loop). |
 | `frame`       | `0..1` | A frame id. A node declared in two frames is unrepresentable, which is the point. |
 | `within`      | `0..1` | The id of the node that strictly contains this one.                              |
 | `member-of`   | `0..n` | A zone node id. Membership is many-to-many and never implies containment.        |
@@ -325,6 +325,46 @@ different shapes, so the tag is what selects the shape.
 A `node` never carries `vertices`, `edges` or `backed-by`. A geometric node never carries
 `kind` or `type`; both are load errors naming the node, not silently ignored fields
 ([0001](./docs/decisions/0001-two-node-families.md)).
+
+**A node whose `geometry` is `point` is placed by a claim on itself.** It references no
+loop and it may not reference a vertex — `boundary` takes loops, and the semantic family
+never names a member of the geometric one but a loop — so the coordinate is written where
+every other measured fact about the node is written: as a claim, under the predicate the
+consuming repository declares a position under, in the frame the node declares. It is
+authored exactly as a vertex's position is, with the same value shape, the same source,
+method and accuracy, and the same resolution and conflict rules ([6.2](#62-vertex)):
+
+```
+(node site:PNL-01
+  (kind Element)
+  (type electrical/panel)
+  (geometry point)
+  (frame site:grid)
+  (within site:L1)
+  (position
+    (value (12.4 8.15 0.9) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+```
+
+An electrical panel, a septic tank lid, a condenser, an air handler, a receptacle and a
+survey monument are each that shape: a thing whose only interesting geometry is where it
+is. Giving one a `boundary` would be inventing dimensions the model does not have, and a
+receptacle is not a rectangle.
+
+The consequences follow from the reading, and they are the same ones an open run's are. A
+measurement of such a node is a position — its own centroid, a bounding box of no extent,
+no length and no area — carrying the accuracy of the claim which placed it. A query which
+draws it reports it as a location rather than as rings, so a plan places a symbol at it and
+a map writes it as a point feature. A node which declares the form and which nothing places
+is reported, per node, rather than passed over: a device the model holds and puts nowhere
+is a device a sheet leaves off, and nothing downstream can detect that.
+
+Nothing else about the node changes. It is `within` what contains it and a `member-of`
+whatever zones hold it, under exactly the rules every other node follows — this is a shape,
+not a second way of saying where something sits.
 
 ### 6.2 `vertex`
 

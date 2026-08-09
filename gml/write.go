@@ -43,6 +43,10 @@ const (
 	interiorElement      = "interior"
 	linearRingElement    = "LinearRing"
 	posListElement       = "posList"
+	multiPointElement    = "MultiPoint"
+	pointMemberElement   = "pointMember"
+	pointElement         = "Point"
+	posElement           = "pos"
 )
 
 // The attributes carrying an identity and a coordinate reference system.
@@ -61,6 +65,7 @@ const (
 const (
 	geometrySuffix = ".geometry"
 	surfaceSuffix  = ".surface."
+	pointSuffix    = ".point."
 )
 
 // ReservedPropertyError is a property whose name is the one this package
@@ -166,13 +171,23 @@ func checkFeature(feature Feature, written map[string]bool) error {
 		return NotAnNCNameError{What: "the id of a feature", Name: feature.ID}
 	}
 
-	if len(feature.Surfaces) == 0 {
+	switch {
+	case len(feature.Surfaces) == 0 && len(feature.Points) == 0:
 		return NoGeometryError{Feature: feature.ID}
+	case len(feature.Surfaces) > 0 && len(feature.Points) > 0:
+		return MixedGeometryError{
+			Feature:  feature.ID,
+			Surfaces: len(feature.Surfaces),
+			Points:   len(feature.Points),
+		}
 	}
 
 	identifiers := []string{feature.ID, feature.ID + geometrySuffix}
 	for i := range feature.Surfaces {
 		identifiers = append(identifiers, feature.ID+surfaceSuffix+strconv.Itoa(i+1))
+	}
+	for i := range feature.Points {
+		identifiers = append(identifiers, feature.ID+pointSuffix+strconv.Itoa(i+1))
 	}
 
 	for _, id := range identifiers {
@@ -199,6 +214,27 @@ func checkFeature(feature Feature, written map[string]bool) error {
 		}
 	}
 
+	for _, at := range feature.Points {
+		if err := checkPosition(feature.ID, at); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkPosition is one position which stands on its own: made of numbers.
+//
+// A point has no closure and no length to be too short, so being finite is the
+// whole of what can be wrong with one — and it is the same refusal a corner of
+// a ring gets, because it is the same defect arriving through a different
+// field.
+func checkPosition(feature string, at Position) error {
+	if math.IsNaN(at.Easting) || math.IsInf(at.Easting, 0) ||
+		math.IsNaN(at.Northing) || math.IsInf(at.Northing, 0) {
+		return NonFiniteCoordinateError{Feature: feature, Easting: at.Easting, Northing: at.Northing}
+	}
+
 	return nil
 }
 
@@ -214,9 +250,8 @@ func checkRing(feature string, ring LinearRing) error {
 	}
 
 	for _, at := range ring.Positions {
-		if math.IsNaN(at.Easting) || math.IsInf(at.Easting, 0) ||
-			math.IsNaN(at.Northing) || math.IsInf(at.Northing, 0) {
-			return NonFiniteCoordinateError{Feature: feature, Easting: at.Easting, Northing: at.Northing}
+		if err := checkPosition(feature, at); err != nil {
+			return err
 		}
 	}
 
@@ -348,10 +383,41 @@ func (out *writer) feature(collection Collection, feature Feature) {
 	}
 
 	out.open(3, collection.Prefix+":"+geometryElement)
-	out.surfaces(collection, feature)
+	if len(feature.Points) > 0 {
+		out.points(collection, feature)
+	} else {
+		out.surfaces(collection, feature)
+	}
 	out.close(3, collection.Prefix+":"+geometryElement)
 
 	out.close(2, element)
+}
+
+// points writes a feature's shape as one multi point.
+//
+// Always a multi point, including for a feature of one position, for the
+// reason [writer.surfaces] always writes a multi surface: a layer whose
+// features are sometimes a point and sometimes a collection of them is a layer
+// a reader has to accept two geometry types for, and the reader which does not
+// takes the first and refuses the rest.
+func (out *writer) points(collection Collection, feature Feature) {
+	attributes := append(
+		[]attribute{{Prefix + ":" + idAttribute, feature.ID + geometrySuffix}},
+		out.reference(collection.CRS)...,
+	)
+
+	out.open(4, Prefix+":"+multiPointElement, attributes...)
+
+	for i, at := range feature.Points {
+		out.open(5, Prefix+":"+pointMemberElement)
+		out.open(6, Prefix+":"+pointElement,
+			attribute{Prefix + ":" + idAttribute, feature.ID + pointSuffix + strconv.Itoa(i+1)})
+		out.leaf(7, Prefix+":"+posElement, ordinate(at.Easting)+" "+ordinate(at.Northing))
+		out.close(6, Prefix+":"+pointElement)
+		out.close(5, Prefix+":"+pointMemberElement)
+	}
+
+	out.close(4, Prefix+":"+multiPointElement)
 }
 
 // surfaces writes a feature's shape as one multi surface.
@@ -422,21 +488,33 @@ func (out *writer) reference(crs string) []attribute {
 // extent is the lowest and highest corner of every position in the collection,
 // and whether there was one.
 func extent(collection Collection) (lower, upper Position, bounded bool) {
+	reach := func(at Position) {
+		if !bounded {
+			lower, upper, bounded = at, at, true
+			return
+		}
+
+		lower.Easting = math.Min(lower.Easting, at.Easting)
+		lower.Northing = math.Min(lower.Northing, at.Northing)
+		upper.Easting = math.Max(upper.Easting, at.Easting)
+		upper.Northing = math.Max(upper.Northing, at.Northing)
+	}
+
 	for _, feature := range collection.Features {
 		for _, surface := range feature.Surfaces {
 			for _, ring := range rings(surface) {
 				for _, at := range ring.Positions {
-					if !bounded {
-						lower, upper, bounded = at, at, true
-						continue
-					}
-
-					lower.Easting = math.Min(lower.Easting, at.Easting)
-					lower.Northing = math.Min(lower.Northing, at.Northing)
-					upper.Easting = math.Max(upper.Easting, at.Easting)
-					upper.Northing = math.Max(upper.Northing, at.Northing)
+					reach(at)
 				}
 			}
+		}
+
+		// A point is inside the envelope like every other position. A layer of
+		// control points whose boundedBy came back empty would send a reader
+		// looking for the layer at the origin, which is the one thing the
+		// envelope exists to prevent.
+		for _, at := range feature.Points {
+			reach(at)
 		}
 	}
 

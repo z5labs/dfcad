@@ -26,6 +26,13 @@ what they are written on. It is the input an annotated floor plan is drawn
 from: facts with provenance, rather than a polygon a renderer has to re-derive
 which claim belongs to which pair of corners from.
 
+A node whose declared geometry is "point" is drawn too, from the position
+claimed of the node itself under --position. Its region covers nothing and
+carries "at": the coordinate a sheet places a symbol at. A panel, a receptacle,
+a condenser and a survey monument are each that shape, and a plan which
+reported them as having no boundary would leave every device on a floor off the
+sheet while the model held all of them.
+
 This is a query and not an export. It writes no file. It returns the rings the
 model already holds and the claims already written on the edges bounding them,
 under the same envelope, digest and budget every other answer carries, and it
@@ -97,7 +104,9 @@ A node which references no loop is ordinary and reports nothing, so a storey
 holding one is still exit 0; a boundary which could not be read is an error, so
 a storey holding one is "planned" false and exit 1 — and a ring which does not
 close and a ring which crosses itself are treated the same way, because they are
-two spellings of one mistake.
+two spellings of one mistake. A node drawn as a point which nothing places is an
+error on the same terms: it declares that its shape is where it is, and the
+model then does not say where.
 
 A storey containing nothing with an outline is an empty result and exit 0 — the
 truthful answer to what it looks like in plan.
@@ -109,7 +118,9 @@ source tree it was read from, the "frame" and "unit" it is expressed in, the
 "tolerance" it was judged against, the "annotating" predicates it was asked
 for, one "outlines" entry per contained node which was drawn with its "region"
 and its "annotations", and the "budget": the accuracy of the rings, over the
-position claims which put every drawn corner where it is. Where a ring bent it
+position claims which put every drawn corner where it is. A region read from a
+node drawn as a point carries "at" — its coordinate — and no pieces, which is
+what a consumer places a symbol from. Where a ring bent it
 also carries the "chord" tolerance it was drawn to and the "deviation" that
 drawing achieved, and where a curve went unread it carries "chorded": the edges
 which state one, each with the predicates it states it under.
@@ -117,7 +128,8 @@ which state one, each with the predicates it states it under.
 Where something inside the subject was not drawn it also carries "undrawn": one
 entry per such node, in id order, with its id, its label, kind and type, its
 "annotations", and a "reason" — "no-boundary" for a node the model gives no
-edges, "unreadable-boundary" for one whose edges this run could not read.
+edges, "unreadable-boundary" for one whose edges this run could not read,
+"no-position" for a node drawn as a point which nothing places.
 "outlines" and "undrawn" account between them for everything the subject
 contains, so a renderer which drew every outline and listed every undrawn node
 has drawn or named the whole storey. The key is absent for a storey every node

@@ -380,8 +380,15 @@ func (e *exporter) modelled(
 	node *dfcad.SemanticNode,
 	datum float64,
 ) (*ifc.Representation, []ifc.PropertySet) {
-	if geometry, _ := node.Geometry(); geometry == dfcad.GeometryLine {
+	switch geometry, _ := node.Geometry(); geometry {
+	case dfcad.GeometryLine:
 		return e.thickened(node, datum)
+	case dfcad.GeometryPoint:
+		// A point is placed rather than drawn, which [exporter.placed] does on
+		// the product itself. There is no representation to write and no
+		// dimension to invent one from — a receptacle is not a rectangle — so
+		// what the file carries is an object standing where the model puts it.
+		return nil, nil
 	}
 
 	representation, properties, _ := e.shaped(node, datum)
@@ -493,6 +500,54 @@ func (e *exporter) thickened(
 	})
 
 	return representation, append(properties, e.provenance(node, swept, unit, height, over)...)
+}
+
+// placed is where a node drawn as a point stands, as the placement of the
+// product written for it, and whether the model places it at all.
+//
+// It is the whole of what such a node states. A panel, a receptacle, a
+// condenser and a survey monument have a position and no extent, so what
+// reaches the file is a placement and no representation — which is a complete
+// statement of what the model holds, and is what a receiving system puts a
+// symbol at.
+//
+// The point is carried into the root frame like every other coordinate this
+// writes ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)),
+// and then the datum the placement it hangs off already stands at is taken
+// off its third component — the same subtraction a footprint's elevation gets,
+// because it is the same placement chain. Only the third, because that is all
+// a storey's placement carries: a level offset horizontally from the root is a
+// thing IfcBuildingStorey does not state and this does not invent.
+//
+// A node nothing places is refused by the engine rather than written at its
+// container's origin, which is where it would otherwise land. That silence is
+// exactly the failure this exists to end: a panel at the corner of its storey
+// looks like a panel somebody placed.
+func (e *exporter) placed(node *dfcad.SemanticNode, datum float64) (*ifc.Placement, bool) {
+	region, diags := e.graph.Topology().RegionOf(
+		node,
+		e.graph.Boundaries(),
+		bent(e.graph, e.shapes.position, e.shapes.tolerance, e.shapes.curvature(), node),
+	)
+	e.diags = append(e.diags, diags...)
+
+	at, located := region.Location()
+	if !located {
+		return nil, false
+	}
+
+	carry, carried := e.carrying(node, region.Frame())
+	if !carried {
+		return nil, false
+	}
+
+	moved, err := carry.point(at)
+	if err != nil {
+		e.uncarried(node, carry.from, err)
+		return nil, false
+	}
+
+	return &ifc.Placement{Location: ifc.Point{X: moved[0], Y: moved[1], Z: moved[2] - datum}}, true
 }
 
 // runs are the straight runs of a node drawn as a line — one per edge its

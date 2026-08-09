@@ -223,6 +223,19 @@ type regionEntry struct {
 	// and the rings taken out of it.
 	Pieces []pieceEntry `json:"pieces"`
 
+	// At is where a node drawn as a point sits, as its components in the order
+	// they were written. It is the whole shape of such a node, which covers no
+	// area and has no boundary to attribute.
+	//
+	// Absent for every region read from loops and for every region an operation
+	// over an area produced, which is what tells a thing with a position from a
+	// thing with an outline. A consumer placing a symbol reads this; one
+	// drawing a ring reads `pieces`, and neither has to look at the other to
+	// know which it is. Carrying a region into another frame is not one of
+	// those operations and keeps it: a point goes in a point and comes out a
+	// point.
+	At []float64 `json:"at,omitempty"`
+
 	// Boundary is which edge produced each straight run of the boundary, in the
 	// order the rings are traversed. It is what lets a ring be attributed back
 	// to the model it came from rather than arriving as anonymous coordinates.
@@ -486,6 +499,10 @@ func regionOf(region dfcad.Region) regionEntry {
 		Area:   region.Area(),
 		Empty:  region.Empty(),
 		Pieces: make([]pieceEntry, 0, len(region.Pieces())),
+	}
+
+	if at, located := region.Location(); located {
+		entry.At = at[:]
 	}
 
 	for _, piece := range region.Pieces() {

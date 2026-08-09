@@ -483,11 +483,27 @@ func (t *Topology) MeasureLoop(loop *Loop, survey Survey) (Measurement, []Diagno
 // shape, and requiring one of them to close would be requiring it to be
 // something else.
 //
+// A node which declares the geometry form `point` is read from the position
+// claimed of the node itself instead. It references no loop and never will — a
+// receptacle is not a rectangle, and authoring one as a ring would be inventing
+// dimensions the model does not have — so what places it is a claim written on
+// it, under the same predicate a corner's position is written under. What comes
+// back is what [Topology.MeasureVertex] returns for a corner: the point as the
+// centroid, the box of zero extent around it as the bounds, no length and no
+// area, and the accuracy of the claim which put it there.
+//
 // A region which references no loop is not malformed — a circuit group and a
 // warranty have no outline — and measures nothing.
 func (t *Topology) MeasureRegion(region *SemanticNode, boundaries *Boundaries, survey Survey) (Measurement, []Diagnostic) {
 	if region == nil {
 		return Measurement{}, nil
+	}
+
+	if drawnAsPoint(region) {
+		m := t.measuring(region.id, region.frame, region.span, survey)
+		m.located(region)
+
+		return m.result, m.diags
 	}
 
 	loops := slices.Collect(boundaries.Loops(region))
@@ -547,6 +563,52 @@ func drawnAsLine(node *SemanticNode) bool {
 	geometry, _ := node.Geometry()
 
 	return geometry == GeometryLine
+}
+
+// drawnAsPoint reports whether a node declares the geometry form whose whole
+// shape is where it is.
+//
+// It is one predicate for the same reason [drawnAsLine] is one: a measurement,
+// a region, a plan and an export all have to agree about which nodes are placed
+// by a claim on themselves rather than by the corners of a ring, and a second
+// spelling of the comparison is where two of them stop agreeing. A panel read
+// as a point by one and as a region with no boundary by another is one device
+// which is both somewhere and nowhere.
+func drawnAsPoint(node *SemanticNode) bool {
+	if node == nil {
+		return false
+	}
+
+	geometry, _ := node.Geometry()
+
+	return geometry == GeometryPoint
+}
+
+// Located is the node whose own claimed position is what places entity, and
+// whether there is one.
+//
+// It is [Graph.Corners] for the family of shapes which have no corners. A node
+// drawn as a point holds its location as a claim on itself, so a survey built
+// only from the corners its loops reach would place nothing at all for it — and
+// every figure downstream would then report a device which is in the model as
+// one the model does not put anywhere. A caller resolving the position
+// predicate over [Graph.Corners] resolves it over this as well and has surveyed
+// exactly what the answer needs.
+//
+// Only a semantic node is ever located. A vertex is placed by its own claim
+// already and is reached as a corner; an edge and a loop are placed by the
+// corners they run between.
+func (g *Graph) Located(entity Entity) (*SemanticNode, bool) {
+	if g == nil {
+		return nil, false
+	}
+
+	node, semantic := entity.(*SemanticNode)
+	if !semantic || !drawnAsPoint(node) {
+		return nil, false
+	}
+
+	return node, true
 }
 
 // Measure measures whatever an id named, whichever family holds it: a semantic
@@ -2070,6 +2132,41 @@ func (m *measurer) vertex(vertex *Vertex) {
 	at := asPoint(components)
 
 	m.contribute([]ID{vertex.id})
+
+	m.result.centroid, m.result.hasCentroid = at, true
+	m.result.bounds, m.result.hasBounds = boxOf([]Point{at}), true
+	m.result.bounds.Unit = m.unit
+}
+
+// located measures a node whose whole shape is where it is, reporting one
+// nothing states the position of.
+//
+// It is [measurer.vertex] over a semantic node, deliberately down to the
+// figures: a panel and the corner of a wall are the same shape, so a caller
+// asking how far either reaches gets the same answer in the same fields. What
+// differs is where the position was written — on the node itself rather than on
+// a vertex — and the diagnostic says so, because "declare a vertex for it" is
+// the wrong instruction for a node which is not allowed to reference one.
+func (m *measurer) located(node *SemanticNode) {
+	components, ok := m.at(node.id)
+	if !ok {
+		m.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     m.topology.namedAt(node.id, node.span),
+			Message: fmt.Sprintf(
+				"expected a position claimed of the node %s, which is drawn as a %s, found none to read",
+				node.id, GeometryPoint,
+			),
+			Hint: "a node drawn as a point is where the model says it is, and it says so with a claim written on the " +
+				"node under the same predicate a corner's position is written under; " + m.positionHint(),
+		})
+		return
+	}
+
+	m.result.dimension = len(components)
+	at := asPoint(components)
+
+	m.contribute([]ID{node.id})
 
 	m.result.centroid, m.result.hasCentroid = at, true
 	m.result.bounds, m.result.hasBounds = boxOf([]Point{at}), true

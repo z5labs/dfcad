@@ -680,7 +680,7 @@ func drawn() wording {
 // where the two ends do not meet, and a wall not being a closed cycle is what a
 // line is rather than a mistake in one.
 func measuredShape(graph *Graph, node *SemanticNode, tolerance, position string) (shape, []Failure) {
-	survey := positionSurvey(graph, tolerance, position, graph.Corners(node))
+	survey := shapeSurvey(graph, tolerance, position, node)
 
 	if geometry, _ := node.Geometry(); geometry == GeometryLine {
 		return measuredLine(graph, node, survey)
@@ -2450,7 +2450,7 @@ func shapesWithin(graph *Graph, node *SemanticNode, kind, tolerance, position st
 // references no loop is neither: it covers nothing and says nothing is wrong,
 // which [Region.ready] is what tells apart from a shape which could not be read.
 func shapeOf(graph *Graph, node *SemanticNode, tolerance, position string) (Region, []Failure) {
-	survey := positionSurvey(graph, tolerance, position, graph.Boundaries().Vertices(node))
+	survey := shapeSurvey(graph, tolerance, position, node)
 
 	region, diags := graph.Topology().RegionOf(node, graph.Boundaries(), survey)
 	if len(diags) == 0 {
@@ -2463,6 +2463,35 @@ func shapeOf(graph *Graph, node *SemanticNode, tolerance, position string) (Regi
 	}
 
 	return region, failures
+}
+
+// shapeSurvey is [positionSurvey] for one node, over everything the model
+// places that node by: the corners its loops reach, and its own position where
+// its declared geometry is the one whose whole shape is a coordinate.
+//
+// It is one call rather than the corner walk written out at each site, for the
+// reason [Graph.Corners] and [Graph.Located] are a pair: a survey which held
+// one and not the other reads every room of a floor and none of the devices
+// standing in it, and reports each of those devices as a thing nothing places.
+func shapeSurvey(graph *Graph, tolerance, position string, node *SemanticNode) Survey {
+	survey := positionSurvey(graph, tolerance, position, graph.Corners(node))
+	if position == "" {
+		return survey
+	}
+
+	located, ok := graph.Located(node)
+	if !ok {
+		return survey
+	}
+
+	resolution, err := graph.Claims().Resolve(located.ID(), position, graph.Registry())
+	if err != nil {
+		return survey
+	}
+
+	survey.Place(located.ID(), resolution)
+
+	return survey
 }
 
 // positionSurvey is what a shape is read against: where the corners are, the

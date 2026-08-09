@@ -11,6 +11,7 @@
 
 (type OfficeStorey (kind Storey) (geometry solid) (description "One floor plate of a building."))
 (type MeetingRoom (kind Space) (geometry area) (description "An enclosed room used for meetings."))
+(type Panel (kind Element) (geometry point) (description "A distribution board, recorded at the point it was set out at."))
 
 (predicate area
   (unit m2)

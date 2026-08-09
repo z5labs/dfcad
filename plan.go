@@ -216,21 +216,26 @@ func (o Outline) String() string {
 		name = fmt.Sprintf("%s (%s)", name, label)
 	}
 
-	return fmt.Sprintf("%s: %s%s, %s",
-		name,
-		decimal(o.region.Area()), squareSuffix(o.region.Unit()),
-		plural(len(o.annotations), "claim"),
-	)
+	// A node drawn as a point covers nothing, and an area of nought reported
+	// for one would read as a room whose ring collapsed rather than as a panel
+	// which is where it is.
+	shape := decimal(o.region.Area()) + squareSuffix(o.region.Unit())
+	if at, located := o.region.Location(); located {
+		shape = "at " + pointText(at, o.region.printed())
+	}
+
+	return fmt.Sprintf("%s: %s, %s", name, shape, plural(len(o.annotations), "claim"))
 }
 
 // UndrawnReason is why a node inside a plan's subject was not drawn.
 //
-// It is a closed set of two, because there are exactly two ways a plan can fail
-// to draw something it was asked about: the model gives the node no edges at
-// all, or it gives edges which could not be read. Which of the two it is decides
-// who acts on it — the first is ordinary and nobody has to do anything, the
-// second is a defect whose position the diagnostics carry — and a consumer which
-// could not tell them apart would have to decide by reading prose.
+// It is a closed set, because the ways a plan can fail to draw something it was
+// asked about are a closed set: the model gives the node no shape at all, it
+// gives edges which could not be read, or it gives a node whose shape is a
+// position and says nothing about where that position is. Which one it is
+// decides who acts on it — the first is ordinary and nobody has to do anything,
+// the others are defects whose position the diagnostics carry — and a consumer
+// which could not tell them apart would have to decide by reading prose.
 type UndrawnReason string
 
 // The reasons a node inside a plan's subject was not drawn.
@@ -248,6 +253,18 @@ const (
 	// loop, the file and the position, which is where an author reads what to
 	// change.
 	UndrawnUnreadableBoundary UndrawnReason = "unreadable-boundary"
+
+	// UndrawnNoPosition is a node whose geometry form is point and which
+	// nothing claims a position of under the predicate the run named. A panel
+	// nobody has set out yet is this, and it is a defect rather than an
+	// ordinary absence: the node declares that its shape is where it is, and
+	// the model then does not say where that is.
+	//
+	// It is kept apart from UndrawnNoBoundary because the fix is different and
+	// so is the urgency. A circuit group never had a shape; a receptacle has
+	// one and it is missing, and a sheet drawn without it is a sheet with a
+	// device left off.
+	UndrawnNoPosition UndrawnReason = "no-position"
 )
 
 // Description is the reason as a person reads it.
@@ -264,6 +281,8 @@ func (r UndrawnReason) Description() string {
 		return "references no loop"
 	case UndrawnUnreadableBoundary:
 		return "its boundary could not be read"
+	case UndrawnNoPosition:
+		return "has no position stated"
 	}
 	return "it was not drawn"
 }
@@ -546,9 +565,17 @@ func (p Plan) Report() string {
 // an alcove inside that room are both places somebody draws. The subject itself
 // is not drawn; the question is what is in it.
 //
+// A descendant whose geometry form is `point` is drawn too, from the position
+// claimed of the node itself: its outline covers nothing and carries a
+// [Region.Location], which is where a sheet places a symbol. A panel, a
+// receptacle, a condenser and a survey monument are each that shape — a thing
+// whose only interesting geometry is where it is — and a plan which reported
+// them as having no boundary would leave every device on a floor off the sheet
+// while the model held all of them.
+//
 // **Nothing the subject contains is dropped.** Every descendant which was not
 // drawn comes back in [Plan.Undrawn], named, with an [UndrawnReason] saying
-// which of the two ways it was undrawable and with the claims written on it. A
+// which of the ways it was undrawable and with the claims written on it. A
 // circuit group has no edges and is ordinary; a room whose ring does not close
 // is a defect; both are things somebody put inside this storey, and a query
 // which answered by omitting them would be reporting a sheet as complete which
@@ -603,7 +630,12 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 		// wrong today is not that it goes unreported to whoever wrote the file —
 		// it is that it goes unreported to whoever draws the sheet, and this is
 		// where that is fixed.
-		if !g.outlined(contained) {
+		// A node drawn as a point references no loop and never will, so the
+		// boundary test is not the question to ask of one. What places it is a
+		// claim written on itself, and the region read below carries it.
+		placed := drawnAsPoint(contained)
+
+		if !placed && !g.outlined(contained) {
 			plan.undrawn = append(plan.undrawn, Undrawn{
 				node:        contained,
 				reason:      UndrawnNoBoundary,
@@ -621,9 +653,14 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 		// from its segments, and a consumer which read "no area" as "not drawn"
 		// would leave every railing and doorway off the sheet.
 		if refused(found) {
+			reason := UndrawnUnreadableBoundary
+			if placed {
+				reason = UndrawnNoPosition
+			}
+
 			plan.undrawn = append(plan.undrawn, Undrawn{
 				node:        contained,
-				reason:      UndrawnUnreadableBoundary,
+				reason:      reason,
 				annotations: g.annotated(contained, predicates),
 			})
 			continue

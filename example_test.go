@@ -3097,6 +3097,19 @@ func ExampleGraph_PlanOf() {
 		survey.Place(vertex.ID(), resolution)
 	}
 
+	// A node whose declared geometry is a point has no corners: it is placed by
+	// a claim on itself, under the same predicate. Graph.Located is what says
+	// which nodes those are, so that a survey covers what the answer needs.
+	for node := range graph.Nodes().All() {
+		located, ok := graph.Located(node)
+		if !ok {
+			continue
+		}
+
+		resolution, _ := graph.Claims().Resolve(located.ID(), "position", graph.Registry())
+		survey.Place(located.ID(), resolution)
+	}
+
 	level, _ := graph.Node("site:L-01")
 
 	// Which measurements belong on the sheet is stated here and nowhere else.
@@ -3108,6 +3121,15 @@ func ExampleGraph_PlanOf() {
 	fmt.Println(plan)
 
 	for _, outline := range plan.Outlines() {
+		// A node drawn as a point covers nothing and is somewhere. What comes
+		// back for it is the coordinate a sheet places a symbol at, rather than
+		// an area of nought which reads like a room whose ring collapsed.
+		if at, located := outline.Region().Location(); located {
+			fmt.Printf("%s %s is at (%.1f %.1f %.1f) %s\n",
+				outline.Node().Kind(), outline.Subject(), at[0], at[1], at[2], plan.Unit())
+			continue
+		}
+
 		fmt.Printf("%s %s covers %.1f %s²\n",
 			outline.Node().Kind(), outline.Subject(), outline.Region().Area(), plan.Unit())
 	}
@@ -3160,10 +3182,11 @@ func ExampleGraph_PlanOf() {
 	fmt.Printf("the rings are known to ±%.3f %s\n", combined.Standard(), combined.Unit)
 
 	// Output:
-	// site:L-01: 5 outlines, 14 claims, 1 not drawn
+	// site:L-01: 6 outlines, 15 claims, 1 not drawn
 	// Space site:A-01 covers 1.0 m²
 	// Element site:D-01 covers 0.0 m²
 	// Element site:H-01 covers 0.0 m²
+	// Element site:P-01 is at (2.5 1.5 1.2) m
 	// Space site:R-01 covers 12.0 m²
 	// Space site:R-02 covers 12.0 m²
 	// Element site:C-01 was not drawn: it references no loop, and carries 1 claim

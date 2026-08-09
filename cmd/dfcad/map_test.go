@@ -878,3 +878,98 @@ func TestRunExportMapWritesAModelHoldingAnOpenRun(t *testing.T) {
 	assert.Contains(t, source, "site:P-01")
 	assert.NotContains(t, source, "site:W-01")
 }
+
+// withALocatedNode is the map fixture with a panel added to the storey: a node
+// whose declared geometry is `point`, placed by a claim on itself, on the
+// building grid rather than on the root.
+//
+// The frame is the point of it. A position has to be carried into the root the
+// same way a ring is, and a fixture whose device was authored at the root would
+// pass whether or not anything carried it.
+func withALocatedNode() map[string]string {
+	files := mapModel()
+
+	files["registry.dfc"] += `
+(type Panel
+  (kind Element)
+  (geometry point)
+  (description "A distribution board, recorded at the point it was set out at."))
+`
+
+	files["entities/site.dfc"] += `
+(node site:PNL-01
+  (label "Distribution panel 1")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (2.5 1.5 1.2) m)
+    (source "Services set-out SS-2026-007")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+`
+
+	return files
+}
+
+// TestRunExportMapWritesALocatedNodeAsAPoint is its own function because what
+// it asserts is a geometry the rest of this file has none of: a feature which
+// is at a place and covers nothing.
+//
+// A layer of a building's electrical or HVAC work is a list of located devices.
+// Every one of them used to be absent from the document, because a feature was
+// a ring and a device has none — and a map missing its services layer looks
+// exactly like a map of a building with no services in it.
+func TestRunExportMapWritesALocatedNodeAsAPoint(t *testing.T) {
+	result, _, stderr := mapping(t, exitSuccess, withALocatedNode(), mapFlags()...)
+
+	require.True(t, result.Derived, stderr)
+
+	source := mapArtefact(t, result)
+
+	assert.Contains(t, source, "<dfcad:id>site:PNL-01</dfcad:id>")
+	assert.Contains(t, source, "gml:MultiPoint")
+
+	t.Run("carries it into the root frame, as it does every other coordinate", func(t *testing.T) {
+		// The building grid stands at (3502104 552004) in the site grid, and
+		// the panel is at (2.5 1.5) on it. A document which wrote the authored
+		// numbers would put the panel a couple of million feet from the plot it
+		// is on, with nothing anywhere saying so.
+		assert.Contains(t, source, "<gml:pos>3502106.5 552005.5</gml:pos>")
+	})
+
+	t.Run("drops the elevation, because a map is a plan", func(t *testing.T) {
+		assert.NotContains(t, source, "3502106.5 552005.5 1.2")
+	})
+
+	t.Run("leaves the rings it already drew exactly as they were", func(t *testing.T) {
+		assert.Contains(t, source, "site:S-101")
+		assert.Contains(t, source, "site:P-01")
+	})
+}
+
+// TestRunExportMapIsByteIdenticalOverAModelHoldingALocatedNode is its own
+// function because determinism is the property the whole artefact story rests
+// on, and a shape read from a claim on a node rather than from a walk of
+// corners is a new way for it to break.
+//
+// The digest is the artefact's key, and it is over the source tree: adding a
+// device to a model changes the tree and so changes the key, and re-exporting
+// a tree nothing happened to has to come back with the same key and the same
+// bytes.
+func TestRunExportMapIsByteIdenticalOverAModelHoldingALocatedNode(t *testing.T) {
+	first, _, _ := mapping(t, exitSuccess, withALocatedNode(), mapFlags()...)
+	second, _, _ := mapping(t, exitSuccess, withALocatedNode(), mapFlags()...)
+
+	assert.Equal(t, first.Digest, second.Digest)
+	assert.Equal(t, mapArtefact(t, first), mapArtefact(t, second))
+
+	// And the key is the tree's rather than the answer's: a model without the
+	// device is a different tree and a different digest, which is what stops
+	// one artefact standing in for the other.
+	plain, _, _ := mapping(t, exitSuccess, mapModel(), mapFlags()...)
+	assert.NotEqual(t, first.Digest, plain.Digest)
+}

@@ -80,6 +80,21 @@ func planModel(t *testing.T, root string) planFixture {
 		survey.Place(vertex.ID(), resolution)
 	}
 
+	// And every node placed by a claim on itself, which is [Graph.Located]. A
+	// panel has no corners, so a survey built from the corners alone would draw
+	// the rooms of the storey and none of the devices standing in them.
+	for node := range graph.Nodes().All() {
+		located, ok := graph.Located(node)
+		if !ok {
+			continue
+		}
+
+		resolution, err := graph.Claims().Resolve(located.ID(), planPosition, graph.Registry())
+		require.NoError(t, err)
+
+		survey.Place(located.ID(), resolution)
+	}
+
 	return planFixture{graph: graph, survey: survey}
 }
 
@@ -181,7 +196,7 @@ func TestPlanOf(t *testing.T) {
 			// the storey's own children would leave it off the sheet. The
 			// doorway and the railing are drawn as lines, and a run is drawn
 			// beside a ring rather than instead of one.
-			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"},
+			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:P-01", "site:R-01", "site:R-02"},
 		},
 		{
 			name:             "draws what one room contains rather than the room",
@@ -193,7 +208,7 @@ func TestPlanOf(t *testing.T) {
 			name:             "draws the whole building through the storey below it",
 			subject:          "site:B-01",
 			predicates:       []string{planArea},
-			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"},
+			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:P-01", "site:R-01", "site:R-02"},
 		},
 		{
 			name:             "draws nothing for a room nothing is inside",
@@ -292,10 +307,19 @@ func TestPlanOfNamesARingItCouldNotRead(t *testing.T) {
 	})
 
 	t.Run("names both unreadable rings the same way", func(t *testing.T) {
-		require.Equal(t, []string{"site:R-02", "site:R-03"}, undrawnIDs(plan))
+		require.Equal(t, []string{"site:P-01", "site:R-02", "site:R-03"}, undrawnIDs(plan))
+
+		expected := map[ID]UndrawnReason{
+			"site:R-02": UndrawnUnreadableBoundary,
+			"site:R-03": UndrawnUnreadableBoundary,
+			// A node whose shape is a position and which nothing places is its
+			// own reason. The fix is different — set the device out, rather
+			// than mend a ring — and so is who acts on it.
+			"site:P-01": UndrawnNoPosition,
+		}
 
 		for _, undrawn := range plan.Undrawn() {
-			assert.Equal(t, UndrawnUnreadableBoundary, undrawn.Reason(), undrawn.Subject())
+			assert.Equal(t, expected[undrawn.Subject()], undrawn.Reason(), undrawn.Subject())
 		}
 	})
 
@@ -478,7 +502,7 @@ func TestPlanOfIsDeterministic(t *testing.T) {
 
 	// The order is by id, which is a property of what the model says rather
 	// than of which file each node was written in.
-	assert.Equal(t, []string{"site:A-01", "site:D-01", "site:H-01", "site:R-01", "site:R-02"}, drawnIDs(first))
+	assert.Equal(t, []string{"site:A-01", "site:D-01", "site:H-01", "site:P-01", "site:R-01", "site:R-02"}, drawnIDs(first))
 	assert.Equal(t, []string{"site:C-01"}, undrawnIDs(first))
 }
 
@@ -577,7 +601,7 @@ func TestPlanOfRendersForAPerson(t *testing.T) {
 	// The circuit group is the seventh claim and the one node not drawn. The
 	// summary says both, because a sheet drawn from this answer is missing
 	// something and nothing else on the line would say so.
-	assert.Equal(t, "site:L-01: 5 outlines, 7 claims, 1 not drawn", plan.String())
+	assert.Equal(t, "site:L-01: 6 outlines, 8 claims, 1 not drawn", plan.String())
 
 	report := plan.Report()
 	assert.Contains(t, report, "site:R-01 (Meeting Room A): 12.0 m², 3 claims")

@@ -922,3 +922,149 @@ func TestRunPlanDrawsAnOpenRun(t *testing.T) {
 		assert.Equal(t, []string{"wall-length @ edge geom:E-21"}, anchored(result, "site:D-01"))
 	})
 }
+
+// planLocatedTypes is the one type the fixtures below add: a thing whose only
+// interesting geometry is where it is.
+const planLocatedTypes = `
+(type Panel (kind Element) (geometry point) (description "A distribution board, recorded at the point it was set out at."))
+`
+
+// planLocatedEntities is a panel inside the storey, placed by a claim on
+// itself under the same predicate a corner's position is claimed under.
+const planLocatedEntities = `
+(node site:P-01
+  (label "Distribution panel 1")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (2.5 1.5 1.2) m)
+    (source "Services set-out SS-2026-007")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02"))
+  (caption
+    (value "P-01")
+    (source "Electrical schedule ES-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+`
+
+// planUnplacedEntities is the same panel with nothing saying where it is,
+// which is the model declaring a shape and then not giving it.
+const planUnplacedEntities = `
+(node site:P-02
+  (label "Distribution panel 2, not yet set out")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (caption
+    (value "P-02")
+    (source "Electrical schedule ES-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+`
+
+// locatedFixture is the tree with a panel in the storey.
+func locatedFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          planRegistry + planLocatedTypes,
+		"entities/model.dfc":    planEntities + planLocatedEntities,
+		"entities/geometry.dfc": planGeometry,
+	}
+}
+
+// unplacedFixture is the same tree with a panel nothing places.
+func unplacedFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          planRegistry + planLocatedTypes,
+		"entities/model.dfc":    planEntities + planUnplacedEntities,
+		"entities/geometry.dfc": planGeometry,
+	}
+}
+
+// TestRunPlanReportsANodeDrawnAsAPoint is its own function because what it
+// asserts is a shape the rest of this file has none of: an outline which covers
+// nothing and is somewhere.
+//
+// A panel used to reach the answer only as a node with no boundary. The
+// coordinate was in the model, `get` and `resolve` would answer it, and the one
+// command a sheet is drawn from never mentioned it — so every device on a floor
+// was invisible to the drawing.
+func TestRunPlanReportsANodeDrawnAsAPoint(t *testing.T) {
+	t.Chdir(tree(t, locatedFixture()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess,
+		run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr), stderr.String())
+
+	result := listed[planResult](t, stdout.String())
+
+	require.True(t, result.Planned)
+	assert.Equal(t, []string{"site:D-01", "site:P-01", "site:R-01", "site:R-02"}, outlined(result))
+	assert.Empty(t, result.Undrawn, "a device the model places is drawn rather than named as undrawable")
+
+	var panel outlineEntry
+	for _, outline := range result.Outlines {
+		if outline.Node == "site:P-01" {
+			panel = outline
+		}
+	}
+
+	t.Run("carries the coordinate a sheet places a symbol at", func(t *testing.T) {
+		require.Len(t, panel.Region.At, 3)
+		assert.InDelta(t, 2.5, panel.Region.At[0], 1e-9)
+		assert.InDelta(t, 1.5, panel.Region.At[1], 1e-9)
+		assert.InDelta(t, 1.2, panel.Region.At[2], 1e-9)
+	})
+
+	t.Run("covers nothing and attributes no boundary", func(t *testing.T) {
+		assert.True(t, panel.Region.Empty)
+		assert.Empty(t, panel.Region.Pieces)
+		assert.Empty(t, panel.Region.Boundary)
+		assert.Zero(t, panel.Region.Area)
+	})
+
+	t.Run("carries the claims written on it, with the same anchor a ring's carry", func(t *testing.T) {
+		assert.Equal(t, []string{"caption @ node site:P-01"}, anchored(result, "site:P-01"))
+	})
+
+	t.Run("budgets the claim which placed it", func(t *testing.T) {
+		require.NotNil(t, result.Budget)
+		assert.NotEmpty(t, result.Budget.Terms)
+	})
+}
+
+// TestRunPlanNamesADeviceNothingPlaces is its own function because it is about
+// a defect rather than a figure, and because the reason it reports is a third
+// one: a node which declares that its shape is where it is, in a model which
+// then does not say where.
+func TestRunPlanNamesADeviceNothingPlaces(t *testing.T) {
+	t.Chdir(tree(t, unplacedFixture()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitCheck,
+		run(append([]string{"plan"}, wholeStorey("site:L-01")...), &stdout, &stderr), stderr.String())
+
+	result := listed[planResult](t, stdout.String())
+
+	assert.False(t, result.Planned)
+	assert.NotContains(t, outlined(result), "site:P-02")
+
+	require.Len(t, result.Undrawn, 1)
+	assert.Equal(t, "site:P-02", result.Undrawn[0].Node)
+	assert.Equal(t, "no-position", result.Undrawn[0].Reason)
+
+	// The claims somebody wrote for the sheet still come back. Being unable to
+	// draw the thing they are written on is not a reason to withhold them.
+	require.Len(t, result.Undrawn[0].Annotations, 1)
+	assert.Equal(t, "caption", result.Undrawn[0].Annotations[0].Predicate)
+
+	// And the rooms beside it are drawn exactly as before, which is what makes
+	// this degrade per node rather than refuse the storey.
+	assert.Equal(t, []string{"site:D-01", "site:R-01", "site:R-02"}, outlined(result))
+}
