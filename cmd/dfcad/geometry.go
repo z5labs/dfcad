@@ -152,10 +152,23 @@ Flags:
 	                      required
 	--no-snap             write a new vertex at every corner, even where one is
 	                      already there
+	--bounds <node-id>    the semantic node the loop bounds, written with the
+	                      loop in the same change
+	--vertex-mark <mark>  what the minted vertex ids are named after
+	--edge-mark <mark>    what the minted edge ids are named after
+	--loop-mark <mark>    what the minted loop id is named after
 
-Ids are minted as ` + "`<namespace>:<form>-<n>`" + ` — the namespace, the tag of the form
-being written, and the lowest ordinal nothing in the model already holds. It is
-a name and not a schema, and nothing is inferred back out of one.
+Ids are minted as ` + "`<namespace>:<mark>-<n>`" + ` — the namespace, the mark, and the
+lowest ordinal nothing in the model already holds. The mark is the tag of the
+form being written where the invocation names none, so ` + "`geom:vertex-1`" + ` by
+default; the three flags above are what put a generated batch into a consuming
+repository's own scheme instead of rewriting every minted id by hand afterwards.
+It is a name and not a schema, and nothing is inferred back out of one.
+
+--bounds writes the ` + "`boundary`" + ` reference on the node it names, which is the
+same child ` + "`dfcad relate --boundary`" + ` writes. A scaffold which could mint the
+shape and not say what it is the shape of leaves the one fact nothing else in
+the batch can state to be edited in by hand.
 
 The list is authored closed: its last corner names its first again, and a list
 which does not return to where it started is refused with the gap and its size.
@@ -188,16 +201,43 @@ tolerance which decided them are the whole of what is being checked.
 ` + geometryFlagsHelp + `
 ` + globalFlagsHelp + `
 ` + writeFlagsHelp + `
-` + claimFlagsHelp + `
---value is not read: a corner's value is the corner.
-
+` + provenanceFlagsHelp + `
 ` + outputContractHelp + `
 ` + writeOutputHelp + `
-It also carries "loop", the loop which was written, "vertices", the vertex each
-corner is at in corner order, "created", the vertices which were minted,
-"edges", the ring in traversal order, "reused", the edges of it the model
-already held, "snaps", every corner which landed on an existing vertex, and
-"tolerance", the declaration which decided them.
+It also carries "loop", the loop which was written, "bounds", the node it was
+written on where one was named, "vertices", the vertex each corner is at in
+corner order, "created", the vertices which were minted, "edges", the ring in
+traversal order, "reused", the edges of it the model already held, "snaps",
+every corner which landed on an existing vertex, and "tolerance", the
+declaration which decided them.
+`
+
+// provenanceFlagsHelp describes the evidence every position claim a scaffold
+// writes carries, which is the claim flags without the value.
+//
+// It is its own text rather than the claim flags with a sentence after them
+// because the claim flags say --value is required, and for a scaffold it is not
+// read at all: a corner's value is the corner, and one --value for a list of
+// forty of them would have to mean one, which there is no reading of that is
+// not a guess. A help which lists a flag as required and then takes it back two
+// paragraphs later is a help nobody trusts either half of.
+const provenanceFlagsHelp = `Flags, which are the evidence every position claim carries:
+
+	--source "<text>"    the evidence: a report, a drawing, a person, an
+	                     instrument log. Required
+	--method <id>        an id naming how the value was obtained. Required
+	--accuracy "<term>"  how well a position is known, written as the file
+	                     writes a term without its parentheses: "independent
+	                     <magnitude> <unit>", or "systematic <magnitude> <unit>
+	                     <term-id>". Repeat for more than one term
+	--date <YYYY-MM-DD>  the day the positions were obtained; today by default
+	--unit <unit>        the unit the corners are written in, which must be the
+	                     one the position predicate declares. The declared one
+	                     by default, because a corner is a coordinate in a frame
+	                     rather than a value somebody chose a unit for
+
+--value and --id are not read. A corner's value is the corner, and every claim a
+scaffold writes is one of many rather than one somebody named.
 `
 
 // ErrMissingCorners is a scaffold with no corner list.
@@ -231,6 +271,10 @@ type scaffoldResult struct {
 
 	// Loop is the id of the loop which was written.
 	Loop string `json:"loop"`
+
+	// Bounds is the node the loop was written on as a boundary, and is absent
+	// for a scaffold which bound nothing.
+	Bounds string `json:"bounds,omitempty"`
 
 	// Vertices is the vertex each corner is at, in corner order, with the
 	// closing corner left out — it is the first corner written again.
@@ -502,6 +546,7 @@ func runScaffoldLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		envelope:  newEnvelope(cmd.name),
 		Commit:    out,
 		Loop:      string(built.Loop),
+		Bounds:    string(built.Bounds),
 		Vertices:  spelled(built.Vertices),
 		Created:   spelled(built.Created),
 		Edges:     spelled(built.Edges),
@@ -522,11 +567,15 @@ type scaffoldAxes struct {
 	geometryAxes
 	claimAxes
 
-	namespace *string
-	predicate *string
-	tolerance *string
-	noSnap    *bool
-	corners   *repeated
+	namespace  *string
+	predicate  *string
+	tolerance  *string
+	noSnap     *bool
+	bounds     *string
+	vertexMark *string
+	edgeMark   *string
+	loopMark   *string
+	corners    *repeated
 }
 
 // scaffoldFlags defines the axes of a scaffold on the command's flag set.
@@ -538,6 +587,10 @@ func scaffoldFlags(flags *flag.FlagSet) scaffoldAxes {
 		predicate:    flags.String("predicate", "", ""),
 		tolerance:    flags.String("tolerance", "", ""),
 		noSnap:       flags.Bool("no-snap", false, ""),
+		bounds:       flags.String("bounds", "", ""),
+		vertexMark:   flags.String("vertex-mark", "", ""),
+		edgeMark:     flags.String("edge-mark", "", ""),
+		loopMark:     flags.String("loop-mark", "", ""),
 		corners:      &repeated{},
 	}
 
@@ -556,13 +609,22 @@ func scaffoldFlags(flags *flag.FlagSet) scaffoldAxes {
 // is refused in the same words.
 func (axes scaffoldAxes) spec(registry *dfcad.Registry) (dfcad.ScaffoldSpec, error) {
 	spec := dfcad.ScaffoldSpec{
-		Namespace: *axes.namespace,
-		Frame:     dfcad.ID(*axes.frame),
-		Label:     *axes.label,
-		Predicate: *axes.predicate,
-		Tolerance: *axes.tolerance,
-		Snap:      !*axes.noSnap,
+		Namespace:  *axes.namespace,
+		Frame:      dfcad.ID(*axes.frame),
+		Label:      *axes.label,
+		Predicate:  *axes.predicate,
+		Tolerance:  *axes.tolerance,
+		Snap:       !*axes.noSnap,
+		VertexMark: *axes.vertexMark,
+		EdgeMark:   *axes.edgeMark,
+		LoopMark:   *axes.loopMark,
 	}
+
+	bounds, err := identified([]string{*axes.bounds})
+	if err != nil {
+		return spec, err
+	}
+	spec.Bounds = bounds[0]
 
 	provenance, err := axes.provenance(spec.Predicate)
 	if err != nil {
@@ -582,7 +644,7 @@ func (axes scaffoldAxes) spec(registry *dfcad.Registry) (dfcad.ScaffoldSpec, err
 	}
 
 	for _, written := range *axes.corners {
-		value, err := dfcad.ParseValue(written, dfcad.Unit(*axes.unit), declared)
+		value, err := dfcad.ParseCorner(written, dfcad.Unit(*axes.unit), declared)
 		if err != nil {
 			return spec, err
 		}

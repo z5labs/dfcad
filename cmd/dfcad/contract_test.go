@@ -167,6 +167,10 @@ var samples = map[string][]string{
 		"--corner", "10.0 3.0 0.0",
 		"--corner", "10.0 0.0 0.0",
 	},
+	// A membership rather than a containment, because the fixture holds a Zone
+	// and no Storey: what a Space is written within is a Storey or another
+	// Space, and a sample which had to invent one would be testing the fixture.
+	"relate": {"--member-of", "site:C-01", "site:S-101"},
 	// A system nothing in the fixture already carries, so the sample is a change
 	// rather than a refusal: the fixture's types are classified in IFC4, and a
 	// second scheme beside it is the ordinary case this command exists for.

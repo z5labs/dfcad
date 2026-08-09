@@ -488,3 +488,115 @@ func TestScaffoldedGeometryIsWrittenInCanonicalForm(t *testing.T) {
 	args := []string{"fmt", "--check", "--root", root, "entities/geometry.dfc"}
 	require.Equal(t, exitSuccess, run(args, &stdout, &stderr), stderr.String())
 }
+
+// TestRunScaffoldLoopBindsTheLoopToWhatItBounds is the half of laying out a
+// room a scaffold could not previously state: the outline is minted and the
+// room says the outline is its, in one change.
+func TestRunScaffoldLoopBindsTheLoopToWhatItBounds(t *testing.T) {
+	args := append(scaffold("10 0 0", "14 0 0", "14 3 0", "10 3 0"), "--bounds", "site:S-102")
+
+	result, root := laidOut(t, args...)
+
+	assert.Equal(t, "site:S-102", result.Bounds)
+	assert.Equal(t, []dfcad.ID{dfcad.ID(result.Loop)}, node(t, root, "site:S-102").Boundaries())
+}
+
+func TestRunScaffoldLoopRefusesToBindALoopToSomethingWhichCarriesNone(t *testing.T) {
+	root := tree(t, model())
+	before := contents(t, root)
+
+	args := append(scaffold("10 0 0", "14 0 0", "14 3 0", "10 3 0"), "--bounds", "geom:V-01")
+
+	stdout, stderr := invoke(t, exitUsage, root, args...)
+
+	assert.Empty(t, stdout)
+	assert.Equal(t, before, contents(t, root), "a refused scaffold writes nothing")
+	assert.Contains(t, stderr, "geom:V-01 names a vertex, and a node was required")
+}
+
+// TestRunScaffoldLoopMintsUnderTheMarksItWasGiven is what keeps a generated
+// batch from having to be rewritten id by id to match the scheme the consuming
+// repository already names its geometry in.
+func TestRunScaffoldLoopMintsUnderTheMarksItWasGiven(t *testing.T) {
+	args := append(scaffold("10 0 0", "14 0 0", "14 3 0", "10 3 0"),
+		"--vertex-mark", "V", "--edge-mark", "E", "--loop-mark", "L")
+
+	result, root := laidOut(t, args...)
+
+	// The fixture already holds geom:V-01 upward, so the lowest free ordinal is
+	// what is taken: a mark names, and it does not reserve a range.
+	assert.Equal(t, []string{"geom:V-1", "geom:V-2", "geom:V-3", "geom:V-4"}, result.Created)
+	assert.Equal(t, []string{"geom:E-1", "geom:E-2", "geom:E-3", "geom:E-4"}, result.Edges)
+	assert.Equal(t, "geom:L-1", result.Loop)
+
+	_, ok := geometry(t, root, "geom:L-1").(*dfcad.Loop)
+	assert.True(t, ok, "what a mark names a loop is still a loop")
+}
+
+// TestRunScaffoldLoopReadsCornersInTheDeclaredUnit checks that --unit is no
+// longer required by a command which cannot read a corner in any other unit.
+//
+// A corner is a coordinate in a frame rather than a value somebody chose a unit
+// for, so the one unit it may legally be in is the one the position predicate
+// declares — and requiring it to be written was requiring a flag whose only
+// permitted value was already known.
+func TestRunScaffoldLoopReadsCornersInTheDeclaredUnit(t *testing.T) {
+	args := []string{
+		"scaffold-loop",
+		"--frame", "frame:building",
+		"--namespace", "geom",
+		"--predicate", "position",
+		"--tolerance", "coincident",
+		"--source", "Interior control set IC-01, Acme Surveys",
+		"--method", "method:total-station",
+		"--accuracy", "independent 0.004 m",
+		"--date", "2026-02-18",
+	}
+
+	for _, corner := range []string{"10 0 0", "14 0 0", "14 3 0", "10 3 0", "10 0 0"} {
+		args = append(args, "--corner", corner)
+	}
+
+	result, root := laidOut(t, args...)
+
+	require.Len(t, result.Created, 4)
+
+	vertex, ok := geometry(t, root, dfcad.ID(result.Created[0])).(*dfcad.Vertex)
+	require.True(t, ok)
+
+	graph, diags := dfcad.LoadGraph(root)
+	require.Empty(t, diags)
+
+	resolution, err := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+	require.NoError(t, err)
+
+	value, ok := resolution.Value()
+	require.True(t, ok)
+	assert.Equal(t, dfcad.Unit("m"), value.Unit(), "the corner was read in the unit the predicate declares")
+}
+
+// TestRunScaffoldLoopStillRefusesAUnitOtherThanTheDeclaredOne is the other half
+// of the rule above: defaulting the unit does not weaken the check that a
+// corner list typed in the wrong one is refused.
+func TestRunScaffoldLoopStillRefusesAUnitOtherThanTheDeclaredOne(t *testing.T) {
+	root := tree(t, model())
+
+	args := []string{
+		"scaffold-loop",
+		"--frame", "frame:building",
+		"--namespace", "geom",
+		"--predicate", "position",
+		"--tolerance", "coincident",
+		"--unit", "mm",
+		"--source", "Interior control set IC-01, Acme Surveys",
+		"--method", "method:total-station",
+	}
+
+	for _, corner := range []string{"10 0 0", "14 0 0", "14 3 0", "10 3 0", "10 0 0"} {
+		args = append(args, "--corner", corner)
+	}
+
+	_, stderr := invoke(t, exitUsage, root, args...)
+
+	assert.Contains(t, stderr, "position declares m")
+}

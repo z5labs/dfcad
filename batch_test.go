@@ -223,6 +223,27 @@ func TestParseBatchReadsEveryOperationsAxes(t *testing.T) {
 			},
 		},
 		{
+			name: "reads a scaffold with the node it binds its loop to and the marks it mints under",
+			written: `{"op": "scaffold-loop", "namespace": "geom", "frame": "frame:building",
+			           "predicate": "position", "tolerance": "boundary-closure",
+			           "corners": ["0 0 0", "1 0 0", "0 0 0"], "bounds": "site:S-101",
+			           "vertexMark": "V", "edgeMark": "E", "loopMark": "L"}`,
+			expected: &ScaffoldLoopOperation{
+				Namespace: "geom", Frame: "frame:building", Predicate: "position", Tolerance: "boundary-closure",
+				Corners: []string{"0 0 0", "1 0 0", "0 0 0"}, Bounds: "site:S-101",
+				VertexMark: "V", EdgeMark: "E", LoopMark: "L",
+			},
+		},
+		{
+			name: "reads a relation as the three references it writes",
+			written: `{"op": "relate", "id": "site:S-201", "within": "site:L-01",
+			           "memberOf": ["site:Z-01"], "boundary": ["geom:L-03"]}`,
+			expected: &RelateOperation{
+				ID: "site:S-201", Within: "site:L-01",
+				MemberOf: []string{"site:Z-01"}, Boundary: []string{"geom:L-03"},
+			},
+		},
+		{
 			name:     "reads a classification as the opaque pair it is",
 			written:  `{"op": "classify-type", "type": "Campus", "system": "IFC4", "code": "IfcZone"}`,
 			expected: &ClassifyTypeOperation{Type: "Campus", System: "IFC4", Code: "IfcZone"},
@@ -536,6 +557,23 @@ func TestTxApply(t *testing.T) {
 				{"modified type MeetingRoom"},
 			},
 			expectedFiles: []string{"registry.dfc"},
+		},
+		{
+			// The whole reason `relate` exists: a batch which writes a node and
+			// cannot then say where it sits has written a thing and not a
+			// model, and the references used to be hand-edited in afterwards.
+			name: "applies a batch which writes a node and says what it is inside, grouped with and bounded by",
+			written: `{"operations": [
+				{"op": "add-node", "id": "site:S-103", "kind": "Space", "type": "MeetingRoom",
+				 "geometry": "area", "frame": "frame:building", "label": "Meeting Room C"},
+				{"op": "relate", "id": "site:S-103", "within": "site:L-01",
+				 "memberOf": ["site:Z-01"], "boundary": ["geom:L-01"]}
+			]}`,
+			expectedEffects: [][]string{
+				{"created node site:S-103"},
+				{"modified node site:S-103"},
+			},
+			expectedFiles: []string{"entities/site.dfc"},
 		},
 		{
 			name: "applies a batch which corrects one measurement and retracts another",

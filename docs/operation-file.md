@@ -167,7 +167,52 @@ A room's corners, walls and outline in one operation.
 | `tolerance` | The declared tolerance two corners are judged to be one point by, which is also what says the list closed. Required. |
 | `corners` | The corners, in order and authored closed: the last names the first corner again. At least one. |
 | `noSnap` | Write a new vertex at every corner, even where one is already there. Every corner that would have been reused is still reported. |
-| `claim` | The evidence every position claim is written with. Its `value` is not read: a corner's value is the corner. |
+| `bounds` | The semantic node the loop bounds. Naming one writes the `boundary` reference on that node in the same operation, which is the same child `relate` writes. |
+| `vertexMark` | What the minted vertex ids are named after. The tag of the form by default, which mints `<namespace>:vertex-<n>`. |
+| `edgeMark` | What the minted edge ids are named after. |
+| `loopMark` | What the minted loop id is named after. |
+| `claim` | The evidence every position claim is written with. Its `value` and its `id` are not read: a corner's value is the corner, and every claim a scaffold writes is one of many rather than one somebody named. |
+
+Ids are minted as `<namespace>:<mark>-<n>`: the namespace, the mark, and the lowest ordinal
+nothing in the model already holds. The three mark members are what put a generated batch
+into the consuming repository's own scheme rather than into this engine's — the alternative
+is rewriting every id the batch minted afterwards, which is the same hand pass a scaffold
+exists to remove. A mark is a name and not a schema, and nothing is inferred back out of one
+([0002](./decisions/0002-immutable-id-mutable-label.md)).
+
+The `unit` of the claim is the unit the corners are written in, and it defaults to the one
+the position predicate declares. A corner is a coordinate in a frame rather than a value
+somebody chose a unit for, so the only unit it may legally be in is already known; a unit
+written and disagreeing with the declaration is refused exactly as it always was.
+
+### `relate`
+
+What a node is inside, grouped with and bounded by.
+
+| Member | Meaning |
+|--------|---------|
+| `id` | The node being related. Required. |
+| `within` | The node that strictly contains it. A node is contained by one other node, so writing one replaces whatever parent was written before. |
+| `memberOf` | Zones it is grouped into, as an array. They are added to whatever memberships the node already declares. |
+| `boundary` | Loops that bound it, as an array, added the same way. |
+
+At least one of the three is required: a relation that relates the node to nothing is
+refused rather than applied as a change that did nothing.
+
+The three are different relations and are never collapsed into one. Containment is physical
+enclosure, nests strictly and is at most one; membership is arbitrary grouping and is many to
+many; a boundary leaves the semantic family altogether and names a loop. None of them is ever
+derived from another ([0001](./decisions/0001-two-node-families.md)).
+
+**Nothing is resolved here.** A parent that does not exist, a parent the hierarchy does not
+permit, a `memberOf` naming something that is not a Zone and a `boundary` naming something
+that is not a loop are each refused when the model the batch produces is interpreted, with
+the diagnostics that load would have raised — which are the same ones the same mistake gets
+when it is typed into a file by hand.
+
+This is the other half of `add-node`, which writes a node's own axes and none of its
+references. A batch that creates a room, a circuit and a receptacle and cannot then say the
+receptacle is in the room and on the circuit has written three things and no model.
 
 ### `classify-type`
 

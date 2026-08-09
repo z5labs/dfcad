@@ -219,6 +219,13 @@ var commands = []command{
 		writes:  true,
 	},
 	{
+		name:    "relate",
+		summary: "say what a node is inside, grouped with and bounded by",
+		usage:   relateUsage,
+		run:     runRelate,
+		writes:  true,
+	},
+	{
 		name:    "classify-type",
 		summary: "say how a scheme outside this model names a type",
 		usage:   classifyTypeUsage,

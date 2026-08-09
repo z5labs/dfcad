@@ -422,3 +422,191 @@ func spelledKinds(notices []noticeEntry) []string {
 	}
 	return out
 }
+
+// subsystemRegistry is the vocabulary the batch below authors against.
+//
+// Every type carries the invariant which judges the relation it takes part in,
+// so that a run of `check` over the model the batch produced has rules bound to
+// what the batch wrote rather than to nothing at all: a check which ran no
+// checks says nothing about whether the batch related anything correctly.
+const subsystemRegistry = `(project
+  (label "Subsystem fixture")
+  (globalid-namespace "https://example.org/models/subsystem"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(tolerance coincident
+  (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))
+
+(type Parcel
+  (kind Site)
+  (geometry area)
+  (description "The ground the project sits on."))
+
+(type OfficeBuilding
+  (kind Building)
+  (geometry solid)
+  (description "A building let as offices.")
+  (invariant within-resolves))
+
+(type Level
+  (kind Storey)
+  (geometry area)
+  (description "One floor plate of a building.")
+  (invariant within-resolves))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings.")
+  (invariant within-resolves)
+  (invariant zone-members-resolve)
+  (invariant boundary-loops-close (tolerance coincident) (position position)))
+
+(type Receptacle
+  (kind Element)
+  (geometry line)
+  (description "A socket outlet.")
+  (invariant within-resolves)
+  (invariant zone-members-resolve))
+
+(type Circuit
+  (kind Zone)
+  (geometry absent)
+  (description "The outlets fed from one protective device."))
+
+(route geometry
+  (namespace geom)
+  (file "entities/geometry.dfc")
+  (description "Vertices, edges and loops, which declare neither a kind nor a type."))
+
+(route parcels (kind Site) (type Parcel) (file "entities/site.dfc"))
+(route buildings (kind Building) (type OfficeBuilding) (file "entities/site.dfc"))
+(route levels (kind Storey) (type Level) (file "entities/site.dfc"))
+(route rooms (kind Space) (type MeetingRoom) (file "entities/site.dfc"))
+(route receptacles (kind Element) (type Receptacle) (file "entities/site.dfc"))
+(route circuits (kind Zone) (type Circuit) (file "entities/site.dfc"))
+`
+
+// relatedSubsystem is a batch which authors a whole related subsystem: the
+// nodes, the shape of the room, and every reference between them.
+//
+// It is the batch the write path could not previously express. Everything below
+// the scaffold used to have to be typed into the files by hand afterwards —
+// roughly two hundred edits per floor on a real conversion — and a wrong-but-
+// valid parent is not something the engine can refuse, so every one of them was
+// a chance to file a node in the wrong place.
+const relatedSubsystem = `{
+  "version": 1,
+  "operations": [
+    {"op": "add-node", "id": "site:P-01", "kind": "Site", "type": "Parcel",
+     "geometry": "area", "frame": "frame:building", "label": "Riverside plot"},
+    {"op": "add-node", "id": "site:B-01", "kind": "Building", "type": "OfficeBuilding",
+     "geometry": "solid", "frame": "frame:building", "label": "Block A"},
+    {"op": "add-node", "id": "site:L-01", "kind": "Storey", "type": "Level",
+     "geometry": "area", "frame": "frame:building", "label": "Level 1"},
+    {"op": "add-node", "id": "site:S-101", "kind": "Space", "type": "MeetingRoom",
+     "geometry": "area", "frame": "frame:building", "label": "Meeting Room A"},
+    {"op": "add-node", "id": "site:R-01", "kind": "Element", "type": "Receptacle",
+     "geometry": "line", "frame": "frame:building", "label": "Socket A1"},
+    {"op": "add-node", "id": "site:C-01", "kind": "Zone", "type": "Circuit",
+     "label": "Small power circuit 3"},
+
+    {"op": "relate", "id": "site:B-01", "within": "site:P-01"},
+    {"op": "relate", "id": "site:L-01", "within": "site:B-01"},
+    {"op": "relate", "id": "site:S-101", "within": "site:L-01"},
+    {"op": "relate", "id": "site:R-01", "within": "site:S-101", "memberOf": ["site:C-01"]},
+
+    {"op": "scaffold-loop", "namespace": "geom", "frame": "frame:building",
+     "predicate": "position", "tolerance": "coincident",
+     "label": "Meeting Room A boundary", "bounds": "site:S-101",
+     "vertexMark": "V", "edgeMark": "E", "loopMark": "L",
+     "corners": ["0 0 0", "4 0 0", "4 3 0", "0 3 0", "0 0 0"],
+     "claim": {"source": "Interior control set IC-01, Acme Surveys",
+               "method": "method:total-station",
+               "accuracy": ["independent 0.004 m"],
+               "date": "2026-02-18"}}
+  ]
+}
+`
+
+// subsystemFixture is an empty model with the vocabulary above, which is what a
+// conversion starts from: the registry is written and nothing is in it yet.
+func subsystemFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          subsystemRegistry,
+		"entities/site.dfc":     "",
+		"entities/geometry.dfc": "",
+	}
+}
+
+// TestApplyAuthorsACompleteRelatedSubsystem is the whole of what this story is
+// for: one batch writes the nodes, the shape and every reference between them,
+// and the model it produces passes `check` with nothing edited by hand.
+func TestApplyAuthorsACompleteRelatedSubsystem(t *testing.T) {
+	result, root := applied(t, subsystemFixture(), relatedSubsystem)
+
+	assert.Equal(t, 11, result.Totals.Operations)
+
+	// The relations are on the nodes the batch created, in the same change.
+	within := func(id dfcad.ID) dfcad.ID {
+		parent, _ := node(t, root, id).Within()
+		return parent
+	}
+
+	assert.Equal(t, dfcad.ID("site:P-01"), within("site:B-01"))
+	assert.Equal(t, dfcad.ID("site:B-01"), within("site:L-01"))
+	assert.Equal(t, dfcad.ID("site:L-01"), within("site:S-101"))
+	assert.Equal(t, dfcad.ID("site:S-101"), within("site:R-01"))
+	assert.Equal(t, []dfcad.ID{"site:C-01"}, node(t, root, "site:R-01").MemberOf())
+
+	// And the room references the outline the same batch minted, under the
+	// caller's own naming scheme rather than this engine's.
+	assert.Equal(t, []dfcad.ID{"geom:L-1"}, node(t, root, "site:S-101").Boundaries())
+
+	stdout, _ := invoke(t, exitSuccess, root, "check")
+
+	checked := listed[checkResult](t, stdout)
+
+	assert.Empty(t, checked.Violations)
+	assert.Positive(t, checked.Summary.Ran, "the invariants the types declare were bound to what the batch wrote")
+	assert.Equal(t, checked.Summary.Ran, checked.Summary.Passed)
+	assert.Zero(t, checked.Summary.Failed)
+}
+
+// TestApplyIsDeterministicAndLeavesTheDigestKeyAlone applies one batch to two
+// copies of one model and requires the bytes and the content digest to be the
+// same.
+//
+// The digest is the key every derived answer is cached against, so a write path
+// which produced two different trees from one batch would invalidate caches for
+// no reason anybody could see, and two runs of a conversion would diff.
+func TestApplyIsDeterministicAndLeavesTheDigestKeyAlone(t *testing.T) {
+	first, firstRoot := applied(t, subsystemFixture(), relatedSubsystem)
+	second, secondRoot := applied(t, subsystemFixture(), relatedSubsystem)
+
+	assert.Equal(t, contents(t, firstRoot), contents(t, secondRoot), "one batch writes one tree")
+
+	assert.Equal(t, spelledEffects(first.Effects(), true), spelledEffects(second.Effects(), true))
+
+	firstDigest, err := dfcad.DigestOf(firstRoot)
+	require.NoError(t, err)
+
+	secondDigest, err := dfcad.DigestOf(secondRoot)
+	require.NoError(t, err)
+
+	require.True(t, firstDigest.Known())
+	assert.Equal(t, firstDigest, secondDigest, "the digest key is a function of the tree and nothing else")
+}

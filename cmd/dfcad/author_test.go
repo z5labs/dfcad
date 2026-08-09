@@ -577,3 +577,126 @@ func effects(result writeResult) []string {
 
 	return out
 }
+
+func TestRunRelate(t *testing.T) {
+	testCases := []struct {
+		name             string
+		args             []string
+		expectedEffects  []string
+		expectedWritten  string
+		expectedWithin   dfcad.ID
+		expectedMemberOf []dfcad.ID
+	}{
+		{
+			name:            "writes what strictly contains a node",
+			args:            []string{"relate", "--within", "site:S-101", "site:S-103"},
+			expectedEffects: []string{"modified node site:S-103"},
+			expectedWritten: "(within site:S-101)",
+			expectedWithin:  "site:S-101",
+		},
+		{
+			name:             "writes the zones a node is grouped into",
+			args:             []string{"relate", "--member-of", "site:C-01", "site:S-103"},
+			expectedEffects:  []string{"modified node site:S-103"},
+			expectedWritten:  "(member-of site:C-01)",
+			expectedMemberOf: []dfcad.ID{"site:C-01"},
+		},
+		{
+			name: "writes a containment and a membership in one change",
+			args: []string{
+				"relate", "--within", "site:S-101", "--member-of", "site:C-01", "site:S-103",
+			},
+			expectedEffects:  []string{"modified node site:S-103"},
+			expectedWritten:  "(within site:S-101)",
+			expectedWithin:   "site:S-101",
+			expectedMemberOf: []dfcad.ID{"site:C-01"},
+		},
+		{
+			// Containment is at most one, so a new parent supersedes the one
+			// which was written rather than being written beside it: two of
+			// them is a node claiming two parents, which is a model that does
+			// not load.
+			name:            "replaces the parent a node already had",
+			args:            []string{"relate", "--within", "site:S-103", "site:S-102"},
+			expectedEffects: []string{"modified node site:S-102"},
+			expectedWritten: "(within site:S-103)",
+			expectedWithin:  "site:S-103",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, root := wrote(t, testCase.args...)
+
+			assert.Equal(t, testCase.expectedEffects, spelledEffects(result.Effects(), true))
+			assert.Contains(t, entities(t, root), testCase.expectedWritten)
+
+			related := node(t, root, dfcad.ID(testCase.args[len(testCase.args)-1]))
+
+			within, _ := related.Within()
+			assert.Equal(t, testCase.expectedWithin, within)
+			assert.Equal(t, testCase.expectedMemberOf, orNone(related.MemberOf()))
+		})
+	}
+}
+
+// TestRunRelateRefusesAnInvocationWhichRelatesNothing is its own function
+// because it is about the invocation rather than about the model: a relation
+// naming no relation is wrong whatever the tree holds, and it is answered
+// before the tree is read.
+func TestRunRelateRefusesAnInvocationWhichRelatesNothing(t *testing.T) {
+	assert.Contains(t, refusal(t, "relate", "site:S-103"), dfcad.ErrNoRelation.Error())
+}
+
+// TestRunRelateIsRefusedByTheModelItWouldProduce checks that relating a node to
+// something which does not exist, or which the hierarchy forbids, comes back as
+// the diagnostic a load of the result would have raised.
+//
+// It is what makes the write path and a hand-authored file answer the same
+// mistake in the same words: the rules live in the loader and are not copied
+// into the command.
+func TestRunRelateIsRefusedByTheModelItWouldProduce(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{
+			name:     "a parent nothing in the model holds",
+			args:     []string{"relate", "--within", "site:S-909", "site:S-103"},
+			expected: "expected a node id something in this model holds, found site:S-909",
+		},
+		{
+			name:     "a membership naming something which is not a Zone",
+			args:     []string{"relate", "--member-of", "site:S-101", "site:S-103"},
+			expected: "expected a node of kind Zone",
+		},
+		{
+			name:     "a boundary naming a node rather than a loop",
+			args:     []string{"relate", "--boundary", "site:S-101", "site:S-103"},
+			expected: "site:S-101",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, authored())
+			before := contents(t, root)
+
+			stdout, stderr := invoke(t, exitLoad, root, testCase.args...)
+
+			assert.Empty(t, stdout, "a refused change writes no result")
+			assert.Equal(t, before, contents(t, root), "a refused change writes nothing")
+			assert.Contains(t, stderr, testCase.expected)
+		})
+	}
+}
+
+// orNone is a list of ids as a test compares it, which is nil for an empty one
+// so that "wrote none" and "wrote an empty list" read as one expectation.
+func orNone(ids []dfcad.ID) []dfcad.ID {
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
+}
