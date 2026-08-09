@@ -1616,18 +1616,23 @@ func (m *measurer) combine(region *SemanticNode, rings []*outline) {
 // depths counts, for each ring of a region, how many of the others hold it,
 // which is what the even-odd rule takes a ring's area away by.
 //
-// Where nothing bends the count is taken at the corners, which is
-// [measurer.nesting] and is the count this package has always nested by. A
-// region of straight rings is measured identically whether or not the survey
+// The rings are projected into the plane they share and counted there by
+// [measurer.nestings], which is the same count and the same code
+// [Topology.RegionOf] orients its rings by. One count is what stops the two
+// commands disagreeing about one shape: a plan drawn from an overlay and an area
+// summed here are different arithmetic over the same nesting, and where the
+// nesting was decided twice they were free to decide it differently.
+//
+// A region of straight rings is measured identically whether or not the survey
 // names a chord, down to the last figure: nothing is drawn for it and nothing
 // reads the name.
 //
 // Where something bends the count cannot be taken at the corners at all. Nesting
-// decides whether a ring is a hole by casting a ray from one ring at another,
-// and that ray is cast at the chords: a courtyard whose wall bows out past a
-// corner of the plate around it is inside the plate and outside its chords, so
-// the answer would flip on which side of a bulge a corner happened to fall — an
-// area wrong by a whole ring rather than by a sag.
+// asks which side of one ring another lies on, and asking that at the chords of
+// a curve is a different question from asking it at the curve: a courtyard whose
+// wall bows out past a corner of the plate around it is inside the plate and
+// outside its chords, so the answer would flip on which side of a bulge a corner
+// happened to fall — an area wrong by a whole ring rather than by a sag.
 //
 // So the rings are drawn and the count is taken at the segments, to the chord
 // tolerance the survey names. A survey which names none is refused rather than
@@ -1647,22 +1652,29 @@ func (m *measurer) depths(region *SemanticNode, rings []*outline) ([]int, bool) 
 		}
 	}
 
-	if !bent {
-		depths := make([]int, len(rings))
-		for i := range rings {
-			depths[i] = m.nesting(rings, i)
+	var tolerance Tolerance
+	if bent {
+		if m.survey.Chord == "" {
+			m.add(m.unnestable(region, rings))
+			return nil, false
 		}
-		return depths, true
+
+		named, ok := m.chord(m.survey.Chord, m.span)
+		if !ok {
+			return nil, false
+		}
+
+		tolerance = named
 	}
 
-	if m.survey.Chord == "" {
-		m.add(m.unnestable(region, rings))
-		return nil, false
-	}
-
-	tolerance, ok := m.chord(m.survey.Chord, m.span)
-	if !ok {
-		return nil, false
+	for _, one := range rings {
+		if !one.hasArea {
+			// Why is already on a diagnostic from the ring itself, in the
+			// vocabulary of the shape rather than of the arithmetic over it. A
+			// ring which encloses nothing has no inside for another ring to be
+			// on one side of, so it is not asked one.
+			return nil, false
+		}
 	}
 
 	basis, ok := planeOf(rings[0].normal, rings[0].points[0])
@@ -1672,32 +1684,26 @@ func (m *measurer) depths(region *SemanticNode, rings []*outline) ([]int, bool) 
 
 	figure := make([]contour, 0, len(rings))
 	for _, one := range rings {
-		points, _, deviation, ok := m.drawnRing(one, tolerance)
-		if !ok {
-			return nil, false
-		}
+		points := one.points
 
-		projected := make(contour, 0, len(points))
-		for _, point := range points {
-			projected = append(projected, basis.project(point))
-		}
-
-		figure = append(figure, projected)
-		m.result.deviation = math.Max(m.result.deviation, deviation)
-	}
-
-	m.result.chord = tolerance
-
-	depths := make([]int, len(figure))
-	for i := range figure {
-		for j, other := range figure {
-			if j != i && len(figure[i]) > 0 && other.holds(figure[i][0]) {
-				depths[i]++
+		if bent {
+			drawn, _, deviation, ok := m.drawnRing(one, tolerance)
+			if !ok {
+				return nil, false
 			}
+
+			points = drawn
+			m.result.deviation = math.Max(m.result.deviation, deviation)
 		}
+
+		figure = append(figure, project(points, basis))
 	}
 
-	return depths, true
+	if bent {
+		m.result.chord = tolerance
+	}
+
+	return m.nestings(region, rings, figure)
 }
 
 // unnestable reports a region of several rings, one of which bends, which no
@@ -1859,24 +1865,52 @@ func (m *measurer) twoPlanes(region *SemanticNode, first, other *outline, found,
 	}
 }
 
-// nesting counts how many of a region's other rings hold the one at index.
+// crossingRings reports two rings of one region which neither nest one inside
+// the other nor lie beside one another.
 //
-// The count and not merely whether it is held: a ring inside a hole is an island
-// and is added back, which is the even-odd rule and is what makes a courtyard
-// with a pavilion in it come out right.
-func (m *measurer) nesting(rings []*outline, index int) int {
-	var depth int
-
-	for i, other := range rings {
-		if i == index {
-			continue
-		}
-		if other.holds(rings[index].shiftedTo(other)) {
-			depth++
-		}
+// The even-odd rule is the whole of how a region of several rings is read: a
+// ring inside an odd number of others is a hole and is taken away, and one
+// inside an even number is added. Two rings which cross are neither. Summing
+// them would count what they share twice, and unioning them would need a rule
+// nothing in the model has stated — so the pair is named and no area comes back,
+// which is the same refusal a total which comes out at nothing gets.
+func (m *measurer) crossingRings(region *SemanticNode, first, second *outline) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     m.span,
+		Message: fmt.Sprintf(
+			"expected every loop bounding %s to be inside another or beside it, found that %s and %s cross: each holds "+
+				"part of the other and neither holds the whole of it",
+			nodeName(region), geometricName(loopTag, first.loop.id), geometricName(loopTag, second.loop.id),
+		),
+		Hint: "a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where " +
+			"the whole of it is inside that one; two rings which overlap in part are two regions, or one boundary drawn " +
+			"through the other by mistake",
 	}
+}
 
-	return depth
+// indistinctRings reports two rings of one region which nothing tells apart: no
+// point of the one is off the other's boundary, so there is nothing to decide
+// which of them is inside which.
+//
+// It is a different thing to have drawn from two rings which cross, and says so.
+// Two loops running along one another are one boundary written twice — the same
+// wall referenced by two loops, or a ring left behind by an edit — and reporting
+// them as crossing would send whoever reads it looking for an overlap which is
+// not there.
+func (m *measurer) indistinctRings(region *SemanticNode, first, second *outline) Diagnostic {
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     m.span,
+		Message: fmt.Sprintf(
+			"expected every loop bounding %s to be inside another or beside it, found no point of %s off the boundary "+
+				"of %s, which leaves nothing to decide which of the two holds the other",
+			nodeName(region), geometricName(loopTag, first.loop.id), geometricName(loopTag, second.loop.id),
+		),
+		Hint: "a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where " +
+			"the whole of it is inside that one; two loops drawn along one another are one boundary written twice, " +
+			"which bounds the region once",
+	}
 }
 
 // walked is the corners the traversal passes through, in the order it reaches
@@ -2014,43 +2048,6 @@ func (r *outline) measure() {
 		pointScale(weighted, 1/(3*r.magnitude*r.magnitude)),
 		pointScale(bulges, 2/r.magnitude),
 	))
-}
-
-// shiftedTo is one of the ring's corners expressed relative to another ring's
-// origin, which is the point a containment test against that ring is made with.
-func (r *outline) shiftedTo(other *outline) Point {
-	return pointSub(r.points[0], other.origin)
-}
-
-// holds reports whether a point projected onto the ring's plane falls inside it,
-// by counting the crossings of a ray cast from it.
-//
-// The ring is projected by dropping the axis its normal is largest along, which
-// is the one projection of it which cannot collapse it to a line.
-func (r *outline) holds(point Point) bool {
-	first, second := axes(r.axis)
-
-	x, y := point[first], point[second]
-
-	var inside bool
-	count := len(r.shifted)
-
-	for i := range count {
-		a, b := r.shifted[i], r.shifted[(i+1)%count]
-
-		ax, ay := a[first], a[second]
-		bx, by := b[first], b[second]
-
-		if (ay > y) == (by > y) {
-			continue
-		}
-
-		if x < ax+(y-ay)/(by-ay)*(bx-ax) {
-			inside = !inside
-		}
-	}
-
-	return inside
 }
 
 // vertex measures one corner, reporting a corner nothing says the position of.

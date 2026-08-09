@@ -363,6 +363,230 @@ func TestMeasureSubtractsARingInsideAnother(t *testing.T) {
 	})
 }
 
+// TestMeasureDoesNotDependOnWhichCornerTheRingsWereWrittenFrom is its own
+// function because what it asserts is an equality between four answers rather
+// than any one answer's value: the same two rings, with one of them written from
+// each of three of its corners and once walked the other way round, have to
+// measure the same to the last bit.
+//
+// The counter is the shape which made this worth writing down. Its return abuts
+// its body along part of a wall, so two of the return's corners lie on the
+// body's boundary — and a nesting decided at whichever corner the edge list
+// happened to start from called the return a hole whenever the loop was written
+// from one of those two. Sixteen square metres and eight came back as eight.
+func TestMeasureDoesNotDependOnWhichCornerTheRingsWereWrittenFrom(t *testing.T) {
+	model := loadMeasuredModel(t, "abutting")
+
+	shared, diags := model.measure(t, "site:S-01")
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	area, ok := shared.Area()
+	require.True(t, ok)
+	assert.Equal(t, 24.0, area, "sixteen square metres of counter and eight of return, which abut and do not overlap")
+
+	testCases := []struct {
+		name   string
+		region ID
+	}{
+		{
+			name:   "measures the return written from the corner it shares with the body the same",
+			region: "site:S-01",
+		},
+		{
+			name:   "measures the return written from the corner on the body's wall the same",
+			region: "site:S-02",
+		},
+		{
+			name:   "measures the return written from the corner clear of the body the same",
+			region: "site:S-03",
+		},
+		{
+			name:   "measures the return walked the other way round the same",
+			region: "site:S-04",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			other, diags := model.measure(t, testCase.region)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			assert.Equal(t, valuesOf(shared), valuesOf(other))
+		})
+	}
+}
+
+// TestMeasureNestsRingsWhichMeetWithoutOneHoldingTheOther is its own function
+// because every case is a region of two rings, which the single-ring table has
+// no case for, and because the point of it is the arrangements either side of
+// the one the counter is: two rings union unless one of them is wholly inside
+// the other, and touching is not being inside.
+func TestMeasureNestsRingsWhichMeetWithoutOneHoldingTheOther(t *testing.T) {
+	testCases := []struct {
+		name     string
+		region   ID
+		area     float64
+		length   float64
+		centroid Point
+		bounds   Box
+	}{
+		{
+			name:     "unions two rings which abut along part of a wall",
+			region:   "site:S-01",
+			area:     24,
+			length:   28,
+			centroid: Point{112.0 / 24, 40.0 / 24, 0},
+			bounds:   Box{Min: Point{0, 0, 0}, Max: Point{8, 4, 0}, Unit: "m"},
+		},
+		{
+			name:     "adds two rings which share nothing",
+			region:   "site:S-21",
+			area:     20,
+			length:   24,
+			centroid: Point{43, 1.8, 0},
+			bounds:   Box{Min: Point{40, 0, 0}, Max: Point{48, 4, 0}, Unit: "m"},
+		},
+		{
+			name:     "adds two rings which meet at one corner",
+			region:   "site:S-31",
+			area:     20,
+			length:   24,
+			centroid: Point{62.6, 2.6, 0},
+			bounds:   Box{Min: Point{60, 0, 0}, Max: Point{66, 6, 0}, Unit: "m"},
+		},
+		{
+			name:     "adds two rings either side of one wall",
+			region:   "site:S-41",
+			area:     24,
+			length:   28,
+			centroid: Point{83, 2, 0},
+			bounds:   Box{Min: Point{80, 0, 0}, Max: Point{86, 4, 0}, Unit: "m"},
+		},
+		{
+			name:     "takes a courtyard which runs the way the plate does away",
+			region:   "site:S-51",
+			area:     84,
+			length:   56,
+			centroid: Point{105, 5, 0},
+			bounds:   Box{Min: Point{100, 0, 0}, Max: Point{110, 10, 0}, Unit: "m"},
+		},
+		{
+			name:     "takes a courtyard which runs against the plate away just the same",
+			region:   "site:S-52",
+			area:     84,
+			length:   56,
+			centroid: Point{105, 5, 0},
+			bounds:   Box{Min: Point{100, 0, 0}, Max: Point{110, 10, 0}, Unit: "m"},
+		},
+	}
+
+	model := loadMeasuredModel(t, "abutting")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			measurement, diags := model.measure(t, testCase.region)
+			require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+			area, ok := measurement.Area()
+			require.True(t, ok)
+			assert.InDelta(t, testCase.area, area, 1e-9)
+
+			length, ok := measurement.Length()
+			require.True(t, ok)
+			assert.InDelta(t, testCase.length, length, 1e-9)
+
+			centroid, ok := measurement.Centroid()
+			require.True(t, ok)
+			for axis := range centroid {
+				assert.InDelta(t, testCase.centroid[axis], centroid[axis], 1e-9, "axis %d", axis)
+			}
+
+			bounds, ok := measurement.Bounds()
+			require.True(t, ok)
+			assert.Equal(t, testCase.bounds, bounds)
+		})
+	}
+}
+
+// TestMeasureRefusesRingsItCannotNest is its own function because the assertion
+// is a refusal beside an absence: rings the even-odd rule cannot be applied to
+// have to come back as the pair named rather than as a figure.
+//
+// The two refusals are separate cases because they are different things to have
+// drawn. Two rings which overlap in part are two shapes; two rings nothing tells
+// apart are one boundary written twice, and a diagnostic which called that a
+// crossing would send whoever read it looking for an overlap which is not there.
+func TestMeasureRefusesRingsItCannotNest(t *testing.T) {
+	got := measureRegions(t, "abutting")
+	assert.Equal(t, expectedMeasureDiagnostics(t, "abutting", got), got)
+
+	testCases := []struct {
+		name   string
+		region ID
+	}{
+		{
+			name:   "names the two rings which cross rather than summing them",
+			region: "site:S-11",
+		},
+		{
+			name:   "names the two rings nothing tells apart rather than nesting one in the other",
+			region: "site:S-12",
+		},
+	}
+
+	model := loadMeasuredModel(t, "abutting")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			measurement, diags := model.measure(t, testCase.region)
+			assert.NotEmpty(t, diags, "a refusal says why")
+
+			area, ok := measurement.Area()
+			assert.False(t, ok)
+			assert.Zero(t, area)
+
+			_, ok = measurement.Centroid()
+			assert.False(t, ok)
+		})
+	}
+}
+
+// TestMeasureAndRegionAgreeAboutOneShape is its own function because what it
+// asserts spans two commands rather than one: `dfcad measure` sums the rings of
+// a region by the even-odd rule and `dfcad plan` overlays them, and the two used
+// to decide which ring was inside which separately. A model could therefore be
+// internally inconsistent with no authoring error in it — one check reading an
+// area of twenty-four and another failing the same claim against eight.
+//
+// Every node of the fixture is measured both ways rather than one named node.
+// The disagreement was found in a shape nobody had thought to look at, and a
+// test which had to be told which node to compare would stop covering whichever
+// one nobody remembered.
+func TestMeasureAndRegionAgreeAboutOneShape(t *testing.T) {
+	model := loadMeasuredModel(t, "abutting")
+
+	for node := range model.nodes.All() {
+		t.Run(string(node.ID()), func(t *testing.T) {
+			measurement, measured := model.topology.MeasureRegion(node, model.boundaries, model.survey)
+			region, read := model.topology.RegionOf(node, model.boundaries, model.survey)
+
+			area, ok := measurement.Area()
+			if !ok {
+				assert.NotEmpty(t, measured, "a measurement with no area says why")
+				assert.NotEmpty(t, read, "and the region read from the same rings refuses it too")
+				assert.True(t, region.Empty(), "a refusal comes back covering nothing")
+				return
+			}
+
+			require.Empty(t, renderBoundaryDiagnostics(t, measured))
+			require.Empty(t, renderBoundaryDiagnostics(t, read))
+
+			assert.InDelta(t, area, region.Area(), 1e-9,
+				"the area summed from the rings and the area overlaid from them are one figure")
+		})
+	}
+}
+
 func TestMeasureRefusesAShapeWhichIsNotOne(t *testing.T) {
 	testCases := []struct {
 		name    string

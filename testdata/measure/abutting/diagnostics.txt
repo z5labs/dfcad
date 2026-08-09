@@ -1,0 +1,18 @@
+testdata/measure/abutting/model.dfc:240:1: error: expected every loop bounding site:S-11 to be inside another or beside it, found that geom:L-21 and geom:L-31 cross: each holds part of the other and neither holds the whole of it
+240 | (node site:S-11
+    | ^^^^^^^^^^^^^^^
+241 |   (label "Two plates which cross")
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ... 5 lines omitted
+247 |   (boundary geom:L-31))
+    | ^^^^^^^^^^^^^^^^^^^^^^^
+    = hint: a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where the whole of it is inside that one; two rings which overlap in part are two regions, or one boundary drawn through the other by mistake
+testdata/measure/abutting/model.dfc:251:1: error: expected every loop bounding site:S-12 to be inside another or beside it, found no point of geom:L-11 off the boundary of geom:L-14, which leaves nothing to decide which of the two holds the other
+251 | (node site:S-12
+    | ^^^^^^^^^^^^^^^
+252 |   (label "One ring written twice")
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ... 5 lines omitted
+258 |   (boundary geom:L-14))
+    | ^^^^^^^^^^^^^^^^^^^^^^^
+    = hint: a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where the whole of it is inside that one; two loops drawn along one another are one boundary written twice, which bounds the region once

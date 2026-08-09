@@ -314,6 +314,16 @@
 // one ring is measured by nesting, so a courtyard subtracts without anything in
 // the model having to declare which loop is the outside one.
 //
+// Which ring is inside which is a property of the two shapes and not of the
+// corner either loop happened to be written down from: the answer is taken over
+// the whole of a ring rather than at one point of it, so rotating a loop's edge
+// list or walking it the other way round leaves every figure unchanged, and two
+// rectangles abutting along a wall union rather than cancel. It is the same
+// nesting [Topology.RegionOf] orients its rings by, which is what stops a plan
+// and a measurement of one node disagreeing about its area. Two rings which
+// cross are neither nested nor beside one another, so the rule has nothing to
+// say about them and the pair is named rather than summed.
+//
 // # Arcs and tessellation
 //
 // An edge which curves is stored as the curve it is. An [Arc] states where the
@@ -343,8 +353,8 @@
 // back then says what it was drawn to ([Region.ChordTolerance]) and how far the
 // drawing fell from the curve ([Region.Deviation]). The one place a measurement
 // needs the same is the even-odd nesting of several rings, which is decided at
-// the corners and cannot be where a bulge reaches past one; the figures it nests
-// are still the arcs', exact whatever the chord was.
+// the boundary each ring was drawn as and cannot be where a bulge reaches past
+// one; the figures it nests are still the arcs', exact whatever the chord was.
 //
 // The other half of that is [Graph.UnreadArcs], which is what stops a chorded
 // boundary being a silent one. A caller who never named the vocabulary an arc is
