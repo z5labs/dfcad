@@ -1,0 +1,55 @@
+(node site:L-01
+  (label "Level 1")
+  (kind Storey)
+  (type OfficeStorey)
+  (geometry solid)
+  (frame frame:building))
+
+; The room which reads. It is here so that the two which do not can be shown
+; not to have taken it off the sheet with them.
+(node site:R-01
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-01)
+  (caption
+    (value "MR-A")
+    (source "Room schedule RS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+
+; A room whose ring does not close, carrying a caption a sheet would print.
+(node site:R-02
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-11)
+  (caption
+    (value "MR-B")
+    (source "Room schedule RS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))
+
+; A room whose ring crosses itself, carrying one too. The two defects are
+; different mistakes with different fixes and the plan treats them the same
+; way, which is what stops which of them a model happens to hold deciding how
+; much of the storey comes back.
+(node site:R-03
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-21)
+  (caption
+    (value "MR-C")
+    (source "Room schedule RS-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))

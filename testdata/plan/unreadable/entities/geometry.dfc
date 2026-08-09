@@ -1,0 +1,67 @@
+; The corners of a room which reads, a room whose ring does not close and a
+; room whose ring crosses itself. The three are drawn far enough apart that
+; nothing here is a question about two rooms overlapping.
+
+; Room A: an ordinary four by three rectangle.
+(vertex geom:V-01 (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (frame frame:building)
+  (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (frame frame:building)
+  (position (value (4.0 3.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (frame frame:building)
+  (position (value (0.0 3.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01 (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (frame frame:building) (vertices geom:V-04 geom:V-01))
+
+(loop geom:L-01 (frame frame:building) (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+; Room B: three walls of a rectangle and no fourth. The traversal ends two
+; metres from the corner it began at, which is a gap and not a rounding.
+(vertex geom:V-11 (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-12 (frame frame:building)
+  (position (value (14.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-13 (frame frame:building)
+  (position (value (14.0 2.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-14 (frame frame:building)
+  (position (value (10.0 2.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-11 (frame frame:building) (vertices geom:V-11 geom:V-12))
+(edge geom:E-12 (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (frame frame:building) (vertices geom:V-13 geom:V-14))
+
+(loop geom:L-11 (frame frame:building) (edges geom:E-11 geom:E-12 geom:E-13))
+
+; Room C: four walls which do close, in an order which crosses in the middle.
+; It is one edge naming the wrong corner and it looks like a bowtie.
+(vertex geom:V-21 (frame frame:building)
+  (position (value (20.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-22 (frame frame:building)
+  (position (value (24.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-23 (frame frame:building)
+  (position (value (20.0 3.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-24 (frame frame:building)
+  (position (value (24.0 3.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-21 (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (frame frame:building) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (frame frame:building) (vertices geom:V-24 geom:V-21))
+
+(loop geom:L-21 (frame frame:building) (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))

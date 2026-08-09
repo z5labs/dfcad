@@ -3112,6 +3112,17 @@ func ExampleGraph_PlanOf() {
 			outline.Node().Kind(), outline.Subject(), outline.Region().Area(), plan.Unit())
 	}
 
+	// Nothing the storey holds is dropped. What could not be drawn comes back
+	// named, with why and with the claims written on it, so that a sheet drawn
+	// from this answer can say what is missing from it rather than render
+	// looking complete. The lighting circuit has no edges, which is ordinary —
+	// and the caption somebody wrote for it is still a caption somebody wrote.
+	for _, undrawn := range plan.Undrawn() {
+		fmt.Printf("%s %s was not drawn: it %s, and carries %d claim\n",
+			undrawn.Node().Kind(), undrawn.Subject(),
+			undrawn.Reason().Description(), len(undrawn.Annotations()))
+	}
+
 	// A node drawn as a line covers nothing and is still drawn: its boundary is
 	// an open run of edges rather than a ring, and the runs of it carry the same
 	// attribution a room's do.
@@ -3149,12 +3160,13 @@ func ExampleGraph_PlanOf() {
 	fmt.Printf("the rings are known to ±%.3f %s\n", combined.Standard(), combined.Unit)
 
 	// Output:
-	// site:L-01: 5 outlines, 13 claims
+	// site:L-01: 5 outlines, 14 claims, 1 not drawn
 	// Space site:A-01 covers 1.0 m²
 	// Element site:D-01 covers 0.0 m²
 	// Element site:H-01 covers 0.0 m²
 	// Space site:R-01 covers 12.0 m²
 	// Space site:R-02 covers 12.0 m²
+	// Element site:C-01 was not drawn: it references no loop, and carries 1 claim
 	//   area: 12.00 m2 — node site:R-01, ring geom:L-01
 	//   caption: "Meeting Room A" — node site:R-01, ring geom:L-01
 	//   caption: "MR-A" — node site:R-01, ring geom:L-01

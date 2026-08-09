@@ -337,14 +337,25 @@ var (
 		// alternative to asking it is reading both geometry files and both
 		// entity files and pairing them up by hand, which is what the
 		// comparison below prices it against.
-		ceiling: 7600,
+		//
+		// The ceiling was 7600 until the answer began naming what it could not
+		// draw. This storey holds sixteen such nodes — twelve partitions, two
+		// doorways and two thresholds, none of which references a loop — and at
+		// about thirty-five tokens each they are seven per cent of the answer.
+		// It is raised rather than absorbed silently because of what the seven
+		// per cent buys: before it, those sixteen were dropped with no entry and
+		// no diagnostic, so this object described a storey of thirteen rooms
+		// which actually holds twenty-nine things, and said nothing about the
+		// difference. An absence is the one thing a caller cannot detect, and
+		// thirty-five tokens is what it costs not to have to.
+		ceiling: 8000,
 		// Two rather than the standing four, because the standing claim would be
 		// a comparison between two different questions. Every other path answers
 		// about one named thing, and reading the whole model is the only other
 		// way to get that answer. This enumerates a whole floor plate — and the
 		// model it is divided by holds two of them plus the building above them,
 		// so the files it genuinely stands in for are about half of what the
-		// comparison prices it against. Measured, it is 2.8 times cheaper than
+		// comparison prices it against. Measured, it is 2.6 times cheaper than
 		// the whole model, which is a little under twice as cheap as reading the
 		// storey it replaces.
 		//

@@ -491,6 +491,17 @@
 // over the claims reported, because each of those is a separate statement about
 // a separate quantity and carries its own accuracy.
 //
+// Nothing the subject contains is dropped. A node the plan cannot draw comes
+// back in [Plan.Undrawn] rather than being left out — with an [UndrawnReason]
+// saying which of the two ways it was undrawable, and with the claims written on
+// it — so [Plan.Outlines] and [Plan.Undrawn] account between them for every
+// descendant of the subject. A circuit group has no edges and is ordinary; a
+// ring which does not close is a defect the diagnostics locate; both are things
+// somebody put inside that storey, and omitting either would report a sheet as
+// complete which is missing a door. Every undrawable node degrades on its own:
+// the rest of the storey is drawn whichever way it was undrawable, and whether
+// the *run* succeeded is the separate question the diagnostics answer.
+//
 // # Derived geometry, and where it is kept
 //
 // Everything above is computed on demand and none of it is stored in the model.
