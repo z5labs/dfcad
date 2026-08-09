@@ -527,6 +527,158 @@ func positionsOf(t *testing.T, source string) int {
 	return ordinates
 }
 
+// mapBowedWall is the one edge of the fixture which states a curve, quoted so
+// that a model claiming none can be made by writing it as an ordinary edge.
+const mapBowedWall = `(edge geom:E-22
+  (frame frame:building)
+  (vertices geom:V-22 geom:V-23)
+  (arc-centre
+    (value (10.0 2.0 0.0) m)
+    (source "Setting-out record SO-2026-014")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18"))
+  (arc-through
+    (value (12.0 2.0 0.0) m)
+    (source "Setting-out record SO-2026-014")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-02-18")))`
+
+// mapUncurved is the fixture with that wall written as the ordinary edge it
+// would be if nobody had surveyed the bow, which is a model carrying no arc
+// claim anywhere.
+func mapUncurved(t *testing.T) map[string]string {
+	t.Helper()
+
+	straight := strings.Replace(mapRoomGeometry, mapBowedWall,
+		`(edge geom:E-22 (frame frame:building) (vertices geom:V-22 geom:V-23))`, 1)
+
+	require.NotEqual(t, mapRoomGeometry, straight, "the quoted wall still matches the fixture")
+
+	files := mapModel()
+	files["geometry/level-01.dfc"] = straight
+
+	return files
+}
+
+// mapFlagsWithoutArcs is the same vocabulary with the two predicates an arc is
+// written under left out, which is how a caller who does not know the model
+// carries curves runs this command.
+func mapFlagsWithoutArcs() []string {
+	return []string{
+		"--position", "position",
+		"--tolerance", "corner",
+		"--chord", "facet",
+		"--crs", "crs",
+	}
+}
+
+// TestRunExportMapSaysWhatItDrewTheDocumentTo is its own function because what
+// it asserts is a property of the artefact rather than of any feature in it.
+//
+// A GML document is positions. A reader holding one cannot tell a ring which
+// follows its curve to a tenth of a metre from one drawn coarsely, so a map
+// which does not say what it was drawn to is one no downstream check can judge.
+func TestRunExportMapSaysWhatItDrewTheDocumentTo(t *testing.T) {
+	result, _, _ := mapping(t, exitSuccess, mapModel(), mapFlags()...)
+
+	require.True(t, result.Derived)
+
+	require.NotNil(t, result.Chord)
+	assert.Equal(t, "facet", result.Chord.Name)
+	assert.Equal(t, 0.1, result.Chord.Value)
+	assert.Equal(t, "m", result.Chord.Unit)
+
+	require.NotNil(t, result.Deviation)
+	assert.Positive(t, result.Deviation.Value, "the fixture holds a curve, which was approximated")
+	assert.LessOrEqual(t, result.Deviation.Value, result.Chord.Value)
+	assert.Equal(t, "m", result.Deviation.Unit)
+
+	assert.Empty(t, result.Chorded, "every curve in the fixture was read")
+}
+
+// TestRunExportMapReadsACurvedEdgeOrSaysItDidNot is its own function because
+// the halves of it are one behaviour, and because this command is the one whose
+// product is a file somebody keeps: a feature drawn straight through a curve
+// nothing read is a boundary in the wrong place in that file, and a deviation
+// of nothing beside a named chord tolerance is this command saying it is in the
+// right one.
+func TestRunExportMapReadsACurvedEdgeOrSaysItDidNot(t *testing.T) {
+	t.Run("names the edge it chorded and reports no deviation from a curve it never read", func(t *testing.T) {
+		result, _, stderr := mapping(t, exitSuccess, mapModel(), mapFlagsWithoutArcs()...)
+
+		require.True(t, result.Derived, "a chorded map is still a map, and is still written")
+
+		require.Len(t, result.Chorded, 1, "one edge of the fixture states a curve")
+		assert.Equal(t, "geom:E-22", result.Chorded[0].Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, result.Chorded[0].Predicates,
+			"the predicates to name, which is what makes the report actionable")
+		assert.NotEmpty(t, result.Chorded[0].Span.String())
+
+		require.NotNil(t, result.Chord, "what was asked for is still what was asked for")
+		assert.Equal(t, "facet", result.Chord.Name)
+
+		assert.Nil(t, result.Deviation,
+			"the bowed wall was run straight through, so nothing here achieved anything against it")
+
+		assert.Contains(t, stderr, "geom:E-22", "and a person is told the same thing")
+	})
+
+	t.Run("says nothing about curves for a model which claims none", func(t *testing.T) {
+		result, _, stderr := mapping(t, exitSuccess, mapUncurved(t), mapFlags()...)
+
+		assert.Empty(t, result.Chorded)
+
+		// A model carrying no arc claim gets the answer it always got: four
+		// straight walls were followed exactly, and that zero is true.
+		require.NotNil(t, result.Chord)
+		require.NotNil(t, result.Deviation)
+		assert.Zero(t, result.Deviation.Value)
+
+		assert.NotContains(t, stderr, "curved edge")
+	})
+
+	t.Run("names it on a run which refused the georeference and wrote nothing", func(t *testing.T) {
+		// A curve nothing read is a fact about the model rather than about the
+		// file, so a run which also cannot say where the model is has two
+		// things wrong with it. Reporting one of them sends the author back to
+		// fix the registry, run again, and only then find the wall.
+		files := mapModel()
+		files["registry.dfc"] = strings.Replace(files["registry.dfc"],
+			`(parent frame:site-grid)`,
+			`(parent frame:site-grid)
+  (crs "EPSG:6543")`, 1)
+
+		result, _, stderr := mapping(t, exitCheck, files, mapFlagsWithoutArcs()...)
+
+		require.False(t, result.Derived)
+		assert.Empty(t, result.Files)
+
+		require.Len(t, result.Chorded, 1)
+		assert.Equal(t, "geom:E-22", result.Chorded[0].Edge)
+
+		assert.Contains(t, stderr, "geom:E-22")
+		assert.Contains(t, stderr, "frame:building", "and the georeference is still refused")
+
+		assert.Nil(t, result.Chord, "nothing was drawn, so there is no tolerance it was drawn to")
+		assert.Nil(t, result.Deviation)
+	})
+
+	t.Run("reports an edge two features share once", func(t *testing.T) {
+		result, _, _ := mapping(t, exitSuccess, mapModel(), mapFlagsWithoutArcs()...)
+
+		seen := map[string]int{}
+		for _, entry := range result.Chorded {
+			seen[entry.Edge]++
+		}
+
+		for edge, count := range seen {
+			assert.Equal(t, 1, count, "%s is one edge however many regions reach it", edge)
+		}
+	})
+}
+
 // TestRunExportMapNamesTheCoordinateReferenceSystemOnEveryGeometry is its own
 // function because the identifier reaching the file is the whole story: a
 // document whose coordinates name no system is one somebody places by

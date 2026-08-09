@@ -109,9 +109,22 @@ and because a property is what a GIS shows, sorts by and joins on.
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object export-map writes carries "derived", the "digest" of the source tree
-the artefact was derived from, the "schema" it was written in, and "files": one
-entry per file the artefact consists of, each with the "path" it is at and a
-"status" of "written" or "unchanged".
+the artefact was derived from, the "schema" it was written in, the "chord"
+tolerance the document was drawn to with the "deviation" that drawing achieved,
+and "files": one entry per file the artefact consists of, each with the "path"
+it is at and a "status" of "written" or "unchanged".
+
+The chord and the deviation are of the document rather than of any one feature,
+and they are in the answer because the file carries neither: a GML document is
+positions, and a reader holding one cannot tell a ring which follows its curve
+to a tenth of a foot from one drawn coarsely. They are what a downstream check
+reads to assert the layer was drawn to the tolerance it intended.
+
+Where a curve went unread the object carries "chorded": the edges which state
+one, each with the predicates it states it under, and no "deviation" at all. A
+feature drawn straight through a curve nothing read is a boundary in the wrong
+place in a file somebody keeps, and a deviation of nothing beside a named chord
+tolerance would be this command saying it is in the right one.
 
 Exit code 1 is a model no artefact could be made of: a region which could not be
 drawn, one which could not be carried into the root frame, a coordinate
@@ -195,6 +208,41 @@ type exportMapResult struct {
 	// Schema is the version of GML the document conforms to.
 	Schema string `json:"schema,omitempty"`
 
+	// Chord is the tolerance the curves in the document were drawn to and
+	// Deviation how far the worst segment of the worst feature actually falls
+	// from the curve it stands in for, in the unit that tolerance is declared
+	// in. Both describe the whole document rather than any one feature, which
+	// is the granularity a consumer of a layer has.
+	//
+	// They are here because the file carries neither. A GML document is
+	// positions, so a reader holding one has no way to tell a ring which
+	// follows its curve to a tenth of a foot from one which was drawn coarsely
+	// — and a map is drawn once and read for years. Reporting them is what lets
+	// a downstream check assert that the layer it was handed was drawn to the
+	// tolerance it intended.
+	//
+	// The unit is the chord tolerance's own, which is the frame's: a tolerance
+	// declared in any other unit than the frame it is applied in refuses the
+	// drawing outright, so every region in a document which was written shares
+	// this one.
+	//
+	// Both are absent for a run which drew no curve to any tolerance at all,
+	// and Deviation alone is absent where Chorded below is not — see there.
+	Chord     *toleranceEntry `json:"chord,omitempty"`
+	Deviation *measuredValue  `json:"deviation,omitempty"`
+
+	// Chorded is the edges of the drawn regions which state a curve this run
+	// did not read, each with the predicates it states it under, over the whole
+	// model and each edge once. Absent for a run which read every curve and for
+	// a model which claims none.
+	//
+	// The artefact is the reason this is reported and the reason Deviation is
+	// not reported beside it. A feature drawn straight through a curve is a
+	// parcel boundary in the wrong place in a file somebody keeps, and a
+	// deviation of nothing written next to a named chord tolerance is an
+	// affirmative statement that it is in the right one.
+	Chorded []chordedEntry `json:"chorded,omitempty"`
+
 	// Files is one entry per file the artefact consists of. It describes files
 	// which are on disk and never anything else, and it is empty rather than
 	// absent when there are none.
@@ -275,7 +323,13 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		result.Digest = digest.String()
 	}
 
-	collection, diags := drawnMap(graph, drawn, georeference{identifier: *crs})
+	collection, made, diags := drawnMap(graph, drawn, georeference{identifier: *crs})
+
+	// The curves nothing read are a fact about the model rather than about the
+	// file, so they are written whether or not a file came of it: a refused run
+	// which also chorded a boundary has two things wrong with it and reporting
+	// one of them sends the author round twice.
+	result.Chorded = made.chorded
 
 	if destination == "" {
 		destination = filepath.Join(dfcad.ExportDir(globals.Root), digest.String(), mapFile)
@@ -310,6 +364,19 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	result.Schema = mapSchema
 	result.Files = append(result.Files, exportedFile{Path: destination, Status: status})
 
+	// What the document was drawn to, on every run which drew anything. The
+	// deviation goes with it only where every curve was read: a run which
+	// chorded one is a document whose distance from the boundary it came from
+	// is however far that wall bows, and this figure is not it.
+	if made.chord.Name != "" {
+		chord := declared(made.chord)
+		result.Chord = &chord
+
+		if len(made.chorded) == 0 {
+			result.Deviation = &measuredValue{Value: made.deviation, Unit: string(made.chord.Unit)}
+		}
+	}
+
 	reportExportMap(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
@@ -329,6 +396,23 @@ func reportExportMap(result exportMapResult, globals *globals, stderr io.Writer)
 	for _, file := range result.Files {
 		_, _ = fmt.Fprintf(stderr, "%s: %s (%s)\n", file.Path, file.Status, result.Schema)
 	}
+
+	// What it was drawn to, said once for the document. A person reading this
+	// has the same question the machine contract answers above and no file to
+	// read it out of; where a curve went unread there is no deviation to say,
+	// and the warnings which say why are already on this stream.
+	if result.Chord == nil {
+		return
+	}
+
+	if result.Deviation == nil {
+		_, _ = fmt.Fprintf(stderr, "drawn to %s, past %s\n",
+			result.Chord.Name, plural(len(result.Chorded), "unread curve"))
+		return
+	}
+
+	_, _ = fmt.Fprintf(stderr, "drawn to %s, within %s %s of the boundary\n",
+		result.Chord.Name, figure(result.Deviation.Value), result.Deviation.Unit)
 }
 
 // drawnMap is the model as a vector layer holds it, and whatever stopped it
@@ -341,19 +425,26 @@ func reportExportMap(result exportMapResult, globals *globals, stderr io.Writer)
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)) — and
 // a writer which knew that a feature has a kind would be usable only by the one
 // program whose kinds they are.
-func drawnMap(graph *dfcad.Graph, drawn shapes, sited georeference) (gml.Collection, []dfcad.Diagnostic) {
+func drawnMap(graph *dfcad.Graph, drawn shapes, sited georeference) (gml.Collection, tessellated, []dfcad.Diagnostic) {
 	// The georeference is settled before the walk because it is a fact about
 	// the registry rather than about any region, and it is read by the same
 	// code the IFC export reads it with: which frame may carry it, what shape
 	// the identifier has and where it is written are properties of the model,
 	// and two exports which answered those differently would disagree about
 	// where one model is.
+	out := &cartographer{graph: graph, shapes: drawn}
+
 	placed, refused := georeferenced(graph.Registry(), graph.Frames(), sited)
 	if len(refused) > 0 {
-		return gml.Collection{}, refused
-	}
+		// A georeference which cannot be written is the end of the document,
+		// and nothing below is worth walking for. The curves nothing read are
+		// still worth reading for: they are a fact about the model rather than
+		// about the file, so an author whose registry is wrong and whose walls
+		// are unread is told both at once rather than sent back twice.
+		out.unread(out.drawable())
 
-	out := &cartographer{graph: graph, shapes: drawn}
+		return gml.Collection{}, out.tessellated, append(refused, out.diags...)
+	}
 
 	root, rooted := graph.Frames().Root()
 	if rooted {
@@ -368,7 +459,31 @@ func drawnMap(graph *dfcad.Graph, drawn shapes, sited georeference) (gml.Collect
 		Type:      mapType,
 		CRS:       placed.srsName(),
 		Features:  out.features(rooted),
-	}, out.diags
+	}, out.tessellated, out.diags
+}
+
+// tessellated is what a walk which drew a layer has to say about the drawing
+// itself rather than about any feature of it.
+//
+// It is one value for the whole document because a layer is one artefact: a
+// consumer opens the file, not the twelfth region of it, and the question it
+// has is whether what it opened follows the model to the tolerance it asked
+// for.
+type tessellated struct {
+	// chord is the declared tolerance the curves were drawn to. It is one
+	// tolerance across the document rather than one per region, because a
+	// tolerance declared in a unit other than the frame it is applied in
+	// refuses the drawing.
+	chord dfcad.Tolerance
+
+	// deviation is the furthest any segment of any region falls from the curve
+	// it stands in for, which is the worst the document is anywhere and is at
+	// most chord.
+	deviation float64
+
+	// chorded is every edge of a drawn region which states a curve the run's
+	// vocabulary did not read, each edge once.
+	chorded []chordedEntry
 }
 
 // cartographer is one traversal of the graph into a vector layer's shape.
@@ -383,6 +498,10 @@ type cartographer struct {
 	// the frame the chain is rooted at and the one the coordinate reference
 	// system describes.
 	root dfcad.ID
+
+	// tessellated is what the walk drew everything to, accumulated over every
+	// region it drew and every curve it could not read.
+	tessellated tessellated
 
 	// diags is everything the traversal had to say about the model, in the
 	// order it met it.
@@ -421,17 +540,21 @@ func (c *cartographer) unsited(root dfcad.Frame, placed *recordedCRS) {
 	})
 }
 
-// features is every region the model holds, in id order.
+// drawable is every node the model gave an outline to, in id order.
 //
 // Everything the model gives an outline to is drawn, whatever its kind. A
 // boundary is the model saying where a thing is, and a command which wrote the
 // rooms and left out the plot they stand on would be answering a question
 // about kinds which the model already answered by drawing both.
 //
-// The walk is in id order rather than in the order the files were read, so the
+// The order is by id rather than by the order the files were read, so the
 // document is a property of the model rather than of which file a node
 // happened to be written in.
-func (c *cartographer) features(rooted bool) []gml.Feature {
+//
+// It is its own method because it is asked twice for two reasons: once to draw
+// the layer, and once to say which curves nothing read — and the second is
+// asked even where the first cannot be.
+func (c *cartographer) drawable() []*dfcad.SemanticNode {
 	var nodes []*dfcad.SemanticNode
 
 	for node := range c.graph.Nodes().All() {
@@ -445,6 +568,16 @@ func (c *cartographer) features(rooted bool) []gml.Feature {
 	}
 
 	slices.SortFunc(nodes, byNodeID)
+
+	return nodes
+}
+
+// features is every region the model holds, drawn, in the order [drawable]
+// reaches them.
+func (c *cartographer) features(rooted bool) []gml.Feature {
+	nodes := c.drawable()
+
+	c.unread(nodes)
 
 	out := make([]gml.Feature, 0, len(nodes))
 
@@ -469,6 +602,28 @@ func (c *cartographer) features(rooted bool) []gml.Feature {
 	return out
 }
 
+// unread records every curve the vocabulary this run named could not read,
+// over every region the layer would hold.
+//
+// It is one survey across all of them rather than one per region, which is what
+// makes an edge two rooms share reported once: the same edge met twice is the
+// same finding, and a layer whose answer named it twice would read as two walls
+// drawn straight rather than one.
+//
+// It runs whether or not the frames reach a root. A curve nothing read is a
+// fact about the model, and a run refused for having nowhere to put its
+// coordinates has that wrong with it too.
+func (c *cartographer) unread(nodes []*dfcad.SemanticNode) {
+	subjects := asEntities(nodes...)
+
+	survey := bent(c.graph, c.shapes.position, c.shapes.tolerance, c.shapes.curvature(), subjects...)
+
+	chorded, diags := chordedOf(c.graph, survey, subjects...)
+
+	c.tessellated.chorded = chorded
+	c.diags = append(c.diags, diags...)
+}
+
 // surfaces is one node's outline, drawn, carried into the root frame and taken
 // apart into polygons.
 //
@@ -488,6 +643,16 @@ func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, bool) 
 	region := drawn.Region()
 	if len(region.Pieces()) == 0 {
 		return nil, false
+	}
+
+	// What this region was drawn to, folded into what the document was drawn
+	// to. The tolerance is the same declared value for every region — one in a
+	// unit other than the frame's refuses the drawing — and the deviation is
+	// the worst of them, because the document is as close to the model as its
+	// furthest segment is and no closer.
+	if made := drawn.ChordTolerance(); made.Name != "" {
+		c.tessellated.chord = made
+		c.tessellated.deviation = max(c.tessellated.deviation, drawn.Deviation())
 	}
 
 	// Carried before it is checked for level, and not after. A transform

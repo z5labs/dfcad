@@ -79,6 +79,14 @@ segments, so an arc which needs two and a bit gets three and follows the curve
 more closely than it had to. It is reported so that a caller can check the
 approximation it got against the one it asked for.
 
+Where a curve went unread the object carries "chorded": the edges which state
+one, each with the predicates it states it under, and no "deviation" at all.
+A drawing which ran straight through a curve it never read did not deviate
+from that curve by nothing — it deviated from it by however far the wall bows,
+which is a figure this run has no vocabulary to compute. Writing zero there
+would be the drawing saying it followed a curve it never looked at, and it is
+exactly the field a consumer would assert on to prove that it had.
+
 A node which references no loop — a campus, a warranty — has no outline to
 draw, and that is an answer rather than a failure: the region comes back empty
 and neither the chord tolerance nor the deviation is written, because nothing
@@ -169,7 +177,24 @@ type tessellateResult struct {
 	// Deviation is how far the worst segment of the drawing actually falls from
 	// the curve it stands in for, in Unit. It is at most Chord, and a boundary
 	// with nothing curved in it deviates from itself by nothing.
+	//
+	// Absent where Chorded below is not, and that absence is the whole of this
+	// story's finding. A drawing which ran straight through a curve it never
+	// read deviates from that curve by however far the wall bows, which this
+	// run has no vocabulary to compute; the figure it does have — how far the
+	// segments fall from the straight edges they were drawn from — is nothing,
+	// and writing it here would be an affirmative statement that the curve was
+	// followed exactly.
 	Deviation *measuredValue `json:"deviation,omitempty"`
+
+	// Chorded is the edges of the boundary which state a curve this run did not
+	// read, each with the predicates it states it under. Absent for a run which
+	// read every curve and for a node whose boundary claims none.
+	//
+	// It is in the answer and not only on stderr because every point below it
+	// is on the straight line between two corners rather than on the wall, and
+	// this is a drawing somebody keeps.
+	Chorded []chordedEntry `json:"chorded,omitempty"`
 
 	// Region is what the drawing came to. It is written for a drawing which
 	// succeeded whether or not it covers anything: a node which references no
@@ -234,19 +259,22 @@ func runTessellate(cmd command, args []string, _ io.Reader, stdout, stderr io.Wr
 		return usageError(cmd, err, stderr, false)
 	}
 
-	drawn, diags := graph.Topology().TessellateRegion(
-		node,
-		graph.Boundaries(),
-		bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through}, node),
-		*chord,
-	)
+	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through}, node)
+
+	drawn, diags := graph.Topology().TessellateRegion(node, graph.Boundaries(), survey, *chord)
+
+	// What the survey could not bend. A drawing is the artefact this command
+	// exists to produce, so an edge run straight through a curve is a wrong
+	// shape in a file somebody keeps rather than a figure they can recompute.
+	chorded, unread := chordedOf(graph, survey, node)
+	diags = append(diags, unread...)
 
 	// The diagnostics are for whoever wrote the model, so they go to stderr on
 	// every run and in every format, and whether any of them is an error is what
 	// decides between an answer and a refusal.
 	refused := render(diags, stderr)
 
-	result := reportTessellate(cmd, graph, subject, drawn, *tolerance, !refused)
+	result := reportTessellate(cmd, graph, subject, drawn, chorded, *tolerance, !refused)
 
 	reportTessellateFor(result, drawn, globals, stderr)
 
@@ -416,6 +444,7 @@ func reportTessellate(
 	graph *dfcad.Graph,
 	subject dfcad.ID,
 	drawn dfcad.RegionTessellation,
+	chorded []chordedEntry,
 	tolerance string,
 	ok bool,
 ) tessellateResult {
@@ -423,6 +452,7 @@ func reportTessellate(
 		envelope: newEnvelope(cmd.name),
 		Subject:  string(subject),
 		Derived:  ok,
+		Chorded:  chorded,
 	}
 
 	if digest, known := graph.Digest(); known {
@@ -452,7 +482,16 @@ func reportTessellate(
 		chord := declared(drawn.ChordTolerance())
 		result.Chord = &chord
 
-		result.Deviation = &measuredValue{Value: drawn.Deviation(), Unit: unit}
+		// The deviation is the drawing's distance from the boundary it was
+		// drawn from, and an unread curve is a boundary this drawing never saw.
+		// The figure below would be its distance from the straight edge it
+		// substituted, which is nothing — and nothing, beside a named chord
+		// tolerance, reads as a curve followed exactly. The chord stays,
+		// because what was asked for is still what was asked for; what goes is
+		// the claim about what was achieved.
+		if len(chorded) == 0 {
+			result.Deviation = &measuredValue{Value: drawn.Deviation(), Unit: unit}
+		}
 	}
 
 	region := regionOf(drawn.Region())
