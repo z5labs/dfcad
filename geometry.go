@@ -33,6 +33,28 @@ const (
 	loopMark   = loopTag
 )
 
+// ParseCorner reads one corner of a scaffold's list, in the shape the position
+// predicate declares.
+//
+// It is [ParseValue] with one difference, and the difference is the whole
+// reason it exists: a corner written with no unit is read in the unit the
+// predicate declares rather than in none. A claim's unit is an axis of the
+// claim — the author says what they measured in, and a unit other than the
+// declared one is the mistake the check exists to catch — but a corner is not a
+// claim somebody wrote. It is a coordinate in a frame, and the only unit it may
+// legally be in is the one the predicate declares, so requiring it to be
+// written is requiring a flag whose one permitted value is already known.
+//
+// A unit which was written is read as written and is still held to the
+// declaration, so a corner list typed in the wrong unit is refused exactly as
+// it was.
+func ParseCorner(written string, unit Unit, declared Predicate) (Value, error) {
+	if unit == "" {
+		unit = declared.Unit
+	}
+	return ParseValue(written, unit, declared)
+}
+
 // ErrNoFrame is a geometric node written without one.
 //
 // It is not optional as a semantic node's frame is. A point with no frame is
@@ -722,6 +744,12 @@ type Scaffolding struct {
 	// which travels with the answer because the answer depends on it
 	// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
 	Tolerance Tolerance
+
+	// Bounds is the node the loop was written on as a boundary, and is empty
+	// where the scaffold bound nothing. It is reported because it is the half
+	// of the change which is not geometry: an author who asked for a room's
+	// outline and for the room to reference it reads back both.
+	Bounds ID
 }
 
 // ScaffoldSpec is a loop to be created from an ordered list of corners.
@@ -763,6 +791,46 @@ type ScaffoldSpec struct {
 	// Snap says to reuse an existing vertex a corner lands on rather than write
 	// a second one at the same point.
 	Snap bool
+
+	// Bounds is the semantic node the loop bounds, and is empty where the
+	// scaffold is to bind the loop to nothing.
+	//
+	// Naming one writes the `boundary` reference in this same change, which is
+	// what makes a room and its outline one operation. A scaffold which could
+	// mint the shape and not say what it is the shape of leaves the one fact
+	// nothing else in the batch can state to be hand-edited in afterwards.
+	Bounds ID
+
+	// VertexMark, EdgeMark and LoopMark are what the minted ids are named
+	// after, and are empty for the tag of the form being written — which mints
+	// `<namespace>:vertex-1`, `<namespace>:edge-1` and `<namespace>:loop-1`.
+	//
+	// They are here so that a generated batch lands in the consuming
+	// repository's own naming scheme rather than in this engine's, because the
+	// alternative is rewriting every id the batch minted by hand, which is the
+	// same pass a scaffold exists to avoid. A mark is a name and not a schema:
+	// nothing is inferred back out of one
+	// ([0002](docs/decisions/0002-immutable-id-mutable-label.md)), and the
+	// three are separate rather than one pattern because the three forms are.
+	VertexMark string
+	EdgeMark   string
+	LoopMark   string
+}
+
+// marks are the three marks a scaffold mints under, with the tag of each form
+// standing in where the spec named none.
+func (spec ScaffoldSpec) marks() (vertex, edge, loop string) {
+	return either(spec.VertexMark, vertexMark),
+		either(spec.EdgeMark, edgeMark),
+		either(spec.LoopMark, loopMark)
+}
+
+// either is written where it is not empty, and otherwise the default.
+func either(written, standing string) string {
+	if written == "" {
+		return standing
+	}
+	return written
 }
 
 // Scaffold writes the vertices, edges and closed loop an ordered corner list
@@ -827,6 +895,13 @@ type scaffolder struct {
 
 	// tolerance is the declaration coincidence and closure are judged against.
 	tolerance Tolerance
+
+	// vertexOf, edgeOf and loopOf are the marks the three families of minted id
+	// are named after, which is the spec's where it named them and the tag of
+	// the form where it did not.
+	vertexOf string
+	edgeOf   string
+	loopOf   string
 
 	// at is where each candidate vertex is: every vertex of the model written
 	// in this frame whose position resolves, plus every vertex this run has
@@ -915,6 +990,28 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 		return nil, ErrNoCorners
 	}
 
+	// The node the loop is to bound is checked before anything is minted, for
+	// the reason every other axis is: a scaffold which laid out a room and then
+	// found the node it was for names nothing has refused the whole change
+	// anyway, and reporting it up front says which axis is wrong rather than
+	// which vertex was being written when it was noticed.
+	if spec.Bounds != "" {
+		if err := tx.references(spec.Bounds, nodeTag); err != nil {
+			return nil, err
+		}
+	}
+
+	vertexOf, edgeOf, loopOf := spec.marks()
+
+	// A mark is a name the caller chose, so a mark which cannot make an id is
+	// answered as the malformed id it would have minted rather than being
+	// discovered on the first vertex.
+	for _, mark := range []string{vertexOf, edgeOf, loopOf} {
+		if _, err := ParseID(fmt.Sprintf("%s%s%s-1", spec.Namespace, idSeparator, mark)); err != nil {
+			return nil, err
+		}
+	}
+
 	// The provenance is checked once, against the id the first corner would be
 	// minted under, rather than once per corner: every claim this run writes
 	// carries the same evidence, so a missing source is a property of the
@@ -922,7 +1019,7 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 	// thing about which one is wrong. The subject is a real id rather than a
 	// stand-in because the check is the one every claim is held to, and one
 	// held against a subject nobody is writing is a different check.
-	first, err := tx.MintID(spec.Namespace, vertexMark)
+	first, err := tx.MintID(spec.Namespace, vertexOf)
 	if err != nil {
 		return nil, err
 	}
@@ -939,8 +1036,11 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 		override:  override,
 		unit:      frame.Unit,
 		tolerance: tolerance,
+		vertexOf:  vertexOf,
+		edgeOf:    edgeOf,
+		loopOf:    loopOf,
 		at:        map[ID][]float64{},
-		built:     Scaffolding{Snaps: []Snap{}, Tolerance: tolerance},
+		built:     Scaffolding{Snaps: []Snap{}, Tolerance: tolerance, Bounds: spec.Bounds},
 	}
 
 	builder.candidates()
@@ -1087,7 +1187,7 @@ func (s *scaffolder) corner(index int, corner Corner) error {
 // before writing any would ask the same question four times and get the same
 // answer, and the room would be four vertices under one name.
 func (s *scaffolder) mint(corner Corner, components []float64) error {
-	minted, err := s.tx.MintID(s.spec.Namespace, vertexMark)
+	minted, err := s.tx.MintID(s.spec.Namespace, s.vertexOf)
 	if err != nil {
 		return err
 	}
@@ -1172,25 +1272,38 @@ func (s *scaffolder) nearest(components []float64) (ID, float64, bool) {
 	return found, nearest, found != ""
 }
 
-// write settles the ring's edges and writes the loop over them.
+// write settles the ring's edges, writes the loop over them, and says what the
+// loop is the shape of where the spec named anything.
 func (s *scaffolder) write() error {
 	if err := s.ring(); err != nil {
 		return err
 	}
 
-	loop, err := s.tx.MintID(s.spec.Namespace, loopMark)
+	loop, err := s.tx.MintID(s.spec.Namespace, s.loopOf)
 	if err != nil {
 		return err
 	}
 
 	s.built.Loop = loop
 
-	return s.insert(loop, LoopSpec{
+	if err := s.insert(loop, LoopSpec{
 		ID:    loop,
 		Label: s.spec.Label,
 		Frame: s.spec.Frame,
 		Edges: s.built.Edges,
-	}.form())
+	}.form()); err != nil {
+		return err
+	}
+
+	// The reference goes on last, because it names the loop and the loop's id
+	// is not settled until it is written. It is the same `boundary` child
+	// [Tx.Relate] writes, so a room outlined by a scaffold and a room outlined
+	// by a loop somebody wrote by hand say the same thing in the same words.
+	if s.spec.Bounds == "" {
+		return nil
+	}
+
+	return s.tx.Relate(s.spec.Bounds, RelationSpec{Boundary: []ID{loop}})
 }
 
 // ring settles the edge between each pair of neighbouring corners, reusing the
@@ -1207,7 +1320,7 @@ func (s *scaffolder) ring() error {
 			continue
 		}
 
-		minted, err := s.tx.MintID(s.spec.Namespace, edgeMark)
+		minted, err := s.tx.MintID(s.spec.Namespace, s.edgeOf)
 		if err != nil {
 			return err
 		}

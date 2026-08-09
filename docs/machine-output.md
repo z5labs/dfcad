@@ -2059,14 +2059,24 @@ A room's corners, walls and outline, from an ordered coordinate list, in one cha
 | `--no-snap` | Write a new vertex at every corner, even where one is already there. |
 | `--label "<text>"` | The loop's display text. |
 | `--file <path>` | Write everything here instead, overriding the routing rules. |
+| `--bounds <node-id>` | The semantic node the loop bounds. The `boundary` reference is written on it in the same change, and it is the same child `relate --boundary` writes. |
+| `--vertex-mark <mark>` | What the minted vertex ids are named after. |
+| `--edge-mark <mark>` | What the minted edge ids are named after. |
+| `--loop-mark <mark>` | What the minted loop id is named after. |
 
-The claim flags of `add-claim` supply the evidence every position claim carries — `--source`,
-`--method`, `--accuracy`, `--date` and `--unit`. `--value` is not read: a corner's value is
-the corner.
+The evidence every position claim carries is `--source`, `--method`, `--accuracy` and
+`--date`, and they mean what they mean for `add-claim`. `--value` and `--id` are not read: a
+corner's value is the corner, and every claim a scaffold writes is one of many rather than
+one somebody named. `--unit` is the unit the corners are written in and defaults to the one
+the position predicate declares, because a corner is a coordinate in a frame rather than a
+value somebody chose a unit for — a unit written and disagreeing with the declaration is
+refused exactly as it always was.
 
-Ids are minted as `<namespace>:<form>-<n>` — the namespace, the tag of the form being
-written, and the lowest ordinal nothing in the model already holds. It is a name and not a
-schema, and nothing is inferred back out of one
+Ids are minted as `<namespace>:<mark>-<n>` — the namespace, the mark, and the lowest ordinal
+nothing in the model already holds. The mark is the tag of the form being written where the
+invocation names none, so `geom:vertex-1` by default; the three flags above are what put a
+generated batch into a consuming repository's own scheme rather than rewriting every minted
+id afterwards. It is a name and not a schema, and nothing is inferred back out of one
 ([0002](./decisions/0002-immutable-id-mutable-label.md)).
 
 **The list is authored closed.** Its last corner names its first again, and a list that does
@@ -2128,6 +2138,7 @@ nothing to read a corner against until it is known.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `loop` | string | The loop that was written. |
+| `bounds` | string | The node the loop was written on as a boundary. Absent for a scaffold that bound nothing. |
 | `vertices` | array | The vertex each corner is at, in corner order, with the closing corner left out — it is the first corner written again. |
 | `created` | array | The vertices that were minted, in the order they were. A corner that reused one is not here and is in `snaps` instead. |
 | `edges` | array | The ring, in traversal order. |
@@ -2153,6 +2164,39 @@ result.
 Under `--dry-run` every field above is what it would have been, which is the whole point of
 running one first: the ids, the reuses and the tolerance that decided them are what an author
 is checking before committing to them.
+
+### `relate`
+
+What a node is inside, grouped with and bounded by. It takes the node's id and reports the
+write payload above with nothing added to it.
+
+| Flag | Meaning |
+|------|---------|
+| `--within <node-id>` | The node that strictly contains this one. |
+| `--member-of <id>` | A zone it is a member of. Repeat for more than one. |
+| `--boundary <loop-id>` | A loop that bounds it. Repeat for more than one. |
+
+At least one of the three is required, and a relation that relates the node to nothing is a
+**usage error** answered before the model is read: it is wrong whatever the tree holds.
+
+The three are different relations and are never collapsed into one. Containment is physical
+enclosure, nests strictly and is at most one, so naming a parent replaces whatever parent was
+written before rather than being written beside it — two of them is a node claiming two
+parents, which is a model that does not load. Membership is arbitrary grouping and is many to
+many, so naming a zone adds it. A boundary leaves the semantic family altogether and names a
+loop, and is added the same way ([0001](./decisions/0001-two-node-families.md)).
+
+**Nothing is resolved here.** A parent that does not exist, a parent the hierarchy does not
+permit, a `--member-of` naming something that is not a Zone and a `--boundary` naming
+something that is not a loop are each refused when the model this would produce is
+interpreted — so nothing reaches stdout, the diagnostics on stderr are the whole of the
+answer, and the exit code is the load failure one. They are the diagnostics a load of the
+result would have raised, which are the same ones the same mistake gets when it is typed
+into a file by hand.
+
+This is the other half of `add-node`, which writes a node's own axes and none of its
+references: a node is added and then related, so that the refusal to place it and the
+refusal to relate it are two answers rather than one compound one.
 
 ### `classify-type`
 

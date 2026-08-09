@@ -42,6 +42,7 @@ const (
 	addEdgeOperation        = "add-edge"
 	addLoopOperation        = "add-loop"
 	scaffoldLoopOperation   = "scaffold-loop"
+	relateOperation         = "relate"
 	classifyTypeOperation   = "classify-type"
 	setLabelOperation       = "set-label"
 	retireOperation         = "retire"
@@ -222,6 +223,7 @@ var made = []struct {
 	{addEdgeOperation, func() Operation { return &AddEdgeOperation{} }},
 	{addLoopOperation, func() Operation { return &AddLoopOperation{} }},
 	{scaffoldLoopOperation, func() Operation { return &ScaffoldLoopOperation{} }},
+	{relateOperation, func() Operation { return &RelateOperation{} }},
 	{classifyTypeOperation, func() Operation { return &ClassifyTypeOperation{} }},
 	{setLabelOperation, func() Operation { return &SetLabelOperation{} }},
 	{retireOperation, func() Operation { return &RetireOperation{} }},
@@ -989,8 +991,24 @@ type ScaffoldLoopOperation struct {
 	// there. Every corner which would have been reused is still reported.
 	NoSnap bool `json:"noSnap,omitempty"`
 
+	// Bounds is the semantic node the loop bounds, and is empty for a scaffold
+	// which binds the loop to nothing. Naming one writes the `boundary`
+	// reference in the same operation, so a room and its outline are one
+	// statement.
+	Bounds string `json:"bounds,omitempty"`
+
+	// VertexMark, EdgeMark and LoopMark are what the minted ids are named
+	// after, and are empty for the tag of the form being written. They are what
+	// lets a generated batch mint into the consuming repository's own naming
+	// scheme rather than into this engine's.
+	VertexMark string `json:"vertexMark,omitempty"`
+	EdgeMark   string `json:"edgeMark,omitempty"`
+	LoopMark   string `json:"loopMark,omitempty"`
+
 	// Claim is the evidence every position claim is written with. Its value is
-	// not read: a corner's value is the corner.
+	// not read: a corner's value is the corner. Its unit is read, and a corner
+	// list written without one is read in the unit the position predicate
+	// declares.
 	Claim ClaimAxes `json:"claim,omitempty"`
 }
 
@@ -1014,18 +1032,22 @@ func (o *ScaffoldLoopOperation) check() error {
 }
 
 func (o *ScaffoldLoopOperation) apply(tx *Tx, out *Applied) error {
-	frame, err := identify(o.Frame)
+	written, err := identifyAll([]string{o.Frame, o.Bounds})
 	if err != nil {
 		return err
 	}
 
 	spec := ScaffoldSpec{
-		Namespace: o.Namespace,
-		Frame:     frame,
-		Label:     o.Label,
-		Predicate: o.Predicate,
-		Tolerance: o.Tolerance,
-		Snap:      !o.NoSnap,
+		Namespace:  o.Namespace,
+		Frame:      written[0],
+		Label:      o.Label,
+		Predicate:  o.Predicate,
+		Tolerance:  o.Tolerance,
+		Snap:       !o.NoSnap,
+		Bounds:     written[1],
+		VertexMark: o.VertexMark,
+		EdgeMark:   o.EdgeMark,
+		LoopMark:   o.LoopMark,
 	}
 
 	if spec.Provenance, err = o.Claim.Provenance(o.Predicate); err != nil {
@@ -1037,8 +1059,8 @@ func (o *ScaffoldLoopOperation) apply(tx *Tx, out *Applied) error {
 	// list is handed over unread, and [Tx.Scaffold] refuses the predicate in
 	// the engine's words.
 	if declared, ok := tx.graph.Registry().Predicate(o.Predicate); ok {
-		for _, written := range o.Corners {
-			value, err := ParseValue(written, Unit(o.Claim.Unit), declared)
+		for _, corner := range o.Corners {
+			value, err := ParseCorner(corner, Unit(o.Claim.Unit), declared)
 			if err != nil {
 				return err
 			}
@@ -1054,6 +1076,58 @@ func (o *ScaffoldLoopOperation) apply(tx *Tx, out *Applied) error {
 	out.Snaps, out.Tolerance, out.Notices = built.Snaps, built.Tolerance, notices
 
 	return nil
+}
+
+// RelateOperation writes the references a node makes to the rest of the model:
+// what contains it, which zones it is grouped into, and which loops bound it.
+// It is `relate`.
+type RelateOperation struct {
+	// ID is the node being related.
+	ID string `json:"id"`
+
+	// Within is the node which strictly contains it, and is empty where the
+	// operation says nothing about containment. A node is contained by one
+	// other node, so writing one replaces whatever parent it had.
+	Within string `json:"within,omitempty"`
+
+	// MemberOf are zones it is grouped into, added to whatever memberships it
+	// already declares.
+	MemberOf []string `json:"memberOf,omitempty"`
+
+	// Boundary are loops which bound it, added the same way.
+	Boundary []string `json:"boundary,omitempty"`
+}
+
+// Name implements [Operation].
+func (o *RelateOperation) Name() string { return relateOperation }
+
+func (o *RelateOperation) check() error {
+	if o.ID == "" {
+		return ErrNoID
+	}
+	if o.Within == "" && len(o.MemberOf) == 0 && len(o.Boundary) == 0 {
+		return ErrNoRelation
+	}
+	return nil
+}
+
+func (o *RelateOperation) apply(tx *Tx, _ *Applied) error {
+	written, err := identifyAll([]string{o.ID, o.Within})
+	if err != nil {
+		return err
+	}
+
+	spec := RelationSpec{Within: written[1]}
+
+	if spec.MemberOf, err = identifyAll(o.MemberOf); err != nil {
+		return err
+	}
+
+	if spec.Boundary, err = identifyAll(o.Boundary); err != nil {
+		return err
+	}
+
+	return tx.Relate(written[0], spec)
 }
 
 // ClassifyTypeOperation says how a scheme outside this model names a type. It

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1059,4 +1060,148 @@ func TestGeometryTakesAnOverrideOverTheRules(t *testing.T) {
 
 	_, err = VertexSpec{ID: "geom:V-01", Frame: "frame:building"}.Destination(registry, "notes.md")
 	assert.True(t, errors.Is(err, ErrNotAnEntityFile))
+}
+
+// TestTxScaffoldBindsTheLoopToWhatItBounds is the other half of laying a room
+// out: the shape is minted and the node it is the shape of says so, in one
+// change.
+//
+// Without it the one fact nothing else in a batch can state — that this outline
+// is that room's — has to be hand-edited into the file afterwards, which is the
+// pass a scaffold exists to remove.
+func TestTxScaffoldBindsTheLoopToWhatItBounds(t *testing.T) {
+	root := geometryFixture(t, "")
+
+	spec := room(t, square(4, 3)...)
+	spec.Bounds = "site:S-101"
+
+	built, graph := scaffolded(t, root, spec)
+
+	assert.Equal(t, ID("site:S-101"), built.Bounds)
+
+	node, ok := graph.Node("site:S-101")
+	require.True(t, ok)
+	assert.Equal(t, []ID{built.Loop}, node.Boundaries())
+
+	// The reference resolves as a boundary rather than merely being written, so
+	// the room's outline is walkable exactly as a hand-written one is.
+	bounded := slices.Collect(graph.Boundaries().Loops(node))
+	require.Len(t, bounded, 1)
+	assert.Equal(t, built.Loop, bounded[0].ID())
+}
+
+func TestTxScaffoldRefusesToBindALoopToWhatCannotCarryOne(t *testing.T) {
+	testCases := []struct {
+		name     string
+		bounds   ID
+		expected func(*testing.T, error)
+	}{
+		{
+			name:   "an id nothing in the model answers to",
+			bounds: "site:S-909",
+			expected: func(t *testing.T, err error) {
+				var unknown UnknownEntityError
+				require.ErrorAs(t, err, &unknown)
+				assert.Equal(t, ID("site:S-909"), unknown.ID)
+			},
+		},
+		{
+			name:   "an id naming geometry, which is what a boundary points at",
+			bounds: "geom:V-01",
+			expected: func(t *testing.T, err error) {
+				var family NotOfFamilyError
+				require.ErrorAs(t, err, &family)
+				assert.Equal(t, nodeTag, family.Want)
+				assert.Equal(t, vertexTag, family.Got)
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := geometryFixture(t, `(vertex geom:V-01 (frame frame:building))`)
+
+			spec := room(t, square(4, 3)...)
+			spec.Bounds = testCase.bounds
+
+			testCase.expected(t, declined(t, root, spec))
+		})
+	}
+}
+
+// TestTxScaffoldMintsUnderTheMarksItWasGiven checks that a caller can put the
+// ids a scaffold mints into their own naming scheme.
+//
+// A batch which mints `geom:vertex-1` into a repository which names its corners
+// `geom:V-101` has to be rewritten id by id afterwards, which is the same hand
+// pass the scaffold was written to remove.
+func TestTxScaffoldMintsUnderTheMarksItWasGiven(t *testing.T) {
+	root := geometryFixture(t, "")
+
+	spec := room(t, square(4, 3)...)
+	spec.VertexMark, spec.EdgeMark, spec.LoopMark = "V", "E", "L"
+
+	built, graph := scaffolded(t, root, spec)
+
+	assert.Equal(t, []ID{"geom:V-1", "geom:V-2", "geom:V-3", "geom:V-4"}, built.Created)
+	assert.Equal(t, []ID{"geom:E-1", "geom:E-2", "geom:E-3", "geom:E-4"}, built.Edges)
+	assert.Equal(t, ID("geom:L-1"), built.Loop)
+
+	// A mark names and nothing more: what was minted is a loop because it was
+	// written as one, not because of what it is called.
+	_, ok := graph.Topology().Loop("geom:L-1")
+	assert.True(t, ok)
+}
+
+func TestTxScaffoldRefusesAMarkWhichCannotMakeAnID(t *testing.T) {
+	root := geometryFixture(t, "")
+
+	spec := room(t, square(4, 3)...)
+	spec.VertexMark = "a corner"
+
+	var malformed MalformedIDError
+	require.ErrorAs(t, declined(t, root, spec), &malformed)
+	assert.Equal(t, "geom:a corner-1", malformed.Written)
+}
+
+// TestParseCornerReadsTheDeclaredUnitWhereNoneWasWritten is the flag a scaffold
+// required and never read: a corner is a coordinate in a frame, and the only
+// unit it may legally be in is the one the position predicate declares.
+func TestParseCornerReadsTheDeclaredUnitWhereNoneWasWritten(t *testing.T) {
+	declared := Predicate{Name: "position", Shape: ShapeCoordinate, Dimension: 3, Unit: "m", ClaimBearing: true}
+
+	testCases := []struct {
+		name         string
+		unit         Unit
+		expectedUnit Unit
+		expectedErr  bool
+	}{
+		{
+			name:         "reads the declared unit where the invocation wrote none",
+			expectedUnit: "m",
+		},
+		{
+			name:         "reads the unit which was written",
+			unit:         "m",
+			expectedUnit: "m",
+		},
+		{
+			name:         "leaves a unit other than the declared one to be refused as it always was",
+			unit:         "ft",
+			expectedUnit: "ft",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			value, err := ParseCorner("4.0 3.0 0.0", testCase.unit, declared)
+			require.NoError(t, err)
+
+			assert.Equal(t, testCase.expectedUnit, value.Unit())
+
+			components, ok := value.Coordinate()
+			require.True(t, ok)
+			assert.Equal(t, []float64{4, 3, 0}, components)
+		})
+	}
 }

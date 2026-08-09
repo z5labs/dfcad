@@ -1851,6 +1851,130 @@ func ExampleTx_AddNode_taken() {
 	// retired: false
 }
 
+// ExampleTx_Relate writes the references a node makes to the rest of the model:
+// what contains it, which zones it is grouped into, and which loops bound it.
+//
+// It is the other half of [dfcad.Tx.AddNode], which writes a node's own axes and
+// none of its references. A node is added and then related, so that the refusal
+// to place it and the refusal to relate it are two answers rather than one
+// compound one.
+func ExampleTx_Relate() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = tx.Close() }()
+
+	if err := tx.AddNode(dfcad.NodeSpec{
+		ID:       "site:S-103",
+		Kind:     dfcad.KindSpace,
+		Type:     "MeetingRoom",
+		Geometry: dfcad.GeometryArea,
+		Frame:    "frame:building",
+		Label:    "Meeting Room C",
+	}, "entities/site.dfc"); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// The three relations are written in one change, and the node they are
+	// written on is one this same change created.
+	if err := tx.Relate("site:S-103", dfcad.RelationSpec{
+		Within:   "site:L-01",
+		MemberOf: []dfcad.ID{"site:Z-01"},
+		Boundary: []dfcad.ID{"geom:L-01"},
+	}); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if _, refused, err := tx.Commit(); err != nil {
+		fmt.Println(err)
+		return
+	} else {
+		for _, diagnostic := range refused {
+			fmt.Println(diagnostic)
+		}
+	}
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	node, _ := graph.Node("site:S-103")
+	within, _ := node.Within()
+
+	fmt.Println("within:", within)
+	fmt.Println("member of:", node.MemberOf())
+	fmt.Println("bounded by:", node.Boundaries())
+
+	// Output:
+	// within: site:L-01
+	// member of: [site:Z-01]
+	// bounded by: [geom:L-01]
+}
+
+// ExampleTx_Relate_refused relates a node to a parent the containment hierarchy
+// does not permit.
+//
+// Nothing is resolved when the relation is written: the model the change would
+// produce is interpreted at the commit, and the refusal is the diagnostic a
+// load of that model would have raised — the same one the same mistake gets
+// when it is typed into a file by hand.
+func ExampleTx_Relate_refused() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+
+	if err := os.CopyFS(root, os.DirFS("testdata/graph/valid")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = tx.Close() }()
+
+	// A room written straight into the site, which the hierarchy does not
+	// permit: a Space is written within a Storey or another Space.
+	if err := tx.Relate("site:S-102", dfcad.RelationSpec{Within: "site:S-01"}); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	fmt.Println("files written:", len(commit.Files))
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic.Message)
+	}
+
+	// Output:
+	// files written: 0
+	// expected a kind the hierarchy permits to contain a Space, found site:S-01, which is a Site
+}
+
 // ExampleTx_Retire records that a thing stopped existing, and moves what
 // referenced it onto the thing which replaced it.
 func ExampleTx_Retire() {
@@ -2569,7 +2693,7 @@ func ExampleParseBatch_refused() {
 	// Output:
 	// operation 1, add-node: a node is written with an id
 	// operation 2, add-node: json: unknown field "edges"
-	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, classify-type, set-label, retire, add-claim, supersede, deprecate-claim
+	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim
 	// no id was written: true
 }
 

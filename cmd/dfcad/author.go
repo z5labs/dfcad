@@ -63,6 +63,46 @@ not that its name came free, and an id is never issued twice.
 ` + outputContractHelp + `
 ` + writeOutputHelp
 
+const relateUsage = `dfcad relate — say what a node is inside, grouped with and bounded by.
+
+Usage:
+
+	dfcad relate [flags] <id>
+
+A node written by ` + "`dfcad add-node`" + ` is attached to nothing: it declares its own
+axes and makes no reference to anything else. This writes the references — the
+one node which strictly contains it, the zones it is grouped into, and the loops
+which bound it — so that a batch which creates a room, a circuit and a
+receptacle can also say the receptacle is in the room and on the circuit.
+
+Flags:
+
+	--within <node-id>   the node which strictly contains this one
+	--member-of <id>     a zone it is a member of; repeat for more than one
+	--boundary <loop-id> a loop which bounds it; repeat for more than one
+
+The three are different relations and are never collapsed into one. Containment
+is physical enclosure, nests strictly and is at most one, so naming a parent
+replaces whatever parent was written before rather than being written beside it.
+Membership is arbitrary grouping, is many to many, and is added. A boundary
+leaves the semantic family altogether and names a loop, and is added the same
+way.
+
+At least one of the three is required: a relation which relates the node to
+nothing is refused rather than written as a change which did nothing.
+
+Nothing is resolved here. A parent which does not exist, a parent the hierarchy
+does not permit, a --member-of naming something which is not a Zone and a
+--boundary naming something which is not a loop are each refused when the model
+this would produce is interpreted, with the diagnostics a load of that model
+would have raised — the same ones the same mistake gets when it is typed into a
+file by hand.
+
+` + globalFlagsHelp + `
+` + writeFlagsHelp + `
+` + outputContractHelp + `
+` + writeOutputHelp
+
 const setLabelUsage = `dfcad set-label — change what a thing is called.
 
 Usage:
@@ -179,6 +219,68 @@ func runAddNode(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 
 	if globals.Verbosity >= verbosityProgress {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %s -> %s\n", cmd.name, id, destination.Path)
+	}
+
+	return commitChange(cmd, tx, globals, stdout, stderr)
+}
+
+// runRelate is the relate command.
+func runRelate(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	within := flags.String("within", "", "")
+
+	zones, loops := &repeated{}, &repeated{}
+	flags.Var(zones, "member-of", "")
+	flags.Var(loops, "boundary", "")
+
+	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	id, exit, ok := subject(cmd, arguments, 1, stderr)
+	if !ok {
+		return exit
+	}
+
+	// A relation which relates the node to nothing is answered before the model
+	// is read, for the reason `dfcad retire` answers a missing reason there: it
+	// is a property of the invocation, wrong whatever the model holds, and
+	// reporting a load of the whole tree before saying so buries the one thing
+	// which is missing.
+	if *within == "" && len(*zones) == 0 && len(*loops) == 0 {
+		return usageError(cmd, dfcad.ErrNoRelation, stderr, true)
+	}
+
+	// The ids on the command line are read before the model is, for the reason
+	// `dfcad route` reads one there: nothing about the tree makes a malformed
+	// id well formed, and reporting a load of the whole model before saying so
+	// buries the one thing which is wrong.
+	parent, err := identified([]string{*within})
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	spec := dfcad.RelationSpec{Within: parent[0]}
+
+	if spec.MemberOf, err = identified(*zones); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	if spec.Boundary, err = identified(*loops); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	tx, exit, ok := begin(cmd, globals, stderr)
+	if !ok {
+		return exit
+	}
+	defer func() { _ = tx.Close() }()
+
+	if err := tx.Relate(id, spec); err != nil {
+		return usageError(cmd, err, stderr, false)
 	}
 
 	return commitChange(cmd, tx, globals, stdout, stderr)
