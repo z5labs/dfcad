@@ -1174,7 +1174,6 @@ func TestParseCornerReadsTheDeclaredUnitWhereNoneWasWritten(t *testing.T) {
 		name         string
 		unit         Unit
 		expectedUnit Unit
-		expectedErr  bool
 	}{
 		{
 			name:         "reads the declared unit where the invocation wrote none",

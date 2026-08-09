@@ -105,8 +105,8 @@ func (tx *Tx) Relate(id ID, spec RelationSpec) error {
 	// flag nobody wrote and a flag written empty are the same absence
 	// everywhere else in this interface, but here dropping one would write
 	// fewer relations than were asked for and report having written them all.
-	for _, named := range slices.Concat(spec.MemberOf, spec.Boundary) {
-		if named == "" {
+	for _, named := range [][]ID{spec.MemberOf, spec.Boundary} {
+		if slices.Contains(named, "") {
 			return ErrNoID
 		}
 	}
