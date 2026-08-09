@@ -8,6 +8,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -1120,4 +1121,102 @@ func TestRunExportGivesAnOpenRunARepresentationOnTheSameTermsAnAreaGetsOne(t *te
 		"the ring and the two runs each carry the outline the model states")
 	assert.Equal(t, 3, strings.Count(source, "'Body','SweptSolid'"),
 		"and each carries the body the claims about it make of that outline")
+}
+
+// withALocatedElement is the element fixture with a panel added to the storey:
+// a node whose declared geometry is `point`, placed by a claim on itself.
+func withALocatedElement() map[string]string {
+	files := elementModel()
+
+	files["registry.dfc"] += `
+(type Panel
+  (kind Element)
+  (geometry point)
+  (description "A distribution board, recorded at the point it was set out at."))
+`
+
+	files["entities/site.dfc"] += `
+(node site:PNL-01
+  (label "Distribution panel 1")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (position
+    (value (2.5 1.5 1.2) m)
+    (source "Services set-out SS-2026-007")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+`
+
+	return files
+}
+
+// TestRunExportPlacesALocatedElementWhereTheModelPutsIt is its own function
+// because what it asserts is a placement rather than a representation, which is
+// a thing nothing else in this file is about.
+//
+// A panel used to reach the file at its container's origin. Every device on a
+// level stood in one corner of it, the file was valid, the objects were
+// classified correctly, and nothing anywhere said that the coordinates the
+// model held had not been written — which is a failure a receiving system
+// renders rather than reports.
+func TestRunExportPlacesALocatedElementWhereTheModelPutsIt(t *testing.T) {
+	result, _, stderr := exporting(t, exitSuccess, withALocatedElement(), bodyFlags()...)
+	require.True(t, result.Derived, stderr)
+
+	source := artefact(t, result)
+
+	assert.Contains(t, source, "Distribution panel 1")
+	assert.Contains(t, source, "IFCCARTESIANPOINT((2.5,1.5,1.2))",
+		"the product stands where the model puts it rather than at its container's origin")
+
+	t.Run("writes no representation for it", func(t *testing.T) {
+		// A panel has a position and no extent. A rectangle invented for one
+		// would be dimensions nobody measured, so the placement is the whole of
+		// what reaches the file: the field after the placement reference is the
+		// representation, and it is empty.
+		product := regexp.MustCompile(
+			`IFCBUILDINGELEMENTPROXY\('[^']+',\$,'site:PNL-01','Distribution panel 1','Panel',#(\d+),\$,`)
+
+		matched := product.FindStringSubmatch(source)
+		require.Len(t, matched, 2, "the panel is written as a product with no representation")
+
+		// And the placement it names is the one standing at the coordinate,
+		// relative to the storey rather than at the storey's own origin.
+		placement := regexp.MustCompile(`#` + matched[1] + `=IFCLOCALPLACEMENT\(#\d+,#(\d+)\);`)
+		axis := placement.FindStringSubmatch(source)
+		require.Len(t, axis, 2)
+
+		assert.Regexp(t, `#`+axis[1]+`=IFCAXIS2PLACEMENT3D\(#(\d+),`, source)
+	})
+
+	t.Run("leaves the elements it already drew exactly as they were", func(t *testing.T) {
+		assert.Equal(t, 3, strings.Count(source, "'FootPrint','Curve2D'"))
+		assert.Equal(t, 3, strings.Count(source, "'Body','SweptSolid'"))
+	})
+}
+
+// TestRunExportRefusesALocatedElementNothingPlaces is its own function because
+// it is about the refusal rather than the placement: a device the model
+// declares and puts nowhere is written at its container's origin by anything
+// which does not say so, and a panel in the corner of its storey looks exactly
+// like a panel somebody set out.
+func TestRunExportRefusesALocatedElementNothingPlaces(t *testing.T) {
+	files := withALocatedElement()
+	files["entities/site.dfc"] += `
+(node site:PNL-02
+  (label "Distribution panel 2, not yet set out")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01))
+`
+
+	_, _, stderr := exporting(t, exitCheck, files, bodyFlags()...)
+
+	assert.Contains(t, stderr, "site:PNL-02")
 }

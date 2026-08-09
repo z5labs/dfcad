@@ -341,6 +341,12 @@ type arcs struct {
 // — a proposal and the envelope it has to sit in, two rooms either side of a
 // party wall — is exactly where that shows up as a gap nobody authored.
 //
+// A subject whose own position places it — a node drawn as a point — is placed
+// beside the corners, from the same predicate. [dfcad.Graph.Located] is what
+// says which those are, for the reason [dfcad.Graph.Corners] says which corners
+// matter: a survey built from a guess at which ids need a position is a shape
+// read partly from the model and partly from nothing.
+//
 // A corner or an arc whose claim does not resolve is not placed and is not
 // refused here. Whether it was needed is the answer's question, and it answers
 // it with a diagnostic naming the corner or the edge and the shape it belonged
@@ -356,6 +362,22 @@ func bent(graph *dfcad.Graph, position, tolerance string, curved arcs, subjects 
 			}
 			survey.Place(vertex.ID(), resolution)
 		}
+
+		// A node drawn as a point has no corners and is placed by a claim on
+		// itself, under the same predicate. Reading it here rather than at each
+		// answer is what makes one survey the whole of what every figure is
+		// computed against: a panel placed by the plan and not by the map would
+		// be a device on one drawing and missing from the other.
+		node, located := graph.Located(subject)
+		if !located {
+			continue
+		}
+
+		resolution, err := graph.Claims().Resolve(node.ID(), position, graph.Registry())
+		if err != nil {
+			continue
+		}
+		survey.Place(node.ID(), resolution)
 	}
 
 	if curved.centre == "" || curved.through == "" {

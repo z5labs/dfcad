@@ -54,6 +54,11 @@
   (geometry area)
   (description "An enclosed room used for meetings."))
 
+(type Device
+  (kind Element)
+  (geometry point)
+  (description "A piece of equipment recorded at the point it was set out at."))
+
 (tolerance boundary-closure
   (value 0.005 m)
   (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

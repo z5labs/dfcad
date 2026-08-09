@@ -152,6 +152,20 @@ type Region struct {
 	// pieces are what it covers.
 	pieces []Piece
 
+	// location is where a node drawn as a point sits, and located whether it
+	// was read at all.
+	//
+	// It is on the region rather than in a type of its own because a caller
+	// asking what shape the model gives a node asks one question of one value:
+	// a panel, a door and a room are a point, a run and an area, and a
+	// consumer which had to know which of three calls to make would be
+	// deciding by kind what the model states by geometry. A region which
+	// carries one covers nothing and is not ready — there is no area for an
+	// overlay, an offset or a nesting to be computed over — which is the same
+	// state an open run comes back in and for the same reason.
+	location Point
+	located  bool
+
 	// segments are the straight runs of the boundary it was read from, in the
 	// order the loops traverse them, each paired with the edge it was written
 	// as.
@@ -404,6 +418,17 @@ func (t *Topology) regionOf(
 ) (Region, drawing, []Diagnostic) {
 	var drew drawing
 
+	if drawnAsPoint(node) {
+		// Before the loops are collected and before a chord tolerance is read,
+		// because neither is a question about a node whose shape is a
+		// coordinate. A point has no ring to draw and no boundary to assemble,
+		// so a refusal for the want of a tolerance nothing here would apply
+		// would be a diagnostic about a model in which nothing is wrong — which
+		// is the same reason an open run is read before the tolerance is judged.
+		region, diags := t.locationOf(node, survey)
+		return region, drew, diags
+	}
+
 	loops := slices.Collect(boundaries.Loops(node))
 
 	frame := node.frame
@@ -626,6 +651,48 @@ func (m *measurer) runOf(
 	region.segments = segments
 
 	return region, drew, m.diags
+}
+
+// locationOf reads the shape of a node drawn as a point: the position claimed
+// of the node itself, with the accuracy of the claim which put it there.
+//
+// The region covers nothing and is not ready, exactly as a run's is. An
+// overlay, an offset, a nesting and a containment are all operations over an
+// area, and a coordinate has none for them to be computed against — so what a
+// caller gets is a shape it can draw and place a symbol at, and a refusal
+// naming the region if it asks one of those of it. That is a state of the
+// answer and not a diagnostic: a panel being a point is what the model says
+// about it.
+//
+// A node nothing places is the one diagnostic here, and it is an error rather
+// than an empty answer. A device somebody declared and nobody has set out yet
+// is a device the model cannot draw, and a query which reported it as a shape
+// covering nothing would be indistinguishable from the panel which is genuinely
+// there — which is the failure a plan of a floor of them would carry silently
+// onto a sheet.
+func (t *Topology) locationOf(node *SemanticNode, survey Survey) (Region, []Diagnostic) {
+	m := t.measuring(node.id, node.frame, node.span, survey)
+
+	region := Region{
+		subject:   node.id,
+		span:      m.span,
+		frame:     node.frame,
+		unit:      m.unit,
+		tolerance: m.tolerance,
+	}
+
+	m.located(node)
+
+	at, placed := m.result.Centroid()
+	if !placed {
+		return region, m.diags
+	}
+
+	region.dimension = m.result.dimension
+	region.budget = m.result.budget
+	region.location, region.located = at, true
+
+	return region, m.diags
 }
 
 // nestings counts, for each ring of a region, how many of the others hold it,
@@ -870,6 +937,20 @@ func (r Region) Pieces() []Piece { return slices.Clone(r.pieces) }
 // Empty reports whether the region covers nothing.
 func (r Region) Empty() bool { return len(r.pieces) == 0 }
 
+// Location returns where a node drawn as a point sits, and whether the model
+// placed it there at all.
+//
+// It is the whole shape of such a node. A panel, a survey monument and a
+// receptacle each have a position and no extent, so the region covers nothing
+// and [Region.Empty] is true for one — which is why the second return value is
+// here rather than left to be inferred from a coordinate of nought, a place
+// every model has and most devices are not at.
+//
+// It is absent for every region read from loops and for every region an
+// operation produced. A shape which covers an area is located by its corners,
+// and one point standing for it would be a centroid this does not claim to be.
+func (r Region) Location() (Point, bool) { return r.location, r.located }
+
 // Segments returns the straight runs of the region's boundary, in the order the
 // rings are traversed, each saying what produced it.
 //
@@ -972,6 +1053,10 @@ func (r Region) Budget() Budget { return r.budget }
 
 // String writes what the region covers, with its unit.
 func (r Region) String() string {
+	if r.located {
+		return fmt.Sprintf("%s: at %s", r.name(), pointText(r.location, r.printed()))
+	}
+
 	if r.Empty() {
 		return fmt.Sprintf("%s: covers nothing", r.name())
 	}
@@ -1169,6 +1254,11 @@ func (r Region) derive() Region {
 	result.derived = true
 	result.pieces = nil
 	result.segments = nil
+
+	// An operation produces an area, and a location carried onto it would say
+	// the result is a point somebody placed. [Region.In] is the one operation
+	// which does carry one, and it puts it back itself.
+	result.location, result.located = Point{}, false
 
 	result.budget = Budget{}
 	result.budget.Merge(r.budget)
@@ -1482,6 +1572,11 @@ func nearestTo(at vec, figure []contour) float64 {
 // tolerance in metres by a factor of a thousand, and there is no conversion
 // here which would make that right
 // ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
+//
+// A region which is a [Region.Location] rather than an area is carried the same
+// way and pays the same accuracy for it. What does not apply to one is the rest
+// of the above: a tolerance is what corners are judged coincident against and a
+// plane is what rings are nested in, and a coordinate has neither.
 func (r Region) In(target ID, frames *Frames) (Region, []Diagnostic) {
 	if frames == nil {
 		return Region{}, []Diagnostic{{
@@ -1494,6 +1589,10 @@ func (r Region) In(target ID, frames *Frames) (Region, []Diagnostic) {
 			Hint: "the transform between two frames is a claim like every other measurement; ResolveFrames is what " +
 				"reads those claims, and without them there is no relationship between the two frames to apply",
 		}}
+	}
+
+	if r.located {
+		return r.locatedIn(target, frames)
 	}
 
 	if !r.ready {
@@ -1603,6 +1702,52 @@ func (r Region) In(target ID, frames *Frames) (Region, []Diagnostic) {
 
 	result.basis = basis
 	result.pieces = piecesOf(overlay(figure, nil, r.tolerance.Value, coveredAlone), basis)
+
+	return result, nil
+}
+
+// locatedIn expresses a region which is a point in another frame.
+//
+// It is the whole of [Region.In] for such a region and skips the rest of it,
+// because the rest is about an area: a tolerance is what corners are judged
+// coincident against and a plane is what rings are nested in, and a coordinate
+// has neither. What is left is the two questions which do apply — are the
+// frames related, and where does the point land — and the accuracy of the
+// transform, which is merged in exactly as it is for a boundary.
+func (r Region) locatedIn(target ID, frames *Frames) (Region, []Diagnostic) {
+	budget, err := frames.TransformBudget(r.frame, target)
+	if err != nil {
+		return Region{}, []Diagnostic{{
+			Severity: SeverityError,
+			Span:     r.span,
+			Message: fmt.Sprintf(
+				"expected to express %s in the frame %s, found that the two frames are not related: %s",
+				r.name(), target, err,
+			),
+			Hint: "two frames are related by the chain of measured transforms between them; where there is no chain " +
+				"there is no answer, and a coordinate carried across unchanged would be in neither frame",
+		}}
+	}
+
+	at, err := frames.TransformPoint(r.location, r.frame, target)
+	if err != nil {
+		return Region{}, []Diagnostic{{
+			Severity: SeverityError,
+			Span:     r.span,
+			Message: fmt.Sprintf(
+				"expected to express %s in the frame %s, found that %s could not be carried across: %s",
+				r.name(), target, pointText(r.location, r.printed()), err,
+			),
+			Hint: "a transform which cannot be applied to the position of a thing cannot be applied to the thing; " +
+				"nothing here writes a coordinate which is in neither frame",
+		}}
+	}
+
+	result := r.derive()
+	result.frame = target
+	result.unit = frameUnit(frames.registry, target)
+	result.budget.Merge(budget)
+	result.location, result.located = at, true
 
 	return result, nil
 }

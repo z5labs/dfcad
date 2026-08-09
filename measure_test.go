@@ -70,6 +70,22 @@ func loadMeasuredRoot(t *testing.T, root string) measuredModel {
 		survey.Place(vertex.ID(), resolution)
 	}
 
+	// A node whose declared geometry is a point is placed by a claim on itself,
+	// under the same predicate, which is what Graph.Located says of one. It is
+	// resolved here beside the corners because a survey which held one and not
+	// the other would answer for the rooms of a floor and not for the devices
+	// standing in them.
+	for node := range nodes.All() {
+		if !drawnAsPoint(node) {
+			continue
+		}
+
+		resolution, err := claims.Resolve(node.ID(), "position", registry)
+		require.NoError(t, err)
+
+		survey.Place(node.ID(), resolution)
+	}
+
 	// An arc is registry data in exactly the way a position is. This repository
 	// spells the two claims behind one `arc-centre` and `arc-through`, resolves
 	// them for the edges which carry them and hands the result over; a fixture
@@ -1413,4 +1429,185 @@ func TestMeasureRegionOfAnOpenRunMovesWithTheCornerItShares(t *testing.T) {
 	length, computed = after.Length()
 	require.True(t, computed)
 	assert.InDelta(t, 3.0, length, 1e-9, "the run followed the corner the wall moved")
+}
+
+// TestMeasureRegionOfALocatedNode is its own function because a node drawn as a
+// point is measured from a different thing than a region is: the claim on the
+// node itself rather than the corners its loops reach. What it asserts is that
+// the answer is nonetheless the same shape of answer a corner's is, because a
+// caller asking how far a thing reaches should not have to know which of them
+// it named.
+func TestMeasureRegionOfALocatedNode(t *testing.T) {
+	model := loadMeasuredModel(t, "located")
+
+	t.Run("gives where a node drawn as a point is and how far it reaches", func(t *testing.T) {
+		measurement, diags := model.measure(t, "site:PNL-01")
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		assert.Equal(t, ID("site:PNL-01"), measurement.Subject())
+		assert.Equal(t, Unit("m"), measurement.Unit())
+
+		centroid, computed := measurement.Centroid()
+		require.True(t, computed)
+		assert.Equal(t, Point{1.5, 3.25, 1.2}, centroid)
+
+		bounds, computed := measurement.Bounds()
+		require.True(t, computed)
+		assert.Equal(t, Box{Min: Point{1.5, 3.25, 1.2}, Max: Point{1.5, 3.25, 1.2}, Unit: "m"}, bounds,
+			"a thing with no extent reaches exactly as far as itself")
+	})
+
+	t.Run("gives it no length and no area rather than zeroes", func(t *testing.T) {
+		measurement, _ := model.measure(t, "site:PNL-01")
+
+		_, computed := measurement.Length()
+		assert.False(t, computed)
+		_, computed = measurement.Area()
+		assert.False(t, computed)
+	})
+
+	t.Run("carries the accuracy of the claim which put it there", func(t *testing.T) {
+		measurement, _ := model.measure(t, "site:PNL-01")
+
+		assert.True(t, measurement.Budget().Known())
+		assert.NotEmpty(t, measurement.Budget().Terms())
+	})
+
+	t.Run("measures a node with no geometry at all as nothing", func(t *testing.T) {
+		measurement, diags := model.measure(t, "site:Z-01")
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		_, computed := measurement.Centroid()
+		assert.False(t, computed, "a grouping is not somewhere; it is nothing")
+	})
+}
+
+// TestMeasureALocatedNodeNobodyHasSetOut is its own function for the reason
+// [TestMeasureVertexNobodyHasSurveyed] is: it asserts about a refusal rather
+// than a figure. A device the model declares and places nowhere is unknown, and
+// reporting it at the origin would put it in the corner of its storey looking
+// exactly like a device somebody set out.
+func TestMeasureALocatedNodeNobodyHasSetOut(t *testing.T) {
+	model := loadMeasuredModel(t, "located")
+
+	measurement, diags := model.measure(t, "site:RCP-01")
+
+	require.Len(t, diags, 1)
+	assert.Equal(t, SeverityError, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "site:RCP-01")
+
+	_, computed := measurement.Centroid()
+	assert.False(t, computed)
+	_, computed = measurement.Bounds()
+	assert.False(t, computed)
+}
+
+// TestLocatedIsWhatASurveyOfALocatedNodeNeeds is its own function because it is
+// about the pairing rather than about a figure: Graph.Corners says which
+// vertices a survey has to carry, and a node placed by a claim on itself has
+// none of them. A caller which built a survey from the corners alone would
+// measure every room of a floor and none of the devices in it.
+func TestLocatedIsWhatASurveyOfALocatedNodeNeeds(t *testing.T) {
+	graph, diags := LoadGraph(filepath.Join("testdata", "measure", "located"))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	testCases := []struct {
+		name    string
+		subject ID
+		located bool
+	}{
+		{name: "a node drawn as a point is placed by its own claim", subject: "site:PNL-01", located: true},
+		{name: "a node bounded by a ring is placed by its corners", subject: "site:S-01", located: false},
+		{name: "a node with no geometry is placed by nothing", subject: "site:Z-01", located: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node, held := graph.Node(testCase.subject)
+			require.True(t, held)
+
+			located, ok := graph.Located(node)
+
+			assert.Equal(t, testCase.located, ok)
+			if testCase.located {
+				require.NotNil(t, located)
+				assert.Equal(t, testCase.subject, located.ID())
+			}
+		})
+	}
+
+	t.Run("no corner and no loop is ever located", func(t *testing.T) {
+		vertex, held := graph.Topology().Vertex("geom:V-01")
+		require.True(t, held)
+
+		_, ok := graph.Located(vertex)
+		assert.False(t, ok)
+	})
+}
+
+// TestALocatedNodeRelatesLikeAnyOther is its own function because what it
+// asserts is an absence: declaring the geometry form whose shape is a
+// coordinate adds a shape and not a second containment mechanism.
+//
+// The two are easy to conflate, because both answer "where is it". They are not
+// the same answer: containment says which room a panel belongs to, and the
+// position says where on the floor it stands. A node which lost one of them by
+// gaining the other would be a device the model can draw and cannot schedule.
+func TestALocatedNodeRelatesLikeAnyOther(t *testing.T) {
+	graph, diags := LoadGraph(filepath.Join("testdata", "measure", "located"))
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	panel, held := graph.Node("site:PNL-01")
+	require.True(t, held)
+
+	t.Run("sits inside what it is written within", func(t *testing.T) {
+		within, declared := graph.Within(panel)
+
+		require.True(t, declared)
+		assert.Equal(t, ID("site:S-01"), within.Node().ID())
+	})
+
+	t.Run("is reached by the walk down from the storey", func(t *testing.T) {
+		var reached []ID
+		for related := range graph.Descendants(mustNode(t, graph, "site:L-01")) {
+			reached = append(reached, related.Node().ID())
+		}
+
+		assert.Contains(t, reached, ID("site:PNL-01"))
+	})
+
+	t.Run("belongs to the zones it is a member of, which contain nothing", func(t *testing.T) {
+		var zones []ID
+		for related := range graph.Zones(panel) {
+			zones = append(zones, related.Node().ID())
+		}
+		assert.Equal(t, []ID{"site:Z-01"}, zones)
+
+		var members []ID
+		for related := range graph.Members(mustNode(t, graph, "site:Z-01")) {
+			members = append(members, related.Node().ID())
+		}
+		assert.Equal(t, []ID{"site:PNL-01"}, members)
+
+		// Membership never implies containment, and a located node is not an
+		// exception to that.
+		within, _ := graph.Within(panel)
+		assert.NotEqual(t, ID("site:Z-01"), within.Node().ID())
+	})
+}
+
+// TestMeasuringALocatedNodeIsDeterministic is its own function because it is
+// about two reads rather than one: every figure here is recomputed from the
+// claims each time it is asked for, so two of them over one model which nothing
+// happened to have to be the same value down to the accuracy.
+func TestMeasuringALocatedNodeIsDeterministic(t *testing.T) {
+	model := loadMeasuredModel(t, "located")
+
+	first, firstDiags := model.measure(t, "site:PNL-01")
+	second, secondDiags := model.measure(t, "site:PNL-01")
+
+	assert.Empty(t, renderBoundaryDiagnostics(t, firstDiags))
+	assert.Empty(t, renderBoundaryDiagnostics(t, secondDiags))
+	assert.Equal(t, first, second)
+	assert.Equal(t, first.Report(), second.Report())
 }

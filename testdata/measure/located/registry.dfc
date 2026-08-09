@@ -1,0 +1,47 @@
+; The vocabulary the model beside this file is measured against.
+;
+; It declares one type whose geometry is a point, which is what a device is:
+; a thing whose only interesting geometry is where it is. The position
+; predicate is the same one a corner's position is written under, because a
+; located node is authored exactly as a vertex is.
+(project
+  (label "Located node fixture")
+  (globalid-namespace "https://example.org/models/located"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type Level
+  (kind Storey)
+  (geometry absent)
+  (description "One level of the building."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(type Device
+  (kind Element)
+  (geometry point)
+  (description "A piece of equipment recorded at the point it was set out at."))
+
+(type CircuitGroup
+  (kind Zone)
+  (geometry absent)
+  (description "A grouping of devices which covers nothing."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex, or of a node whose whole shape is where it is."))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How far a loop may fail to close, and how far out of one plane its corners may lie."))

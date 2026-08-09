@@ -53,3 +53,21 @@
     (source "Room schedule RS-2026-001")
     (method method:schedule)
     (date "2026-03-01")))
+
+; A panel nobody has set out yet. It declares that its shape is where it is and
+; the model does not say where, which is a third way for a node to be
+; undrawable and is a defect rather than an absence: a device the model holds
+; and puts nowhere is a device a sheet leaves off, and nothing downstream can
+; detect that.
+(node site:P-01
+  (label "Distribution panel 1, not yet set out")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within site:L-01)
+  (caption
+    (value "P-01")
+    (source "Electrical schedule ES-2026-001")
+    (method method:schedule)
+    (date "2026-03-01")))

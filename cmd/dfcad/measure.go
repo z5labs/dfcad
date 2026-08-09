@@ -41,6 +41,12 @@ The id may name anything the model holds and there is no flag saying which:
 	an edge           length, midpoint and bounds
 	a vertex          where it is
 
+A node whose declared geometry is "point" is measured from the position claimed
+of the node itself under --position, and what comes back is what a vertex's
+measurement is: the point as the centroid, a bounding box of no extent, no
+length and no area, with the accuracy of the claim which placed it. A panel, a
+receptacle and a survey monument are each that shape.
+
 A node which references no loop — a circuit group, a warranty — measures
 nothing, and that is an answer rather than a failure.
 

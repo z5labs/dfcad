@@ -17,6 +17,7 @@
 (type Doorway (kind Element) (geometry line) (description "An opening formed through a partition."))
 (type Railing (kind Element) (geometry line) (description "A guarded run along an edge or a level change."))
 (type CircuitGroup (kind Element) (geometry absent) (description "Outlets served by one circuit."))
+(type Panel (kind Element) (geometry point) (description "A distribution board, recorded at the point it was set out at."))
 
 (predicate area
   (unit m2)

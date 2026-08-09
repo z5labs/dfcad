@@ -115,6 +115,21 @@ type Feature struct {
 	// covering two disjoint areas has two, and neither is a special case.
 	Surfaces []Polygon
 
+	// Points are the positions the feature is at, written as one
+	// gml:MultiPoint.
+	//
+	// It is the other shape a thing on a map has. A parcel, a building and a
+	// lake cover an area; a control point, a manhole and a meter are at a
+	// place and cover none, and a layer which had to give one of them a
+	// rectangle would be inventing dimensions nobody measured.
+	//
+	// A feature carries surfaces or points and never both. GML puts one
+	// geometry under a feature's geometry property, so a feature holding two
+	// kinds is a document a reader takes the first of and discards the rest
+	// of; [MixedGeometryError] refuses it rather than choosing which half to
+	// write.
+	Points []Position
+
 	// Properties are its attributes, written in the order they are given.
 	Properties []Property
 }

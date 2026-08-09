@@ -79,7 +79,8 @@ Flags:
 	--evidence                 add the identifier manifest: every node and the
 	                           GlobalId derived for it
 	--position <predicate>     the predicate a corner's position is claimed
-	                           under, which a space's outline is read from
+	                           under, which a space's outline is read from and
+	                           which a node drawn as a point is placed by
 	--tolerance <name>         the tolerance corners are judged coincident
 	                           against and rings judged planar against
 	--chord <name>             the tolerance a segment standing in for a curve
@@ -117,6 +118,15 @@ by its kind. A room and a countertop are both an area with a height over it,
 and the sweep which makes a solid of either is the same operation — so an
 element bounded by a ring is drawn exactly as a space is, and what its kind
 decides is only which entity the shape is written on.
+
+A node whose declared geometry is "point" is placed rather than drawn. Its
+product stands at the position claimed of the node itself under --position,
+carried into the root frame like every other coordinate here and written as its
+local placement, and it carries no representation: a panel and a receptacle
+have a position and no extent, and a rectangle invented for one would be
+dimensions nobody measured. A node drawn as a point which nothing places is
+refused naming it, rather than written at its container's origin — a device at
+the corner of its storey looks exactly like a device somebody placed.
 
 --height is what adds a body. Where it names a predicate and a node's height
 resolves under it, the node additionally carries a SweptSolid representation —
@@ -1038,6 +1048,10 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode, datum float64) []ifc.P
 		if e.shapes.complete() {
 			e.carriable(node)
 			product.Representation, product.Properties = e.modelled(node, datum)
+
+			if placed, located := e.placed(node, datum); located {
+				product.Placement = placed
+			}
 		}
 
 		out = append(out, product)

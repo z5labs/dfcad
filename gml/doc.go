@@ -3,7 +3,7 @@
 // This software is released under the MIT License.
 // https://opensource.org/licenses/MIT
 
-// Package gml writes polygon features as GML 3.2 documents.
+// Package gml writes polygon and point features as GML 3.2 documents.
 //
 // It is a file format library and nothing else. It knows GML's geometry
 // vocabulary and the XML encoding of it, and it knows nothing about the model
@@ -53,9 +53,16 @@
 //
 // One [Collection] is one document: an application-namespaced feature
 // collection holding one [Feature] per member, each with its properties as
-// text elements and its geometry as a gml:MultiSurface. Every feature is a
-// multi surface, including a feature of one polygon, so that a reader sees one
-// geometry type across the whole layer rather than having to accept two.
+// text elements and its geometry as a gml:MultiSurface or a gml:MultiPoint.
+// Every feature is a multi geometry, including a feature of one polygon or one
+// position, so that a reader sees one geometry type per shape across the whole
+// layer rather than having to accept two spellings of each.
+//
+// A feature is one or the other and never both ([MixedGeometryError]). A
+// parcel covers an area and a control point is at a place, and the two are
+// different things in a layer rather than two aspects of one: GML writes a
+// single geometry under a feature, so there is nowhere for the second to go
+// and no way to lose it visibly.
 //
 // Holes are [Polygon.Interior] and survive as gml:interior rings, which is the
 // whole reason a polygon is a shape here rather than a list of rings: a

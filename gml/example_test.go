@@ -94,6 +94,59 @@ func ExampleWrite() {
 	// </riverside:FeatureCollection>
 }
 
+// A thing which is at a place and covers nothing is a feature of points rather
+// than of surfaces: a control point, a manhole, a distribution panel. It is
+// written as a gml:MultiPoint under the same geometry property a surface goes
+// under, because GML holds one geometry per feature — which is why a feature
+// carries one kind or the other and never both.
+func ExampleWrite_point() {
+	collection := gml.Collection{
+		ID:        "riverside",
+		Namespace: "https://example.org/models/riverside",
+		Prefix:    "riverside",
+		Type:      "region",
+		CRS:       "EPSG:6543",
+		Features: []gml.Feature{{
+			ID: "control.CP-3",
+			Properties: []gml.Property{
+				{Name: "id", Value: "control:CP-3"},
+				{Name: "label", Value: "Survey monument 3"},
+			},
+			Points: []gml.Position{{Easting: 12, Northing: 8}},
+		}},
+	}
+
+	if err := gml.Write(os.Stdout, collection); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// <?xml version="1.0" encoding="UTF-8"?>
+	// <riverside:FeatureCollection xmlns:riverside="https://example.org/models/riverside" xmlns:gml="http://www.opengis.net/gml/3.2" gml:id="riverside">
+	//   <gml:boundedBy>
+	//     <gml:Envelope srsName="EPSG:6543" srsDimension="2">
+	//       <gml:lowerCorner>12 8</gml:lowerCorner>
+	//       <gml:upperCorner>12 8</gml:upperCorner>
+	//     </gml:Envelope>
+	//   </gml:boundedBy>
+	//   <gml:featureMember>
+	//     <riverside:region gml:id="control.CP-3">
+	//       <riverside:id>control:CP-3</riverside:id>
+	//       <riverside:label>Survey monument 3</riverside:label>
+	//       <riverside:geometry>
+	//         <gml:MultiPoint gml:id="control.CP-3.geometry" srsName="EPSG:6543" srsDimension="2">
+	//           <gml:pointMember>
+	//             <gml:Point gml:id="control.CP-3.point.1">
+	//               <gml:pos>12 8</gml:pos>
+	//             </gml:Point>
+	//           </gml:pointMember>
+	//         </gml:MultiPoint>
+	//       </riverside:geometry>
+	//     </riverside:region>
+	//   </gml:featureMember>
+	// </riverside:FeatureCollection>
+}
+
 // A refusal is a value with the fields which made it, so a caller mapping its
 // own vocabulary onto this one can tell what to fix without reading a message.
 func ExampleWrite_refusal() {

@@ -628,3 +628,54 @@ func TestRunMeasureOfAnOpenRun(t *testing.T) {
 
 	require.NotNil(t, result.Bounds)
 }
+
+// TestRunMeasureOfANodeDrawnAsAPoint is its own function because the figures it
+// asserts are a corner's rather than a region's: a position and the box around
+// it, with no length and no area.
+//
+// It is the case which used to come back empty. The coordinate was in the model
+// and `measure` reported nothing at all for the node carrying it, because the
+// only shape a node could have was the loops bounding it.
+func TestRunMeasureOfANodeDrawnAsAPoint(t *testing.T) {
+	root := tree(t, locatedFixture())
+	stdout, stderr := invoke(t, exitSuccess, root, measuring("site:P-01")...)
+
+	result := listed[measureResult](t, stdout)
+
+	assert.True(t, result.Derived, stderr)
+	assert.Equal(t, "site:P-01", result.Subject)
+	assert.Equal(t, familyNode, result.Family)
+	assert.Equal(t, "m", result.Unit)
+
+	require.NotNil(t, result.Centroid)
+	assert.Equal(t, []float64{2.5, 1.5, 1.2}, result.Centroid.At)
+
+	require.NotNil(t, result.Bounds)
+	assert.Equal(t, result.Bounds.Min, result.Bounds.Max, "a thing with no extent reaches as far as itself")
+
+	// And no length and no area. A panel is not a room, and nought square
+	// metres for one would be a figure about a shape nobody drew.
+	assert.Nil(t, result.Length)
+	assert.Nil(t, result.Area)
+
+	// The accuracy of the claim which placed it, which is what makes "how far
+	// is the panel from the wall" a question with an answer.
+	require.NotNil(t, result.Budget)
+	assert.NotEmpty(t, result.Budget.Terms)
+}
+
+// TestRunMeasureOfADeviceNothingPlaces is its own function because it asserts a
+// refusal rather than a figure: a device the model declares and puts nowhere is
+// unknown, and reporting it at the origin would put it in the corner of its
+// storey looking exactly like one somebody set out.
+func TestRunMeasureOfADeviceNothingPlaces(t *testing.T) {
+	root := tree(t, unplacedFixture())
+	stdout, stderr := invoke(t, exitCheck, root, measuring("site:P-02")...)
+
+	result := listed[measureResult](t, stdout)
+
+	assert.False(t, result.Derived)
+	assert.Equal(t, "site:P-02", result.Subject)
+	assert.Nil(t, result.Centroid)
+	assert.Contains(t, stderr, "site:P-02")
+}

@@ -796,3 +796,35 @@
   (geometry area)
   (frame frame:building)
   (boundary geom:L-15))
+
+
+; Two devices, one on each frame. Neither references a loop and neither ever
+; will: what places a panel is a claim on the panel, so a region read from one
+; covers nothing and is somewhere. The annex one is what says that carrying a
+; position between frames is the same arithmetic carrying a ring between them
+; is.
+(node site:D-01
+  (label "Distribution panel, building grid")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (position
+    (value (2.0 1.5 1.2) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-03-02")))
+
+(node site:D-11
+  (label "Distribution panel, annex grid")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:annex)
+  (position
+    (value (2.0 1.5 1.2) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-03-02")))

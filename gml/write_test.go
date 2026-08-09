@@ -29,13 +29,13 @@ var updateGolden = flag.Bool("update", false, "rewrite the golden files under te
 
 // plaza is the collection every test below is run over.
 //
-// It is four shapes rather than one because those are the four cases a vector
+// It is five shapes rather than one because those are the cases a vector
 // document has to carry: a plain rectangle, a rectangle with a courtyard taken
-// out of it, one thing which covers two disjoint areas, and a feature whose
-// text holds every character XML has to escape. Coordinates are in the
-// millions, which is what a projected system in feet looks like, so a document
-// which fell back to an exponent would say so here rather than in somebody's
-// survey.
+// out of it, one thing which covers two disjoint areas, a thing which is at a
+// place and covers nothing, and a feature whose text holds every character XML
+// has to escape. Coordinates are in the millions, which is what a projected
+// system in feet looks like, so a document which fell back to an exponent
+// would say so here rather than in somebody's survey.
 func plaza() Collection {
 	return Collection{
 		ID:        "riverside",
@@ -91,6 +91,15 @@ func plaza() Collection {
 						{Easting: 3502130.5, Northing: 552004.25},
 					}}},
 				},
+			},
+			{
+				ID: "site.PNL-01",
+				Properties: []Property{
+					{Name: "id", Value: "site:PNL-01"},
+					{Name: "label", Value: "Distribution panel 1"},
+					{Name: "kind", Value: "Element"},
+				},
+				Points: []Position{{Easting: 3502106.5, Northing: 552005.25}},
 			},
 		},
 	}
@@ -163,21 +172,49 @@ func TestWriteDeclaresTheExtentTheFeaturesActuallyCover(t *testing.T) {
 	lower := Position{Easting: math.Inf(1), Northing: math.Inf(1)}
 	upper := Position{Easting: math.Inf(-1), Northing: math.Inf(-1)}
 
+	reach := func(at Position) {
+		lower.Easting = math.Min(lower.Easting, at.Easting)
+		lower.Northing = math.Min(lower.Northing, at.Northing)
+		upper.Easting = math.Max(upper.Easting, at.Easting)
+		upper.Northing = math.Max(upper.Northing, at.Northing)
+	}
+
 	for _, feature := range collection.Features {
 		for _, surface := range feature.Surfaces {
 			for _, ring := range append([]LinearRing{surface.Exterior}, surface.Interior...) {
 				for _, at := range ring.Positions {
-					lower.Easting = math.Min(lower.Easting, at.Easting)
-					lower.Northing = math.Min(lower.Northing, at.Northing)
-					upper.Easting = math.Max(upper.Easting, at.Easting)
-					upper.Northing = math.Max(upper.Northing, at.Northing)
+					reach(at)
 				}
 			}
+		}
+
+		for _, at := range feature.Points {
+			reach(at)
 		}
 	}
 
 	assert.Equal(t, lower, got.Lower)
 	assert.Equal(t, upper, got.Upper)
+}
+
+// TestWriteBoundsAPointOutsideEverySurface is its own function because the
+// case it pins down is one the fixture above cannot reach: a layer whose only
+// feature is a place, or whose furthest feature is one, has an envelope which
+// has to reach it. A document whose boundedBy came back over the polygons alone
+// would send a reader to the wrong part of the map, or to the origin.
+func TestWriteBoundsAPointOutsideEverySurface(t *testing.T) {
+	collection := plaza()
+
+	far := Position{Easting: 3502500.5, Northing: 552900.25}
+	collection.Features = append(collection.Features, Feature{
+		ID:     "control.CP-9",
+		Points: []Position{far},
+	})
+
+	got := read(t, written(t, collection))
+
+	require.True(t, got.Bounded)
+	assert.Equal(t, far, got.Upper, "the envelope reaches the furthest thing in the layer")
 }
 
 // TestWriteIsByteIdenticalForOneCollection is its own function because it is
@@ -252,6 +289,7 @@ func TestWriteIdentifiesEveryElementGMLRequiresAnIdentifierFor(t *testing.T) {
 		"riverside",
 		"site.P-01", "site.P-01.geometry", "site.P-01.surface.1",
 		"site.S-101", "site.S-101.geometry", "site.S-101.surface.1", "site.S-101.surface.2",
+		"site.PNL-01", "site.PNL-01.geometry", "site.PNL-01.point.1",
 	}, found)
 
 	seen := make(map[string]bool, len(found))
@@ -458,6 +496,24 @@ func TestWriteRefusesADocumentNoReaderCouldRead(t *testing.T) {
 				return one(Polygon{Exterior: ring})
 			},
 			expected: NonFiniteCoordinateError{Feature: "feature", Easting: 4, Northing: math.Inf(1)},
+		},
+		{
+			name: "a position which is not a number, which is the same defect through the other field",
+			collection: func() Collection {
+				collection := one()
+				collection.Features[0].Points = []Position{{Easting: 2, Northing: math.Inf(-1)}}
+				return collection
+			},
+			expected: NonFiniteCoordinateError{Feature: "feature", Easting: 2, Northing: math.Inf(-1)},
+		},
+		{
+			name: "a feature which is both an area and a place, which GML has one slot for",
+			collection: func() Collection {
+				collection := one(Polygon{Exterior: square()})
+				collection.Features[0].Points = []Position{{Easting: 2, Northing: 2}}
+				return collection
+			},
+			expected: MixedGeometryError{Feature: "feature", Surfaces: 1, Points: 1},
 		},
 	}
 

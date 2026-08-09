@@ -290,9 +290,17 @@
 // centroid, and [Topology.AssembleRun] is [Topology.Assemble] with that one
 // requirement dropped.
 //
+// A node whose declared geometry is `point` is read from the position claimed of
+// the node itself, under the same predicate a corner's position is claimed
+// under. A panel, a receptacle, a condenser and a survey monument are each a
+// thing whose only interesting geometry is where it is, and a boundary authored
+// for one would be dimensions nobody measured. What it measures is what a corner
+// measures — the point as the centroid, a box of no extent, no length and no
+// area — with the accuracy of the claim which placed it.
+//
 // [Graph.Measure] is the whole of that in one call, dispatching on whichever
-// family an id names, and [Graph.Corners] is the vertices a survey for it has to
-// carry. They are here so that a caller asking how big something is does not
+// family an id names, and [Graph.Corners] with [Graph.Located] is what a survey
+// for it has to carry. They are here so that a caller asking how big something is does not
 // write the dispatch itself: which of the four calls a subject takes, and which
 // corners the answer rests on, are properties of the model rather than of the
 // question, and a second implementation of them is a second set of answers.
@@ -398,7 +406,10 @@
 // it covers nothing, so there is no area for an operation to be computed over,
 // and every straight run of it names the edge it was written as, the way it was
 // walked and the two corners it runs between — which is the attribution a ring's
-// boundary carries and is what a sheet draws the run from. Covering nothing is a
+// boundary carries and is what a sheet draws the run from. A node drawn as a
+// point reads back the same way with a [Region.Location] instead: it covers
+// nothing and it is somewhere, which is what a sheet places a symbol at and what
+// a map writes as a point feature. Covering nothing is a
 // state of that answer and not a refusal, which is what keeps one open run in a
 // storey from refusing the plan of the storey or the map of the model.
 //

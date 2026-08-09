@@ -23,12 +23,18 @@ Usage:
 
 	dfcad export-map [flags]
 
-Every node the model gives an outline to, written as a GML 3.2 feature: the
-rings bounding it, holes and all, in the coordinates of the frame the chain is
-rooted at, with the identifier of that frame's coordinate reference system on
-every geometry. What comes back is a layer a GIS opens with its coordinate
-system already attached, so placing the model on the earth does not depend on
-somebody remembering which projection it was drawn in.
+Every node the model gives a shape to, written as a GML 3.2 feature: the rings
+bounding it, holes and all, in the coordinates of the frame the chain is rooted
+at, with the identifier of that frame's coordinate reference system on every
+geometry. What comes back is a layer a GIS opens with its coordinate system
+already attached, so placing the model on the earth does not depend on somebody
+remembering which projection it was drawn in.
+
+A node whose declared geometry is "point" is written as a point feature rather
+than as a ring, from the position claimed of the node itself under --position.
+A panel, a condenser, a receptacle and a survey monument are each a thing whose
+only interesting geometry is where it is, and a rectangle drawn around one
+would be dimensions nobody measured.
 
 The format is GML rather than the interchange format most reached for, and the
 reason is recorded in
@@ -59,7 +65,8 @@ Flags:
 	                           .dfcad/export, in a directory named for the
 	                           digest of the source tree)
 	--position <predicate>     the predicate a corner's position is claimed
-	                           under, which an outline is read from
+	                           under, which an outline is read from and which
+	                           a node drawn as a point is placed by
 	--tolerance <name>         the tolerance corners are judged coincident
 	                           against and rings judged planar against
 	--chord <name>             the tolerance a segment standing in for a curve
@@ -540,12 +547,17 @@ func (c *cartographer) unsited(root dfcad.Frame, placed *recordedCRS) {
 	})
 }
 
-// drawable is every node the model gave an outline to, in id order.
+// drawable is every node the model gave a shape to, in id order.
 //
-// Everything the model gives an outline to is drawn, whatever its kind. A
+// Everything the model gives a shape to is drawn, whatever its kind. A
 // boundary is the model saying where a thing is, and a command which wrote the
 // rooms and left out the plot they stand on would be answering a question
 // about kinds which the model already answered by drawing both.
+//
+// A node drawn as a point has a shape and no boundary. It is here for the same
+// reason a bounded node is: the model says where it is, and a layer which held
+// the rooms and not the panels in them would be a map of a floor with its
+// electrical layer missing.
 //
 // The order is by id rather than by the order the files were read, so the
 // document is a property of the model rather than of which file a node
@@ -561,7 +573,11 @@ func (c *cartographer) drawable() []*dfcad.SemanticNode {
 		// A retired node is one which stopped existing, and drawing it as a
 		// live feature is how a plan comes to show a building which was
 		// demolished.
-		if node.Retired() || len(node.Boundaries()) == 0 {
+		if node.Retired() {
+			continue
+		}
+
+		if geometry, _ := node.Geometry(); geometry != dfcad.GeometryPoint && len(node.Boundaries()) == 0 {
 			continue
 		}
 		nodes = append(nodes, node)
@@ -587,19 +603,70 @@ func (c *cartographer) features(rooted bool) []gml.Feature {
 			continue
 		}
 
+		feature := gml.Feature{
+			ID:         mapFeature + strconv.Itoa(len(out)+1),
+			Properties: c.properties(node),
+		}
+
+		if geometry, _ := node.Geometry(); geometry == dfcad.GeometryPoint {
+			at, placed := c.located(node)
+			if !placed {
+				continue
+			}
+
+			feature.Points = []gml.Position{at}
+			out = append(out, feature)
+			continue
+		}
+
 		surfaces, drawn := c.surfaces(node)
 		if !drawn {
 			continue
 		}
 
-		out = append(out, gml.Feature{
-			ID:         mapFeature + strconv.Itoa(len(out)+1),
-			Properties: c.properties(node),
-			Surfaces:   surfaces,
-		})
+		feature.Surfaces = surfaces
+		out = append(out, feature)
 	}
 
 	return out
+}
+
+// located is one node drawn as a point, carried into the root frame and
+// written as the position a map holds it at.
+//
+// It reads the same claim the plan and the export read, through the same
+// region, so a device is at one place on every artefact this repository writes
+// rather than at one place per reader of the model.
+//
+// The third component goes no further than here, exactly as a ring's does: a
+// map is a plan, and this format has two ordinates. What is dropped is dropped
+// after the carry rather than before it, because a transform between frames
+// mixes the components and a position flattened first would land somewhere the
+// model does not put it.
+func (c *cartographer) located(node *dfcad.SemanticNode) (gml.Position, bool) {
+	region, diags := c.graph.Topology().RegionOf(
+		node,
+		c.graph.Boundaries(),
+		bent(c.graph, c.shapes.position, c.shapes.tolerance, c.shapes.curvature(), node),
+	)
+	c.diags = append(c.diags, diags...)
+
+	if _, placed := region.Location(); !placed {
+		return gml.Position{}, false
+	}
+
+	if region.Frame() != c.root {
+		carried, refused := region.In(c.root, c.graph.Frames())
+		if len(refused) > 0 {
+			c.diags = append(c.diags, refused...)
+			return gml.Position{}, false
+		}
+		region = carried
+	}
+
+	at, _ := region.Location()
+
+	return gml.Position{Easting: at[0], Northing: at[1]}, true
 }
 
 // unread records every curve the vocabulary this run named could not read,

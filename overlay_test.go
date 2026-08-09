@@ -66,6 +66,19 @@ func loadOverlaidModel(t *testing.T, name string) overlaidModel {
 		survey.Place(vertex.ID(), resolution)
 	}
 
+	// And the nodes whose whole shape is where they are, which have no corners
+	// for the walk above to reach.
+	for node := range nodes.All() {
+		if !drawnAsPoint(node) {
+			continue
+		}
+
+		resolution, err := claims.Resolve(node.ID(), "position", registry)
+		require.NoError(t, err)
+
+		survey.Place(node.ID(), resolution)
+	}
+
 	return overlaidModel{
 		registry:   registry,
 		nodes:      nodes,
@@ -1125,4 +1138,102 @@ func TestRegionOfAnOpenRunIsNotJudgedAgainstAnOverlayTolerance(t *testing.T) {
 		}
 	}
 	assert.True(t, untolerated)
+}
+
+// TestRegionOfALocatedNode is its own function because a node drawn as a point
+// comes back as a different shape of region: one which covers nothing and is
+// somewhere. Every operation over an area refuses it, which is what it has
+// rather than a defect it caused.
+func TestRegionOfALocatedNode(t *testing.T) {
+	model := loadOverlaidModel(t, "shapes")
+
+	panel := model.region(t, "site:D-01")
+
+	t.Run("reads the position claimed of the node itself", func(t *testing.T) {
+		at, located := panel.Location()
+
+		require.True(t, located)
+		assert.Equal(t, Point{2, 1.5, 1.2}, at)
+		assert.Equal(t, ID("frame:building"), panel.Frame())
+		assert.Equal(t, Unit("m"), panel.Unit())
+	})
+
+	t.Run("covers nothing, which is a state of the answer", func(t *testing.T) {
+		assert.True(t, panel.Empty())
+		assert.Empty(t, panel.Pieces())
+		assert.Empty(t, panel.Segments())
+		assert.Zero(t, panel.Area())
+	})
+
+	t.Run("carries the accuracy of the claim which placed it", func(t *testing.T) {
+		assert.True(t, panel.Budget().Known())
+		assert.NotEmpty(t, panel.Budget().Terms())
+	})
+
+	t.Run("refuses an operation which needs an area", func(t *testing.T) {
+		room := model.region(t, "site:S-01")
+
+		for _, operation := range []struct {
+			name string
+			run  func() (Region, []Diagnostic)
+		}{
+			{name: "a buffer", run: func() (Region, []Diagnostic) { return panel.Buffer(1) }},
+			{name: "an intersection", run: func() (Region, []Diagnostic) { return panel.Intersect(room) }},
+			{name: "a containment", run: func() (Region, []Diagnostic) {
+				_, diags := panel.Containment(room)
+				return Region{}, diags
+			}},
+		} {
+			t.Run(operation.name, func(t *testing.T) {
+				_, diags := operation.run()
+
+				require.NotEmpty(t, diags)
+				assert.Equal(t, SeverityError, diags[0].Severity)
+			})
+		}
+	})
+
+	t.Run("reads a node bounded by a ring as having no location", func(t *testing.T) {
+		_, located := model.region(t, "site:S-01").Location()
+
+		assert.False(t, located, "a shape which covers an area is located by its corners")
+	})
+}
+
+// TestALocatedRegionInAnotherFrame is its own function for the reason
+// [TestRegionInAnotherFrame] is separate from the operations: carrying a shape
+// between frames is a step a caller takes deliberately, and what it asserts is
+// that a position takes exactly the step a ring takes and pays the same
+// accuracy for it.
+func TestALocatedRegionInAnotherFrame(t *testing.T) {
+	model := loadOverlaidModel(t, "shapes")
+
+	here, there := model.region(t, "site:D-01"), model.region(t, "site:D-11")
+
+	// The two panels are written at the same numbers on two different grids,
+	// which is two numbers rather than two places.
+	authored, _ := here.Location()
+	same, _ := there.Location()
+	require.Equal(t, authored, same)
+
+	carried, diags := there.In("frame:building", model.frames)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	assert.Equal(t, ID("frame:building"), carried.Frame())
+	assert.Equal(t, Unit("m"), carried.Unit())
+
+	at, located := carried.Location()
+	require.True(t, located)
+	assert.InDelta(t, authored[0]+30, at[0], 1e-9, "the annex grid stands thirty metres east")
+
+	// The transform between the two frames is a measurement, and what it cost
+	// is in the budget of everything computed after it.
+	assert.Greater(t, len(carried.Budget().Terms()), len(there.Budget().Terms()))
+
+	t.Run("refuses a frame nothing relates it to", func(t *testing.T) {
+		_, diags := there.In("frame:nowhere", model.frames)
+
+		require.NotEmpty(t, diags)
+		assert.Equal(t, SeverityError, diags[0].Severity)
+	})
 }

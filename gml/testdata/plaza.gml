@@ -60,4 +60,20 @@
       </riverside:geometry>
     </riverside:region>
   </gml:featureMember>
+  <gml:featureMember>
+    <riverside:region gml:id="site.PNL-01">
+      <riverside:id>site:PNL-01</riverside:id>
+      <riverside:label>Distribution panel 1</riverside:label>
+      <riverside:kind>Element</riverside:kind>
+      <riverside:geometry>
+        <gml:MultiPoint gml:id="site.PNL-01.geometry" srsName="EPSG:6543" srsDimension="2">
+          <gml:pointMember>
+            <gml:Point gml:id="site.PNL-01.point.1">
+              <gml:pos>3502106.5 552005.25</gml:pos>
+            </gml:Point>
+          </gml:pointMember>
+        </gml:MultiPoint>
+      </riverside:geometry>
+    </riverside:region>
+  </gml:featureMember>
 </riverside:FeatureCollection>

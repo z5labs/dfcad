@@ -1,0 +1,118 @@
+; A storey with a room in it and three devices standing in the room, each of
+; which is a point rather than an outline.
+;
+; Nothing here writes down where a device is twice. The panel's coordinate is a
+; claim on the panel, under the same predicate a corner's position is claimed
+; under, with the same source, method and accuracy — which is what makes the
+; accuracy of "how far is the panel from the wall" computable at all.
+(vertex geom:V-01
+  (label "Room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-02
+  (label "Room, corner 2")
+  (frame frame:building)
+  (position
+    (value (6.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-03
+  (label "Room, corner 3")
+  (frame frame:building)
+  (position
+    (value (6.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-04
+  (label "Room, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-01 (label "Room, side 1") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Room, side 2") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Room, side 3") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Room, side 4") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01
+  (label "Room boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(node site:L-01
+  (label "Ground floor")
+  (kind Storey)
+  (type Level)
+  (frame frame:building))
+
+(node site:S-01
+  (label "Meeting room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-01))
+
+; The panel. It is inside the room by containment and at a coordinate by claim,
+; and the two say different things: one is where it belongs in the model, the
+; other is where it is on the floor.
+(node site:PNL-01
+  (label "Distribution panel 1")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:S-01)
+  (member-of site:Z-01)
+  (position
+    (value (1.5 3.25 1.2) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-03-02")))
+
+; A second device, so that a query over the storey has more than one of them to
+; keep in order.
+(node site:CDU-01
+  (label "Condenser 1")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:S-01)
+  (position
+    (value (5.0 0.75 0.0) m)
+    (source "Services set-out SS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+
+; A device nobody has set out yet. It declares that its shape is where it is
+; and the model does not say where, which is a thing to report rather than a
+; device quietly at the origin.
+(node site:RCP-01
+  (label "Receptacle 1, not yet set out")
+  (kind Element)
+  (type Device)
+  (geometry point)
+  (frame frame:building)
+  (within site:S-01))
+
+; A grouping, which has no geometry at all. It is here so that a node with no
+; shape and a node whose shape is a point are visibly different answers.
+(node site:Z-01
+  (label "Lighting circuit 1")
+  (kind Zone)
+  (type CircuitGroup))

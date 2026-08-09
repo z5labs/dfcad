@@ -1255,7 +1255,7 @@ func (g *Graph) derive(digest Digest, against Derivation) (Footprints, []Diagnos
 			continue
 		}
 
-		survey := positionSurvey(g, against.Tolerance, against.Position, g.boundaries.Vertices(node))
+		survey := shapeSurvey(g, against.Tolerance, against.Position, node)
 
 		region, regionDiags := g.topology.RegionOf(node, g.boundaries, survey)
 		if len(regionDiags) > 0 {
