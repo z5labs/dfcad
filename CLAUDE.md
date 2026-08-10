@@ -220,6 +220,16 @@ What follows from that:
   regeneration check (`go test . -update` and a clean `git diff -- testdata`), and
   anything that runs the `dfcad` binary against the fixture model. The module has no
   hook for project commands, and the standard is not the place to put them.
+- **A GDAL read of the map export drops a `.gfs` beside the file it read.** A job — or a
+  consumer's pipeline — which opens `model.gml` with `ogrinfo`, `ogr2ogr` or anything else
+  on GDAL makes it infer the document's schema and cache that inference as `model.gfs` next
+  to the document; every later read prefers the sidecar over the document. Two things follow.
+  It is a build output and not a source, so `*.gfs` is gitignored and a workspace showing one
+  is not dirty — a step asserting a clean tree must not read it as a change. And a stale one
+  describes the document that produced it rather than the one beside it, so a job which
+  re-exports and re-reads deletes it first. The `dfcad` side of this is unaffected: the
+  sidecar is GDAL's, nothing in this repository writes or reads it, and it is not part of the
+  artefact the digest keys.
 - **A gap in the module is fixed in `z5labs/devex`,** not worked around here. If a
   story needs something the module does not expose — build-time `ldflags`, release
   assets attached to a GitHub release, an SBOM — the change belongs upstream and the

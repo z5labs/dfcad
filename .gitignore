@@ -43,3 +43,10 @@ go.work.sum
 # source: every byte of it is recomputed from the entity files, and deleting it
 # costs time and nothing else.
 .dfcad/
+
+# The schema GDAL infers from a GML document and caches beside it, the first
+# time anything on GDAL reads the map export. Nothing here writes or reads it —
+# it is the reader's cache of a document this repository produces — and a stale
+# one describes the document that produced it rather than the one next to it, so
+# it is derived data to be deleted rather than a file to be kept.
+*.gfs

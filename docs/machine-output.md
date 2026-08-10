@@ -2983,6 +2983,54 @@ Everything else — `derived`, `digest`, `files[]` — is the shared shape, with
 documented there. There is no `identifiers`: this format derives no identifier of the
 project's, and the id of every node written is a property of the feature it was written as.
 
+#### The feature properties
+
+The document itself is not JSON, but its property names are as much a contract as the fields
+above: they are what a downstream style rule, definition query or layer filter is written
+against. A feature carries these, in this order and where the node has them, in the
+application namespace `https://github.com/z5labs/dfcad/gml/1`, which the document binds to the
+prefix `dfcad`:
+
+| Property | Meaning |
+|----------|---------|
+| `dfcad:id` | The id of the node the feature was drawn from, in the model's own spelling. On every feature, and the join back to the model. |
+| `dfcad:label` | What that node is called, where it has a label. |
+| `dfcad:kind` | The kind the model gives it. |
+| `dfcad:type` | The type the project declared it as, exactly as the registry wrote it. |
+| `dfcad:within` | The id of the node which **immediately** contains it. |
+| `dfcad:frame` | The id of the frame its outline was declared in, which is not the frame its coordinates are in unless the two are the same one. |
+
+Only `dfcad:id` is written on every feature. The rest are written where the node has them and
+are absent — not empty — where it does not, which is what makes a filter on one of them mean
+"has this value" rather than "has this value or nothing". The id is a property rather than the
+feature's `gml:id` because an id in this model's spelling is not a name XML can write; the
+`gml:id` is an ordinal, and it identifies an element of one document rather than a thing in the
+model.
+
+**`dfcad:within` is the immediate container and never an ancestor.** A room reports the storey
+it sits on and not the site that storey stands on, because it is the model's own containment
+edge written out. Asking what a whole site holds is a join the reader makes — follow `within`
+from feature to feature until it names nothing the document holds — or one
+`dfcad traverse contains <id>` against the model, whose answer comes back in the same ids
+`dfcad:id` carries.
+
+**`export-map` takes no selector, and the properties above are how a run is narrowed after the
+fact.** Every node the model gave a shape to is drawn, so a document of a model holding rooms,
+countertops and closets holds all three stacked on the parcel. Choosing what a sheet shows is
+the reader's
+([0025](./decisions/0025-the-map-export-draws-every-region-and-its-properties-are-the-filter.md)):
+a selector on the command would make the source digest an incomplete key for the artefact, and
+two runs over one tree selecting differently would disagree about what belongs at the one path
+that digest names.
+
+**The namespace resolves to nothing and there is no `xsi:schemaLocation`, deliberately.** A
+namespace URI identifies a vocabulary rather than a document to fetch, and the version at the
+end of this one is what moves if a property here changes meaning. There is no `.xsd` to publish
+and none is pointed at; GDAL infers the schema from the instance and everything downstream of it
+goes through GDAL. A reader which insists on resolving a schema before it will open a document
+refuses this one
+([0023](./decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md)).
+
 **`chord` and `deviation` are here because the file carries neither.** A GML document is
 positions, so a reader holding one cannot tell a ring which follows its curve to a tenth of a
 metre from one drawn coarsely — and a map is drawn once and read for years. They are what a
@@ -3012,8 +3060,16 @@ region outlined on another frame is carried there by the chain of measured trans
 model already states — the same arithmetic [`site`](#site) does across frames — and a chain
 which does not reach is a refusal rather than a feature written where it was drawn. Nothing
 reprojects: the identifier is carried and never read, so the coordinates in the document are
-the model's own to the last digit
+the model's own
 ([0023](./decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md)).
+
+**A coordinate is the model's own, which is not the same as being the digits somebody typed.**
+A corner authored on the root frame reaches the file as it was written. One carried across a
+frame by a measured transform, or drawn along an arc, has floating-point arithmetic done to it
+on the way, so `2000000.0` can be written `1999999.9999999995` — about 5e-10 survey feet, which
+is the last bits of a double and not a reprojection. Determinism is over two runs of one tree,
+which are byte-identical; a check comparing this file against a surveyed figure compares to a
+tolerance rather than as text.
 
 **A run naming no `--crs` still writes the file, and warns.** The document then carries no
 `srsName`, which is a layer a reader has to be told the system of out of band. It is a warning

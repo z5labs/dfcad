@@ -75,3 +75,4 @@ the code in front of them and needs the part that is not in the code.
 | [0022](./0022-a-command-whose-product-is-a-file-answers-on-stdout.md) | A command whose product is a file answers on stdout like every other command | Accepted |
 | [0023](./0023-the-map-export-names-its-coordinate-system-in-the-file.md) | The map export names its coordinate system in the file, which is why it is GML and not GeoJSON | Accepted |
 | [0024](./0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md) | Every coordinate in an export is written in the root frame | Accepted |
+| [0025](./0025-the-map-export-draws-every-region-and-its-properties-are-the-filter.md) | The map export draws every region, and its feature properties are the filter | Accepted |
