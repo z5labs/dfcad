@@ -51,6 +51,18 @@
 // IfcRelContainedInSpatialStructure for the products, and
 // IfcRelAssignsToGroup for the zones.
 //
+// Which entities a product may be written as is a closed set — [Products] —
+// because IFC4 fixes an attribute list per entity and this package writes
+// exactly the ones it has transcribed. An instance written with the wrong
+// number of attributes is a file no reader loads, so an entity outside that set
+// is refused rather than guessed at, and a caller mapping onto IFC asks
+// [Supports] before it maps. That question has three answers rather than two:
+// an entity this package writes, an IFC4 product it has no attribute list for,
+// and a name IFC4 defines no product for at all. The last two both reach a file
+// as [EntityProxy] and they are different mistakes — one is a gap here, the
+// other a mistake in the mapping — so a caller which could not tell them apart
+// would report every proxy the same way.
+//
 // A [Unit] of that assignment is either an [SIUnit] or a
 // [ConversionBasedUnit], which is IFC4's own answer to a unit the SI has no
 // name for: a factor over an SI unit, written beside the numbers rather than

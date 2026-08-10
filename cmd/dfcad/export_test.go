@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/z5labs/dfcad"
+	"github.com/z5labs/dfcad/ifc"
 )
 
 // exportRegistry is the vocabulary the fixture below is judged against.
@@ -844,9 +845,10 @@ func TestExportedRefusesAModelWhichPinsNoURL(t *testing.T) {
 
 	graph, _ := dfcad.LoadGraph(root)
 
-	_, manifest, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
+	_, manifest, classifications, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
 
 	assert.Empty(t, manifest)
+	assert.Empty(t, classifications)
 	require.Len(t, diags, 1)
 	assert.Equal(t, dfcad.SeverityError, diags[0].Severity)
 	assert.Contains(t, diags[0].Message, "GlobalId")
@@ -1473,4 +1475,262 @@ func split(written string) []string {
 	}
 
 	return out
+}
+
+// exportClassifiedRegistry is a vocabulary declaring every way an IFC4
+// classification can meet this writer.
+//
+// The four which matter are a code the writer writes, a code IFC4 defines and
+// the writer does not, a code IFC4 defines no product for, and no code at all.
+// They are one registry rather than four fixtures because what is under test is
+// that the answer tells them apart in one run.
+const exportClassifiedRegistry = `(project
+  (label "Classification example")
+  (description "One type per way a classification meets the writer.")
+  (globalid-namespace "https://example.org/models/classified"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type Parcel (kind Site) (geometry absent) (description "A plot of land.")
+  (classification "IFC4" "IfcSite"))
+
+(type OfficeBuilding (kind Building) (geometry absent) (description "A building."))
+
+(type Level (kind Storey) (geometry absent) (description "One floor."))
+
+(type MeetingRoom (kind Space) (geometry absent) (description "A room.")
+  (classification "IFC4" "IfcSpace"))
+
+(type Doorway (kind Element) (geometry absent) (description "A door.")
+  (classification "IFC4" "IfcDoor"))
+
+(type Glazing (kind Element) (geometry absent) (description "A window.")
+  (classification "IFC4" "IfcWindow"))
+
+(type LegacyWall (kind Element) (geometry absent) (description "A wall classified the old way.")
+  (classification "IFC4" "IfcWallStandardCase"))
+
+(type Receptacle (kind Element) (geometry absent) (description "A socket outlet.")
+  (classification "IFC4" "IfcOutlet"))
+
+(type Typo (kind Element) (geometry absent) (description "A wall somebody misspelled.")
+  (classification "IFC4" "IfcWahl"))
+
+(type Boundary (kind Interface) (geometry absent) (description "Where two rooms meet.")
+  (classification "IFC4" "IfcRelSpaceBoundary"))
+
+(type Fitting (kind Element) (geometry absent) (description "Something no IFC entity names."))
+`
+
+// exportClassifiedEntities is one node per type of the registry above.
+const exportClassifiedEntities = `(node site:P-01 (label "Plot one") (kind Site) (type Parcel))
+
+(node site:B-01 (label "Block A") (kind Building) (type OfficeBuilding) (within site:P-01))
+
+(node site:L-01 (label "Level one") (kind Storey) (type Level) (within site:B-01))
+
+(node site:S-101 (label "Meeting Room A") (kind Space) (type MeetingRoom) (within site:L-01))
+
+(node site:D-01 (label "Front door") (kind Element) (type Doorway) (within site:S-101))
+
+(node site:WN-01 (label "Living room window") (kind Element) (type Glazing) (within site:S-101))
+
+(node site:LW-01 (label "Legacy-classified partition") (kind Element) (type LegacyWall) (within site:S-101))
+
+(node site:O-01 (label "Double socket") (kind Element) (type Receptacle) (within site:S-101))
+
+(node site:TY-01 (label "Misspelled-classification thing") (kind Element) (type Typo) (within site:S-101))
+
+(node site:T-01 (label "Rooms A and B, shared wall") (kind Interface) (type Boundary) (within site:S-101))
+
+(node site:F-01 (label "Room A projector mount") (kind Element) (type Fitting) (within site:S-101))
+`
+
+// exportClassifiedModel is that fixture as a tree.
+func exportClassifiedModel() map[string]string {
+	return map[string]string{
+		"registry.dfc":      exportClassifiedRegistry,
+		"entities/site.dfc": exportClassifiedEntities,
+	}
+}
+
+func TestRunExportReportsAClassificationItCannotCarry(t *testing.T) {
+	result, _, stderr := exporting(t, exitSuccess, exportClassifiedModel())
+	source := artefact(t, result)
+
+	held := make(map[string]exportedClassification, len(result.Classifications))
+	for _, reported := range result.Classifications {
+		held[reported.ID] = reported
+	}
+
+	testCases := []struct {
+		name     string
+		expected exportedClassification
+	}{
+		{
+			name: "names a code IFC4 defines and this writer does not write as unwritten",
+			expected: exportedClassification{
+				ID:     "site:LW-01",
+				Type:   "LegacyWall",
+				Code:   "IfcWallStandardCase",
+				Entity: "IFCBUILDINGELEMENTPROXY",
+				Reason: classificationUnwritten,
+			},
+		},
+		{
+			name: "names a service IFC4 defines and this writer does not write as unwritten",
+			expected: exportedClassification{
+				ID:     "site:O-01",
+				Type:   "Receptacle",
+				Code:   "IfcOutlet",
+				Entity: "IFCBUILDINGELEMENTPROXY",
+				Reason: classificationUnwritten,
+			},
+		},
+		{
+			name: "names a misspelling as a code IFC4 defines no product for",
+			expected: exportedClassification{
+				ID:     "site:TY-01",
+				Type:   "Typo",
+				Code:   "IfcWahl",
+				Entity: "IFCBUILDINGELEMENTPROXY",
+				Reason: classificationUnknown,
+			},
+		},
+		{
+			name: "names a relationship as a code IFC4 defines no product for",
+			expected: exportedClassification{
+				ID:     "site:T-01",
+				Type:   "Boundary",
+				Code:   "IfcRelSpaceBoundary",
+				Entity: "IFCBUILDINGELEMENTPROXY",
+				Reason: classificationUnknown,
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, held[testCase.expected.ID])
+		})
+	}
+
+	t.Run("reports the code exactly as the registry spells it", func(t *testing.T) {
+		assert.Equal(t, "IfcWallStandardCase", held["site:LW-01"].Code)
+	})
+
+	t.Run("says nothing about a type declaring no IFC4 classification", func(t *testing.T) {
+		assert.NotContains(t, held, "site:F-01")
+		assert.Contains(t, source, "'site:F-01','Room A projector mount','Fitting'")
+	})
+
+	t.Run("says nothing about a classification it carried", func(t *testing.T) {
+		assert.NotContains(t, held, "site:D-01")
+		assert.NotContains(t, held, "site:WN-01")
+		assert.NotContains(t, held, "site:S-101")
+	})
+
+	t.Run("reports the nodes ascending by id", func(t *testing.T) {
+		ids := make([]string, 0, len(result.Classifications))
+		for _, reported := range result.Classifications {
+			ids = append(ids, reported.ID)
+		}
+
+		assert.True(t, slices.IsSorted(ids), ids)
+	})
+
+	t.Run("writes the file all the same, because a proxy states what the model holds", func(t *testing.T) {
+		assert.True(t, result.Derived)
+		assert.Contains(t, source, "IFCBUILDINGELEMENTPROXY('")
+	})
+
+	t.Run("says so on stderr as well, naming the type and where it was classified", func(t *testing.T) {
+		assert.Contains(t, stderr, "LegacyWall")
+		assert.Contains(t, stderr, "IfcWallStandardCase")
+		assert.Contains(t, stderr, "Typo")
+		assert.Contains(t, stderr, "IfcWahl")
+		assert.Contains(t, stderr, "registry.dfc")
+	})
+
+	t.Run("offers the set a registry is authored against in the diagnostic", func(t *testing.T) {
+		assert.Contains(t, stderr, "IFCWALL")
+		assert.Contains(t, stderr, "IFCDOOR")
+	})
+}
+
+// TestRunExportWritesADoorAndAWindowAsThemselves is its own function because
+// what it asserts is about the file rather than about the answer: a door and a
+// window are the two every house model is full of, and each reaching the file
+// as a proxy is how a receiving system comes to hold a wall with no openings.
+func TestRunExportWritesADoorAndAWindowAsThemselves(t *testing.T) {
+	result, _, _ := exporting(t, exitSuccess, exportClassifiedModel())
+	source := artefact(t, result)
+
+	testCases := []struct {
+		name     string
+		expected string
+	}{
+		{
+			name:     "writes a door as an IfcDoor",
+			expected: "IFCDOOR('",
+		},
+		{
+			name:     "writes a window as an IfcWindow",
+			expected: "IFCWINDOW('",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Contains(t, source, testCase.expected)
+		})
+	}
+
+	t.Run("gives each the attribute list IFC4 gives it, which is five past the tag", func(t *testing.T) {
+		for at, held := range parsed(t, source) {
+			if held.keyword != "IFCDOOR" && held.keyword != "IFCWINDOW" {
+				continue
+			}
+
+			assert.Len(t, held.attributes, 13, at+" "+held.keyword)
+		}
+	})
+}
+
+// TestRunExportReportsNoClassificationsForAModelWithinTheWritableSet is its own
+// function because it asserts an absence: the field is empty rather than absent
+// so that a caller can tell "nothing to report" from "this build does not
+// report it".
+func TestRunExportReportsNoClassificationsForAModelWithinTheWritableSet(t *testing.T) {
+	files := exportClassifiedModel()
+	files["registry.dfc"] = strings.NewReplacer(
+		`"IfcWallStandardCase"`, `"IfcWall"`,
+		`"IfcOutlet"`, `"IfcFurnishingElement"`,
+		`"IfcWahl"`, `"IfcWall"`,
+		`"IfcRelSpaceBoundary"`, `"IfcCovering"`,
+	).Replace(exportClassifiedRegistry)
+
+	result, _, stderr := exporting(t, exitSuccess, files)
+
+	assert.NotNil(t, result.Classifications)
+	assert.Empty(t, result.Classifications)
+	assert.NotContains(t, stderr, "IfcBuildingElementProxy")
+}
+
+// TestExportUsageNamesEveryEntityTheWriterHoldsAnAttributeListFor is its own
+// function because it is about the documentation rather than about a run: the
+// set is what a registry is authored against, and a set documented in one place
+// and held in another drifts silently.
+func TestExportUsageNamesEveryEntityTheWriterHoldsAnAttributeListFor(t *testing.T) {
+	documented := strings.ToUpper(exportUsage)
+
+	for _, entity := range ifc.Products() {
+		assert.Contains(t, documented, string(entity))
+	}
+
+	t.Run("names nothing the writer does not hold one for", func(t *testing.T) {
+		for _, entity := range []ifc.Entity{"IFCPILE", "IFCOUTLET", "IFCWALLSTANDARDCASE"} {
+			assert.NotContains(t, documented, string(entity))
+		}
+	})
 }

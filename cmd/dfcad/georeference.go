@@ -117,6 +117,14 @@ type recordedCRS struct {
 // between the model and the system would be geodesy, which this engine does
 // not do ([0023](docs/decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md)),
 // so there is no arrangement of frames which produces one to write.
+//
+// The IfcProjectedCRS carries Name and Description and nothing else, which is
+// stated here rather than left to be noticed in the file. GeodeticDatum,
+// VerticalDatum, MapProjection and MapZone are absent because [recordedCRS] is
+// two strings and no more: filling any of them in would mean reading the
+// identifier as a projection definition, which is the one thing this engine
+// promises not to do with it. MapUnit is absent one level down, in the writer,
+// because the file's unit assignment already states it.
 func (s *recordedCRS) projected(at dfcad.Point) *ifc.Georeference {
 	if s == nil {
 		return nil

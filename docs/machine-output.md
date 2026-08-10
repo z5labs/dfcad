@@ -2640,6 +2640,22 @@ its own.
       "path": ".dfcad/export/9f2c1ab4c0d7e5f38a2b6109d4e7c8b5a3f10e29d6c4b8a70f5312cd9e846b7a/model.ifc",
       "status": "written"
     }
+  ],
+  "classifications": [
+    {
+      "id": "site:TY-01",
+      "type": "Typo",
+      "code": "IfcWahl",
+      "entity": "IFCBUILDINGELEMENTPROXY",
+      "reason": "unknown"
+    },
+    {
+      "id": "site:LW-01",
+      "type": "LegacyWall",
+      "code": "IfcWallStandardCase",
+      "entity": "IFCBUILDINGELEMENTPROXY",
+      "reason": "unwritten"
+    }
   ]
 }
 ```
@@ -2647,6 +2663,12 @@ its own.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `schema` | string, optional | The schema the artefact was written in, exactly as the file's `FILE_SCHEMA` declares it: `IFC4`. Absent on a refusal, because nothing was written in any schema. It is a field of this payload rather than of the shared shape, because what a format calls its version is that format's business. |
+| `classifications` | array | One entry per node whose type declared an `IFC4` classification this writer could not carry, and which therefore reached the file as an `IFCBUILDINGELEMENTPROXY`. Ascending by `id`, and `[]` rather than absent when there are none. Written on a refusal too: which classifications could not be carried is a fact about the model rather than about the artefact. |
+| `classifications[].id` | string | The node written as a proxy. |
+| `classifications[].type` | string | The type it is declared as, which is what carries the classification and what would be edited to fix it. |
+| `classifications[].code` | string | The classification the type declares under the `IFC4` system, exactly as the registry spells it — the registry's spelling and not the upper-cased one the writer compares, because it is what a person would search the registry for. |
+| `classifications[].entity` | string | What the node was written as instead: `IFCBUILDINGELEMENTPROXY`. Stated rather than assumed. |
+| `classifications[].reason` | string | `unwritten` or `unknown`; see below. |
 
 Everything else — `derived`, `digest`, `files[]`, `identifiers` under `--evidence` — is the
 shared shape, with the meanings documented there.
@@ -2667,6 +2689,51 @@ attribute list for — puts them in as `IFCBUILDINGELEMENTPROXY` with the type's
 `ObjectType`, which is what the IFC specification blesses that entity for. Classifications
 under any other system are carried by the model and read by nobody here: they name the thing in
 somebody else's vocabulary rather than naming an entity in this file's.
+
+**The set of entities a classification may name is closed, and it is this:**
+
+```
+IfcBeam                  IfcFooting            IfcRoof
+IfcBuildingElementProxy  IfcFurnishingElement  IfcSlab
+IfcColumn                IfcMember             IfcStair
+IfcCovering              IfcPlate              IfcWall
+IfcCurtainWall           IfcRailing            IfcWindow
+IfcDoor                  IfcRamp
+```
+
+A registry is authored against that list rather than against the writer's source. The set is
+what the writer holds a transcribed IFC4 attribute list for, and an entity outside it is
+absent because IFC4 gives it a different attribute list — an instance written with the wrong
+number of attributes is a file no reader loads, so the answer is a proxy and a report rather
+than a guess.
+
+**A classification the writer cannot carry is reported, not silently proxied.** Every node
+whose type declared a code outside that set is named in `classifications[]`, with the code it
+declared, and a warning naming the *type* — one per type, pointing at the line of the registry
+which declared it — goes to stderr. The node-level answer and the type-level diagnostic are two
+granularities on purpose: a node is what a caller holding the file has in front of it, and a
+type is what would be edited to fix it, so a model with nineteen doors of one type is told once
+about the type and lists nineteen nodes.
+
+**The two mistakes are told apart, because their fixes differ.** A `reason` of `unwritten`
+means IFC4 defines a product entity of that name and this writer has no attribute list for it
+— `IfcPile`, `IfcOutlet`, the deprecated `IfcWallStandardCase`. The classification is right,
+the proxy stands in for it faithfully, and the fix is a line in the writer. A `reason` of
+`unknown` means IFC4 defines no product entity of that name at all — a misspelling like
+`IfcWahl`, or a code naming something a product may not be, such as a relationship
+(`IfcRelSpaceBoundary`) or a type object (`IfcWallType`). The classification is wrong and the
+proxy is standing in for nothing anybody meant.
+
+**A type declaring no `IFC4` classification at all is not reported.** That is the case the
+proxy is specified for — an element which no more specific entity covers, named in
+`ObjectType` — and listing it would bury the codes which are actually wrong under every node
+nobody has classified yet.
+
+**Neither reason is a refusal.** The file is written and the exit code is `0`: a proxy naming
+its own type is a complete statement of what the model holds, and an export which refused would
+stop a model being exchanged over a mapping its author may have meant. The one place a
+classification *is* a refusal is a node somebody claimed a height of whose classification
+cannot carry a shape, which is [`--height`](#export)'s business and is documented below.
 
 **Every rooted object carries the `GlobalId`
 [0004](./decisions/0004-globalid-derives-from-a-pinned-namespace.md) derives**, from the URL
@@ -2817,6 +2884,21 @@ written because the schema requires them, and nought because those two facts hol
 because the writer says so. `XAxisAbscissa`, `XAxisOrdinate` and `Scale` are absent, which the
 schema reads as no rotation and unit scale. Writing a scale there would state a fit nobody
 measured.
+
+**The `IfcProjectedCRS` carries `Name` and `Description` and nothing else.** `GeodeticDatum`,
+`VerticalDatum`, `MapProjection` and `MapZone` are written absent, because what this model
+holds about a coordinate reference system is two strings — an entry in somebody else's
+register, and that register's own text about it — and filling a datum or a projection in from
+the identifier would mean reading the identifier, which is the one thing this command promises
+never to do with it. `MapUnit` is absent because the file's unit assignment already states the
+unit, and two places to state one unit is one place for them to disagree.
+
+**Every `IfcAxis2Placement3D` in the file is axis-aligned, whatever the frames say.** A
+rotation between a frame and the root is applied to the coordinates as they are carried into
+the root frame, not written into a placement: `Axis` and `RefDirection` are absent throughout,
+which the schema reads as the default axes. So a consumer reading placements alone sees an
+unrotated model, and one reading coordinates sees the model the frames describe. The
+coordinates are the statement; a placement here says only where a thing stands.
 
 **A coordinate reference system on any frame but the root is a refusal**, as are an identifier
 which is not an authority and a code, two of them on one frame, and a definition whose unit
