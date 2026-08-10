@@ -467,25 +467,75 @@ func TestRunExportMapWritesEveryRegionTheModelDrew(t *testing.T) {
 // and raises nothing, so the consumer finds out by measuring an empty layer.
 // Documentation which is wrong in that direction is worse than none.
 func TestExportMapUsageNamesThePropertiesTheDocumentCarries(t *testing.T) {
-	emitted := mapDocumentProperties(t, drawnMapOf(t))
+	// The order is part of what is documented — the help text says "in the
+	// order they are written" and a reader of a layer sees these as columns in
+	// it — so this is the order the writer declares and both comparisons below
+	// are against it rather than against a set.
+	order := []string{
+		propertyNodeID,
+		propertyLabel,
+		propertyKind,
+		propertyType,
+		propertyWithin,
+		propertyFrame,
+	}
+
+	features := mapDocumentProperties(t, drawnMapOf(t))
 
 	// The fixture is required to carry every property the writer can emit,
-	// which is what makes the comparison below cover all of them: a property
-	// no fixture exercises would otherwise be undocumented and unnoticed.
-	require.ElementsMatch(t,
-		[]string{
-			propertyNodeID,
-			propertyLabel,
-			propertyKind,
-			propertyType,
-			propertyWithin,
-			propertyFrame,
-		},
-		emitted,
+	// which is what makes the comparison against the help text cover all of
+	// them: a property no fixture exercises would otherwise be undocumented and
+	// unnoticed.
+	require.ElementsMatch(t, order, mapDistinct(features),
 		"the fixture exercises every property a feature can carry")
 
-	assert.ElementsMatch(t, emitted, mapUsageProperties(t),
-		"the help text names the properties the command emits, no more and no fewer")
+	assert.Equal(t, order, mapUsageProperties(t),
+		"the help text names the properties the command emits, in the order it writes them, no more and no fewer")
+
+	// Order per feature rather than over the document, because no feature
+	// carries every property: a run's plot has no container and a node on the
+	// root frame declares no frame, so what a feature writes is this order with
+	// gaps in it and never a rearrangement of it.
+	for _, feature := range features {
+		assert.Equal(t, mapRetained(order, feature), feature,
+			"a feature writes the properties it has in the order the writer declares them")
+	}
+}
+
+// mapDistinct is the property names a document carries anywhere, once each.
+func mapDistinct(features [][]string) []string {
+	var names []string
+	seen := make(map[string]bool)
+
+	for _, feature := range features {
+		for _, name := range feature {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			names = append(names, name)
+		}
+	}
+
+	return names
+}
+
+// mapRetained is order with everything it does not share with carried dropped,
+// which is what one feature's properties look like when they are in order.
+func mapRetained(order, carried []string) []string {
+	held := make(map[string]bool, len(carried))
+	for _, name := range carried {
+		held[name] = true
+	}
+
+	var out []string
+	for _, name := range order {
+		if held[name] {
+			out = append(out, name)
+		}
+	}
+
+	return out
 }
 
 // mapUsageProperties is the property names the help text lists, read out of it
@@ -517,43 +567,45 @@ func mapUsageProperties(t *testing.T) []string {
 	return names
 }
 
-// mapDocumentProperties is the distinct property names a document carries.
+// mapDocumentProperties is the property names each feature of a document
+// carries, one list per feature, in the order that feature writes them.
 //
 // A property is a leaf in this tool's namespace whose value is text and whose
 // closing tag is on the same line, which is what tells one from the geometry
 // element beside it and from the feature which holds both.
-func mapDocumentProperties(t *testing.T, source string) []string {
+func mapDocumentProperties(t *testing.T, source string) [][]string {
 	t.Helper()
 
-	var names []string
-	seen := make(map[string]bool)
+	var features [][]string
 
-	for _, line := range strings.Split(source, "\n") {
-		open := strings.TrimSpace(line)
-		if !strings.HasPrefix(open, "<"+mapPrefix+":") {
-			continue
+	for _, feature := range strings.Split(source, "<"+mapPrefix+":"+mapType+" ")[1:] {
+		var names []string
+
+		for _, line := range strings.Split(feature, "\n") {
+			open := strings.TrimSpace(line)
+			if !strings.HasPrefix(open, "<"+mapPrefix+":") {
+				continue
+			}
+
+			name, rest, found := strings.Cut(strings.TrimPrefix(open, "<"+mapPrefix+":"), ">")
+			if !found {
+				continue
+			}
+
+			value, closed := strings.CutSuffix(rest, "</"+mapPrefix+":"+name+">")
+			if !closed || strings.Contains(value, "<") {
+				continue
+			}
+
+			names = append(names, name)
 		}
 
-		name, rest, found := strings.Cut(strings.TrimPrefix(open, "<"+mapPrefix+":"), ">")
-		if !found {
-			continue
-		}
-
-		value, closed := strings.CutSuffix(rest, "</"+mapPrefix+":"+name+">")
-		if !closed || strings.Contains(value, "<") {
-			continue
-		}
-
-		if seen[name] {
-			continue
-		}
-		seen[name] = true
-		names = append(names, name)
+		features = append(features, names)
 	}
 
-	require.NotEmpty(t, names, "the document carries properties")
+	require.NotEmpty(t, features, "the document holds features")
 
-	return names
+	return features
 }
 
 // TestRunExportMapExpressesEveryRegionInTheRootFrame is its own function

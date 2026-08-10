@@ -2987,8 +2987,9 @@ project's, and the id of every node written is a property of the feature it was 
 
 The document itself is not JSON, but its property names are as much a contract as the fields
 above: they are what a downstream style rule, definition query or layer filter is written
-against. Every feature carries these, in this order, in the application namespace
-`https://github.com/z5labs/dfcad/gml/1`, which the document binds to the prefix `dfcad`:
+against. A feature carries these, in this order and where the node has them, in the
+application namespace `https://github.com/z5labs/dfcad/gml/1`, which the document binds to the
+prefix `dfcad`:
 
 | Property | Meaning |
 |----------|---------|

@@ -191,7 +191,7 @@ authored tree, which is refused before anything is read.
 // run has ever written — the feature carries `within` — and a filter written
 // against the documented name selects nothing and raises nothing, which is a
 // defect a reader finds by measuring rather than by being told.
-const mapPropertiesHeading = "Each feature carries these properties, in the order they are written:"
+const mapPropertiesHeading = "A feature carries these properties, in the order they are written and where the node has them:"
 
 // mapFile is the name of the one file a map export consists of.
 const mapFile = "model.gml"
