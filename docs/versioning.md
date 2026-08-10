@@ -65,6 +65,65 @@ looked up against a release table. A version-to-contract mapping maintained outs
 binary is a second copy of a fact the binary already holds, and it goes stale the first
 time somebody builds from a branch.
 
+## "Will my model still load?" — what a consumer does about it
+
+Reading `.contracts.entity-format` answers the question only if somebody compares it
+against something. Nothing in a model does that comparison, and nothing in a model can:
+files carry no version stamp, deliberately ([SPEC.md §10](../SPEC.md#10-versioning-of-this-specification)),
+so a model authored against a format the engine does not implement arrives at the loader as
+an ordinary file with a form in it the loader has never seen. What comes back is
+`(classification ...), which is not a known form` — a diagnostic which reads exactly like a
+misspelling, and which sends its author to look at their file when the thing to change is
+their engine.
+
+So the comparison is asked for. **Every command takes `--entity-format <MAJOR.MINOR>`**: the
+version the model was authored against, asserted by whoever authored it.
+
+```sh
+dfcad check --root model --entity-format 1.2
+```
+
+- The engine implements that format, or a later MINOR of the same MAJOR — the run proceeds
+  exactly as it would have with no assertion at all. Same exit code, same bytes on stdout.
+  Files that loaded still load, which is what a MINOR bump means.
+- The engine does not — a later MINOR than it implements, or a MAJOR apart in either
+  direction — the run **stops before it reads anything**, exits `2`, writes nothing to
+  stdout, and says so on stderr naming *both* versions:
+
+  ```
+  dfcad check: model authored against entity format 1.3: this engine implements 1.2, which
+  is older, so the model may hold forms this engine would report as unknown
+  ```
+
+- What is written is not a version at all — `v1.2`, `1`, `1.2.3` — the run exits `3`. A
+  malformed flag is a wrong invocation, not a model that cannot be read.
+
+This is the engine noticing rather than the file declaring, so §10 is undisturbed: nothing
+was added to the format, and a model is exactly the bytes it was before.
+
+**The cheapest form of it reads no model at all.** `dfcad version` takes the flag like every
+other command, so one line in a consumer's pipeline says whether the engine it just
+installed can load the model it is about to run against:
+
+```sh
+dfcad version --entity-format 1.2   # exit 0: this engine loads a 1.2 model
+```
+
+Where to put the assertion, for a repository which authors models:
+
+- **Pin it beside the engine.** The version the model was authored against belongs in the
+  consuming repository — a variable in its CI workflow, next to the image tag of the engine
+  it pins — because both are facts about that repository rather than about this one.
+- **Assert it on every command that reads the model**, or once, early, with `dfcad version`.
+  Both are the same check; the second costs one process and no model read.
+- **Move it deliberately.** Raising the pinned version is the moment somebody reads what
+  changed in the format between the two. A pin which is bumped to make CI green is a pin
+  which is not asserting anything.
+
+Without the flag nothing is asserted and the engine loads whatever it finds, which is right
+for exploring a tree and for every run which does not care. The assertion is for the runs
+which do: a gate, a pipeline, a release.
+
 ## The tag convention
 
 A release is a git tag on the default branch of the form:

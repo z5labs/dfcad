@@ -3716,3 +3716,43 @@ func ExampleFrame_Plain() {
 	// frame:survey-grid is rooted at EPSG:25831
 	// 0
 }
+
+// A model carries no version stamp, deliberately, so whether it loads under a
+// given engine is a question only the consumer holding both can ask.
+//
+// AssertEntityFormat is that question. A consumer which knows which format it
+// authored its model against says so, and is told which engine it is holding
+// rather than being sent to look at the first form the loader did not
+// recognise.
+// The expected output below carries the version this engine implements, so a
+// bump of it fails here. That is the same forcing function the constant's own
+// test applies: the moment the format moves is the moment somebody should be
+// reading what a consumer of the old one is told.
+func ExampleAssertEntityFormat() {
+	// The version the model was authored against, pinned by whoever authored
+	// it — beside the engine it pins, and never read out of a file. A major
+	// apart from this engine, which is the half of the rule that does not
+	// dissolve the next time the minor moves.
+	authored, err := dfcad.ParseEntityFormat("2.0")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	err = dfcad.AssertEntityFormat(authored)
+
+	var unsupported dfcad.UnsupportedEntityFormatError
+	if errors.As(err, &unsupported) {
+		fmt.Printf("the model is %s and this engine is %s\n", unsupported.Model, unsupported.Engine)
+	}
+
+	// The format this engine implements loads, and so does every earlier minor
+	// of the same major: a minor bump adds forms rather than taking any away.
+	fmt.Println(dfcad.AssertEntityFormat(dfcad.SpecFormat()))
+	fmt.Println(dfcad.EntityFormat{Major: 1, Minor: 0}.LoadsUnder(dfcad.SpecFormat()))
+
+	// Output:
+	// the model is 2.0 and this engine is 1.2
+	// <nil>
+	// true
+}

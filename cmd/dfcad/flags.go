@@ -12,8 +12,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/z5labs/dfcad"
 )
 
 // The formats a run can report itself in.
@@ -166,6 +169,25 @@ type globals struct {
 	// command which writes takes it, so it is false on every other run and
 	// nothing reads it there.
 	DryRun bool
+
+	// EntityFormat is the version of the entity format the caller says its
+	// model was authored against, as it was written. Empty is the default and
+	// asserts nothing: the engine loads whatever it finds, which is every run
+	// that does not care.
+	//
+	// It is the caller's assertion rather than something read out of a file,
+	// because there is nothing in a file to read it out of: models carry no
+	// version stamp, deliberately (SPEC.md section 10). What the engine can do
+	// is say whether it implements the format it was told about, before it
+	// reports the first form it does not recognise and sends the author to look
+	// at their own file.
+	EntityFormat string
+
+	// authored is [globals.EntityFormat] parsed, and is meaningful only where
+	// that is non-empty. It is settled by [globals.validate] so that a version
+	// which is not one is a usage error at the point every other malformed flag
+	// is, and so that the spelling is read once.
+	authored dfcad.EntityFormat
 }
 
 // register defines the global flags on a subcommand's flag set.
@@ -178,6 +200,7 @@ type globals struct {
 func (g *globals) register(cmd command, flags *flag.FlagSet) {
 	flags.StringVar(&g.Root, "root", ".", "")
 	flags.StringVar(&g.Format, "format", formatJSON, "")
+	flags.StringVar(&g.EntityFormat, "entity-format", "", "")
 	flags.Var(&g.Verbosity, "verbose", "")
 	flags.Var(&g.Verbosity, "v", "")
 
@@ -190,12 +213,42 @@ func (g *globals) register(cmd command, flags *flag.FlagSet) {
 // else. A flag that names something that does not exist is an invocation that
 // is wrong, so it is a usage error rather than a load failure.
 func (g *globals) validate() error {
-	for _, format := range formats {
-		if g.Format == format {
-			return nil
-		}
+	if !slices.Contains(formats, g.Format) {
+		return UnknownFormatError{Format: g.Format, Known: formats}
 	}
-	return UnknownFormatError{Format: g.Format, Known: formats}
+
+	if g.EntityFormat == "" {
+		return nil
+	}
+
+	authored, err := dfcad.ParseEntityFormat(g.EntityFormat)
+	if err != nil {
+		return err
+	}
+	g.authored = authored
+
+	return nil
+}
+
+// supported weighs the entity format the run asserted its model was authored
+// against against the one this engine implements.
+//
+// A format this engine does not implement is a load failure rather than a usage
+// error: the invocation was well formed, and the model it names cannot be read
+// by this binary — which is exactly the distinction the exit codes draw. It is
+// the same code a root that is not there gets, so a caller which already
+// branches on "the input could not be read" needs nothing new to handle it.
+//
+// It is answered before the root is opened and before a byte of the model is
+// read. The assertion is about the engine rather than about the tree, so it is
+// true whatever the root holds, and a run which cannot load the format has
+// nothing to say about the contents — which is what stops it reporting the
+// first form it does not recognise as though the mistake were the author's.
+func (g *globals) supported() error {
+	if g.EntityFormat == "" {
+		return nil
+	}
+	return dfcad.AssertEntityFormat(g.authored)
 }
 
 // open checks that the model root is a directory that is there and can be
@@ -327,6 +380,15 @@ func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, st
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
 		_, _ = fmt.Fprint(stderr, cmd.usage)
 		return nil, exitUsage, true
+	}
+
+	// Before the root, because a model this engine cannot load is a model this
+	// engine cannot load wherever it is. Stdout stays empty, which is what says
+	// the run produced no result: a refusal reported beside a result object
+	// would be a run reporting on a model it never read.
+	if err := globals.supported(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return nil, exitLoad, true
 	}
 
 	if err := globals.open(); err != nil {

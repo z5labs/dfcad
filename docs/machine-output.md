@@ -137,6 +137,7 @@ Every subcommand takes these, and takes them identically.
 |------|---------|---------|
 | `--root <dir>` | `.` | The model root. A relative path argument is resolved against it; an absolute one is left alone. A root that is not a readable directory is a load failure. |
 | `--format <fmt>` | `json` | How the run reports itself **to a person, on stderr**. See below. |
+| `--entity-format <version>` | asserts nothing | The `MAJOR.MINOR` entity format the model was authored against. A format this engine does not implement is a load failure before anything is read. |
 | `-v`, `--verbose` | off | Say more on stderr about what the run is doing. Repeatable; `--verbose=<n>` sets the level outright. |
 | `-h`, `--help` | — | Print the command's help to stderr and exit zero. |
 
@@ -151,6 +152,26 @@ under `--format human`, the status of every item rather than only of the ones so
 wrong with.
 
 Neither flag has any effect on the exit code.
+
+`--entity-format` does, and is the one global flag that does. It is an assertion by the
+caller about the model, because there is nothing in a model to read it out of: files carry
+no version stamp, deliberately ([SPEC.md §10](../SPEC.md#10-versioning-of-this-specification)).
+Given one, the engine compares it against the format it implements — the same string
+`dfcad version` reports as `.contracts.entity-format` — before it opens the model root:
+
+- the same `MAJOR`, and a `MINOR` at or below the engine's: the run proceeds, and produces
+  the same exit code and byte-for-byte the same stdout as the run without the flag;
+- a later `MINOR`, or a `MAJOR` apart in either direction: **exit `2`, stdout empty**, and
+  stderr naming both versions. Nothing was read, so nothing is reported: a model at a format
+  this engine does not implement would otherwise reach the loader and come back as an
+  unrecognised form, which reads as a misspelling in the author's file rather than as a
+  mismatch with their engine;
+- not a `MAJOR.MINOR` version at all: **exit `3`**, like any other malformed flag.
+
+It is taken by every command, `version` among them, which is the cheapest form of the check
+because it reads no model: `dfcad version --entity-format 1.2` exits `0` where this engine
+loads a 1.2 model and `2` where it does not. [`versioning.md`](./versioning.md) is what a
+consumer does with that.
 
 ## Payloads
 
@@ -190,10 +211,13 @@ different forms, and [`versioning.md`](./versioning.md) is the relationship betw
 the entity format version and the git tags they come from.
 
 Exit codes: `3` if the invocation was wrong — an argument, an unknown flag, an unknown
-`--format`. `2` if `--root` names something that is not a directory this run can read,
-which this command checks like every other one even though it reads no model: a global flag
-that is accepted everywhere and enforced in all but one place is one nobody can rely on.
-`0` otherwise.
+`--format`, an `--entity-format` that is not a `MAJOR.MINOR` version. `2` if `--root` names
+something that is not a directory this run can read, or if `--entity-format` names a format
+this engine does not implement — both of which this command checks like every other one even
+though it reads no model: a global flag that is accepted everywhere and enforced in all but
+one place is one nobody can rely on. That is what makes `dfcad version --entity-format 1.2`
+the cheapest way for a consumer to ask whether the engine it just installed can load the
+model it is about to run against. `0` otherwise.
 
 ### `fmt`
 
@@ -1568,6 +1592,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 {
   "version": 2,
   "command": "check",
+  "refused": false,
   "summary": {"checks": 7, "runnable": 6, "ran": 6, "passed": 4, "failed": 2},
   "violations": [
     {
@@ -1586,6 +1611,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | Whether the model was **not** loaded: a file could not be read, did not parse, or held something the load refuses outright. Written on every run, true and false alike. |
 | `summary.checks` | integer | How many rules the filters selected. |
 | `summary.runnable` | integer | How many of them would run: those whose check has an implementation and can examine the thing it is bound to. `checks` minus `runnable` is how many are bound and decide nothing. |
 | `summary.ran` | integer | How many actually ran. It equals `runnable` for a run and is `0` for a `--list`, so a listing cannot be read as a run in which every check passed. |
@@ -1605,6 +1631,22 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 The counts are of **rules**, not of violations. One loop that does not close and one that
 closes the wrong way are two ways of failing one check, and a summary counting them as two
 failures would say the model breaks two rules.
+
+**`refused` is read before the summary is believed.** A run over a model that did not load
+selects no rule, runs none and finds no violation — `{"summary": {"checks": 0, "ran": 0,
+…}, "violations": []}`, which is byte for byte what a model with nothing wrong with it
+reports. Only the exit code told the two apart, and stdout is what a caller is told to
+parse. `refused: true` is that distinction on the stream the caller is reading: the
+emptiness is the absence of a run, not the absence of a problem. It is written on every run
+rather than only on the refused ones, so a caller reads it unconditionally instead of
+treating a missing key as an answer.
+
+The refusal *is* still reported, rather than stdout being left empty, because a gate wants
+both halves: `dfcad check` reports what it managed to bind even over a model it could not
+run, and `--list` over such a model is how the two reasons a rule decides nothing are read.
+An `--entity-format` this engine does not implement is the other case and is not this one —
+there the run stops before anything is read, and stdout is empty because there is nothing to
+report.
 
 `--list` adds `checks` beside an empty `violations` — nothing ran, so nothing failed. It is
 one entry per rule the filters selected, in the order it would run in, each carrying
@@ -1634,7 +1676,7 @@ model produce byte-identical stdout.
 |------|------|
 | `0` | Every rule that ran was satisfied — including a model that states no rule at all, which runs nothing and succeeds. |
 | `1` | A rule was not satisfied. Every violation is in the result. |
-| `2` | The model could not be read: a file did not parse, or the root holds no model at all. It outranks a rule that failed, because a gate reporting on half a model is answering a question nobody asked — and it is what keeps a `--root` with a character wrong from passing by having nothing in it. |
+| `2` | The model could not be read: a file did not parse, the root holds no model at all, or `--entity-format` named a format this engine does not implement. It outranks a rule that failed, because a gate reporting on half a model is answering a question nobody asked — and it is what keeps a `--root` with a character wrong from passing by having nothing in it. `refused` says which of the first two it was; the third writes no object at all. |
 | `3` | The invocation was wrong: an argument the command does not take, or a filter naming something no model holds. |
 
 **How long the run took is not on stdout.** The same input has to produce the same bytes

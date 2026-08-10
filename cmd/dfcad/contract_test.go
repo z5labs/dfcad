@@ -17,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // object is the one JSON object on stdout.
@@ -459,7 +461,132 @@ func TestEveryCommandTakesTheGlobalFlags(t *testing.T) {
 			assert.Empty(t, stdout.String())
 			assert.Contains(t, stderr.String(), "loud")
 		})
+
+		t.Run(cmd.name+" rejects an entity format that is not a version", func(t *testing.T) {
+			t.Chdir(t.TempDir())
+
+			var stdout, stderr bytes.Buffer
+
+			// A version this engine cannot even read is a wrong invocation
+			// rather than a model it cannot load, and the two carry different
+			// codes because what to do about them is different.
+			require.Equal(t, exitUsage, run([]string{cmd.name, "--entity-format", "v1.2"}, &stdout, &stderr))
+
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), "v1.2")
+		})
 	}
+}
+
+// TestEveryCommandRefusesAnEntityFormatItDoesNotImplement walks every command
+// and requires it to stop, before it reads anything, when it is told the model
+// was authored against a format this engine does not implement.
+//
+// It is the answer to the question SPEC.md section 10 leaves the engine to
+// answer. Files carry no version stamp, so a model at a later format reaches
+// the loader as a form nobody recognises, and the loader says so — which reads
+// as a misspelling and sends the author to their own file. Told which format
+// the model was authored against, the engine says that instead, and says it
+// naming both versions so the reader knows which of the two to move.
+//
+// It walks [commands] rather than naming them because the flag is global: a
+// flag accepted everywhere and honoured in all but one place is one nobody can
+// rely on, and the one place would be whichever command was added last.
+func TestEveryCommandRefusesAnEntityFormatItDoesNotImplement(t *testing.T) {
+	engine := dfcad.SpecFormat()
+
+	later := dfcad.EntityFormat{Major: engine.Major, Minor: engine.Minor + 1}
+	apart := dfcad.EntityFormat{Major: engine.Major + 1, Minor: 0}
+
+	for _, cmd := range commands {
+		for _, asserted := range []dfcad.EntityFormat{later, apart} {
+			t.Run(cmd.name+" refuses a model authored against entity format "+asserted.String(), func(t *testing.T) {
+				dir := tree(t, model())
+
+				var stdout, stderr bytes.Buffer
+
+				args := sample(t, cmd, "--root", dir, "--entity-format", asserted.String())
+				require.Equal(t, exitLoad, run(args, &stdout, &stderr))
+
+				// Nothing was read, so nothing is reported. A refusal beside a
+				// result object is a run describing a model it never opened,
+				// and stdout is what a caller is told to parse.
+				assert.Empty(t, stdout.String())
+
+				assert.Contains(t, stderr.String(), asserted.String())
+				assert.Contains(t, stderr.String(), engine.String())
+
+				// The model was never reached, so nothing in it is reported as
+				// the mistake — which is the whole point of asking first.
+				assert.NotContains(t, stderr.String(), "is not a known form")
+			})
+		}
+	}
+}
+
+// TestAnEntityFormatThisEngineImplementsChangesNothing walks every command and
+// requires the assertion to be invisible when it holds.
+//
+// It is the other half of the refusal above and the more important half: a
+// check which changed what a run did when it passed would be a second thing to
+// reason about on every run rather than a gate on the one run which cannot
+// work. Asserting the format the engine implements, and asserting nothing at
+// all, produce the same exit code and the same bytes on stdout.
+func TestAnEntityFormatThisEngineImplementsChangesNothing(t *testing.T) {
+	engine := dfcad.SpecFormat()
+
+	// An earlier minor of the same major loads too: a MINOR bump adds an
+	// optional child, a value shape or a whole new form, so a model written
+	// before it holds nothing this engine does not know.
+	earlier := dfcad.EntityFormat{Major: engine.Major, Minor: 0}
+
+	ran := func(t *testing.T, cmd command, flags ...string) (int, string) {
+		t.Helper()
+
+		// A fresh tree per run, because half these commands change the model:
+		// a second run over the first one's output would differ for a reason
+		// which has nothing to do with the flag.
+		dir := tree(t, model())
+
+		var stdout, stderr bytes.Buffer
+		code := run(sample(t, cmd, append([]string{"--root", dir}, flags...)...), &stdout, &stderr)
+
+		// The root is where the run happened rather than what it did, and a
+		// write command reports the files it touched by path. Two runs of one
+		// command over two copies of one model differ there and nowhere else,
+		// so that is the one thing normalised out before the bytes are
+		// compared.
+		return code, strings.ReplaceAll(stdout.String(), dir, "<root>")
+	}
+
+	for _, cmd := range commands {
+		t.Run(cmd.name+" runs the same asserted as unasserted", func(t *testing.T) {
+			code, stdout := ran(t, cmd)
+			require.Equal(t, exitSuccess, code)
+
+			for _, asserted := range []dfcad.EntityFormat{engine, earlier} {
+				assertedCode, assertedStdout := ran(t, cmd, "--entity-format", asserted.String())
+
+				assert.Equal(t, code, assertedCode, "asserting %s changed the exit code", asserted)
+				assert.Equal(t, stdout, assertedStdout, "asserting %s changed stdout", asserted)
+			}
+		})
+	}
+}
+
+// TestMalformedEntityFormatNamesWhatWasWritten checks that the error carries
+// what was written, so that a caller does not have to read the message to find
+// out which of its arguments was refused.
+func TestMalformedEntityFormatNamesWhatWasWritten(t *testing.T) {
+	err := (&globals{Format: formatJSON, EntityFormat: "1"}).validate()
+
+	var malformed dfcad.MalformedEntityFormatError
+	require.ErrorAs(t, err, &malformed)
+	assert.Equal(t, "1", malformed.Written)
+
+	// Nothing asserted is the default, and asserts nothing.
+	assert.NoError(t, (&globals{Format: formatJSON}).validate())
+	assert.NoError(t, (&globals{Format: formatJSON}).supported())
 }
 
 // TestHumanOutputNeverChangesStdout is its own function because it is about

@@ -17,6 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // The two spellings of one model the tests below format between.
@@ -385,6 +387,52 @@ func TestRunFmtUsage(t *testing.T) {
 			assert.Equal(t, testCase.expectedStderr, stderr.String())
 		})
 	}
+}
+
+// TestRunFmtSaysNothingAboutAFileWrittenForAFormatItDoesNotImplement is its own
+// function because it is about a report which must not be produced rather than
+// about one which must.
+//
+// The canonical printing is part of the entity format — SPEC.md section 10
+// makes a change to the bytes `fmt` produces a MAJOR bump — so what is
+// canonical is only ever canonical for one version of it. Asked whether a file
+// authored against a format this engine does not implement is in canonical
+// form, the honest answer is that this engine cannot say, and reporting the
+// file unformatted is worse than unhelpful: it sends its author to rewrite a
+// file which was already right, and a `--check` in a pipeline fails on a
+// difference nobody can act on.
+func TestRunFmtSaysNothingAboutAFileWrittenForAFormatItDoesNotImplement(t *testing.T) {
+	engine := dfcad.SpecFormat()
+	later := dfcad.EntityFormat{Major: engine.Major, Minor: engine.Minor + 1}
+
+	// A file this engine would report as unformatted, so that what is asserted
+	// is the refusal rather than a run which had nothing to say anyway.
+	t.Chdir(tree(t, map[string]string{"a.dfc": asWritten}))
+
+	var stdout, stderr bytes.Buffer
+
+	code := run([]string{"fmt", "--check", "--entity-format", later.String()}, &stdout, &stderr)
+
+	// A load failure rather than the check failure an unformatted file is: the
+	// question was not answered rather than answered no.
+	require.Equal(t, exitLoad, code)
+
+	assert.Empty(t, stdout.String())
+	assert.NotContains(t, stderr.String(), statusUnformatted)
+	assert.NotContains(t, stderr.String(), "not in canonical form")
+
+	// Both versions, so the reader is sent to the engine rather than to the
+	// file.
+	assert.Contains(t, stderr.String(), later.String())
+	assert.Contains(t, stderr.String(), engine.String())
+
+	// The same file, under the format this engine does implement, is reported
+	// exactly as it is with nothing asserted.
+	stdout.Reset()
+	stderr.Reset()
+
+	require.Equal(t, exitCheck, run([]string{"fmt", "--check", "--entity-format", engine.String()}, &stdout, &stderr))
+	assert.Contains(t, stdout.String(), statusUnformatted)
 }
 
 // TestRunFmtOutputIsDeterministic checks that two runs over the same tree

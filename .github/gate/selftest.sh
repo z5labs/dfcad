@@ -312,6 +312,15 @@ if [ "$ran" != "0" ]; then
 	fail "check reported ${ran} rules run against a model which does not load"
 fi
 
+# The summary above is the same summary a model with nothing wrong with it
+# produces, so the object has to say which of the two it is. Without it, a
+# consumer reading stdout — which is what the contract tells it to read — is
+# told a model is sound when nothing has looked at it.
+refused="$(jq -r '.refused' "$check_json")"
+if [ "$refused" != "true" ]; then
+	fail "check did not report a model which does not load as refused"
+fi
+
 # A file which does not parse carries a diagnostic with a span, which is the
 # fmt filter's other branch and the only place in either model where it is
 # exercised.
