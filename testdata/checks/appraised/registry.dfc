@@ -64,3 +64,8 @@
   (kind Zone)
   (geometry absent)
   (description "The rooms an appraisal counts as living area, grouped by hand."))
+
+(type CircuitGroup
+  (kind Element)
+  (geometry absent)
+  (description "The circuits of one floor, which are written within it and cover none of it."))

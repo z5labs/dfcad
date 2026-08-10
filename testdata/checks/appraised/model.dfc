@@ -394,3 +394,99 @@
   (frame frame:building)
   (within site:L-08)
   (boundary geom:L-03))
+
+; The same figure written to a coarser accuracy, and a floor which disagrees with
+; it by more than that. The tape says the figure is known to 0.3 m², which is six
+; times the tolerance, so the tolerance is not what decided this — and what the
+; failure says about itself has to be the number which did. A hint naming the
+; tolerance here would send a reader to tighten a value that never entered the
+; comparison.
+(node site:L-09
+  (label "Annexe floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (gross-living-area
+    (value 61.0 m2)
+    (source "Appraisal AP-2026-116, Fair Value Associates")
+    (method method:tape)
+    (accuracy (independent 0.3 m2))
+    (date "2026-03-02"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (type LivingSpace)))
+
+(node site:S-901
+  (label "Annexe front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-09)
+  (boundary geom:L-02))
+
+(node site:S-902
+  (label "Annexe back room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-09)
+  (boundary geom:L-04))
+
+(node site:S-903
+  (label "Annexe garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-09)
+  (boundary geom:L-03))
+
+; A narrowed floor which also contains something with no outline. The circuit
+; group is written within the storey and covers no ground, so no sum reaches it
+; whether the rule narrows or not — and a rule which counted it among the nodes
+; it left out would be telling a reader to widen a narrowing which is already
+; summing everything there is to sum.
+(node site:L-10
+  (label "Workshop floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (type LivingSpace)))
+
+(node site:S-1001
+  (label "Workshop front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-10)
+  (boundary geom:L-02))
+
+(node site:S-1002
+  (label "Workshop garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-10)
+  (boundary geom:L-03))
+
+(node site:E-1001
+  (label "Workshop lighting circuits")
+  (kind Element)
+  (type CircuitGroup)
+  (frame frame:building)
+  (within site:L-10))

@@ -995,6 +995,22 @@ func TestContainedAreasSumAgainstAStatedFigure(t *testing.T) {
 			instance: "site:L-08",
 			expected: nil,
 		},
+		{
+			name:     "reports a disagreement wider than the accuracy the figure states of itself",
+			instance: "site:L-09",
+			expected: []string{
+				"expected what site:L-09 contains to add up to the gross-living-area claimed of it, 61.0 m², " +
+					"found 60.0 m², which is 1.0 m² less than the figure",
+			},
+		},
+		{
+			name:     "reports a narrowed total without counting a content which covers nothing",
+			instance: "site:L-10",
+			expected: []string{
+				"expected what site:L-10 contains to add up to its own 80.0 m², found 48.0 m², which is " +
+					"32.0 m² less than the whole",
+			},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1011,10 +1027,10 @@ func TestContainedAreasSumAgainstAStatedFigure(t *testing.T) {
 		}
 	})
 
-	t.Run("runs every rule the model states and fails the five which are broken", func(t *testing.T) {
-		assert.Equal(t, 10, run.Rules)
-		assert.Equal(t, 10, run.Ran, "every check the fixture names has an implementation")
-		assert.Equal(t, 5, run.Failed)
+	t.Run("runs every rule the model states and fails the seven which are broken", func(t *testing.T) {
+		assert.Equal(t, 12, run.Rules)
+		assert.Equal(t, 12, run.Ran, "every check the fixture names has an implementation")
+		assert.Equal(t, 7, run.Failed)
 		assert.Equal(t, 5, run.Passed)
 	})
 
@@ -1090,6 +1106,51 @@ func TestContainedAreasSumSaysWhatASubsetSummed(t *testing.T) {
 				"drawn wrong or the whole is",
 			hint,
 			"a set of one and a set of many are described by the same sentence",
+		)
+	})
+
+	t.Run("leaves a content which covers nothing out of both halves", func(t *testing.T) {
+		// The circuit group is written within the workshop floor and has no
+		// outline. It is not in the sum, and it is not in what the narrowing left
+		// out either: it was left out by having nothing to contribute rather than
+		// by the rule, and listing it would send a reader to widen a narrowing
+		// which is already summing everything there is.
+		graph := loadCheckFixture(t, "appraised")
+
+		violations := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:L-10"}}).Run().Violations
+		require.Len(t, violations, 1)
+
+		expected := []RelatedLocation{
+			{Span: namedSpanOf(t, graph, "site:S-1001"), Message: "summed into the total"},
+			{
+				Span:    namedSpanOf(t, graph, "site:S-1002"),
+				Message: "left out of the sum: it is of type Garage and the sum is of type LivingSpace",
+			},
+		}
+
+		assert.Equal(t, expected, violations[0].Related)
+		assert.Contains(t, violations[0].Hint, "leaving 1 node out",
+			"the node with no outline is counted in neither half")
+	})
+
+	t.Run("names the accuracy of the figure where that is what the total was judged against", func(t *testing.T) {
+		// The band is the wider of the tolerance and how well the figure says it
+		// is known. Naming the tolerance where the figure widened it would send a
+		// reader to tighten a number which decided nothing.
+		run := runCheckFixture(t, "appraised")
+
+		var hint string
+		for _, violation := range run.Violations {
+			if violation.Instance == "site:L-09" {
+				hint = violation.Hint
+			}
+		}
+
+		assert.Equal(t,
+			"the sum is of the 2 nodes it contains with a shape, narrowed to those of type LivingSpace and "+
+				"leaving 1 node out, judged against how well the figure is known, 0.3 m2, which is wider than "+
+				"the tolerance area-sum; either a part is drawn wrong or the figure is",
+			hint,
 		)
 	})
 

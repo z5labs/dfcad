@@ -1287,6 +1287,21 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 		sense = "less than"
 	}
 
+	// The hint names the band which actually decided, not the tolerance it was
+	// read from. Where the figure states an accuracy wider than the tolerance it
+	// is the figure's accuracy the discrepancy was measured against, and a hint
+	// naming the tolerance there sends a reader to tighten a number which
+	// decided nothing.
+	judged := fmt.Sprintf(
+		"the tolerance %s, which is %s %s", declared.Name, decimal(declared.Value), declared.Unit,
+	)
+	if against.sigma > declared.Value {
+		judged = fmt.Sprintf(
+			"how well %s is known, %s %s, which is wider than the tolerance %s",
+			against.noun, decimal(against.sigma), declared.Unit, declared.Name,
+		)
+	}
+
 	return []Failure{{
 		Message: fmt.Sprintf(
 			"expected what %s contains to add up to %s%s, found %s%s, which is %s%s %s %s",
@@ -1295,10 +1310,8 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 			decimal(math.Abs(discrepancy)), squareSuffix(whole.Unit()), sense, against.noun,
 		),
 		Hint: fmt.Sprintf(
-			"the sum is of the %s%s, judged against the tolerance %s, which is %s %s; "+
-				"either a part is drawn wrong or %s is",
-			plural(len(shapes), "node"), summedOver(narrowed, left), declared.Name,
-			decimal(declared.Value), declared.Unit, against.blame,
+			"the sum is of the %s%s, judged against %s; either a part is drawn wrong or %s is",
+			plural(len(shapes), "node"), summedOver(narrowed, left), judged, against.blame,
 		),
 		Span:    graph.Nodes().named(node),
 		Related: composition(graph, narrowed, shapes, left, against.related),
@@ -2779,18 +2792,31 @@ func shapesWithin(graph *Graph, node *SemanticNode, narrowed narrowing, toleranc
 
 	for related := range graph.Contains(node) {
 		child := related.Node()
-		if reason, out := narrowed.omits(child); out {
-			left = append(left, omitted{node: child, reason: reason})
-			continue
-		}
+		reason, out := narrowed.omits(child)
 
+		// The outline is read before the narrowing is applied, because whether a
+		// content has one is what decides if the narrowing left anything out of
+		// it. A circuit group the narrowing excluded covers no ground either
+		// way, and counting it among the nodes left out would send a reader to
+		// widen a rule which is already summing everything it could.
 		region, reasons := shapeOf(graph, child, tolerance, position)
 		if len(reasons) > 0 {
+			// A content the narrowing already keeps out is not in the sum, so an
+			// outline it does not need cannot stop this check deciding.
+			if out {
+				continue
+			}
+
 			failures = append(failures, reasons...)
 			continue
 		}
 
 		if !region.ready {
+			continue
+		}
+
+		if out {
+			left = append(left, omitted{node: child, reason: reason})
 			continue
 		}
 
