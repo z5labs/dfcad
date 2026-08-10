@@ -70,6 +70,12 @@ would run, how many ran, and how many passed and failed — and "violations": on
 entry per way a rule was not satisfied. Asked to --list, it carries "checks" as
 well, one entry per rule in the order it would run in, and nothing ran so
 "violations" is empty.
+
+It also carries "refused", which is true where the model did not load. A run
+over a model which did not load selects no rule, runs none and reports no
+violation, which is what a model with nothing wrong with it reports too — so a
+caller reading stdout is told which of the two it is holding rather than being
+left to infer it from the exit code.
 `
 
 // UnknownCheckError is a --check which names no check the engine registers.
@@ -93,6 +99,21 @@ func (e UnknownCheckError) Error() string {
 // checkResult is the object check writes to stdout.
 type checkResult struct {
 	envelope
+
+	// Refused reports that the model was not loaded: a file could not be read,
+	// did not parse, or held something the load refuses outright.
+	//
+	// It is written because everything beside it reads as an answer about a
+	// model and is not one. A run over a model which did not load selects no
+	// rule, runs none, and reports no violation — which is byte for byte what a
+	// model with nothing wrong with it reports, and only the exit code told the
+	// two apart. A caller reading stdout, which is what the contract tells it to
+	// read, was told a model was sound when nothing had looked at it.
+	//
+	// It is written on every run rather than only when it is true, so that a
+	// caller reads it unconditionally instead of treating its absence as an
+	// answer.
+	Refused bool `json:"refused"`
 
 	// Summary is how many rules there were and how they went.
 	Summary checkSummary `json:"summary"`
@@ -234,6 +255,7 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 
 	result := checkResult{
 		envelope:   newEnvelope(cmd.name),
+		Refused:    refused,
 		Summary:    checkSummary{Checks: len(rules)},
 		Violations: make([]dfcad.Violation, 0),
 	}

@@ -544,6 +544,56 @@ func TestRunCheckReportsAModelItCouldNotRead(t *testing.T) {
 			// non-zero code, and what is wrong with the model is on stderr.
 			assert.Equal(t, "check", result.Command)
 			assert.NotEmpty(t, stderr)
+
+			// The answer says the model did not load. Everything beside it —
+			// no rule run, no violation found — is byte for byte what a model
+			// with nothing wrong with it reports, and a caller reading stdout
+			// was told a model was sound when nothing had looked at it.
+			assert.True(t, result.Refused)
+			assert.Zero(t, result.Summary.Ran)
+			assert.Empty(t, result.Violations)
+		})
+	}
+}
+
+// TestRunCheckSaysOnStdoutWhetherTheModelLoaded is its own function because it
+// is about one field being readable on both answers rather than about either of
+// them. A field written only on the runs which set it is one whose absence a
+// caller has to interpret, and the interpretation — "no news is good news" — is
+// the reading this exists to make impossible.
+func TestRunCheckSaysOnStdoutWhetherTheModelLoaded(t *testing.T) {
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		expected bool
+	}{
+		{
+			name:     "says a model which loaded was not refused",
+			files:    ruled(),
+			expected: false,
+		},
+		{
+			name:     "says a model which did not load was refused",
+			files:    map[string]string{"registry.dfc": checkRegistry, "broken.dfc": "(node site:S-1"},
+			expected: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, testCase.files))
+
+			var stdout, stderr bytes.Buffer
+			run([]string{"check"}, &stdout, &stderr)
+
+			// Read out of the object a caller parses rather than out of the
+			// struct which wrote it: the key is the contract, and a caller
+			// which cannot find it cannot read the answer.
+			written := object(t, stdout.String())
+
+			refused, ok := written["refused"]
+			require.True(t, ok, "the check object carries refused on every run")
+			assert.Equal(t, testCase.expected, refused)
 		})
 	}
 }

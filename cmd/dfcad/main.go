@@ -290,6 +290,11 @@ const globalFlagsHelp = `Global flags, taken by every command:
 	                 which reports only problems, or human, which adds a
 	                 readable summary of the result. Neither changes stdout
 	                 (default "json")
+	--entity-format <version>
+	                 the entity format, as MAJOR.MINOR, the model was authored
+	                 against. The run refuses before reading anything, naming
+	                 both versions, where this engine does not implement it.
+	                 Asserted by nothing when it is left out
 	-v, --verbose    say more on stderr about what the run is doing and about
 	                 what it found; repeat for more
 	-h, --help       print this message and exit
@@ -321,7 +326,8 @@ const outputContractHelp = `Output:
 	produces byte-identical stdout.
 
 	A run which produces no result — help, a usage error, a model root that
-	cannot be read — writes nothing at all to stdout.
+	cannot be read, an entity format this engine does not implement — writes
+	nothing at all to stdout.
 
 	Diagnostics, progress and everything else for a person go to stderr, on
 	every run and in every format. Nothing human-facing is ever on stdout.
