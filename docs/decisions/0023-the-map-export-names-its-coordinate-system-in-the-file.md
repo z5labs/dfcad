@@ -92,6 +92,26 @@ Four things are fixed by this decision:
   ([0021](./0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)), and the digest it
   was derived from is what the command reports.
 
+**No schema is published and none is pointed at.** The application namespace the feature
+properties are written in — `https://github.com/z5labs/dfcad/gml/1` — identifies a vocabulary
+and deliberately resolves to nothing, and the document carries no `xsi:schemaLocation`. This is
+recorded here because it looks like an oversight and is not: a namespace URI names a
+vocabulary, it is not a URL to fetch, and the version at the end of it is what moves when a
+property changes meaning. Publishing an `.xsd` beside the writer would be a second definition of
+the document to keep in step with the first, checked by nothing, and a `schemaLocation` pointing
+at it would make every reader's behaviour depend on a network fetch of a file this project would
+then have to host forever. GDAL asks for neither and infers the schema from the instance, which
+is what every reader in this ecosystem goes through. The cost is real and is stated below:
+a reader which insists on resolving a schema refuses this document.
+
+**Byte-identical is not digit-identical to the source text.** Determinism is a property of two
+runs over one tree, not a promise that every coordinate in the file is the decimal somebody
+typed. A corner authored on the root frame does reach the file as it was written; one carried
+across a frame by a measured transform, or drawn along an arc, has floating-point arithmetic
+done to it on the way, and `2000000.0` can be written `1999999.9999999995` — about 5e-10 survey
+feet, the last bits of a double. Nothing there is a reprojection, and it is why a downstream
+check on this file compares coordinates to a tolerance rather than as text.
+
 ## Consequences
 
 There are two exporters and two packages beside the engine, `ifc` and `gml`, each of which

@@ -45,9 +45,17 @@ projected survey as that format means either violating it or reprojecting — an
 reprojection is the geodesy this engine has decided not to do.
 
 Nothing here reprojects, and there is no code path which could. The coordinates
-written are the model's own, to the last digit, and the identifier is carried
-verbatim: it is checked for shape only, an authority and a code, and nothing
-resolves it, converts it or looks it up.
+written are the model's own and the identifier is carried verbatim: it is
+checked for shape only, an authority and a code, and nothing resolves it,
+converts it or looks it up.
+
+A corner authored on the root frame reaches the file as the digits it was
+written with. One authored on another frame, or one drawn along a curve, has
+arithmetic done to it on the way — the measured transform which carries it, the
+plane the arc is swept in — so it can land a bit or two from the decimal
+somebody typed: 2000000.0 written as 1999999.9999999995, about 5e-10 of a foot
+away. That is the last bits of a double and not a reprojection, and it is why a
+check over this file compares a coordinate to a tolerance rather than as text.
 
 The artefact is a build output and never lands in the authored tree. By default
 it is written beneath .dfcad/export, in a directory named for the digest of the
@@ -107,11 +115,44 @@ assume for a system named as an authority and a code. A boundary whose corners
 do not lie at one level is refused for that reason: the plan of it would be a
 projection this command chose.
 
-Each feature carries the id of the node it was drawn from, its kind, and its
-label, type, container and declared frame where it has them. The id is a
+` + mapPropertiesHeading + `
+
+	id      the id of the node the feature was drawn from
+	label   what that node is called
+	kind    the kind the model gives it
+	type    the type the project declared it as
+	within  the node which immediately contains it
+	frame   the frame its outline was declared in
+
+A reader sees them in this tool's namespace, as dfcad:id, dfcad:label and so
+on. Only id is written on every feature; the rest are written where the node
+has them and are absent, rather than empty, where it does not. The id is a
 property rather than the feature's XML identifier because an id in this
 model's spelling — namespace, colon, local part — is not a name XML can write,
 and because a property is what a GIS shows, sorts by and joins on.
+
+within is the immediate container and never an ancestor: a room reports the
+storey it sits on and not the site that storey stands on. Asking what a whole
+site holds is therefore a join the reader makes — follow within from feature
+to feature until it names nothing this document holds — or one dfcad traverse
+contains <id> against the model, whose answer is in the same ids the id
+property carries.
+
+There is no selector, and a run cannot be narrowed to a kind, a type or a
+container: every node the model gave a shape to is drawn, so a document of a
+model holding rooms, countertops and closets holds all three stacked on the
+parcel. Choosing what a sheet shows is the reader's, and the properties above
+are the contract for doing it — a layer filter, a definition query or a style
+rule written against them is how a plan of one storey comes out of a document
+of the whole model
+(docs/decisions/0025-the-map-export-draws-every-region-and-its-properties-are-the-filter.md).
+
+The namespace those properties are written in identifies this vocabulary and
+resolves to nothing, and the document names no xsi:schemaLocation. Both are
+deliberate: there is no schema to fetch, GDAL asks for neither, and a schema
+published at a URL would be a second definition of this document to keep in
+step with the writer. A reader which refuses a document it cannot resolve a
+schema for will refuse this one.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -140,6 +181,17 @@ with "derived" false and no files, so a caller reads why from the diagnostics on
 stderr rather than from an empty stream. Exit code 3 is a destination inside the
 authored tree, which is refused before anything is read.
 `
+
+// mapPropertiesHeading opens the block of the help text above which lists the
+// properties every feature carries.
+//
+// It is a constant because a test reads that block back out of the usage and
+// requires it to name exactly the properties a document holds, no more and no
+// fewer. The help text used to describe a property called `container` which no
+// run has ever written — the feature carries `within` — and a filter written
+// against the documented name selects nothing and raises nothing, which is a
+// defect a reader finds by measuring rather than by being told.
+const mapPropertiesHeading = "Each feature carries these properties, in the order they are written:"
 
 // mapFile is the name of the one file a map export consists of.
 const mapFile = "model.gml"
@@ -172,7 +224,16 @@ const (
 // They are the node taken apart rather than rendered into a label: a GIS shows
 // one column per property, so somebody styling a plan by kind, filtering it by
 // type or joining it back to the model by id can do each of those without
-// parsing anything out of a string.
+// parsing anything out of a string. That is the whole of this command's answer
+// to selection — it draws every region it can and narrows nothing
+// ([0025](docs/decisions/0025-the-map-export-draws-every-region-and-its-properties-are-the-filter.md))
+// — so these names are a contract a downstream filter is written against, and
+// the help text is required by a test to name exactly them.
+//
+// propertyWithin is the immediate container and never an ancestor, because it
+// is [dfcad.SemanticNode.Within] written out and that is what containment is in
+// this model: the transitive answer is a walk, which `dfcad traverse contains`
+// already does against the model itself.
 const (
 	propertyNodeID = "id"
 	propertyLabel  = "label"

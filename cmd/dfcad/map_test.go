@@ -456,6 +456,106 @@ func TestRunExportMapWritesEveryRegionTheModelDrew(t *testing.T) {
 	})
 }
 
+// TestExportMapUsageNamesThePropertiesTheDocumentCarries is its own function
+// because what it compares is not a run against an expectation but two
+// descriptions of one vocabulary: the help text a reader writes their filter
+// from, and the properties a document actually holds.
+//
+// It exists because those two drifted. The help text described a property
+// called `container` which no run has ever written — the feature carries
+// `within` — and a filter written against the documented name selects nothing
+// and raises nothing, so the consumer finds out by measuring an empty layer.
+// Documentation which is wrong in that direction is worse than none.
+func TestExportMapUsageNamesThePropertiesTheDocumentCarries(t *testing.T) {
+	emitted := mapDocumentProperties(t, drawnMapOf(t))
+
+	// The fixture is required to carry every property the writer can emit,
+	// which is what makes the comparison below cover all of them: a property
+	// no fixture exercises would otherwise be undocumented and unnoticed.
+	require.ElementsMatch(t,
+		[]string{
+			propertyNodeID,
+			propertyLabel,
+			propertyKind,
+			propertyType,
+			propertyWithin,
+			propertyFrame,
+		},
+		emitted,
+		"the fixture exercises every property a feature can carry")
+
+	assert.ElementsMatch(t, emitted, mapUsageProperties(t),
+		"the help text names the properties the command emits, no more and no fewer")
+}
+
+// mapUsageProperties is the property names the help text lists, read out of it
+// the way a person reads them: the block under the heading, one name a line.
+func mapUsageProperties(t *testing.T) []string {
+	t.Helper()
+
+	_, block, found := strings.Cut(exportMapUsage, mapPropertiesHeading)
+	require.True(t, found, "the help text holds the block which lists the properties")
+
+	var names []string
+
+	for _, line := range strings.Split(block, "\n") {
+		// A line of the block is a tab, the name, then its description. A
+		// wrapped description is a tab and then spaces, which is not a name,
+		// and anything not indented at all is the prose after the block.
+		if indented := strings.TrimPrefix(line, "\t"); indented != line && !strings.HasPrefix(indented, " ") {
+			names = append(names, strings.Fields(indented)[0])
+			continue
+		}
+
+		if len(names) > 0 {
+			break
+		}
+	}
+
+	require.NotEmpty(t, names, "the block lists at least one property")
+
+	return names
+}
+
+// mapDocumentProperties is the distinct property names a document carries.
+//
+// A property is a leaf in this tool's namespace whose value is text and whose
+// closing tag is on the same line, which is what tells one from the geometry
+// element beside it and from the feature which holds both.
+func mapDocumentProperties(t *testing.T, source string) []string {
+	t.Helper()
+
+	var names []string
+	seen := make(map[string]bool)
+
+	for _, line := range strings.Split(source, "\n") {
+		open := strings.TrimSpace(line)
+		if !strings.HasPrefix(open, "<"+mapPrefix+":") {
+			continue
+		}
+
+		name, rest, found := strings.Cut(strings.TrimPrefix(open, "<"+mapPrefix+":"), ">")
+		if !found {
+			continue
+		}
+
+		value, closed := strings.CutSuffix(rest, "</"+mapPrefix+":"+name+">")
+		if !closed || strings.Contains(value, "<") {
+			continue
+		}
+
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+
+	require.NotEmpty(t, names, "the document carries properties")
+
+	return names
+}
+
 // TestRunExportMapExpressesEveryRegionInTheRootFrame is its own function
 // because it is the assertion the whole command exists for: the coordinates in
 // the document are the root frame's, and the only thing which moved them there
