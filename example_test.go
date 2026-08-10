@@ -533,6 +533,47 @@ func ExampleRules_Run_structuralInvariants() {
 	// cross-frame-budget-holds — expected site:A-01 in frame:building to be known to within 0.008 m, found a combined uncertainty of 0.01 m (k = 1.0, ≈ 68%) accumulated from 2 terms
 }
 
+func ExampleRules_Run_bands() {
+	graph, _ := dfcad.LoadGraph("testdata/checks/agreement")
+
+	// Some checks treat the tolerance they are declared with as a floor rather
+	// than the whole test: two figures which differ by less than their combined
+	// uncertainty do not disagree, so the band widens to whatever the evidence
+	// can actually tell apart. That is right, and it means the number the
+	// registry states is not the number the check applied.
+	//
+	// So every such comparison comes back as a band, whether it agreed or not.
+	// The room below claims 12.2 m² of a shape which computes to 12.0 — four
+	// times the declared discrepancy — and passes, because the claim is good to
+	// 0.25 m² and the corners put the shape within 0.112. Nothing else in the
+	// run says that: it is a pass either way.
+	rules := graph.Rules().Select(dfcad.RuleFilter{Subjects: []dfcad.ID{"site:S-107"}})
+
+	run := rules.Run()
+	fmt.Println("passed:", run.Passed, "failed:", run.Failed)
+
+	for _, applied := range run.Bands {
+		band := applied.Band
+
+		fmt.Printf("%s %s: declared %v %s, applied %v %s\n",
+			applied.Instance, applied.Check, band.Floor, band.Unit, band.Applied, band.Unit)
+		fmt.Printf("gap of %v %s, decided by the widening: %t\n",
+			band.Difference, band.Unit, band.Decisive)
+
+		for _, term := range band.Terms {
+			fmt.Printf("  %s: %v %s × %v = %v %s\n",
+				term.Source, term.Sigma, term.Unit, term.Sensitivity, term.Contribution, band.Unit)
+		}
+	}
+
+	// Output:
+	// passed: 1 failed: 0
+	// site:S-107 claim-agrees-with-geometry: declared 0.05 m2, applied 0.2739415996156845 m2
+	// gap of 0.1999999999999993 m2, decided by the widening: true
+	//   claim: 0.25 m2 × 1 = 0.25 m2
+	//   corners: 0.008 m × 14 = 0.112 m2
+}
+
 func ExampleGraph_Assertions() {
 	graph, _ := dfcad.LoadGraph("testdata/assert/valid")
 

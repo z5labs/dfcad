@@ -437,6 +437,227 @@ func TestClaimAgreesWithGeometry(t *testing.T) {
 	})
 }
 
+// TestEveryCheckWhichWidensAToleranceReportsTheBand is the guard behind every
+// case below it.
+//
+// A check which treats its declared tolerance as a floor and does not implement
+// [Judge] still decides correctly and discloses nothing, which is exactly the
+// state this story was written about — and it is a state no assertion about a
+// message would catch, because the message would be right. So the set is named
+// here: adding a check which widens without reporting fails this, and taking the
+// reporting off an existing one fails it too.
+func TestEveryCheckWhichWidensAToleranceReportsTheBand(t *testing.T) {
+	widening := []Runner{
+		claimAgreesWithGeometry{},
+		containedAreasSum{},
+		sitsInside{},
+	}
+
+	for _, check := range widening {
+		t.Run(check.Declare().Name, func(t *testing.T) {
+			_, reports := check.(Judge)
+
+			assert.True(t, reports, "a check which widens the tolerance it is given says what it applied")
+		})
+	}
+}
+
+// bandOf is the one band a check reported about one thing, and fails the test
+// where the run reports any other number of them.
+//
+// A check which decided one comparison and reported two bands, or none, is a
+// check whose disclosure does not match the answer it gave — which is the whole
+// of what these cases are about, so it is a failure here rather than an index
+// out of range further down.
+func bandOf(t *testing.T, run CheckRun, check string, instance ID) Band {
+	t.Helper()
+
+	var out []Band
+	for _, applied := range run.Bands {
+		if applied.Check != check || applied.Instance != instance {
+			continue
+		}
+		out = append(out, applied.Band)
+	}
+
+	require.Len(t, out, 1, "%s reports one band about %s", check, instance)
+	return out[0]
+}
+
+// TestClaimAgreesWithGeometryReportsTheBandItApplied is its own function because
+// its assertion is about the answer's disclosure rather than about the answer.
+//
+// The check widens the tolerance it is given by the combined uncertainty of what
+// it compares, which is right and is invisible. On the fixture below a 0.05 m²
+// discrepancy is applied as 0.27 — the corners are known to 0.008 m and the
+// boundary is 14 m long, so their contribution alone is 0.112 m² — and the run
+// which passes site:S-107 reads exactly like one which held to the declared
+// figure. A rule nobody can falsify is the failure this reports.
+func TestClaimAgreesWithGeometryReportsTheBandItApplied(t *testing.T) {
+	run := runCheckFixture(t, "agreement")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected Band
+	}{
+		{
+			name:     "reports the band behind a pass, where nothing in the answer would otherwise say it",
+			instance: "site:S-101",
+			expected: Band{
+				Tolerance:  "area-discrepancy",
+				Floor:      0.05,
+				Applied:    0.12265398485169571,
+				Unit:       "m2",
+				Difference: 0,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromClaim, Sigma: 0.05, Unit: "m2", Sensitivity: 1, Contribution: 0.05},
+					{Source: BandFromCorners, Sigma: 0.008, Unit: "m", Sensitivity: 14, Contribution: 0.112},
+				},
+			},
+		},
+		{
+			name:     "calls a pass which needed the widening decisive",
+			instance: "site:S-107",
+			expected: Band{
+				Tolerance:  "area-discrepancy",
+				Floor:      0.05,
+				Applied:    0.2739415996156845,
+				Unit:       "m2",
+				Difference: 0.1999999999999993,
+				Widened:    true,
+				Decisive:   true,
+				Terms: []BandTerm{
+					{Source: BandFromClaim, Sigma: 0.25, Unit: "m2", Sensitivity: 1, Contribution: 0.25},
+					{Source: BandFromCorners, Sigma: 0.008, Unit: "m", Sensitivity: 14, Contribution: 0.112},
+				},
+			},
+		},
+		{
+			name:     "does not call a pass within the tolerance as written decisive",
+			instance: "site:S-109",
+			expected: Band{
+				Tolerance:  "area-discrepancy",
+				Floor:      0.05,
+				Applied:    0.112,
+				Unit:       "m2",
+				Difference: 0.019999999999999574,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.008, Unit: "m", Sensitivity: 14, Contribution: 0.112},
+				},
+			},
+		},
+		{
+			name:     "reports the band behind a failure too, which is what it was measured past",
+			instance: "site:S-102",
+			expected: Band{
+				Tolerance:  "area-discrepancy",
+				Floor:      0.05,
+				Applied:    0.1501465950329877,
+				Unit:       "m2",
+				Difference: 2,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromClaim, Sigma: 0.1, Unit: "m2", Sensitivity: 1, Contribution: 0.1},
+					{Source: BandFromCorners, Sigma: 0.008, Unit: "m", Sensitivity: 14, Contribution: 0.112},
+				},
+			},
+		},
+		{
+			name:     "carries a span's corners across at a sensitivity of one, because a length is not an area",
+			instance: "geom:E-20",
+			expected: Band{
+				Tolerance:  "length-discrepancy",
+				Floor:      0.01,
+				Applied:    0.01,
+				Unit:       "m",
+				Difference: 0,
+				Terms: []BandTerm{
+					{Source: BandFromClaim, Sigma: 0.005, Unit: "m", Sensitivity: 1, Contribution: 0.005},
+					{
+						Source:       BandFromCorners,
+						Sigma:        0.00565685424949238,
+						Unit:         "m",
+						Sensitivity:  1,
+						Contribution: 0.00565685424949238,
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := bandOf(t, run, "claim-agrees-with-geometry", testCase.instance)
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestAComparisonItDeclinedToMakeReportsNoBand covers the other half of the
+// disclosure: a subject this check leaves alone.
+//
+// A band about a comparison nobody made would be a number a reader could act on
+// and a test which never ran, which is the same unfalsifiable answer the band
+// exists to prevent — read the other way round.
+func TestAComparisonItDeclinedToMakeReportsNoBand(t *testing.T) {
+	run := runCheckFixture(t, "agreement")
+
+	declined := []ID{
+		"site:S-104", // measured and not yet drawn
+		"site:S-105", // drawn and not yet measured
+		"geom:E-23",  // a span with no number written on it
+		"geom:E-24",  // a number with no surveyed corners to measure it against
+	}
+
+	for _, instance := range declined {
+		t.Run(string(instance), func(t *testing.T) {
+			for _, applied := range run.Bands {
+				assert.NotEqual(t, instance, applied.Instance,
+					"a comparison which was not made discloses nothing")
+			}
+		})
+	}
+}
+
+// TestABandLeadsBackToTheRuleWhichAppliedIt covers what a band carries besides
+// the arithmetic.
+//
+// A tolerance stated once in a registry and widened on a hundred and fifty
+// instances is one whose band has to lead back to the single line the floor is
+// declared on, and to the thing the comparison was about. Otherwise the answer
+// is a number with nowhere to go.
+func TestABandLeadsBackToTheRuleWhichAppliedIt(t *testing.T) {
+	graph := loadCheckFixture(t, "agreement")
+
+	rules := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:S-107"}})
+	require.Len(t, rules, 1)
+
+	bands, violations := rules[0].Judge()
+	require.Empty(t, violations, "site:S-107 agrees, once the band is widened")
+	require.Len(t, bands, 1)
+
+	applied := bands[0]
+
+	assert.Equal(t, ID("site:S-107"), applied.Instance)
+	assert.Equal(t, "claim-agrees-with-geometry", applied.Check)
+	assert.Empty(t, applied.Type, "an assertion is declared on the thing itself")
+	assert.Equal(t, []string{
+		"(predicate area)",
+		"(position position)",
+		"(tolerance boundary-closure)",
+		"(discrepancy area-discrepancy)",
+	}, applied.Arguments)
+	assert.Equal(t, rules[0].Declared, applied.Declared, "the band points at the rule which applied it")
+
+	room, held := graph.Node("site:S-107")
+	require.True(t, held)
+	assert.Equal(t, room.Span(), applied.Subject, "and at the thing the comparison was about")
+}
+
 // TestClaimAgreesWithGeometryLeadsBackToBothPlaces is its own function because
 // its assertion is about the spans rather than the messages.
 //
@@ -894,6 +1115,173 @@ func encloses(outer, inner Span) bool {
 		inner.End.Offset <= outer.End.Offset
 }
 
+// TestSitsInsideReportsTheBandItApplied covers the second place a declared
+// tolerance is a floor, and the disclosure it owes for the same reason.
+//
+// The tolerance is 0.005 m and two shapes surveyed to 0.008 m apiece put the
+// band at 0.011 — twice the figure the registry states, before anything unusual
+// has happened. What the fixture also holds is site:D-05, a device set out by a
+// method good to half a metre: the same rule then permits a quarter-metre
+// excursion past the boundary, and passes.
+func TestSitsInsideReportsTheBandItApplied(t *testing.T) {
+	run := runCheckFixture(t, "inside")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected Band
+	}{
+		{
+			name:     "reports a band on a shape the container covers entirely, where the reach past it is nothing",
+			instance: "site:S-101",
+			expected: Band{
+				Tolerance:  "boundary-closure",
+				Floor:      0.005,
+				Applied:    0.01131370849898476,
+				Unit:       "m",
+				Difference: 0,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.008, Unit: "m", Sensitivity: 1, Contribution: 0.008},
+					{Source: BandFromContainer, Sigma: 0.008, Unit: "m", Sensitivity: 1, Contribution: 0.008},
+				},
+			},
+		},
+		{
+			name:     "names both shapes, because either survey can be the one which widened it",
+			instance: "site:W-01",
+			expected: Band{
+				Tolerance:  "boundary-closure",
+				Floor:      0.005,
+				Applied:    0.010583005244258363,
+				Unit:       "m",
+				Difference: 0,
+				Widened:    true,
+				Terms: []BandTerm{
+					{
+						Source:       BandFromCorners,
+						Sigma:        0.0069282032302755096,
+						Unit:         "m",
+						Sensitivity:  1,
+						Contribution: 0.0069282032302755096,
+					},
+					{Source: BandFromContainer, Sigma: 0.008, Unit: "m", Sensitivity: 1, Contribution: 0.008},
+				},
+			},
+		},
+		{
+			name:     "calls a placement which is only inside because its own survey is loose decisive",
+			instance: "site:D-05",
+			expected: Band{
+				Tolerance:  "boundary-closure",
+				Floor:      0.005,
+				Applied:    0.5000639959045242,
+				Unit:       "m",
+				Difference: 0.25,
+				Widened:    true,
+				Decisive:   true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.5, Unit: "m", Sensitivity: 1, Contribution: 0.5},
+					{Source: BandFromContainer, Sigma: 0.008, Unit: "m", Sensitivity: 1, Contribution: 0.008},
+				},
+			},
+		},
+		{
+			name:     "reports the band behind a failure too, which is what the reach was measured past",
+			instance: "site:D-02",
+			expected: Band{
+				Tolerance:  "boundary-closure",
+				Floor:      0.005,
+				Applied:    0.008944271909999158,
+				Unit:       "m",
+				Difference: 2,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.004, Unit: "m", Sensitivity: 1, Contribution: 0.004},
+					{Source: BandFromContainer, Sigma: 0.008, Unit: "m", Sensitivity: 1, Contribution: 0.008},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := bandOf(t, run, "sits-inside", testCase.instance)
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestContainedAreasSumReportsTheBandItApplied covers the third place a declared
+// tolerance is a floor.
+//
+// Only the figure summed against widens this one — a sum of many regions has no
+// single sensitivity to carry a corner budget across by — so a total judged
+// against a subject's own outline reports a band with no term at all, and the
+// declared tolerance is the whole of the test. That is worth reporting as much
+// as a widened one: it is the answer which says the criterion held as written.
+func TestContainedAreasSumReportsTheBandItApplied(t *testing.T) {
+	run := runCheckFixture(t, "appraised")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected Band
+	}{
+		{
+			name:     "reports a band with no term where the total is judged against the subject's own outline",
+			instance: "site:L-07",
+			expected: Band{
+				Tolerance:  "area-sum",
+				Floor:      0.05,
+				Applied:    0.05,
+				Unit:       "m2",
+				Difference: 32,
+			},
+		},
+		{
+			name:     "calls a total which is only inside because the figure says so decisive",
+			instance: "site:L-08",
+			expected: Band{
+				Tolerance:  "area-sum",
+				Floor:      0.05,
+				Applied:    0.3,
+				Unit:       "m2",
+				Difference: 0.20000000000000284,
+				Widened:    true,
+				Decisive:   true,
+				Terms: []BandTerm{
+					{Source: BandFromClaim, Sigma: 0.3, Unit: "m2", Sensitivity: 1, Contribution: 0.3},
+				},
+			},
+		},
+		{
+			name:     "reports the band behind a failure too, which is what the discrepancy was measured past",
+			instance: "site:L-09",
+			expected: Band{
+				Tolerance:  "area-sum",
+				Floor:      0.05,
+				Applied:    0.3,
+				Unit:       "m2",
+				Difference: 1,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromClaim, Sigma: 0.3, Unit: "m2", Sensitivity: 1, Contribution: 0.3},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := bandOf(t, run, "contained-areas-sum", testCase.instance)
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
 // TestBoundaryLoopsCloseDoesNotAskARunToClose is its own function because it
 // asserts that a check declines to run rather than that it ran and passed, and
 // because the difference between those two is the whole of what a node drawn as
@@ -1148,8 +1536,8 @@ func TestContainedAreasSumSaysWhatASubsetSummed(t *testing.T) {
 
 		assert.Equal(t,
 			"the sum is of the 2 nodes it contains with a shape, narrowed to those of type LivingSpace and "+
-				"leaving 1 node out, judged against how well the figure is known, 0.3 m2, which is wider than "+
-				"the tolerance area-sum; either a part is drawn wrong or the figure is",
+				"leaving 1 node out, judged against 0.3 m2: the tolerance area-sum, which is 0.05 m2, widened "+
+				"by how well the claim says it is known (0.3 m2); either a part is drawn wrong or the figure is",
 			hint,
 		)
 	})

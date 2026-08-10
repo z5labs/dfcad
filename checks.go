@@ -319,7 +319,14 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 	}
 }
 
-// Run implements [Runner].
+// Run implements [Runner], and is [claimAgreesWithGeometry.Judge] without the
+// band it decided against.
+func (c claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
+	_, failures := c.Judge(subject)
+	return failures
+}
+
+// Judge implements [Judge].
 //
 // The failure this catches is quiet and entirely ordinary. A wall moves, the
 // boundary follows it, and the area written down when the room was first
@@ -375,6 +382,23 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 // nothing about it reaches [Measurement.Budget], which reports the uncertainty
 // of the corners and reduces it to no figure of its own.
 //
+// # The band is reported, not just applied
+//
+// Every comparison this makes comes back as a [Band] beside whatever it found:
+// the tolerance the rule named and its value, the figure the difference was
+// actually judged against, and — where those differ — each accuracy which
+// widened it and the sensitivity which carried it into the unit compared.
+//
+// That is not decoration. The widening is invisible from the outside and it is
+// large: a 0.50 usft² discrepancy declared over a 926 usft² region with a
+// perimeter of 137 is applied as about 8, because the perimeter multiplies the
+// corners' quarter-inch survey accuracy sixteen-fold. A gate written as "the
+// boundary agrees with the appraisal to within half a square foot" is then not
+// testing that, and the passing run reads exactly like one which was. Reporting
+// the band is what makes the criterion falsifiable — and [Band.Decisive] is what
+// separates a pass which needed the widening from a pass within the tolerance as
+// written.
+//
 // # What it declines to decide
 //
 // A subject carrying the claim and no shape, and one with a shape and no claim
@@ -386,29 +410,29 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 // measure is not a span which disagrees. It is the corners' predicate and not
 // the claim's which decides that one — the number is there and what is missing
 // is somewhere to measure it against.
-func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
+func (claimAgreesWithGeometry) Judge(subject CheckSubject) ([]Band, []Failure) {
 	graph := subject.Graph()
 
 	place, compares := comparing(graph, subject.Subject())
 	if !compares {
-		return nil
+		return nil, nil
 	}
 
 	predicate, ok := symbolOf(subject, predicateParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	position, ok := symbolOf(subject, positionParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	tolerance, ok := symbolOf(subject, toleranceParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	discrepancy, ok := symbolOf(subject, discrepancyParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	declared, found := graph.Registry().Tolerance(discrepancy)
@@ -417,7 +441,7 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		// error which names it and points at it. Reporting it again here would
 		// be one mistake told twice, in the vocabulary of the rule rather than
 		// of the registry.
-		return nil
+		return nil, nil
 	}
 
 	// The claim is read before the shape is measured, because a subject which
@@ -428,18 +452,18 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		// Two equally current claims under a strict predicate are the conflict
 		// register's to report, and comparing one of them against the shape
 		// would be picking a winner this check has no rule for.
-		return nil
+		return nil, nil
 	}
 
 	claim, stated := currentClaim(resolution)
 	if !stated {
-		return nil
+		return nil, nil
 	}
 
 	value := claim.Value()
 	claimed, numeric := value.Scalar()
 	if !numeric {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected the %s claimed of %s to be a number its shape could be compared against, found %s",
 				predicate, place.name, describeShape(value.Shape()),
@@ -453,15 +477,15 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 
 	shape, failures := measuredGeometry(graph, subject.Subject(), tolerance, position)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	if !shape.measured {
-		return nil
+		return nil, nil
 	}
 
 	if value.Unit() != shape.unit {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected the %s claimed of %s in %s, the unit its shape is measured in, found %s %s",
 				predicate, place.name, shape.unit, decimal(claimed), value.Unit(),
@@ -474,7 +498,7 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 	}
 
 	if declared.Unit != shape.unit {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected the discrepancy %s in %s, the unit the shape of %s is measured in, found %s %s",
 				declared.Name, shape.unit, place.name, decimal(declared.Value), declared.Unit,
@@ -488,14 +512,12 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		}}
 	}
 
-	band := declared.Value
-	if combined, known := agreementBand(claim, shape); known && combined > band {
-		band = combined
-	}
-
 	difference := claimed - shape.value
-	if math.Abs(difference) <= band {
-		return nil
+	band := agreementBand(declared, claim, shape, difference)
+	bands := []Band{band}
+
+	if band.holds() {
+		return bands, nil
 	}
 
 	sense := "more than"
@@ -503,7 +525,7 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		sense = "less than"
 	}
 
-	return []Failure{{
+	return bands, []Failure{{
 		Message: fmt.Sprintf(
 			"expected the %s claimed of %s to agree with %s, found %s%s claimed against %s%s "+
 				"measured, which is %s%s %s %s",
@@ -514,9 +536,8 @@ func (claimAgreesWithGeometry) Run(subject CheckSubject) []Failure {
 		),
 		Hint: fmt.Sprintf(
 			"the shape is recomputed from the corners' %s claims, judged against the tolerance %s; the two may "+
-				"differ by %s, which is %s %s, or by their combined uncertainty where that is wider — so either the "+
-				"claim has gone stale or %s",
-			position, tolerance, declared.Name, decimal(declared.Value), declared.Unit, shape.wording.blame,
+				"differ by %s — so either the claim has gone stale or %s",
+			position, tolerance, band.against(), shape.wording.blame,
 		),
 		Span:    claim.Span(),
 		Related: place.related,
@@ -834,32 +855,37 @@ func measuredSpan(graph *Graph, edge *Edge, tolerance, position string) (shape, 
 	}, nil
 }
 
-// agreementBand is the combined one-sigma uncertainty of a claimed figure and
-// the shape it is compared against, and whether either side stated an accuracy
-// at all.
+// agreementBand is what a claimed figure and the shape it is compared against
+// are judged to agree within: the declared discrepancy, or their combined
+// one-sigma uncertainty where that is wider — together with what widened it.
 //
-// A side which stated none contributes nothing rather than stopping the
+// A side which stated no accuracy contributes no term rather than stopping the
 // arithmetic, because the declared discrepancy is the floor under the answer and
 // is what decides a comparison the evidence cannot narrow. Where neither side
-// stated one there is no band here at all, and the floor is the whole of the
-// test.
-func agreementBand(claim *Claim, of shape) (float64, bool) {
+// stated one there is nothing to combine, and the floor is the whole of the
+// test — which the band says by reporting no term at all rather than by
+// reporting two zeroes, because a zero term reads as a side which was measured
+// perfectly.
+func agreementBand(declared Tolerance, claim *Claim, of shape, difference float64) Band {
 	var own Budget
 	own.Add(claim)
 
-	claimed, stated := sigmaIn(own, of.unit)
-	derived, surveyed := sigmaIn(of.budget, of.linear)
+	var terms []BandTerm
 
-	if !stated && !surveyed {
-		return 0, false
+	if claimed, stated := sigmaIn(own, of.unit); stated {
+		// The claim is a figure of the same thing the comparison is of, so it
+		// needs no carrying across: it is already in the band's unit.
+		terms = append(terms, bandTerm(BandFromClaim, claimed, of.unit, 1))
 	}
 
-	// The corners' budget is a distance and the figure may be an area, so it is
-	// carried across by how far the figure moves per unit of corner
-	// displacement.
-	derived *= of.sensitivity
+	if derived, surveyed := sigmaIn(of.budget, of.linear); surveyed {
+		// The corners' budget is a distance and the figure may be an area, so
+		// it is carried across by how far the figure moves per unit of corner
+		// displacement.
+		terms = append(terms, bandTerm(BandFromCorners, derived, of.linear, of.sensitivity))
+	}
 
-	return math.Sqrt(claimed*claimed + derived*derived), true
+	return banded(declared, difference, terms...)
 }
 
 // sigmaIn is a budget as one standard uncertainty in the given unit, and whether
@@ -1100,7 +1126,14 @@ func (containedAreasSum) Declare() CheckDeclaration {
 	}
 }
 
-// Run implements [Runner].
+// Run implements [Runner], and is [containedAreasSum.Judge] without the band it
+// decided against.
+func (c containedAreasSum) Run(subject CheckSubject) []Failure {
+	_, failures := c.Judge(subject)
+	return failures
+}
+
+// Judge implements [Judge].
 //
 // The discrepancy is signed and the failure says which way it runs, because the
 // two directions are two different mistakes: contents which come to more than
@@ -1131,6 +1164,12 @@ func (containedAreasSum) Declare() CheckDeclaration {
 // A sum of many regions has no one sensitivity to carry a corner budget across
 // by, and a band computed as though it had would be a figure of nothing.
 //
+// The comparison comes back as a [Band] whether it agreed or not, for the reason
+// [claimAgreesWithGeometry.Judge] gives: a tolerance the check treats as a floor
+// is a tolerance whose declared value is not what decided the answer, and a run
+// which reported only the passes cannot be used to falsify the criterion it was
+// written to test.
+//
 // A subject stating no figure under the named predicate is left alone, which is
 // the rule [claimAgreesWithGeometry] makes for the same reason: a number nobody
 // has written down yet is an ordinary state of a model being written. Falling
@@ -1150,23 +1189,23 @@ func (containedAreasSum) Declare() CheckDeclaration {
 // is. An unnarrowed sum says nothing of the sort: it summed everything, the
 // contents are already the model's own answer to what it contains, and listing
 // them would bury the discrepancy the failure is about.
-func (containedAreasSum) Run(subject CheckSubject) []Failure {
+func (containedAreasSum) Judge(subject CheckSubject) ([]Band, []Failure) {
 	node, ok := subject.Subject().(*SemanticNode)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	tolerance, ok := symbolOf(subject, toleranceParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	area, ok := symbolOf(subject, areaParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	position, ok := symbolOf(subject, positionParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	graph := subject.Graph()
@@ -1177,16 +1216,16 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 		// error which names it and points at it. Reporting it again here would
 		// be one mistake told twice, in the vocabulary of the rule rather than
 		// of the registry.
-		return nil
+		return nil, nil
 	}
 
 	whole, failures := shapeOf(graph, node, tolerance, position)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	if !whole.ready {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected a shape on %s to add its contents up to, found no loop bounding it",
 				nodeName(node),
@@ -1198,7 +1237,7 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 	}
 
 	if wanted := squareUnit(whole.Unit()); declared.Unit != wanted {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected the tolerance %s in %s, the square of the unit %s is measured in, found %s %s",
 				declared.Name, wanted, nodeName(node), decimal(declared.Value), declared.Unit,
@@ -1216,24 +1255,24 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 	// a total which came out wrong.
 	against, decides, failures := summedAgainst(subject, node, whole)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 	if !decides {
-		return nil
+		return nil, nil
 	}
 
 	narrowed, failures := narrowingOf(subject, graph)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	shapes, left, failures := shapesWithin(graph, node, narrowed, tolerance, position)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	if len(shapes) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Everything summed has to be declared in the frame the whole is, and a
@@ -1269,17 +1308,15 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 	}
 
 	if len(elsewhere) > 0 {
-		return elsewhere
-	}
-
-	band := declared.Value
-	if against.sigma > band {
-		band = against.sigma
+		return nil, elsewhere
 	}
 
 	discrepancy := parts - against.value
-	if math.Abs(discrepancy) <= band {
-		return nil
+	band := banded(declared, discrepancy, against.terms...)
+	bands := []Band{band}
+
+	if band.holds() {
+		return bands, nil
 	}
 
 	sense := "more than"
@@ -1287,31 +1324,21 @@ func (containedAreasSum) Run(subject CheckSubject) []Failure {
 		sense = "less than"
 	}
 
-	// The hint names the band which actually decided, not the tolerance it was
-	// read from. Where the figure states an accuracy wider than the tolerance it
-	// is the figure's accuracy the discrepancy was measured against, and a hint
-	// naming the tolerance there sends a reader to tighten a number which
-	// decided nothing.
-	judged := fmt.Sprintf(
-		"the tolerance %s, which is %s %s", declared.Name, decimal(declared.Value), declared.Unit,
-	)
-	if against.sigma > declared.Value {
-		judged = fmt.Sprintf(
-			"how well %s is known, %s %s, which is wider than the tolerance %s",
-			against.noun, decimal(against.sigma), declared.Unit, declared.Name,
-		)
-	}
-
-	return []Failure{{
+	return bands, []Failure{{
 		Message: fmt.Sprintf(
 			"expected what %s contains to add up to %s%s, found %s%s, which is %s%s %s %s",
 			nodeName(node), against.wording, squareSuffix(whole.Unit()),
 			decimal(parts), squareSuffix(whole.Unit()),
 			decimal(math.Abs(discrepancy)), squareSuffix(whole.Unit()), sense, against.noun,
 		),
+		// The hint names the band which actually decided, not the tolerance it
+		// was read from. Where the figure states an accuracy wider than the
+		// tolerance it is the figure's accuracy the discrepancy was measured
+		// against, and a hint naming the tolerance there sends a reader to
+		// tighten a number which decided nothing.
 		Hint: fmt.Sprintf(
 			"the sum is of the %s%s, judged against %s; either a part is drawn wrong or %s is",
-			plural(len(shapes), "node"), summedOver(narrowed, left), judged, against.blame,
+			plural(len(shapes), "node"), summedOver(narrowed, left), band.against(), against.blame,
 		),
 		Span:    graph.Nodes().named(node),
 		Related: composition(graph, narrowed, shapes, left, against.related),
@@ -1329,11 +1356,19 @@ type summed struct {
 	// value is the figure the contents are summed against.
 	value float64
 
-	// sigma is the one standard uncertainty of that figure where it states one,
-	// and zero where it does not. It widens the band and never narrows it: an
+	// terms are what widens the band the discrepancy is judged against: the one
+	// standard uncertainty the figure states of itself, where it states one.
+	//
+	// It is empty where it does not, and where the figure is the subject's own
+	// outline, which has no claim to state one. Empty is not a zero term: an
 	// unstated accuracy is unknown rather than zero
-	// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
-	sigma float64
+	// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)), and the declared
+	// tolerance is then the whole of the test.
+	//
+	// The contents' uncertainty is never in here. A sum of many regions has no
+	// one sensitivity to carry a corner budget across by, so there is no term
+	// which could be a figure of anything.
+	terms []BandTerm
 
 	// wording is what the message calls the figure, up to but not including the
 	// unit — "its own 24.0" or "the gross-living-area claimed of it, 925.75".
@@ -1422,11 +1457,15 @@ func summedAgainst(subject CheckSubject, node *SemanticNode, whole Region) (summ
 	// displaced along — which a sum over many regions does not have one of.
 	var budget Budget
 	budget.Add(claim)
-	sigma, _ := sigmaIn(budget, value.Unit())
+
+	var terms []BandTerm
+	if sigma, stated := sigmaIn(budget, value.Unit()); stated {
+		terms = append(terms, bandTerm(BandFromClaim, sigma, value.Unit(), 1))
+	}
 
 	return summed{
 		value:   figure,
-		sigma:   sigma,
+		terms:   terms,
 		wording: fmt.Sprintf("the %s claimed of it, %s", predicate, decimal(figure)),
 		noun:    "the figure",
 		blame:   "the figure",
@@ -1969,7 +2008,14 @@ func (sitsInside) Declare() CheckDeclaration {
 	}
 }
 
-// Run implements [Runner].
+// Run implements [Runner], and is [sitsInside.Judge] without the band it decided
+// against.
+func (c sitsInside) Run(subject CheckSubject) []Failure {
+	_, failures := c.Judge(subject)
+	return failures
+}
+
+// Judge implements [Judge].
 //
 // This is the failure a containment which resolves cannot catch. A device
 // written `within` a storey and set out thirty feet outside its footprint
@@ -2024,30 +2070,36 @@ func (sitsInside) Declare() CheckDeclaration {
 // the model. Where neither side states an accuracy the floor is the whole of it,
 // because an unstated accuracy is unknown rather than zero
 // ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)).
-func (sitsInside) Run(subject CheckSubject) []Failure {
+//
+// And it is reported. Every comparison comes back as a [Band] naming the
+// tolerance the rule was given, the figure the reach past the boundary was
+// actually judged against, and how well each of the two shapes is surveyed —
+// on a subject which sits inside as much as on one which does not, because a
+// pass decided against a band nobody wrote down is a pass nobody can check.
+func (sitsInside) Judge(subject CheckSubject) ([]Band, []Failure) {
 	node, ok := subject.Subject().(*SemanticNode)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	written, ok := symbolOf(subject, containerParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	tolerance, ok := symbolOf(subject, toleranceParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	position, ok := symbolOf(subject, positionParameter)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 
 	graph := subject.Graph()
 
 	container, held := graph.Node(ID(written))
 	if !held {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected a container this model holds, found %s, which names no node of it",
 				written,
@@ -2061,11 +2113,11 @@ func (sitsInside) Run(subject CheckSubject) []Failure {
 
 	enclosing, failures := shapeOf(graph, container, tolerance, position)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	if !enclosing.ready {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected the container %s to have a shape to sit inside, found no loop bounding it",
 				container.ID(),
@@ -2092,14 +2144,14 @@ func sittingRegion(
 	node, container *SemanticNode,
 	enclosing Region,
 	tolerance, position string,
-) []Failure {
+) ([]Band, []Failure) {
 	shape, failures := shapeOf(graph, node, tolerance, position)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	if !shape.ready {
-		return []Failure{{
+		return nil, []Failure{{
 			Message: fmt.Sprintf(
 				"expected a shape on %s to judge against the container %s, found no loop bounding it",
 				nodeName(node), container.ID(),
@@ -2112,28 +2164,37 @@ func sittingRegion(
 
 	beyond, diags := shape.Difference(enclosing)
 	if len(diags) > 0 {
-		return failuresOf(diags)
+		return nil, failuresOf(diags)
 	}
 
+	declared := enclosing.Tolerance()
+
+	// A shape the container covers entirely reaches past the boundary by
+	// nothing, and that is a difference of zero rather than no comparison. The
+	// band is what decided it either way, and reporting one only where there was
+	// something outside would report the band on exactly the answers a reader
+	// can already see.
 	if beyond.Empty() {
-		return nil
+		return []Band{insideBand(declared, 0, shape.Budget(), enclosing.Budget())}, nil
 	}
 
 	at, depth := enclosing.deepest(beyond)
 
-	declared := enclosing.Tolerance()
-	if depth <= insideBand(declared, shape.Budget(), enclosing.Budget()) {
-		return nil
+	band := insideBand(declared, depth, shape.Budget(), enclosing.Budget())
+	bands := []Band{band}
+
+	if band.holds() {
+		return bands, nil
 	}
 
-	return []Failure{{
+	return bands, []Failure{{
 		Message: fmt.Sprintf(
 			"expected %s to sit inside %s, found %s%s of it outside, reaching %s%s past the boundary at %s",
 			nodeName(node), container.ID(),
 			decimal(beyond.Area()), squareSuffix(enclosing.Unit()),
 			decimal(depth), unitSuffix(enclosing.Unit()), pointText(at, enclosing.printed()),
 		),
-		Hint:    outsideHint(declared, position),
+		Hint:    outsideHint(band, position),
 		Span:    graph.Nodes().named(node),
 		Related: pointingAt(graph, container, "the container it is to sit inside is written here"),
 	}}
@@ -2153,10 +2214,10 @@ func sittingPoints(
 	node, container *SemanticNode,
 	enclosing Region,
 	position string,
-) []Failure {
+) ([]Band, []Failure) {
 	placements, budget, failures := placementsOf(graph, node, container, enclosing, position)
 	if len(failures) > 0 {
-		return failures
+		return nil, failures
 	}
 
 	// The boundary is projected into its own axes once and every placement is
@@ -2182,18 +2243,24 @@ func sittingPoints(
 		}
 	}
 
-	declared := enclosing.Tolerance()
-	if !outside || depth <= insideBand(declared, budget, enclosing.Budget()) {
-		return nil
+	// A subject every placement of which is inside leaves depth at zero, and
+	// that is a reach past the boundary of nothing rather than a comparison
+	// nobody made. The band is what decided it either way, so it is reported
+	// either way.
+	band := insideBand(enclosing.Tolerance(), depth, budget, enclosing.Budget())
+	bands := []Band{band}
+
+	if !outside || band.holds() {
+		return bands, nil
 	}
 
-	return []Failure{{
+	return bands, []Failure{{
 		Message: fmt.Sprintf(
 			"expected %s to sit inside %s, found %s %s%s outside the boundary, at %s",
 			nodeName(node), container.ID(), furthest.name,
 			decimal(depth), unitSuffix(enclosing.Unit()), pointText(furthest.at, enclosing.printed()),
 		),
-		Hint:    outsideHint(declared, position),
+		Hint:    outsideHint(band, position),
 		Span:    furthest.span,
 		Related: pointingAt(graph, container, "the container it is to sit inside is written here"),
 	}}
@@ -2386,32 +2453,39 @@ func pointingAt(graph *Graph, node *SemanticNode, message string) []RelatedLocat
 
 // insideBand is how far past a boundary is not past it at all: the declared
 // tolerance, or the combined one-sigma uncertainty of the two shapes where that
-// is wider.
+// is wider — together with what widened it and the reach it was applied to.
 //
-// The two are combined in quadrature, as two separate measurements of where one
-// boundary is relative to another. A side which stated no accuracy contributes
-// nothing rather than stopping the arithmetic, because the declared tolerance is
-// the floor under the answer and is what decides a comparison the evidence
-// cannot narrow.
-func insideBand(declared Tolerance, subject, container Budget) float64 {
-	own, surveyed := sigmaIn(subject, declared.Unit)
-	theirs, drawn := sigmaIn(container, declared.Unit)
+// The terms are combined in quadrature, as two separate measurements of where
+// one boundary is relative to another. A side which stated no accuracy
+// contributes no term rather than stopping the arithmetic, because the declared
+// tolerance is the floor under the answer and is what decides a comparison the
+// evidence cannot narrow.
+func insideBand(declared Tolerance, depth float64, subject, container Budget) Band {
+	var terms []BandTerm
 
-	if !surveyed && !drawn {
-		return declared.Value
+	// Both budgets are distances and so is the reach past the boundary, so
+	// neither needs carrying across: the sensitivity is one on both sides.
+	if own, surveyed := sigmaIn(subject, declared.Unit); surveyed {
+		terms = append(terms, bandTerm(BandFromCorners, own, declared.Unit, 1))
+	}
+	if theirs, drawn := sigmaIn(container, declared.Unit); drawn {
+		terms = append(terms, bandTerm(BandFromContainer, theirs, declared.Unit, 1))
 	}
 
-	return math.Max(declared.Value, math.Sqrt(own*own+theirs*theirs))
+	return banded(declared, depth, terms...)
 }
 
 // outsideHint is what to do about a shape which reaches past its container,
 // which is the same advice whichever way the subject was read.
-func outsideHint(declared Tolerance, position string) string {
+//
+// It names the band which actually decided rather than only the tolerance it was
+// read from, because on a model with loosely surveyed corners those are not the
+// same number and only one of them is worth tightening.
+func outsideHint(band Band, position string) string {
 	return fmt.Sprintf(
-		"both shapes are read from the %s claims and judged against the tolerance %s; nothing reaching past the "+
-			"boundary by less than %s %s, or than the combined uncertainty of the two where that is wider, is "+
-			"reported — so this is further out than the survey can account for",
-		position, declared.Name, decimal(declared.Value), declared.Unit,
+		"both shapes are read from the %s claims and judged against %s; nothing reaching past the boundary by "+
+			"less than that is reported — so this is further out than the survey can account for",
+		position, band.against(),
 	)
 }
 

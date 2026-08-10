@@ -117,17 +117,50 @@ func (r Rule) String() string {
 // [Rule.Runs] is what tells those two apart, and a caller counting how many
 // checks passed has to ask it rather than reading the empty result.
 func (r Rule) Run() []Violation {
+	_, violations := r.Judge()
+	return violations
+}
+
+// Judge runs the check and returns both what it decided against and what it
+// found: a band for every comparison made against a figure wider than the
+// tolerance the rule was given could have been, and a violation for every way
+// the rule is not satisfied.
+//
+// The bands come back whether or not the rule was satisfied, which is the whole
+// point of them: a pass decided against a band eight times its declared
+// tolerance is the answer nothing else in a run discloses. A check which decides
+// against what it was given reports none, and neither does a rule nothing runs.
+//
+// [Rule.Run] is this without the bands, for a caller which only wants the gate.
+func (r Rule) Judge() ([]AppliedBand, []Violation) {
 	if !r.Runs() {
-		return nil
+		return nil, nil
 	}
 
 	subject := CheckSubject{graph: r.graph, subject: r.Subject, arguments: r.Arguments}
 
+	judge, judges := r.runner.(Judge)
+	if !judges {
+		var out []Violation
+		for _, failure := range r.runner.Run(subject) {
+			out = append(out, r.violation(failure))
+		}
+		return nil, out
+	}
+
+	bands, failures := judge.Judge(subject)
+
+	var applied []AppliedBand
+	for _, band := range bands {
+		applied = append(applied, r.applied(band))
+	}
+
 	var out []Violation
-	for _, failure := range r.runner.Run(subject) {
+	for _, failure := range failures {
 		out = append(out, r.violation(failure))
 	}
-	return out
+
+	return applied, out
 }
 
 // violation attaches the rule — what failed, which rule, the parameters it ran
@@ -164,6 +197,76 @@ func (r Rule) violation(failure Failure) Violation {
 		Hint:      failure.Hint,
 		Related:   failure.Related,
 	}
+}
+
+// applied attaches the rule to a band the check decided against, the way
+// [Rule.violation] attaches it to a failure.
+//
+// It is the same attachment for the same reason. A check reports the arithmetic
+// and nothing about which rule was applying it, so that the check name, the
+// parameters and where the rule is written are stated in one place for both of
+// the things a run reports.
+func (r Rule) applied(band Band) AppliedBand {
+	written := make([]string, 0, len(r.Arguments))
+	for _, argument := range r.Arguments {
+		written = append(written, argument.String())
+	}
+
+	var (
+		instance ID
+		subject  Span
+	)
+	if r.Subject != nil {
+		instance = r.Subject.ID()
+		subject = r.Subject.Span()
+	}
+
+	return AppliedBand{
+		Instance:  instance,
+		Type:      r.Type,
+		Check:     r.Check.Name,
+		Arguments: written,
+		Declared:  r.Declared,
+		Subject:   subject,
+		Band:      band,
+	}
+}
+
+// AppliedBand is one band a rule was decided against, with the rule which
+// applied it.
+//
+// It is to [Band] what [Violation] is to [Failure]: the check reports what it
+// compared and against what, the run says which rule was doing the comparing,
+// and the two are joined once rather than in every check.
+//
+// Every field a reader needs in order to act on it is here rather than folded
+// into a message, and for the reason [Violation] states: a rule written once and
+// applied to a hundred and fifty instances is one whose band has to lead back to
+// the single place the tolerance it widened is declared.
+type AppliedBand struct {
+	// Instance is the id of the thing the rule was run against.
+	Instance ID `json:"instance"`
+
+	// Type is the name of its type, which is what declared the invariant. It is
+	// empty for an assertion, which is declared on the thing itself.
+	Type string `json:"type,omitempty"`
+
+	// Check is the check name the rule named.
+	Check string `json:"check"`
+
+	// Arguments are the parameters it was evaluated with, each rendered the way
+	// it was written.
+	Arguments []string `json:"arguments,omitempty"`
+
+	// Declared is where the rule was written: a position in a registry file for
+	// an invariant, and the thing itself for an assertion.
+	Declared Span `json:"declared"`
+
+	// Subject is where the thing the rule was run against is written.
+	Subject Span `json:"subject"`
+
+	// Band is what the comparison was decided against.
+	Band Band `json:"band"`
 }
 
 // Rules is a set of rules in the order they will be run.
@@ -263,6 +366,11 @@ func (rs Rules) Select(filter RuleFilter) Rules {
 // Violations come back in the order the rules were in, and within one rule in
 // the order the check reported them. Collecting them into a [Diagnostics] is
 // what puts them in reporting order, which is by position.
+//
+// Bands come back in the same order and from the same rules, passing and
+// failing alike. They are a second list rather than something hung off a
+// violation because the answer they are about is most often a pass, which has
+// no violation to hang anything off.
 func (rs Rules) Run() CheckRun {
 	out := CheckRun{Rules: len(rs)}
 
@@ -273,7 +381,9 @@ func (rs Rules) Run() CheckRun {
 
 		out.Ran++
 
-		violations := rule.Run()
+		bands, violations := rule.Judge()
+		out.Bands = append(out.Bands, bands...)
+
 		if len(violations) == 0 {
 			out.Passed++
 			continue
@@ -311,6 +421,13 @@ type CheckRun struct {
 	// Violations is one entry per way a rule was not satisfied, in the order
 	// the rules were run.
 	Violations []Violation `json:"violations,omitempty"`
+
+	// Bands is one entry per comparison a rule decided against a figure the
+	// tolerance it was given is only the floor under, in the order the rules
+	// were run. A rule which passed is in here as much as one which failed:
+	// the number the registry states is not the number a widened check applies,
+	// and a passing run is where that goes unsaid.
+	Bands []AppliedBand `json:"bands,omitempty"`
 }
 
 // RuleFilter narrows a run to a subset of the rules a model holds.
