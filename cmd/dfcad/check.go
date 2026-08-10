@@ -71,6 +71,17 @@ entry per way a rule was not satisfied. Asked to --list, it carries "checks" as
 well, one entry per rule in the order it would run in, and nothing ran so
 "violations" is empty.
 
+It carries "bands" too: one entry per comparison decided against a figure the
+tolerance the rule names is only the floor under. Some checks widen that floor to
+the combined accuracy of what they are comparing, because a claim cannot be held
+to a precision the geometry does not have — so the number the registry declares
+is not the number the check applied, and on an ordinarily surveyed model it can
+be an order of magnitude apart. Each entry names the tolerance, its declared
+value, the figure actually applied, the difference judged against it and what
+widened it. Passing rules are in there as much as failing ones, which is the
+point: a pass is where the widening otherwise goes unsaid. "summary.widened"
+counts the rules which passed only because of it.
+
 It also carries "refused", which is true where the model did not load. A run
 over a model which did not load selects no rule, runs none and reports no
 violation, which is what a model with nothing wrong with it reports too — so a
@@ -127,6 +138,21 @@ type checkResult struct {
 	// Violations is one entry per way a rule was not satisfied, in the order
 	// the rules ran. Empty rather than null when nothing failed.
 	Violations []dfcad.Violation `json:"violations"`
+
+	// Bands is one entry per comparison a rule decided against a figure wider
+	// than the tolerance it names, in the order the rules ran. Empty rather than
+	// null when no rule which ran widened anything.
+	//
+	// It is written for the rules which passed as much as for the ones which
+	// failed, and it is the only place a passing run says what it actually
+	// tested. A check which treats its declared tolerance as a floor decides
+	// against the combined uncertainty of what it is comparing where that is
+	// wider, and on an ordinarily surveyed model that is routinely an order of
+	// magnitude more: a gate written as "within half a square foot" can be
+	// satisfied by a comparison made against eight, and nothing else in this
+	// object distinguishes that run from one which held to the figure as
+	// written.
+	Bands []dfcad.AppliedBand `json:"bands"`
 }
 
 // checkSummary is how many rules a run covered and what became of them.
@@ -155,6 +181,17 @@ type checkSummary struct {
 	// Failed is how many were not, which is how many rules the violations are
 	// about.
 	Failed int `json:"failed"`
+
+	// Widened is how many of the ones which passed did so only because the band
+	// they were decided against is wider than the tolerance they name.
+	//
+	// It is counted rather than left to be derived from "bands", because it is
+	// the number which says whether the gate tested what it was written to test.
+	// Those rules are satisfied and are not violations — the widening is right,
+	// and a claim cannot be held to a precision the geometry does not have — but
+	// a criterion the survey is not accurate enough to decide has not been
+	// checked, and a summary which did not say so would read as though it had.
+	Widened int `json:"widened"`
 }
 
 // listedCheck is one rule as --list reports it.
@@ -258,6 +295,7 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 		Refused:    refused,
 		Summary:    checkSummary{Checks: len(rules)},
 		Violations: make([]dfcad.Violation, 0),
+		Bands:      make([]dfcad.AppliedBand, 0),
 	}
 
 	for _, rule := range rules {
@@ -275,7 +313,9 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 		result.Summary.Ran = run.Ran
 		result.Summary.Passed = run.Passed
 		result.Summary.Failed = run.Failed
+		result.Summary.Widened = widenedRules(run.Bands)
 		result.Violations = append(result.Violations, run.Violations...)
+		result.Bands = append(result.Bands, run.Bands...)
 	}
 	elapsed := time.Since(started)
 
@@ -401,6 +441,24 @@ func listChecks(rules dfcad.Rules) []listedCheck {
 	return out
 }
 
+// widenedRules is how many bands decided the answer they were applied to: the
+// difference was outside the tolerance the rule names and inside the figure the
+// check widened it to.
+//
+// A band which is wider than its tolerance and did not need to be is not counted.
+// Every band on a well surveyed model is a little wider than its floor, and a
+// count of those would be a number which never went down and which nobody could
+// act on. What is worth counting is the answers which turned on the widening.
+func widenedRules(bands []dfcad.AppliedBand) int {
+	var count int
+	for _, band := range bands {
+		if band.Band.Decisive {
+			count++
+		}
+	}
+	return count
+}
+
 // diagnose is the violations as diagnostics, which is the rendering for whoever
 // wrote the model.
 func diagnose(violations []dfcad.Violation) []dfcad.Diagnostic {
@@ -453,6 +511,17 @@ func reportCheck(result checkResult, list bool, elapsed time.Duration, globals *
 		summary.Checks-summary.Ran,
 		duration(elapsed),
 	)
+
+	// A rule which passed only because the band was widened is not a violation
+	// and is not reported as one. It is reported at all because it is the one
+	// answer the summary above cannot be read for: it counts as a pass, and what
+	// it passed was a looser test than the one written.
+	if summary.Widened > 0 {
+		_, _ = fmt.Fprintf(stderr,
+			"%s passed against a band wider than the tolerance it names; see \"bands\" for what widened it\n",
+			plural(summary.Widened, "rule"),
+		)
+	}
 }
 
 // writtenRule renders one listed rule the way it reads on the thing it is bound

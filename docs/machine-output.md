@@ -1593,7 +1593,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
   "version": 2,
   "command": "check",
   "refused": false,
-  "summary": {"checks": 7, "runnable": 6, "ran": 6, "passed": 4, "failed": 2},
+  "summary": {"checks": 7, "runnable": 6, "ran": 6, "passed": 4, "failed": 2, "widened": 1},
   "violations": [
     {
       "instance": "site:S-102",
@@ -1604,6 +1604,28 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
       "subject": "entities/site.dfc:29:1-34:24",
       "message": "expected a claim under width on the subject, found none",
       "hint": "the type requires one of every instance; write the claim, or take the invariant off the type"
+    }
+  ],
+  "bands": [
+    {
+      "instance": "site:S-107",
+      "check": "claim-agrees-with-geometry",
+      "arguments": ["(predicate area)", "(position position)", "(tolerance boundary-closure)", "(discrepancy area-discrepancy)"],
+      "declared": "entities/site.dfc:198:3-202:36",
+      "subject": "entities/site.dfc:185:1-202:37",
+      "band": {
+        "tolerance": "area-discrepancy",
+        "floor": 0.05,
+        "applied": 0.2739415996156845,
+        "unit": "m2",
+        "difference": 0.1999999999999993,
+        "widened": true,
+        "decisive": true,
+        "terms": [
+          {"source": "claim", "sigma": 0.25, "unit": "m2", "sensitivity": 1, "contribution": 0.25},
+          {"source": "corners", "sigma": 0.008, "unit": "m", "sensitivity": 14, "contribution": 0.112}
+        ]
+      }
     }
   ]
 }
@@ -1617,6 +1639,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `summary.ran` | integer | How many actually ran. It equals `runnable` for a run and is `0` for a `--list`, so a listing cannot be read as a run in which every check passed. |
 | `summary.passed` | integer | How many of the ones that ran were satisfied. |
 | `summary.failed` | integer | How many were not, which is how many rules the violations are about. |
+| `summary.widened` | integer | How many of the ones that passed did so **only** because the band they were decided against is wider than the tolerance they name. It is `0` for a `--list`. |
 | `violations` | array | One entry per way a rule was not satisfied, in the order the rules ran. Empty rather than null when nothing failed. |
 | `violations[].instance` | string | The id of the thing that failed. |
 | `violations[].type` | string, optional | The type that declared the rule. Absent for an assertion, which is declared on the thing itself. |
@@ -1627,6 +1650,26 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `violations[].message` | string | What was expected and what was found. |
 | `violations[].hint` | string, optional | What to do about it. |
 | `violations[].related` | array, optional | The other places that explain this one, each a span and a message. Where the rule was declared is not among them; `declared` is. |
+| `bands` | array | One entry per comparison decided against a figure the tolerance the rule names is only the floor under, in the order the rules ran. Empty rather than null when no rule that ran widened anything. Rules that **passed** are in here as much as ones that failed. |
+| `bands[].instance` | string | The id of the thing the rule ran against. |
+| `bands[].type` | string, optional | The type that declared the rule. Absent for an assertion. |
+| `bands[].check` | string | The check name the rule names. |
+| `bands[].arguments` | array, optional | The parameters it ran with, each rendered as it was written. |
+| `bands[].declared` | span | Where the rule is written. |
+| `bands[].subject` | span | Where the thing it ran against is written. |
+| `bands[].band.tolerance` | string | The name of the declared tolerance the rule was given, which is where to go to change the floor. |
+| `bands[].band.floor` | number | That tolerance's value: the narrowest figure the comparison could have been decided against. |
+| `bands[].band.applied` | number | The figure the difference was **actually** compared against: `floor`, or the terms combined where that is wider. |
+| `bands[].band.unit` | string | What `floor`, `applied` and `difference` are in — the unit of what is compared, so the square of the frame's linear unit for an area. |
+| `bands[].band.difference` | number | The magnitude of the gap the band was applied to. Unsigned: which figure is larger is the violation's to say. |
+| `bands[].band.widened` | boolean | Whether `applied` is wider than `floor`, which is whether the check decided against a figure nobody wrote down. |
+| `bands[].band.decisive` | boolean | Whether the widening is what decided the answer: the difference is inside `applied` and outside `floor`. This is what tells a pass that **needed** the widening from a pass within the tolerance as written. |
+| `bands[].band.terms` | array, optional | The accuracies combined into `applied`, one per side of the comparison that stated one. Absent where neither did and the floor is the whole of the test. |
+| `bands[].band.terms[].source` | string | Which side stated it: `claim`, `corners` — the subject's own shape — or `container`, the shape it is judged against. |
+| `bands[].band.terms[].sigma` | number | The one standard uncertainty that side states. |
+| `bands[].band.terms[].unit` | string | What `sigma` is in, which is not always the band's unit: an area is compared in the square of a length and the corners behind it are surveyed in the length. |
+| `bands[].band.terms[].sensitivity` | number | How far the compared figure moves per unit of `sigma`, which carries the term into the band's unit. `1` where the two are already the same unit; the length of the boundary where a corner displacement is carried across to the area it encloses. |
+| `bands[].band.terms[].contribution` | number | `sigma × sensitivity`, in the band's unit, which is the figure combined in quadrature into `applied`. |
 
 The counts are of **rules**, not of violations. One loop that does not close and one that
 closes the wrong way are two ways of failing one check, and a summary counting them as two
@@ -1668,9 +1711,33 @@ from the ones that ran. "This rule holds" and "nothing has been written to decid
 holds" are different answers, and a summary that folded the second into the first would report
 a model sound because nothing looked at it.
 
+**`bands` is what makes a passing run falsifiable.** Some checks treat the tolerance they are
+declared with as a floor rather than as the whole test: two figures that differ by less than
+their combined uncertainty do not disagree, so the band widens to what the evidence can
+actually tell apart. That is right — a claim cannot be held to a precision the geometry does
+not have — and it means the number the registry states is not the number the check applied.
+The gap is not small. A 0.5 usft² discrepancy declared over a 926 usft² region with a 137 usft
+perimeter is applied as about 8, because the perimeter multiplies the corners' survey accuracy
+sixteen-fold. A rule written as "the boundary agrees with the appraisal to within half a square
+foot" is then not testing that, and without `bands` the run that passed it reads exactly like
+one that did.
+
+So every such comparison reports the band, on passes as much as on failures — a failure has a
+message to carry it, and a pass has nothing else at all. `decisive` is the field a gate reads:
+it is true only where the difference is outside the declared tolerance and inside the widened
+band, which is a criterion the survey is not accurate enough to decide. `summary.widened`
+counts those, and `--format human` says so on stderr beside the summary that counts them as
+passes.
+
+The three checks that report a band are `claim-agrees-with-geometry`, `contained-areas-sum`
+and `sits-inside`. A check that decides against the tolerance it was given reports none: there
+is nothing to disclose, because the declared figure is the applied one and it is already
+written in the rule. Neither does a comparison a check declined to make — a room drawn and not
+yet measured discloses nothing, because nothing was tested.
+
 Rules run in a deterministic order and are reported in it: every invariant, node by node in
 the order the model was read, and then every assertion, thing by thing. Two runs over one
-model produce byte-identical stdout.
+model produce byte-identical stdout, bands included.
 
 | Code | When |
 |------|------|
@@ -1721,6 +1788,11 @@ boundary of length P displaced by δ moves the area it encloses by about P·δ, 
 first-order sensitivity and is stated as one. Where a side states no accuracy it narrows
 nothing and the declared discrepancy decides, because an unstated accuracy is unknown rather
 than zero.
+
+**The band it applied is in `bands`, on a pass as much as on a failure**, with each accuracy
+that widened it and the sensitivity that carried it into the unit compared. The violation's
+`hint` names it too, in the same sentence as the tolerance under it, because a reader told only
+the declared figure would go and tighten a number that decided nothing.
 
 The discrepancy in the message is **signed**: a claim larger than its shape and one smaller
 are two different mistakes, and the message says which way it runs. `subject` is the span of

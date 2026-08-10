@@ -180,6 +180,71 @@ func TestRulesRunOfNothing(t *testing.T) {
 	assert.Empty(t, declared.Violations)
 }
 
+// TestRulesRunReportsTheBandsItDecidedAgainst is its own function because a band
+// is not a violation and is reported about rules which had none.
+//
+// A check which treats its declared tolerance as a floor decides against a
+// figure nobody wrote down, and the run is where that has to be said: the
+// violations say what failed, and only the bands say what the rules which passed
+// were actually tested against.
+func TestRulesRunReportsTheBandsItDecidedAgainst(t *testing.T) {
+	t.Run("reports none where every check decided against what it was given", func(t *testing.T) {
+		graph := loadRuleFixture(t, "valid")
+
+		run := graph.rules(runnableChecks()).Run()
+
+		require.NotZero(t, run.Ran, "the fixture runs rules; an empty run would pass this vacuously")
+		assert.Empty(t, run.Bands, "a check with no floor to widen has nothing to disclose")
+	})
+
+	t.Run("reports one per comparison, in the order the rules ran", func(t *testing.T) {
+		run := loadCheckFixture(t, "agreement").Rules().Run()
+
+		instances := make([]ID, 0, len(run.Bands))
+		for _, band := range run.Bands {
+			instances = append(instances, band.Instance)
+		}
+
+		assert.Equal(t, []ID{
+			"site:S-101", "site:S-102", "site:S-103", "site:S-106", "site:S-107",
+			"site:S-109", "site:S-110", "site:W-01", "site:W-02",
+			"geom:E-20", "geom:E-21", "geom:E-22", "geom:E-25", "geom:E-26",
+		}, instances)
+	})
+
+	t.Run("reports them about the rules which passed as much as the ones which failed", func(t *testing.T) {
+		run := loadCheckFixture(t, "agreement").Rules().Run()
+
+		failed := make(map[ID]struct{}, len(run.Violations))
+		for _, violation := range run.Violations {
+			failed[violation.Instance] = struct{}{}
+		}
+
+		var passing, failing int
+		for _, band := range run.Bands {
+			if _, broke := failed[band.Instance]; broke {
+				failing++
+				continue
+			}
+			passing++
+		}
+
+		assert.NotZero(t, passing, "a pass is the answer nothing else in the run discloses")
+		assert.NotZero(t, failing, "and a failure still says what it was measured past")
+	})
+
+	t.Run("reports none about a rule nothing runs", func(t *testing.T) {
+		graph := loadCheckFixture(t, "agreement")
+
+		rules := graph.rules(newCheckSet(declaredOnly{claimAgreesWithGeometry{}}))
+		require.NotEmpty(t, rules)
+
+		run := rules.Run()
+		assert.Zero(t, run.Ran)
+		assert.Empty(t, run.Bands, "a rule which decided nothing decided it against nothing")
+	})
+}
+
 // TestRulesRunAgreesWithTheTwoKindsSeparately is its own function because it is
 // an assertion about three calls at once: running the rules whole has to report
 // exactly what running each kind on its own does, or a gate and the two engine

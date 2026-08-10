@@ -357,14 +357,182 @@ func listedFor(result checkResult, subject, check string) (listedCheck, bool) {
 	return listedCheck{}, false
 }
 
+// agreementRegistry is the vocabulary for a model whose written-down area is
+// checked against the shape it describes.
+//
+// The discrepancy is declared at 0.05 m² and is a floor rather than the whole
+// test, which is what the cases below are about: the room's corners are known to
+// 0.004 m over fourteen metres of boundary, so the shape alone puts the band at
+// 0.112 before the claim's own accuracy is combined in.
+const agreementRegistry = `(project
+  (label "Band fixture")
+  (globalid-namespace "https://example.org/models/band"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(tolerance boundary-closure
+  (value 0.005 m)
+  (description "How close two corners are one corner."))
+
+(tolerance area-discrepancy
+  (value 0.05 m2)
+  (description "How far a claimed area and the shape it describes may differ."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+
+(predicate area
+  (unit m2)
+  (shape scalar)
+  (description "How much floor a space has."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+`
+
+// agreementModel is one room, one outline and one area claim which agrees with
+// it only once the band is widened.
+//
+// The shape is twelve square metres and the claim is 12.2, so the gap is four
+// times the declared discrepancy. It passes, because the claim is good to
+// 0.25 m² and the corners put the shape within about 0.112 — and that pass is
+// indistinguishable from one within the tolerance as written unless the run says
+// what it applied.
+const agreementModel = `(vertex geom:V-01 (label "South-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "South-east corner") (frame frame:building)
+  (position (value (4.0 0.0 0.0) m) (source "Interior control set IC-01")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "North-east corner") (frame frame:building)
+  (position (value (4.0 3.0 0.0) m) (source "Interior control set IC-01")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "North-west corner") (frame frame:building)
+  (position (value (0.0 3.0 0.0) m) (source "Interior control set IC-01")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01 (label "South wall") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "East wall") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "North wall") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "West wall") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(loop geom:L-01 (label "Room outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (area
+    (value 12.2 m2)
+    (source "Tape survey TS-2026-002")
+    (method method:tape)
+    (accuracy (independent 0.25 m2))
+    (date "2026-02-20"))
+  (assert claim-agrees-with-geometry
+    (predicate area)
+    (position position)
+    (tolerance boundary-closure)
+    (discrepancy area-discrepancy)))
+`
+
+// agreeing is the fixture tree whose one rule passes against a widened band.
+func agreeing() map[string]string {
+	return map[string]string{
+		"registry.dfc":      agreementRegistry,
+		"entities/site.dfc": agreementModel,
+	}
+}
+
+// TestRunCheckReportsTheBandsItDecidedAgainst is its own function because it is
+// about what a passing run says, which every other case here reads as silence.
+//
+// A rule which names a 0.05 m² discrepancy and is decided against 0.27 is
+// satisfied and is not a violation. The widening is right — a claim cannot be
+// held to a precision the geometry does not have — but the criterion the rule
+// was written to test was not the one applied, and nothing but "bands" says so.
+func TestRunCheckReportsTheBandsItDecidedAgainst(t *testing.T) {
+	result, code, stderr := checked(t, agreeing())
+
+	require.Equal(t, exitSuccess, code, stderr)
+	require.Equal(t, 1, result.Summary.Passed)
+	require.Empty(t, result.Violations, "the claim agrees, once the band is widened")
+
+	t.Run("writes the band the passing rule was decided against", func(t *testing.T) {
+		require.Len(t, result.Bands, 1)
+
+		applied := result.Bands[0]
+		assert.Equal(t, dfcad.ID("site:S-101"), applied.Instance)
+		assert.Equal(t, "claim-agrees-with-geometry", applied.Check)
+
+		assert.Equal(t, dfcad.Band{
+			Tolerance:  "area-discrepancy",
+			Floor:      0.05,
+			Applied:    0.2739415996156845,
+			Unit:       "m2",
+			Difference: 0.1999999999999993,
+			Widened:    true,
+			Decisive:   true,
+			Terms: []dfcad.BandTerm{
+				{Source: dfcad.BandFromClaim, Sigma: 0.25, Unit: "m2", Sensitivity: 1, Contribution: 0.25},
+				{Source: dfcad.BandFromCorners, Sigma: 0.008, Unit: "m", Sensitivity: 14, Contribution: 0.112},
+			},
+		}, applied.Band)
+	})
+
+	t.Run("counts the rules which passed only because of the widening", func(t *testing.T) {
+		assert.Equal(t, 1, result.Summary.Widened)
+	})
+
+	t.Run("says so for a person, beside the summary which counts it as a pass", func(t *testing.T) {
+		_, _, human := checked(t, agreeing(), "--format", "human")
+
+		assert.Contains(t, human, "1 check: 1 ran, 1 passed, 0 failed")
+		assert.Contains(t, human,
+			`1 rule passed against a band wider than the tolerance it names; see "bands" for what widened it`)
+	})
+}
+
+// TestRunCheckWritesAnEmptyBandListWhereNothingWidened is its own function
+// because it is an assertion about an absence, and about its rendering.
+//
+// A caller reads "bands" unconditionally, so it is an empty array rather than
+// null on a run where no check had a floor to widen — the same rule "violations"
+// follows, for the same reason.
+func TestRunCheckWritesAnEmptyBandListWhereNothingWidened(t *testing.T) {
+	t.Chdir(tree(t, ruled()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"check"}, &stdout, &stderr), stderr.String())
+
+	assert.Contains(t, stdout.String(), `"bands":[]`)
+
+	result := listed[checkResult](t, stdout.String())
+	assert.Equal(t, []dfcad.AppliedBand{}, result.Bands)
+	assert.Zero(t, result.Summary.Widened)
+	assert.NotContains(t, stderr.String(), "wider than the tolerance")
+}
+
 // TestRunCheckIsDeterministic is its own function because it is a property of
 // two runs rather than of one: a gate whose output moved between runs over one
 // model would make every diff of its reports noise.
 func TestRunCheckIsDeterministic(t *testing.T) {
-	stdout := func(t *testing.T, args ...string) string {
+	stdout := func(t *testing.T, files map[string]string, args ...string) string {
 		t.Helper()
 
-		t.Chdir(tree(t, ruled()))
+		t.Chdir(tree(t, files))
 
 		var out, stderr bytes.Buffer
 		require.Equal(t, exitSuccess, run(append([]string{"check"}, args...), &out, &stderr), stderr.String())
@@ -372,12 +540,17 @@ func TestRunCheckIsDeterministic(t *testing.T) {
 		return out.String()
 	}
 
-	assert.Equal(t, stdout(t), stdout(t))
-	assert.Equal(t, stdout(t, "--list"), stdout(t, "--list"))
+	assert.Equal(t, stdout(t, ruled()), stdout(t, ruled()))
+	assert.Equal(t, stdout(t, ruled(), "--list"), stdout(t, ruled(), "--list"))
 
 	// Neither the format nor the verbosity reaches stdout, and neither does how
 	// long the run took.
-	assert.Equal(t, stdout(t), stdout(t, "--format", formatHuman, "-v"))
+	assert.Equal(t, stdout(t, ruled()), stdout(t, ruled(), "--format", formatHuman, "-v"))
+
+	// A band is arithmetic over floating point figures and is written to stdout
+	// like anything else, so it is held to the same rule: two runs over one
+	// model are byte-identical, and a diff between them is about the model.
+	assert.Equal(t, stdout(t, agreeing()), stdout(t, agreeing()))
 }
 
 // TestRunCheckRejectsAFilterNamingNothing covers the names which name nothing.

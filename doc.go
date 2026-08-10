@@ -209,6 +209,27 @@
 // edge runs between — which is the most directly checkable measurement the
 // format can express, and the one an outline never reaches.
 //
+// # Bands
+//
+// A tolerance treated as a floor is a tolerance whose declared value is not what
+// decided the answer. The widening is right — a claim cannot be held to a
+// precision the geometry does not have — and it is large: an area's band is the
+// corners' accuracy multiplied by the length of the boundary, so half a square
+// foot declared over a room can be applied as eight. Left unsaid, that makes a
+// passing run unfalsifiable. A rule written as "the boundary agrees with the
+// appraisal to within half a square foot" is not testing that, and nothing in
+// the answer says which figure it did test.
+//
+// So every check which widens says so. [Band] is what one comparison was decided
+// against — the tolerance named and its value, the figure applied, the
+// difference judged, and each accuracy which widened it with the sensitivity
+// that carried it into the unit compared — and [Rules.Run] reports one per
+// comparison as an [AppliedBand], on the rules which passed as much as on the
+// ones which failed. [Band.Decisive] is what separates a pass which needed the
+// widening from a pass within the tolerance as written; those are two different
+// states of a model, and only one of them is a criterion which held. [Judge] is
+// the interface a check implements to report them.
+//
 // # Assertions
 //
 // An assertion is a check written on one thing — a node, a vertex, an edge or a
@@ -258,7 +279,8 @@
 // the model states as one list — each type's invariants bound to its instances,
 // then each assertion bound to the thing it is written on — and [Rules.Run] runs
 // them and returns a [CheckRun]: how many rules there were, how many ran, how
-// many passed and failed, and a [Violation] for each way one was not satisfied.
+// many passed and failed, a [Violation] for each way one was not satisfied, and
+// an [AppliedBand] for each comparison decided against a widened tolerance.
 // [RuleFilter] narrows that to one thing, one type or one check, which is what a
 // gate somebody is iterating against runs.
 //

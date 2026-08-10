@@ -290,6 +290,32 @@ type Runner interface {
 	Run(subject CheckSubject) []Failure
 }
 
+// Judge is a [Runner] whose answer is decided against a figure it computes
+// rather than against the tolerance it was declared with alone.
+//
+// It is a third interface rather than a wider [Runner] because most checks
+// decide against what they were given and have nothing to disclose. A loop
+// either closes or does not; there is no second number behind that answer for a
+// reader to be told about. Widening the band is the exception, and the exception
+// is the thing which has to say so.
+//
+// A check implements this by implementing [Judge.Judge] and defining Run as the
+// failures half of it, so that the band a run reports and the band the answer
+// was decided against are one computation. Two would be two numbers which could
+// disagree, and the one thing this whole interface exists to prevent is an
+// answer describing a test it did not run.
+type Judge interface {
+	Runner
+
+	// Judge examines one subject and returns the bands every comparison it made
+	// was decided against, together with the failures it found — on a subject
+	// which satisfies the check as much as on one which does not.
+	//
+	// A comparison the check declined to make yields no band. There is nothing
+	// to disclose about an answer it did not give.
+	Judge(subject CheckSubject) ([]Band, []Failure)
+}
+
 // Violation is one thing failing one check written about it: an invariant of
 // its type, or an assertion written on it.
 //
