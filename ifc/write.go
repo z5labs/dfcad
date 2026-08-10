@@ -44,11 +44,20 @@ var (
 	// `..., Tag, PredefinedType` — which is most of the building elements,
 	// and is what makes one table entry enough for each of them.
 	//
-	// The ones which do not are absent on purpose rather than by oversight:
-	// IfcDoor and IfcWindow carry an overall height, an overall width and an
-	// operation type, and IfcPile carries a construction type. Writing one of
-	// those from this table would produce an instance with the wrong number
-	// of attributes, so each is its own entry the day somebody needs it.
+	// The ones whose list is longer are here all the same, with the length
+	// their own tail actually is: IfcDoor and IfcWindow each add an overall
+	// height, an overall width, a predefined type, an operation or
+	// partitioning type and the user-defined spelling of it, which is five
+	// where a building element's is one. Writing either from a tail of one
+	// would produce an instance with the wrong number of attributes, which is
+	// why the number is per entity rather than shared — a door and a window
+	// are the two every house model is full of, and each degrading to a proxy
+	// is how a receiving system comes to hold a wall with no openings in it.
+	//
+	// An entity whose tail is not transcribed here is absent rather than
+	// guessed: IfcPile carries a construction type, and a caller classifying
+	// something as one gets a proxy and is told so, which is the whole of
+	// [Supports].
 	//
 	// IfcFurnishingElement is the one entry whose tail is nought. IFC4 adds no
 	// attribute of its own to IfcElement for it, so it ends at Tag, and a
@@ -63,7 +72,10 @@ var (
 		"IFCCOLUMN":      1,
 		"IFCCOVERING":    1,
 		"IFCCURTAINWALL": 1,
-		"IFCFOOTING":     1,
+		// OverallHeight, OverallWidth, PredefinedType, OperationType,
+		// UserDefinedOperationType.
+		"IFCDOOR":    5,
+		"IFCFOOTING": 1,
 		// IfcFurnishingElement's attribute list ends at Tag; see above.
 		"IFCFURNISHINGELEMENT": 0,
 		"IFCMEMBER":            1,
@@ -74,6 +86,9 @@ var (
 		"IFCSLAB":              1,
 		"IFCSTAIR":             1,
 		"IFCWALL":              1,
+		// OverallHeight, OverallWidth, PredefinedType, PartitioningType,
+		// UserDefinedPartitioningType.
+		"IFCWINDOW": 5,
 	}
 )
 
@@ -85,6 +100,11 @@ var (
 // package has no attribute list for is a thing to write as [EntityProxy], and
 // finding that out from a refusal after the whole model has been built is
 // finding it out too late to do anything but fail.
+//
+// It is also what a registry is authored against. The set is the one documented
+// list of what a `(classification "IFC4" ...)` may usefully name, so a caller
+// wanting to know why something reached the file as a proxy asks [Supports]
+// rather than reading this package's source.
 func Products() []Entity { return keys(products) }
 
 // SpatialElements is every entity this package can write a [Spatial] as, in

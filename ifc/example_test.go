@@ -226,3 +226,24 @@ func ExampleGeoreference() {
 	// ENDSEC;
 	// END-ISO-10303-21;
 }
+
+// A caller mapping its own vocabulary onto IFC asks what an entity name is
+// before it maps, rather than finding out from a refusal after the whole model
+// has been built.
+//
+// The three answers are the three things it can do about one: write the entity,
+// write a proxy and report a gap in this package, or write a proxy and report a
+// mistake in the mapping. A proxy in the file cannot be told from a proxy
+// written for something nobody classified, which is why the question is asked
+// here and not read back out of the bytes.
+func ExampleSupports() {
+	for _, code := range []ifc.Entity{"IFCWALL", "IFCDOOR", "IFCPILE", "IFCWAHL"} {
+		fmt.Printf("%s: %s\n", code, ifc.Supports(code))
+	}
+
+	// Output:
+	// IFCWALL: writable
+	// IFCDOOR: writable
+	// IFCPILE: unwritten
+	// IFCWAHL: unknown
+}

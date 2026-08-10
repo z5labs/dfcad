@@ -758,7 +758,10 @@ func TestWriteRefuses(t *testing.T) {
 			name: "a product written as an entity it has no attribute list for",
 			model: func(model *Model) {
 				space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
-				space.Products[0].Entity = "IFCDOOR"
+				// IfcPile carries a construction type this package has not
+				// transcribed, which is what makes it a product IFC4 defines
+				// and this package still refuses to guess at.
+				space.Products[0].Entity = "IFCPILE"
 			},
 			expected: UnknownEntityError{},
 		},

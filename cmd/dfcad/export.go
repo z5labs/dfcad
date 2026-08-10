@@ -50,6 +50,26 @@ or an interface — is written as the entity its type declares a classification
 under in the "IFC4" system, and as an IfcBuildingElementProxy naming its type in
 ObjectType where the type declares none, which is what that entity is for.
 
+The entities a classification may name are:
+
+	IfcBeam                  IfcFooting            IfcRoof
+	IfcBuildingElementProxy  IfcFurnishingElement  IfcSlab
+	IfcColumn                IfcMember             IfcStair
+	IfcCovering              IfcPlate              IfcWall
+	IfcCurtainWall           IfcRailing            IfcWindow
+	IfcDoor                  IfcRamp
+
+That set is what a registry is authored against. A classification naming
+anything else still exports — the node reaches the file as an
+IfcBuildingElementProxy naming its type, which is a complete statement of what
+the model holds — and it is reported rather than left to be found by opening
+the file, in the answer's "classifications" and as a warning per type on
+stderr. The two mistakes are told apart, because their fixes differ: a code
+IFC4 defines as a product and this export has no attribute list for is
+"unwritten", and the proxy stands in faithfully until the entity is added; a
+code IFC4 defines no product for — a misspelling, a relationship, a type
+object — is "unknown", and the proxy is standing in for nothing anybody meant.
+
 A storey declaring a frame is written at the elevation that frame's chain to the
 root puts it at, and everything in it is placed relative to that. It is what
 makes a building authored a level at a time — every level drawn in its own plan
@@ -187,6 +207,22 @@ scale is written whatever the frames say, because one would state a fit nobody
 measured. A coordinate reference system written on any frame but the root is
 refused — every other frame reaches the root through a measured transform, and a
 second georeference beside it would be a second answer nothing reconciles.
+
+The IfcProjectedCRS carries Name and Description and nothing else. GeodeticDatum,
+VerticalDatum, MapProjection and MapZone are written absent because this model
+holds two strings about a coordinate reference system — an entry in somebody
+else's register, and that register's own text about it — and a datum or a
+projection filled in from the identifier would be this command interpreting a
+code it is careful never to interpret. MapUnit is absent because the file's unit
+assignment already states it, and two places to state one unit is one place for
+them to disagree.
+
+Every IfcAxis2Placement3D in the file is axis-aligned, whatever the frames say.
+Rotation between frames is applied to the coordinates as they are carried into
+the root frame rather than written into a placement, so a consumer reading
+placements alone sees an unrotated model and one reading coordinates sees the
+model the frames describe. The coordinates are the statement; a placement here
+says only where a thing stands.
 
 The units are the frames' own, and the frames have to agree on one: a file
 states one set of units, and a model whose frames declare two is refused rather
@@ -334,6 +370,19 @@ type exportResult struct {
 	// it is empty rather than absent when there are none.
 	Files []exportedFile `json:"files"`
 
+	// Classifications is one entry per node whose type declared an IFC4
+	// classification this writer could not carry, ascending by node id, and is
+	// empty rather than absent when there are none.
+	//
+	// It is part of the answer rather than evidence asked for under --evidence
+	// ([0017](docs/decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md)),
+	// because it is not recomputable by the caller: what this writer can carry
+	// is a fact about this writer, and a proxy in the file looks exactly like a
+	// thing nobody classified. A run which reported it only on stderr would
+	// leave every machine consumer of this command unable to tell a door from a
+	// duct.
+	Classifications []exportedClassification `json:"classifications"`
+
 	// Identifiers is the manifest, written only under --evidence.
 	Identifiers []exportedIdentifier `json:"identifiers,omitempty"`
 }
@@ -352,6 +401,53 @@ type exportedFile struct {
 type exportedIdentifier struct {
 	ID       string `json:"id"`
 	GlobalID string `json:"global-id"`
+}
+
+// The reasons a classification did not reach the file as the entity it named.
+//
+// They are two rather than one because they are two mistakes with two fixes.
+// A code this writer has no attribute list for is a gap here: the model said
+// what the thing is, the proxy stands in for it faithfully, and the fix is a
+// line in the writer's table. A code naming no IFC4 product is a mistake in the
+// registry: a misspelling, or a code naming something a product cannot be, and
+// the proxy stands in for nothing anybody meant.
+const (
+	// classificationUnwritten is an IFC4 product entity this writer does not
+	// write.
+	classificationUnwritten = "unwritten"
+
+	// classificationUnknown is a code IFC4 defines no product entity for.
+	classificationUnknown = "unknown"
+)
+
+// exportedClassification is one node whose type's IFC4 classification this
+// writer could not carry, and which therefore reached the file as an
+// IfcBuildingElementProxy.
+//
+// A type declaring no IFC4 classification at all is not one of these. That is
+// the case the proxy is specified for — an element which no more specific
+// entity covers, named in ObjectType — and reporting it would bury the codes
+// which are actually wrong under every node nobody has classified yet.
+type exportedClassification struct {
+	// ID is the node written as a proxy.
+	ID string `json:"id"`
+
+	// Type is the type it is declared as, which is what carries the
+	// classification and is what would be edited to fix it.
+	Type string `json:"type"`
+
+	// Code is the classification the type declares under the "IFC4" system,
+	// exactly as the registry spells it. It is the registry's spelling rather
+	// than the upper-cased one this writer compares, because it is what a
+	// person would search the registry for.
+	Code string `json:"code"`
+
+	// Entity is what the node was written as instead, which is always
+	// IFCBUILDINGELEMENTPROXY today and is stated rather than assumed.
+	Entity string `json:"entity"`
+
+	// Reason is [classificationUnwritten] or [classificationUnknown].
+	Reason string `json:"reason"`
 }
 
 // runExport is the export command.
@@ -424,8 +520,9 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	result := exportResult{
-		envelope: newEnvelope(cmd.name),
-		Files:    []exportedFile{},
+		envelope:        newEnvelope(cmd.name),
+		Files:           []exportedFile{},
+		Classifications: []exportedClassification{},
 	}
 
 	digest, keyed := graph.Digest()
@@ -433,7 +530,15 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		result.Digest = digest.String()
 	}
 
-	model, manifest, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
+	model, manifest, classifications, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
+
+	// Reported whatever the outcome, refusal included: which classifications
+	// this writer could not carry is a fact about the model rather than about
+	// the artefact, and a run which refused for some other reason has still
+	// found it out.
+	if len(classifications) > 0 {
+		result.Classifications = classifications
+	}
 
 	if destination == "" {
 		destination = filepath.Join(dfcad.ExportDir(globals.Root), digest.String(), exportFile)
@@ -582,7 +687,8 @@ func reportExport(result exportResult, globals *globals, stderr io.Writer) {
 }
 
 // exported is the model as IFC holds it, the manifest of the identifiers it
-// carries, and whatever stopped either being derivable.
+// carries, the classifications it could not carry, and whatever stopped any of
+// them being derivable.
 //
 // This function is where the two vocabularies meet, and it is on this side of
 // the boundary on purpose. A kind is this engine's word and an IfcSpace is
@@ -596,12 +702,12 @@ func exported(
 	epoch dfcad.Epoch,
 	drawn shapes,
 	sited georeference,
-) (ifc.Model, []exportedIdentifier, []dfcad.Diagnostic) {
+) (ifc.Model, []exportedIdentifier, []exportedClassification, []dfcad.Diagnostic) {
 	registry := graph.Registry()
 
 	project, held := registry.Project()
 	if !held || project.GlobalIDNamespace == "" {
-		return ifc.Model{}, nil, []dfcad.Diagnostic{{
+		return ifc.Model{}, nil, nil, []dfcad.Diagnostic{{
 			Severity: dfcad.SeverityError,
 			Span:     project.Span,
 			Message: "expected a project declaration pinning the URL identifiers derive from, found none: every object in " +
@@ -612,7 +718,7 @@ func exported(
 
 	units, diagnostic := exportedUnits(registry)
 	if diagnostic != nil {
-		return ifc.Model{}, nil, []dfcad.Diagnostic{*diagnostic}
+		return ifc.Model{}, nil, nil, []dfcad.Diagnostic{*diagnostic}
 	}
 
 	// The georeference is settled before the walk because it is a fact about
@@ -620,7 +726,7 @@ func exported(
 	// where it sits is refused before an artefact is built out of it.
 	placed, refused := georeferenced(registry, graph.Frames(), sited)
 	if len(refused) > 0 {
-		return ifc.Model{}, nil, refused
+		return ifc.Model{}, nil, nil, refused
 	}
 
 	// The frame every coordinate in the file is written in, settled once
@@ -688,7 +794,7 @@ func exported(
 		},
 	}
 
-	return model, out.identifiers(), out.diags
+	return model, out.identifiers(), out.classifications(), out.diags
 }
 
 // exporter is one traversal of the graph into IFC's shape.
@@ -739,6 +845,21 @@ type exporter struct {
 	// zoned are the zone nodes, and members the nodes assigned to each.
 	zoned   []*dfcad.SemanticNode
 	members map[dfcad.ID][]*dfcad.SemanticNode
+
+	// proxied is every node whose type declared an IFC4 classification this
+	// writer could not carry, by the id of the node.
+	//
+	// It is a map keyed by id rather than a list appended to, because the walk
+	// may reach one node from more than one place and the answer is one entry
+	// per node either way. [exporter.classifications] is what puts it in id
+	// order, so the answer does not depend on the order the walk happened to
+	// take.
+	proxied map[dfcad.ID]exportedClassification
+
+	// reclassify is the types already warned about, so that a model with a
+	// hundred doors of one type is told once about the type rather than a
+	// hundred times about the same line of the registry.
+	reclassify map[string]bool
 
 	// derived is every identifier derived so far, by the name it was derived
 	// from. It is what makes deriving one twice cost nothing and report once.
@@ -1082,7 +1203,7 @@ func (e *exporter) carriable(node *dfcad.SemanticNode) {
 		return
 	}
 
-	if slices.Contains(ifc.Products(), ifc.Entity(strings.ToUpper(code))) {
+	if ifc.Supports(ifc.Entity(strings.ToUpper(code))) == ifc.SupportWritable {
 		return
 	}
 
@@ -1187,12 +1308,132 @@ func (e *exporter) productEntity(node *dfcad.SemanticNode) (ifc.Entity, string) 
 	// spatial element, something misspelled. The proxy is the answer to every
 	// one of those: the thing is still in the model and still has to be in the
 	// file, and its type's name in ObjectType says what it is.
+	//
+	// What it is not is a silent answer. A proxy in the file is
+	// indistinguishable from a proxy written for a type nobody classified, so
+	// the code which produced it is recorded here — with which of the two
+	// mistakes it is — and reported whether or not anything else about the node
+	// went wrong.
 	entity := ifc.Entity(strings.ToUpper(code))
-	if !slices.Contains(ifc.Products(), entity) {
-		return ifc.EntityProxy, node.Type()
+
+	support := ifc.Supports(entity)
+	if support == ifc.SupportWritable {
+		return entity, node.Type()
 	}
 
-	return entity, node.Type()
+	e.proxy(node, declared, code, support)
+
+	return ifc.EntityProxy, node.Type()
+}
+
+// proxy records a node whose type's classification this writer could not carry,
+// and says so once about the type which carried it.
+//
+// The two granularities are on purpose. The answer names nodes, because a node
+// is what a caller holding the file has in front of it and a proxy in the file
+// says nothing about which one it was. The diagnostic names the type, because
+// the type is what would be edited to fix it — a house model with nineteen
+// doors has one classification to correct and would otherwise be told nineteen
+// times.
+func (e *exporter) proxy(node *dfcad.SemanticNode, declared dfcad.Type, code string, support ifc.Support) {
+	if e.proxied == nil {
+		e.proxied = make(map[dfcad.ID]exportedClassification)
+	}
+
+	reason := classificationUnknown
+	if support == ifc.SupportProduct {
+		reason = classificationUnwritten
+	}
+
+	e.proxied[node.ID()] = exportedClassification{
+		ID:     string(node.ID()),
+		Type:   node.Type(),
+		Code:   code,
+		Entity: string(ifc.EntityProxy),
+		Reason: reason,
+	}
+
+	if e.reclassify == nil {
+		e.reclassify = make(map[string]bool)
+	}
+	if e.reclassify[node.Type()] {
+		return
+	}
+	e.reclassify[node.Type()] = true
+
+	message := fmt.Sprintf(
+		"expected the IFC4 classification of the type %s to name an entity this export writes, found %s, which IFC4 "+
+			"defines and this export holds no attribute list for: every node of this type reaches the file as an "+
+			"IfcBuildingElementProxy naming the type",
+		declared.Name, code)
+	hint := "classify the type as one of " + writableEntities() + ", or keep the proxy knowingly: a receiving system " +
+		"cannot tell a proxy standing in for a door from one standing in for a duct"
+
+	if support != ifc.SupportProduct {
+		message = fmt.Sprintf(
+			"expected the IFC4 classification of the type %s to name an IFC4 product entity, found %s, which names "+
+				"none: every node of this type reaches the file as an IfcBuildingElementProxy naming the type",
+			declared.Name, code)
+		hint = "check the spelling, and check that the code names a product rather than a relationship, a property " +
+			"set or a type object; the entities this export writes are " + writableEntities()
+	}
+
+	e.diags = append(e.diags, dfcad.Diagnostic{
+		Severity: dfcad.SeverityWarning,
+		Span:     classificationSpan(declared, node),
+		Message:  message,
+		Hint:     hint,
+	})
+}
+
+// classificationSpan is where the IFC4 classification of a type was written, or
+// the node's own span where the type carries none this can point at.
+//
+// A diagnostic which cannot say where is a bug in the reporting rather than a
+// terse diagnostic, so there is a fallback rather than an empty span: a
+// registry loaded from somewhere without positions still gets an answer which
+// names something the reader can find.
+func classificationSpan(declared dfcad.Type, node *dfcad.SemanticNode) dfcad.Span {
+	for _, classification := range declared.Classifications {
+		if classification.System == classificationSystem {
+			return classification.Span
+		}
+	}
+
+	if declared.Span != (dfcad.Span{}) {
+		return declared.Span
+	}
+
+	return node.Span()
+}
+
+// writableEntities is the set a registry is authored against, rendered for a
+// person.
+//
+// It is read from the writer rather than transcribed here, so the list a
+// diagnostic offers cannot drift from the list the writer actually holds an
+// attribute list for.
+func writableEntities() string {
+	products := ifc.Products()
+
+	written := make([]string, 0, len(products))
+	for _, entity := range products {
+		written = append(written, string(entity))
+	}
+
+	return strings.Join(written, ", ")
+}
+
+// classifications is what [exporter.proxy] recorded, ascending by node id.
+func (e *exporter) classifications() []exportedClassification {
+	out := make([]exportedClassification, 0, len(e.proxied))
+	for _, held := range e.proxied {
+		out = append(out, held)
+	}
+
+	slices.SortFunc(out, func(a, b exportedClassification) int { return strings.Compare(a.ID, b.ID) })
+
+	return out
 }
 
 // identify is the GlobalId of one name, recorded so that the manifest can

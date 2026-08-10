@@ -1220,3 +1220,41 @@ func TestRunExportRefusesALocatedElementNothingPlaces(t *testing.T) {
 
 	assert.Contains(t, stderr, "site:PNL-02")
 }
+
+// TestRunExportDrawsABodyOnADoor is its own function because it is the other
+// side of the refusal above, and it is the case which used to fall between the
+// two: a door is a thing somebody measures the height of, and until this writer
+// held IfcDoor's attribute list a model which measured one was refused for
+// having claimed a body of something that could not carry it.
+//
+// The fixture is the partition reclassified, so what changes between this and
+// the golden beside it is one line of the registry and nothing else.
+func TestRunExportDrawsABodyOnADoor(t *testing.T) {
+	files := elementModel()
+	files["registry.dfc"] = strings.Replace(elementRegistry, `"IfcWall"`, `"IfcDoor"`, 1)
+
+	result, _, stderr := exporting(t, exitSuccess, files, bodyFlags()...)
+	source := artefact(t, result)
+
+	assert.True(t, result.Derived)
+	assert.Empty(t, result.Classifications, "a door is an entity this writer holds an attribute list for")
+	assert.NotContains(t, stderr, "IfcDoor", "so nothing is said about it")
+
+	assert.Contains(t, source, "IFCDOOR('")
+	assert.NotContains(t, source, "IFCBUILDINGELEMENTPROXY", "nothing in the fixture falls back now")
+
+	t.Run("carries the body the height claim asked for", func(t *testing.T) {
+		for at, held := range parsed(t, source) {
+			if held.keyword != "IFCDOOR" {
+				continue
+			}
+
+			require.Len(t, held.attributes, 13, at)
+			assert.NotEqual(t, "$", held.attributes[6], "Representation")
+
+			return
+		}
+
+		require.Fail(t, "the file holds a door")
+	})
+}
