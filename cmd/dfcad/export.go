@@ -1414,8 +1414,10 @@ func classificationSpan(declared dfcad.Type, node *dfcad.SemanticNode) dfcad.Spa
 // diagnostic offers cannot drift from the list the writer actually holds an
 // attribute list for.
 func writableEntities() string {
-	written := make([]string, 0, len(ifc.Products()))
-	for _, entity := range ifc.Products() {
+	products := ifc.Products()
+
+	written := make([]string, 0, len(products))
+	for _, entity := range products {
 		written = append(written, string(entity))
 	}
 
