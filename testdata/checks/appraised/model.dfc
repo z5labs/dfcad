@@ -1,0 +1,492 @@
+; A storey whose contents are summed against something other than its own
+; outline, and over something less than all of them.
+;
+; The question this fixture is about is the one an appraisal asks: do the living
+; rooms of this floor add up to the gross living area somebody stated? Neither
+; half of it can be asked of a whole floor. The storey's outline is the living
+; rooms plus the garage, so the outline is the wrong figure by exactly the
+; garage; and a garage is a Space in the same way a bedroom is, so no rule about
+; kinds can leave it out.
+;
+; Every storey below shares one set of outlines, so the shapes are the same in
+; every case and what differs is the figure the sum is judged against and the
+; set it is taken over. That is deliberate: the failures here are about what was
+; compared with what, and holding the geometry still is what makes those the
+; only variables.
+
+; The floor plate, ten by eight, and the two cuts through it: one at x = 6 which
+; separates the living rooms from the garage end, and one at y = 5 which divides
+; that end into the garage and the back room.
+(vertex geom:V-01 (label "Plate, south-west corner") (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-02 (label "Plate, south-east corner") (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-03 (label "Plate, north-east corner") (frame frame:building)
+  (position (value (10.0 8.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-04 (label "Plate, north-west corner") (frame frame:building)
+  (position (value (0.0 8.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-05 (label "Party wall, south end") (frame frame:building)
+  (position (value (6.0 0.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-06 (label "Party wall, north end") (frame frame:building)
+  (position (value (6.0 8.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-07 (label "Garage, north-east corner") (frame frame:building)
+  (position (value (10.0 5.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-08 (label "Garage, north-west corner") (frame frame:building)
+  (position (value (6.0 5.0 0.0) m) (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station) (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-01 (label "Plate, south side") (frame frame:building) (vertices geom:V-01 geom:V-02))
+(edge geom:E-02 (label "Plate, east side") (frame frame:building) (vertices geom:V-02 geom:V-03))
+(edge geom:E-03 (label "Plate, north side") (frame frame:building) (vertices geom:V-03 geom:V-04))
+(edge geom:E-04 (label "Plate, west side") (frame frame:building) (vertices geom:V-04 geom:V-01))
+(edge geom:E-05 (label "Front room, south side") (frame frame:building) (vertices geom:V-01 geom:V-05))
+(edge geom:E-06 (label "Party wall") (frame frame:building) (vertices geom:V-05 geom:V-06))
+(edge geom:E-07 (label "Front room, north side") (frame frame:building) (vertices geom:V-06 geom:V-04))
+(edge geom:E-08 (label "Garage, south side") (frame frame:building) (vertices geom:V-05 geom:V-02))
+(edge geom:E-09 (label "Garage, east side") (frame frame:building) (vertices geom:V-02 geom:V-07))
+(edge geom:E-10 (label "Garage, north side") (frame frame:building) (vertices geom:V-07 geom:V-08))
+(edge geom:E-11 (label "Garage, west side") (frame frame:building) (vertices geom:V-08 geom:V-05))
+(edge geom:E-12 (label "Back room, south side") (frame frame:building) (vertices geom:V-08 geom:V-07))
+(edge geom:E-13 (label "Back room, east side") (frame frame:building) (vertices geom:V-07 geom:V-03))
+(edge geom:E-14 (label "Back room, north side") (frame frame:building) (vertices geom:V-03 geom:V-06))
+(edge geom:E-15 (label "Back room, west side") (frame frame:building) (vertices geom:V-06 geom:V-08))
+
+; Eighty square metres of plate, divided into forty-eight, twelve and twenty.
+(loop geom:L-01 (label "Plate outline") (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(loop geom:L-02 (label "Front room outline") (frame frame:building)
+  (edges geom:E-05 geom:E-06 geom:E-07 geom:E-04))
+(loop geom:L-03 (label "Garage outline") (frame frame:building)
+  (edges geom:E-08 geom:E-09 geom:E-10 geom:E-11))
+(loop geom:L-04 (label "Back room outline") (frame frame:building)
+  (edges geom:E-12 geom:E-13 geom:E-14 geom:E-15))
+
+; The rooms an appraisal counts. A zone is never written within anything, so it
+; is not a content of the storey and no sum over the storey's contents reaches
+; it; it is named by the rules which sum its members.
+(node site:Z-LIV
+  (label "Living area")
+  (kind Zone)
+  (type LivingArea)
+  (frame frame:building))
+
+; The main floor, and the three questions asked of it. Its outline is eighty
+; square metres, its living rooms are sixty, and the appraisal says sixty — so
+; the sum over everything agrees with the outline, and the sum over the living
+; rooms agrees with the figure, whether the living rooms are named by their type
+; or by the zone which lists them.
+(node site:L-01
+  (label "Main floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (gross-living-area
+    (value 60.0 m2)
+    (source "Appraisal AP-2026-114, Fair Value Associates")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-03-02"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (type LivingSpace))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (member-of site:Z-LIV)))
+
+(node site:S-101
+  (label "Main floor front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-LIV)
+  (boundary geom:L-02))
+
+(node site:S-102
+  (label "Main floor back room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (member-of site:Z-LIV)
+  (boundary geom:L-04))
+
+(node site:S-103
+  (label "Main floor garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-01)
+  (boundary geom:L-03))
+
+; The figure has gone stale. The floor is drawn the way the one above it is, so
+; its living rooms still come to sixty, and the appraisal says seventy-two. The
+; failure is about the figure rather than about the whole: the outline is not
+; what disagreed and sending a reader to redraw it would be sending them to the
+; wrong line.
+(node site:L-02
+  (label "Upper floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (gross-living-area
+    (value 72.0 m2)
+    (source "Appraisal AP-2024-088, Fair Value Associates")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2024-07-19"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (type LivingSpace)))
+
+(node site:S-201
+  (label "Upper floor front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-02)
+  (boundary geom:L-02))
+
+(node site:S-202
+  (label "Upper floor back room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-02)
+  (boundary geom:L-04))
+
+(node site:S-203
+  (label "Upper floor garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-02)
+  (boundary geom:L-03))
+
+; Nobody has appraised the loft yet. The rule names a predicate and the storey
+; states nothing under it, so there is no figure to disagree with — which is a
+; model being written rather than a model which is wrong.
+(node site:L-03
+  (label "Loft")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (type LivingSpace)))
+
+(node site:S-301
+  (label "Loft front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-03)
+  (boundary geom:L-02))
+
+; The predicate carries prose. A set of areas adds up to a number and there is
+; no number here, so the rule as written cannot be decided either way.
+(node site:L-04
+  (label "Annexe floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (remark
+    (value "about sixty square metres, per the 2024 walkthrough")
+    (source "Site notebook, Fair Value Associates")
+    (method method:walkthrough)
+    (date "2026-03-02"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate remark)
+    (type LivingSpace)))
+
+(node site:S-401
+  (label "Annexe floor front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-04)
+  (boundary geom:L-02))
+
+; The predicate carries a length. Nothing here converts between a metre and a
+; square metre, so a frontage is not a figure a set of areas can be summed
+; against however plausible the number looks.
+(node site:L-05
+  (label "Street floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (frontage
+    (value 10.0 m)
+    (source "Plat of survey PS-2026-007, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.01 m))
+    (date "2026-02-18"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate frontage)
+    (type LivingSpace)))
+
+(node site:S-501
+  (label "Street floor front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-05)
+  (boundary geom:L-02))
+
+; The rule narrows to the members of something which is not a zone. Nothing
+; declares membership of a storey, so the set would be empty and the total would
+; be nothing — and a discrepancy the size of the whole floor is a worse answer
+; than the one word which is wrong.
+(node site:L-06
+  (label "Basement")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (member-of site:L-01)))
+
+(node site:S-601
+  (label "Basement front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-06)
+  (boundary geom:L-02))
+
+; A narrowed sum against the subject's own outline, which is the storey's whole
+; plate and the living rooms are not. It fails, and what it says about itself is
+; the point: the forty-eight came from one room and the garage was left out on
+; purpose, so a reader can tell a total which is short by a garage from one which
+; is short by a room somebody forgot to draw.
+(node site:L-07
+  (label "Guest floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (type LivingSpace)))
+
+(node site:S-701
+  (label "Guest floor front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-07)
+  (boundary geom:L-02))
+
+(node site:S-702
+  (label "Guest floor garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-07)
+  (boundary geom:L-03))
+
+; The figure and the rooms differ by 0.2 m², which is four times the declared
+; tolerance and well inside what the appraisal says it knows the figure to. Two
+; numbers which differ by less than the stated uncertainty of one of them do not
+; disagree, so this holds — and it holds because the figure is a claim and a
+; claim carries its accuracy.
+(node site:L-08
+  (label "Coach house floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (gross-living-area
+    (value 60.2 m2)
+    (source "Appraisal AP-2026-115, Fair Value Associates")
+    (method method:tape)
+    (accuracy (independent 0.3 m2))
+    (date "2026-03-02"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (type LivingSpace)))
+
+(node site:S-801
+  (label "Coach house front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-08)
+  (boundary geom:L-02))
+
+(node site:S-802
+  (label "Coach house back room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-08)
+  (boundary geom:L-04))
+
+(node site:S-803
+  (label "Coach house garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-08)
+  (boundary geom:L-03))
+
+; The same figure written to a coarser accuracy, and a floor which disagrees with
+; it by more than that. The tape says the figure is known to 0.3 m², which is six
+; times the tolerance, so the tolerance is not what decided this — and what the
+; failure says about itself has to be the number which did. A hint naming the
+; tolerance here would send a reader to tighten a value that never entered the
+; comparison.
+(node site:L-09
+  (label "Annexe floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (gross-living-area
+    (value 61.0 m2)
+    (source "Appraisal AP-2026-116, Fair Value Associates")
+    (method method:tape)
+    (accuracy (independent 0.3 m2))
+    (date "2026-03-02"))
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (predicate gross-living-area)
+    (type LivingSpace)))
+
+(node site:S-901
+  (label "Annexe front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-09)
+  (boundary geom:L-02))
+
+(node site:S-902
+  (label "Annexe back room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-09)
+  (boundary geom:L-04))
+
+(node site:S-903
+  (label "Annexe garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-09)
+  (boundary geom:L-03))
+
+; A narrowed floor which also contains something with no outline. The circuit
+; group is written within the storey and covers no ground, so no sum reaches it
+; whether the rule narrows or not — and a rule which counted it among the nodes
+; it left out would be telling a reader to widen a narrowing which is already
+; summing everything there is to sum.
+(node site:L-10
+  (label "Workshop floor")
+  (kind Storey)
+  (type Level)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01)
+  (assert contained-areas-sum
+    (tolerance boundary-closure)
+    (area-tolerance area-sum)
+    (position position)
+    (type LivingSpace)))
+
+(node site:S-1001
+  (label "Workshop front room")
+  (kind Space)
+  (type LivingSpace)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-10)
+  (boundary geom:L-02))
+
+(node site:S-1002
+  (label "Workshop garage")
+  (kind Space)
+  (type Garage)
+  (geometry area)
+  (frame frame:building)
+  (within site:L-10)
+  (boundary geom:L-03))
+
+(node site:E-1001
+  (label "Workshop lighting circuits")
+  (kind Element)
+  (type CircuitGroup)
+  (frame frame:building)
+  (within site:L-10))

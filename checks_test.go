@@ -7,6 +7,7 @@ package dfcad
 
 import (
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -921,4 +922,310 @@ func TestBoundaryLoopsCloseDoesNotAskARunToClose(t *testing.T) {
 		assert.False(t, walkedAsRun(graph, store), "a room's outline is a ring whoever asks")
 		assert.True(t, walkedAsRun(graph, loop))
 	})
+}
+
+// TestContainedAreasSumAgainstAStatedFigure is its own function because its
+// fixture holds the geometry still and varies only what the total is compared
+// with and which of the contents go into it.
+//
+// Every storey below is drawn from the same four outlines — a plate of eighty
+// square metres cut into forty-eight, twelve and twenty — so a case which passes
+// and a case which fails differ in the figure and the set and in nothing else.
+// That is the question the check learned to ask: an appraisal states the living
+// area of a floor, the floor's outline is the living rooms plus the garage, and
+// a garage is a Space in the same way a bedroom is.
+func TestContainedAreasSumAgainstAStatedFigure(t *testing.T) {
+	run := runCheckFixture(t, "appraised")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "holds where the living rooms come to the figure and everything comes to the outline",
+			instance: "site:L-01",
+			expected: nil,
+		},
+		{
+			name:     "reports a stale figure against the rooms it was written about, not against the outline",
+			instance: "site:L-02",
+			expected: []string{
+				"expected what site:L-02 contains to add up to the gross-living-area claimed of it, 72.0 m², " +
+					"found 60.0 m², which is 12.0 m² less than the figure",
+			},
+		},
+		{
+			name:     "leaves a subject nobody has stated the figure of yet alone",
+			instance: "site:L-03",
+			expected: nil,
+		},
+		{
+			name:     "reports a predicate carrying prose, which no set of areas adds up to",
+			instance: "site:L-04",
+			expected: []string{
+				"expected the remark claimed of site:L-04 to be a number its contents could be summed against, " +
+					"found a text value",
+			},
+		},
+		{
+			name:     "reports a figure written in a length against areas measured in its square",
+			instance: "site:L-05",
+			expected: []string{
+				"expected the frontage claimed of site:L-05 in m2, the square of the unit it is drawn in, found 10.0 m",
+			},
+		},
+		{
+			name:     "reports a narrowing to the members of something which is not a zone",
+			instance: "site:L-06",
+			expected: []string{
+				"expected a node of kind Zone, found site:L-01, which is a Storey",
+			},
+		},
+		{
+			name:     "narrows a sum against the subject's own outline, which the narrowed set no longer fills",
+			instance: "site:L-07",
+			expected: []string{
+				"expected what site:L-07 contains to add up to its own 80.0 m², found 48.0 m², which is " +
+					"32.0 m² less than the whole",
+			},
+		},
+		{
+			name:     "holds where the figure and the rooms differ by less than the figure says it is known to",
+			instance: "site:L-08",
+			expected: nil,
+		},
+		{
+			name:     "reports a disagreement wider than the accuracy the figure states of itself",
+			instance: "site:L-09",
+			expected: []string{
+				"expected what site:L-09 contains to add up to the gross-living-area claimed of it, 61.0 m², " +
+					"found 60.0 m², which is 1.0 m² less than the figure",
+			},
+		},
+		{
+			name:     "reports a narrowed total without counting a content which covers nothing",
+			instance: "site:L-10",
+			expected: []string{
+				"expected what site:L-10 contains to add up to its own 80.0 m², found 48.0 m², which is " +
+					"32.0 m² less than the whole",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := reportedBy(run, "contained-areas-sum", testCase.instance)
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+
+	t.Run("says what to do about each of them", func(t *testing.T) {
+		for _, violation := range run.Violations {
+			assert.NotEmpty(t, violation.Hint, "%s on %s", violation.Check, violation.Instance)
+		}
+	})
+
+	t.Run("runs every rule the model states and fails the seven which are broken", func(t *testing.T) {
+		assert.Equal(t, 12, run.Rules)
+		assert.Equal(t, 12, run.Ran, "every check the fixture names has an implementation")
+		assert.Equal(t, 7, run.Failed)
+		assert.Equal(t, 5, run.Passed)
+	})
+
+	t.Run("names the same set whether it is named by type or by the zone which lists it", func(t *testing.T) {
+		// The main floor states the rule twice over the same three rooms, once
+		// narrowing by type and once by membership of the zone the appraisal
+		// counts. Both come to sixty and both agree with the figure, which is
+		// what says the two narrowings are two spellings of one set rather than
+		// two answers.
+		var narrowed int
+		for _, rule := range loadCheckFixture(t, "appraised").Rules().Select(RuleFilter{Subjects: []ID{"site:L-01"}}) {
+			for _, argument := range rule.Arguments {
+				if argument.Name != "type" && argument.Name != "member-of" {
+					continue
+				}
+
+				narrowed++
+				assert.Empty(t, rule.Run(), argument.String())
+			}
+		}
+
+		assert.Equal(t, 2, narrowed, "the fixture states the rule once per spelling")
+	})
+}
+
+// TestContainedAreasSumSaysWhatASubsetSummed is its own function because its
+// assertion is about the related locations rather than about the message.
+//
+// A subset total is the one answer this check cannot tell apart from a correct
+// one by arithmetic: a living-area figure which agrees because the garage was
+// dropped and one which agrees because a bedroom was dropped and a closet
+// counted twice are the same number. What was summed and what was not is the
+// only evidence there is, so a narrowed sum carries both halves of it and an
+// unnarrowed sum carries neither.
+func TestContainedAreasSumSaysWhatASubsetSummed(t *testing.T) {
+	t.Run("names every node it summed and every node the narrowing left out", func(t *testing.T) {
+		graph := loadCheckFixture(t, "appraised")
+
+		violations := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:L-02"}}).Run().Violations
+		require.Len(t, violations, 1)
+
+		claim, resolved := graph.Claims().Resolve("site:L-02", "gross-living-area", graph.Registry())
+		require.NoError(t, resolved)
+		figure, stated := claim.Claim()
+		require.True(t, stated)
+
+		expected := []RelatedLocation{
+			{Span: figure.Span(), Message: "the figure it is summed against is claimed here"},
+			{Span: namedSpanOf(t, graph, "site:S-201"), Message: "summed into the total"},
+			{Span: namedSpanOf(t, graph, "site:S-202"), Message: "summed into the total"},
+			{
+				Span:    namedSpanOf(t, graph, "site:S-203"),
+				Message: "left out of the sum: it is of type Garage and the sum is of type LivingSpace",
+			},
+		}
+
+		assert.Equal(t, expected, violations[0].Related)
+	})
+
+	t.Run("counts both halves in the hint, so the composition reads without the spans", func(t *testing.T) {
+		run := runCheckFixture(t, "appraised")
+
+		var hint string
+		for _, violation := range run.Violations {
+			if violation.Instance == "site:L-07" {
+				hint = violation.Hint
+			}
+		}
+
+		assert.Equal(t,
+			"the sum is of the 1 node it contains with a shape, narrowed to those of type LivingSpace and "+
+				"leaving 1 node out, judged against the tolerance area-sum, which is 0.05 m2; either a part is "+
+				"drawn wrong or the whole is",
+			hint,
+			"a set of one and a set of many are described by the same sentence",
+		)
+	})
+
+	t.Run("leaves a content which covers nothing out of both halves", func(t *testing.T) {
+		// The circuit group is written within the workshop floor and has no
+		// outline. It is not in the sum, and it is not in what the narrowing left
+		// out either: it was left out by having nothing to contribute rather than
+		// by the rule, and listing it would send a reader to widen a narrowing
+		// which is already summing everything there is.
+		graph := loadCheckFixture(t, "appraised")
+
+		violations := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:L-10"}}).Run().Violations
+		require.Len(t, violations, 1)
+
+		expected := []RelatedLocation{
+			{Span: namedSpanOf(t, graph, "site:S-1001"), Message: "summed into the total"},
+			{
+				Span:    namedSpanOf(t, graph, "site:S-1002"),
+				Message: "left out of the sum: it is of type Garage and the sum is of type LivingSpace",
+			},
+		}
+
+		assert.Equal(t, expected, violations[0].Related)
+		assert.Contains(t, violations[0].Hint, "leaving 1 node out",
+			"the node with no outline is counted in neither half")
+	})
+
+	t.Run("names the accuracy of the figure where that is what the total was judged against", func(t *testing.T) {
+		// The band is the wider of the tolerance and how well the figure says it
+		// is known. Naming the tolerance where the figure widened it would send a
+		// reader to tighten a number which decided nothing.
+		run := runCheckFixture(t, "appraised")
+
+		var hint string
+		for _, violation := range run.Violations {
+			if violation.Instance == "site:L-09" {
+				hint = violation.Hint
+			}
+		}
+
+		assert.Equal(t,
+			"the sum is of the 2 nodes it contains with a shape, narrowed to those of type LivingSpace and "+
+				"leaving 1 node out, judged against how well the figure is known, 0.3 m2, which is wider than "+
+				"the tolerance area-sum; either a part is drawn wrong or the figure is",
+			hint,
+		)
+	})
+
+	t.Run("says none of it where the rule narrowed nothing", func(t *testing.T) {
+		// The set is everything the subject contains, which the model already
+		// says in one place. A related location per room would push the line
+		// worth reading off the end of a list of them.
+		graph := loadCheckFixture(t, "violating")
+
+		var violation Violation
+		for _, found := range graph.Rules().Select(RuleFilter{Subjects: []ID{"site:L-01"}}).Run().Violations {
+			if found.Check == "contained-areas-sum" {
+				violation = found
+			}
+		}
+
+		require.NotEmpty(t, violation.Check)
+		assert.Empty(t, violation.Related)
+		assert.Contains(t, violation.Hint, "it contains with a shape,",
+			"the unnarrowed hint says only that it summed what has a shape")
+	})
+}
+
+// TestContainedAreasSumIsDeterministic is its own function because it asserts
+// that two runs are the same rather than that either of them is right.
+//
+// The set summed and the set left out are both reported now, and both are read
+// out of the containment index. A listing whose order came from a map would give
+// a different answer on every run, and the diff of a check report would stop
+// meaning anything.
+func TestContainedAreasSumIsDeterministic(t *testing.T) {
+	graph := loadCheckFixture(t, "appraised")
+
+	first := graph.Rules().Run()
+	second := graph.Rules().Run()
+
+	require.NotEmpty(t, first.Violations)
+	assert.Equal(t, first.Violations, second.Violations)
+
+	t.Run("lists each half in the order the model writes it", func(t *testing.T) {
+		storey, held := graph.Node("site:L-02")
+		require.True(t, held)
+
+		var summed, left []Span
+		for related := range graph.Contains(storey) {
+			at := graph.Nodes().named(related.Node())
+			if related.Node().Type() == "LivingSpace" {
+				summed = append(summed, at)
+				continue
+			}
+			left = append(left, at)
+		}
+		require.NotEmpty(t, summed)
+		require.NotEmpty(t, left)
+
+		violations := graph.Rules().Select(RuleFilter{Subjects: []ID{"site:L-02"}}).Run().Violations
+		require.Len(t, violations, 1)
+
+		// The first related location is the claim the total was judged against;
+		// the composition follows it, summed nodes before omitted ones.
+		var listed []Span
+		for _, related := range violations[0].Related[1:] {
+			listed = append(listed, related.Span)
+		}
+
+		assert.Equal(t, append(slices.Clone(summed), left...), listed)
+	})
+}
+
+// namedSpanOf is where the id of one node of the graph is written.
+func namedSpanOf(t *testing.T, graph *Graph, id ID) Span {
+	t.Helper()
+
+	node, held := graph.Node(id)
+	require.True(t, held, "the fixture holds %s", id)
+
+	return graph.Nodes().named(node)
 }

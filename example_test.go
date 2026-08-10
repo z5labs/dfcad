@@ -412,7 +412,7 @@ func ExampleChecks() {
 	// boundary-loops-close (tolerance <tolerance>) (position <predicate>)
 	// claim-agrees-with-geometry (predicate <predicate>) (position <predicate>) (tolerance <tolerance>) (discrepancy <tolerance>)
 	// contained-areas-do-not-overlap (tolerance <tolerance>) (position <predicate>) (kind <kind>)
-	// contained-areas-sum (tolerance <tolerance>) (area-tolerance <tolerance>) (position <predicate>) (kind <kind>)
+	// contained-areas-sum (tolerance <tolerance>) (area-tolerance <tolerance>) (position <predicate>) (predicate <predicate>) (kind <kind>) (type <type>) (member-of <id>)
 	// cross-frame-budget-holds (frame <frame>) (limit <tolerance>)
 	// edge-backing-resolves
 	// edge-endpoints-differ
