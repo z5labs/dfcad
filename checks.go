@@ -2038,7 +2038,7 @@ func (sitsInside) Declare() CheckDeclaration {
 		Name: "sits-inside",
 		Description: "The subject's shape lies inside the shape of the named node: nothing of it reaches past that " +
 			"node's boundary by more than the named tolerance, or than the combined accuracy of the two where that " +
-			"is wider. A subject declared in another frame is carried into the container's across the transform " +
+			"is wider. A subject declared in another frame is carried into the container's frame across the transform " +
 			"claims relating the two, and their accuracy joins the band.",
 		Parameters: append([]CheckParameter{
 			{
