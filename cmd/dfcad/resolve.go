@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"slices"
 	"strings"
 
 	"github.com/z5labs/dfcad"
@@ -733,10 +732,14 @@ func budgetOf(budget dfcad.Budget) budgetReport {
 // claims came.
 func subjects(claims []*dfcad.Claim) []string {
 	var out []string
+	seen := make(map[string]bool, len(claims))
 	for _, claim := range claims {
-		if subject := string(claim.Subject()); !slices.Contains(out, subject) {
-			out = append(out, subject)
+		subject := string(claim.Subject())
+		if seen[subject] {
+			continue
 		}
+		seen[subject] = true
+		out = append(out, subject)
 	}
 	return out
 }
