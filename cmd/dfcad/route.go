@@ -135,8 +135,8 @@ func runRoute(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	// The model is loaded before the flags are checked because the registry is
 	// what says whether a type is declared and what the routing rules are, and
 	// the registry is the model.
-	graph, unloaded := loadGate(cmd, globals, stderr)
-	if unloaded {
+	graph, loadRefused := loadGate(cmd, globals, stderr)
+	if loadRefused {
 		return exitLoad
 	}
 	registry := graph.Registry()

@@ -406,8 +406,8 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, unloaded := loadGate(cmd, globals, stderr)
-	if unloaded {
+	graph, loadRefused := loadGate(cmd, globals, stderr)
+	if loadRefused {
 		return exitLoad
 	}
 

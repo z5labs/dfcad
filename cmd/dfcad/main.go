@@ -328,8 +328,9 @@ const outputContractHelp = `Output:
 	A run which produces no result — help, a usage error, a model root that
 	cannot be read, an entity format this engine does not implement, a
 	derivation over a model the load refused — writes nothing at all to
-	stdout. A listing over a model the load refused still answers, and says
-	so with "refused": true.
+	stdout. A discovery read — the listings, get, traverse, claims and
+	conflicts — over a model the load refused still answers, and says so
+	with "refused": true.
 
 	Diagnostics, progress and everything else for a person go to stderr, on
 	every run and in every format. Nothing human-facing is ever on stdout.
