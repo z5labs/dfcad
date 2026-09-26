@@ -2691,13 +2691,13 @@ func (edgeEndpointsDiffer) Run(subject CheckSubject) []Failure {
 
 	claims := graph.Claims()
 
-	var seen []string
+	seen := make(map[string]bool)
 	for claim := range claims.Of(start) {
 		predicate := claim.Predicate()
-		if slices.Contains(seen, predicate) {
+		if seen[predicate] {
 			continue
 		}
-		seen = append(seen, predicate)
+		seen[predicate] = true
 
 		from, ok := currentCoordinate(claims, start, predicate)
 		if !ok {
