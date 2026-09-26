@@ -223,6 +223,20 @@ func invoke(ctx context.Context, parentJSON []byte, parentName string, fnName st
 				panic(fmt.Errorf("%s: %w", "failed to unmarshal parent object", err))
 			}
 			return nil, (*Dfcad).Ci(&parent, ctx)
+		case "Image":
+			var parent Dfcad
+			err = json.Unmarshal(parentJSON, &parent)
+			if err != nil {
+				panic(fmt.Errorf("%s: %w", "failed to unmarshal parent object", err))
+			}
+			var platform dagger.Platform
+			if inputArgs["platform"] != nil {
+				err = json.Unmarshal([]byte(inputArgs["platform"]), &platform)
+				if err != nil {
+					panic(fmt.Errorf("%s: %w", "failed to unmarshal input arg platform", err))
+				}
+			}
+			return (*Dfcad).Image(&parent, ctx, platform)
 		case "Publish":
 			var parent Dfcad
 			err = json.Unmarshal(parentJSON, &parent)

@@ -200,6 +200,7 @@ dagger call ci                     # fmt, vet, golangci-lint, go test -race
 dagger call version-scheme         # the version and publish rules, over literal cases
 dagger call publish --publish-on=… # every platform's image; pushed only where the ref says
 dagger call binary export --path=./dfcad
+dagger call image export-image --name=dfcad:gate  # the same image, loaded into the local Docker
 ```
 
 What follows from that:

@@ -25,6 +25,11 @@
 # Usage:
 #
 #	selftest.sh --binary <dfcad>
+#	selftest.sh --image <ref> [--runtime <command>]
+#
+# The engine is named exactly as it is to gate.sh, and every question below is
+# asked of that engine: a self-test of the image asks the image, not a binary
+# which happens to be beside it.
 #
 # Run it from the repository root, which is what makes the paths in the second
 # run's annotations the relative ones a reader recognises. It works from
@@ -37,10 +42,20 @@ set -euo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 binary=""
+image=""
+runtime=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--binary)
 		binary="${2:-}"
+		shift 2
+		;;
+	--image)
+		image="${2:-}"
+		shift 2
+		;;
+	--runtime)
+		runtime="${2:-}"
 		shift 2
 		;;
 	*)
@@ -50,40 +65,106 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-if [ -z "$binary" ]; then
-	echo "selftest.sh: --binary is required" >&2
+if [ -n "$binary" ] && [ -n "$image" ]; then
+	echo "selftest.sh: --binary and --image each name the engine; pass one of them" >&2
 	exit 64
 fi
 
-if [ ! -x "$binary" ]; then
-	echo "selftest.sh: $binary is not an executable" >&2
+if [ -z "$binary" ] && [ -z "$image" ]; then
+	echo "selftest.sh: one of --binary and --image is required" >&2
 	exit 64
 fi
 
-# Resolved now, because one of the two gate runs below is made from a throwaway
-# repository elsewhere on the disk, and `./dfcad` does not name the same file
-# from there.
-binary="$(cd -- "$(dirname -- "$binary")" && pwd)/$(basename -- "$binary")"
+if [ -n "$runtime" ] && [ -z "$image" ]; then
+	echo "selftest.sh: --runtime says what runs --image, and no --image was given" >&2
+	exit 64
+fi
 
 fail() {
 	echo "::error::the gate did not block the deliberately broken model: $1"
 	exit 1
 }
 
-# What the gate reads, against what this build writes.
+# engine is what gate.sh is told the engine is. version is how this script asks
+# that engine about itself, which for an image means running the image: the
+# answer has to come from the artefact the gate will run, and a binary on the
+# runner could be any build at all.
+engine=()
+if [ -n "$binary" ]; then
+	if [ ! -x "$binary" ]; then
+		echo "selftest.sh: $binary is not an executable" >&2
+		exit 64
+	fi
+
+	# Resolved now, because one of the two gate runs below is made from a
+	# throwaway repository elsewhere on the disk, and `./dfcad` does not name
+	# the same file from there.
+	binary="$(cd -- "$(dirname -- "$binary")" && pwd)/$(basename -- "$binary")"
+	engine=(--binary "$binary")
+	version() { "$binary" version; }
+else
+	runtime="${runtime:-docker}"
+	engine=(--image "$image" --runtime "$runtime")
+
+	# The same refusals gate.sh makes, made here first because this is the
+	# first thing to run the image: a runtime which is not there or an image
+	# which will not pull is a sentence and a failure, never a self-test which
+	# asked nothing and so found nothing wrong.
+	if ! command -v "$runtime" >/dev/null 2>&1; then
+		echo "::error::the container runtime ${runtime} is not on the path, so ${image} cannot be self-tested"
+		exit 1
+	fi
+	if ! "$runtime" image inspect "$image" >/dev/null 2>&1 &&
+		! "$runtime" pull "$image" >&2; then
+		echo "::error::${runtime} could not pull ${image}, so it cannot be self-tested"
+		exit 1
+	fi
+	version() { "$runtime" run --rm --network none "$image" version; }
+fi
+
+if ! identity="$(version)" || ! jq -e . >/dev/null 2>&1 <<<"$identity"; then
+	echo "::error::the engine did not answer \`dfcad version\` with a result object, so there is nothing to self-test"
+	exit 1
+fi
+
+# What the gate reads, against what this engine writes.
 #
 # The two are the same number until somebody bumps the contract, and the run
 # which bumps it is the one that has to notice: a filter reading the shape the
 # previous version wrote matches nothing and reports nothing, which is
-# indistinguishable from a stage with nothing to say. Asking the binary what it
+# indistinguishable from a stage with nothing to say. Asking the engine what it
 # implements is what makes that a failure here rather than a silence everywhere.
 contract="$("${here}/gate.sh" --contract)"
-build_contract="$("$binary" version | jq -r '.contracts.output')"
+build_contract="$(jq -r '.contracts.output' <<<"$identity")"
 if [ "$contract" != "$build_contract" ]; then
 	echo "::error::gate.sh reads output contract ${contract} and this build of dfcad writes ${build_contract}: the filters in .github/gate/gate.sh are what have to change, and until they do the gate blocks without saying anything"
 	exit 1
 fi
 echo "gate.sh and this build of dfcad both speak output contract ${contract}"
+
+# Which engine this is, and the requirement that it can say.
+#
+# The stamp is applied by the pipeline's link line and by nothing in this
+# repository, which means nothing here would notice it stopping. An engine which
+# reports itself unstamped is one no bug report can identify, and a gate run
+# with it has a verdict nobody can say the provenance of — `go install` builds
+# exactly that, which is why a consumer is pointed at the image. It looks like a
+# working build everywhere else, so it is asked every run and the answer is
+# required to be yes.
+#
+# The symbol names are the z5labs module's (main.version, main.commit), and -X
+# against a name which is not there is a silent no-op, so this is also what
+# catches a rename or a move of either variable out of package main. See
+# docs/versioning.md.
+if ! jq -e '
+	.build.stamped == true
+	and (.build.version | length > 0)
+	and (.build.commit | test("^[0-9a-f]{7,40}$"))
+' >/dev/null <<<"$identity"; then
+	echo "::error::the engine reports itself unstamped — $(jq -c '.build' <<<"$identity") — so nothing can say which dfcad the gate ran; build it with the standard pipeline, or run the published image"
+	exit 1
+fi
+echo "self-testing $(jq -r '"dfcad \(.build.version) (commit \(.build.commit))"' <<<"$identity")"
 
 # run_gate runs one gate over one root and captures what it wrote.
 #
@@ -105,7 +186,7 @@ run_gate() {
 	(
 		cd "$dir" &&
 			env -u GITHUB_STEP_SUMMARY \
-				"${here}/gate.sh" --binary "$binary" --root "$root" \
+				"${here}/gate.sh" "${engine[@]}" --root "$root" \
 				--results "$results" "$@"
 	) >"${results}/gate.log" 2>&1
 	gate_exit=$?
@@ -164,6 +245,26 @@ counted() {
 		fail "the ${stage} stage emitted ${got} annotations, want at least ${want}: its filter has stopped reading what dfcad writes"
 	fi
 	echo "the ${stage} stage annotated ${got} findings"
+}
+
+# relative requires every annotation the gate placed to name a file relative to
+# the directory it was run from, which in CI is the repository root.
+#
+# GitHub resolves an annotation's file against the repository root and drops one
+# it cannot find, so an absolute path is an annotation nobody sees. That is what
+# an engine in a container writes if the model is mounted anywhere but where it
+# is on the host — /model/entities/room.dfc — and the assertions above would not
+# notice, because the path they look for is read out of the same result object.
+# Both broken models give every annotation a file, so none is excused.
+relative() {
+	local log="$1" absolute
+	absolute="$(grep -E '^::(error|warning|notice) file=/' "$log" || true)"
+	if [ -n "$absolute" ]; then
+		fail "an annotation names an absolute path, which GitHub cannot resolve against the repository: ${absolute%%$'\n'*}"
+	fi
+	if ! grep -qE '^::(error|warning|notice) file=' "$log"; then
+		fail "no annotation named a file at all"
+	fi
 }
 
 ################################################################################
@@ -272,6 +373,7 @@ annotated error "$(jq -r '.violations[0].subject' "$check_json")" "$log" \
 	"the first check violation"
 annotated warning "$(jq -r '[.findings[] | select(.ruling != "ignored")][0].span' "$review_json")" "$log" \
 	"the first review finding"
+relative "$log"
 
 ################################################################################
 # The model which does not load.
@@ -327,6 +429,7 @@ fi
 counted fmt "$annotations_json" 1
 annotated error "$(jq -r '[.files[] | select(.status == "failed") | .diagnostics[0].span][0]' "$fmt_json")" \
 	"$log" "the first fmt diagnostic"
+relative "$log"
 
 # A model which does not load has nothing on stdout for the check stage to
 # annotate from, so the gate says so itself and the log carries the file, the

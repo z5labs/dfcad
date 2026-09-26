@@ -218,6 +218,8 @@ through the same per-platform compile in the z5labs module; `binary` is how a st
 checked locally without a push. Adding a second, bespoke link line here to produce a
 stamped binary would be a second definition of the build, and the two would drift — see the
 continuous integration section of [`CLAUDE.md`](../CLAUDE.md). The `model` job in CI runs
-the binary the pipeline built and requires it to report itself stamped, which is what turns
-the module quietly ceasing to stamp into a failure rather than into a fleet of anonymous
-binaries.
+the gate's self-test over the binary the pipeline built and over the image it built, and the
+self-test requires each to report itself stamped, which is what turns the module quietly
+ceasing to stamp into a failure rather than into a fleet of anonymous binaries. A consumer
+running the same self-test against the published image gets the same check against the
+engine it gates with.
