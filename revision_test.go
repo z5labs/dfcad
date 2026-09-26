@@ -130,6 +130,24 @@ func TestOpenRepository(t *testing.T) {
 		require.ErrorAs(t, err, &outside)
 		assert.Equal(t, dir, outside.Dir)
 	})
+
+	// The published image carries no git, so this is the case a consumer running
+	// review from it meets: it has to read as git being absent, and not as a
+	// directory which is not a working tree, or the command cannot say which
+	// comparison would have worked.
+	t.Run("reports that git is missing rather than that the directory is not a repository", func(t *testing.T) {
+		dir := t.TempDir()
+		t.Setenv("PATH", t.TempDir())
+
+		_, err := OpenRepository(dir)
+
+		require.ErrorIs(t, err, ErrGitMissing)
+		assert.NotErrorIs(t, err, ErrNotARepository)
+
+		var refused RepositoryError
+		require.ErrorAs(t, err, &refused)
+		assert.Equal(t, []string{"rev-parse", "--show-toplevel"}, refused.Args)
+	})
 }
 
 func TestRepositoryPrefix(t *testing.T) {

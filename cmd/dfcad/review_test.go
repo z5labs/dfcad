@@ -375,6 +375,46 @@ func TestRunReviewWithoutAHistory(t *testing.T) {
 	})
 }
 
+// TestRunReviewWithNoGitOnThePath is its own function because it changes the
+// process's PATH, and because it is the published image's situation rather than
+// a repository's: the image carries no git, so every case here is what a
+// consumer running review from it gets.
+func TestRunReviewWithNoGitOnThePath(t *testing.T) {
+	t.Run("fails a comparison against a revision, naming the cause and the way out", func(t *testing.T) {
+		root := tree(t, model())
+		t.Setenv("PATH", t.TempDir())
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitLoad, run([]string{"review", "--root", root, "--against", "main"}, &stdout, &stderr))
+
+		assert.Empty(t, stdout.String(), "a run which answered nothing writes no result object")
+		assert.Contains(t, stderr.String(), "git is not on the path")
+		assert.Contains(t, stderr.String(), "--base-root")
+	})
+
+	t.Run("compares against a directory, which reads no git", func(t *testing.T) {
+		base := tree(t, model())
+		head := tree(t, map[string]string{
+			"registry.dfc":          listRegistry,
+			"entities/site.dfc":     withoutTheCampus(t),
+			"entities/geometry.dfc": listGeometry,
+			"entities/parcels.dfc":  listParcels,
+		})
+		t.Setenv("PATH", t.TempDir())
+
+		var stdout, stderr bytes.Buffer
+		args := []string{"review", "--root", head, "--base-root", base}
+
+		require.Equal(t, exitCheck, run(args, &stdout, &stderr), stderr.String())
+
+		result := listed[reviewResult](t, stdout.String())
+
+		require.Len(t, result.Findings, 1)
+		assert.Equal(t, dfcad.ID("site:C-01"), result.Findings[0].Subject)
+		assert.Equal(t, base, result.Comparison.Base)
+	})
+}
+
 // TestRunReviewRefusesAShallowCheckout is its own function because it needs a
 // second clone, and because what it asserts about is the message rather than
 // the code: a CI job told only that its checkout is wrong cannot fix it.

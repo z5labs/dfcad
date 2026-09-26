@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -79,6 +80,14 @@ invocation, rather than by not running the command. A finding a policy ignored
 is still in the result — a check silently switched off is one nobody remembers
 is off — and is reported nowhere else.
 
+Comparing against a revision runs git, so it needs git on the path, and the
+published image does not carry it: review --against is a host command, and
+from the image it exits 2 saying so. --base-root reads no git and runs from the
+image like every other command, given a checkout of the merge base mounted
+beside the model; what it gives up is attribution, since there is no history
+to name a commit from. docs/publishing.md says how, and
+docs/decisions/0026-reading-a-revision-out-of-git-is-a-host-command.md why.
+
 The command needs the history reaching back to the merge base. A shallow
 checkout does not have it, and git answers with the commit its history was cut
 off at rather than with an error, so a shallow clone is refused and told what to
@@ -98,6 +107,17 @@ The object review writes carries "comparison" — which two revisions were read 
 were and of what weight, and "findings": one entry per change which needs an
 explanation, each naming the commit which introduced it.
 `
+
+// gitMissingHint is the way out of a review which could not read its second
+// revision because there is no git to read it with.
+//
+// It is said on every such run rather than left to the documentation, because
+// the one place a consumer is certain to meet this is the published image, which
+// carries no git by design (docs/decisions/0026): a run there has to be told
+// that it hit a boundary, and which comparison is on this side of it.
+const gitMissingHint = "comparing against a revision reads it out of git, which is a host command " +
+	"and is not in the published image; run review on a host with git, or pass --base-root <dir> " +
+	"naming a checkout of the revision to compare against, which needs no git"
 
 // MalformedPolicyError is a --policy which is not a kind and a ruling.
 type MalformedPolicyError struct {
@@ -210,6 +230,9 @@ func runReview(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	base, comparison, history, err := previous(cmd, globals, *against, *baseRoot, stderr)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		if errors.Is(err, dfcad.ErrGitMissing) {
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %s\n", cmd.name, gitMissingHint)
+		}
 		return exitLoad
 	}
 	defer func() {

@@ -111,6 +111,11 @@ answer exactly as they did before.
 
 What a checkout has to be for it to run:
 
+- **on a host with `git` on the path**, because the previous revision is read by running it.
+  The published image carries no `git`, so `review --against` is a host command and the
+  `--binary` this gate runs has to be one on the runner rather than the image;
+  [`publishing.md`](../../docs/publishing.md) says which commands the image does answer, and
+  how to run `review --base-root` from it instead;
 - **inside a git working tree**, because that is where the previous revision is;
 - **with the history back to the merge base**, which means `fetch-depth: 0` on
   `actions/checkout`. A shallow clone is refused rather than answered from — git reports a
