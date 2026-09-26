@@ -1,0 +1,14 @@
+; Specification sections 7.3 and 8.2. A type says its instances stand in an
+; opening of the element they are within rather than being parts of it, and the
+; default — that they do not — is not printed however it was spelled.
+(type Doorset
+  (fills-opening #true)
+  (description "A door and its frame, set in the wall it is within.")
+  (kind Element)
+  (geometry line))
+
+(type Mullion
+  (kind Element)
+  (geometry line)
+  (description "A vertical member of the curtain wall it is within.")
+  (fills-opening #false))

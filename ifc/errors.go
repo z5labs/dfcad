@@ -461,6 +461,47 @@ func (e UnclassifiedBoundaryError) Error() string {
 		"is nothing here which could choose it", e.Attribute, e.Boundary, e.Space)
 }
 
+// MissingOpeningHostError reports an [Opening] naming no element to void.
+//
+// IfcRelVoidsElement's building element is mandatory, and an opening voiding
+// nothing is a hole in the air: there is no body it could be subtracted from.
+type MissingOpeningHostError struct {
+	// Opening is the identifier of the opening.
+	Opening GlobalID
+}
+
+// Error implements the [error] interface.
+func (e MissingOpeningHostError) Error() string {
+	return fmt.Sprintf("expected an element for the opening %s to void, found none: an opening voids exactly one "+
+		"element", e.Opening)
+}
+
+// UnknownOpeningElementError reports an [Opening] naming, as its host or its
+// filling, something which is not a product this model writes.
+//
+// It is [UnknownBoundaryElementError] for the two relationships an opening is
+// written with, and it is caught here for the same reason. A name resolving to
+// a storey or a zone is refused as well: only an element is voided, and only an
+// element fills a void.
+type UnknownOpeningElementError struct {
+	// Opening is the identifier of the opening.
+	Opening GlobalID
+
+	// Attribute is the relationship attribute the name was for, spelled as the
+	// schema spells it: RelatingBuildingElement for the host,
+	// RelatedBuildingElement for the filling.
+	Attribute string
+
+	// Element is the identifier which named nothing written as a product.
+	Element GlobalID
+}
+
+// Error implements the [error] interface.
+func (e UnknownOpeningElementError) Error() string {
+	return fmt.Sprintf("expected the %s of the opening %s to name a product this model writes, found %s, which it "+
+		"does not", e.Attribute, e.Opening, e.Element)
+}
+
 // spelled lists entities the way a message wants them.
 func spelled(entities []Entity) string {
 	written := make([]string, 0, len(entities))

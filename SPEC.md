@@ -1,6 +1,6 @@
 # The dfcad entity format
 
-**Specification version 1.2.**
+**Specification version 1.3.**
 
 This document defines the text format a dfcad model is written in: which tagged forms are
 legal, where each may appear, with what arity and ordering, and what the one canonical
@@ -902,6 +902,7 @@ The description is for the person reading the registry. Nothing in the engine re
   (geometry <geometry>)
   (description "<text>")
   (classification "<system>" "<code>")
+  (fills-opening #t)
   (invariant <check-name> (<parameter> <value>) …))
 ```
 
@@ -911,6 +912,7 @@ The description is for the person reading the registry. Nothing in the engine re
 | `geometry`       | `1..n` | The geometry forms a node of this type may declare, including `absent`.   |
 | `description`    | `1`    | A one-line string.                                                        |
 | `classification` | `0..n` | How a scheme outside this model names the type: a system and a code, both strings. |
+| `fills-opening`  | `0..1` | `#t` or `#f`. Whether an instance written within an `Element` stands in an opening of it. Omitted means `#f`, and canonical form omits it when false. |
 | `invariant`      | `0..n` | A check that applies to every instance of the type. Same shape as `assert`. |
 
 - `geometry` here may take the value **`absent`**, which permits an instance to omit its
@@ -938,6 +940,21 @@ The description is for the person reading the registry. Nothing in the engine re
 - Two types may name the same code in one system. The mapping is into a foreign vocabulary
   and need not be injective — a project distinguishing two kinds of partition that IFC spells
   one way is exactly the case the child exists for.
+- **`fills-opening` says what a `within` edge between two elements is.** Containment says
+  one element is physically inside another ([6.9.1](#691-the-containment-hierarchy)); it does
+  not say whether the inner one is a *part* of the outer — a mullion of a curtain wall, a
+  baluster of a railing — or is *set into a hole in it*, so that the outer one is missing
+  wherever the inner one stands. Without the child an element within an element is a part.
+  With `(fills-opening #t)` every instance of the type written within an `Element` fills an
+  opening of that element instead; an instance written within anything else is contained as
+  any element is, because there is nothing there to cut.
+- The child is structural, like a geometry form, and **carries no domain meaning**: the
+  engine does not know that the type is a door, and a type is not treated as filling an
+  opening because of what it is called or how it is classified. What reads it is an exporter
+  writing the two relationships differently
+  ([0027](./docs/decisions/0027-an-element-fills-an-opening-because-its-type-says-so.md)).
+- `(fills-opening #t)` on a type permitting no `Element` is a registry error. Only an
+  `Element` is written within an `Element`, so no instance of such a type could fill anything.
 - An `invariant` applies automatically to every instance of the type, including instances
   added later, so an invariant true of a type is stated once rather than copied onto a
   hundred and fifty instances. A violation names the instance, the invariant, the parameters
@@ -1514,8 +1531,8 @@ Reading it back:
 ## 10. Versioning of this specification
 
 This document carries a version of the form `MAJOR.MINOR`, stated at the top. The current
-version is **1.2**, which added the optional `classification` child of
-[7.3](#73-type).
+version is **1.3**, which added the optional `fills-opening` child of
+[7.3](#73-type); 1.2 added its `classification` child.
 
 | Change                                                             | Version effect |
 |--------------------------------------------------------------------|----------------|
@@ -1598,6 +1615,7 @@ below.
 | 0016   | [8.3](#83-ordering): whole-file printing from an in-memory graph is why sorting was chosen over preserving authored order. |
 | 0020   | [1](#1-scope): export is out of this document's scope and has its own specification, and the closed `kind` set fixed there is the whole of what an exporter reads for meaning. [7.1](#71-project): the pinned URL is the other half of the export contract, and there is still no `GlobalId` field. |
 | 0021   | [1](#1-scope): an exported representation is a build output rather than one of this document's two layers, which is why no form here writes one. [11](#11-not-in-this-version): an export is a derived value, so it is not a field, a comment or a sidecar in the source tree either — it is written under `.dfcad`, keyed by the tree digest this document's files produce. |
+| 0027   | [7.3](#73-type): `fills-opening` is the one structural declaration beside `kind` an exporter reads, and it is declared on the type rather than inferred from its name or its classification. [6.9.1](#691-the-containment-hierarchy) is unchanged: `within` stays physical enclosure, and the child says what kind of enclosure one element's is. |
 
 **One open reading, resolved here.** Record 0008 says the remedy for not knowing a claim's
 provenance is to state it "using the vocabulary the registry provides for it", while record

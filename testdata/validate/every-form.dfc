@@ -12,6 +12,12 @@
   (classification "IFC4" "IfcZone")
   (invariant zone-members-resolve))
 
+(type Doorset
+  (kind Element)
+  (geometry line)
+  (description "A door and its frame, set in the element it is within.")
+  (fills-opening #t))
+
 (predicate nominal-width
   (unit m)
   (shape scalar)

@@ -1,0 +1,38 @@
+; Every way a type can say its instances fill an opening wrongly. The child is a
+; boolean, and it is only meaningful on a type whose instances can be written
+; within an Element — which is an Element and nothing else.
+(project
+  (label "Riverside example")
+  (globalid-namespace "https://example.org/models/riverside"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+; A space is never within an element, so nothing of this type could stand in an
+; opening of one.
+(type Alcove
+  (kind Space)
+  (geometry area)
+  (description "A recess off a room.")
+  (fills-opening #t))
+
+; Written twice. A type either fills an opening or it does not.
+(type Doorset
+  (kind Element)
+  (geometry line)
+  (description "A door and its frame.")
+  (fills-opening #t)
+  (fills-opening #t))
+
+; A boolean is #t or #f, not a word for one.
+(type Hatch
+  (kind Element)
+  (geometry line)
+  (description "An access hatch.")
+  (fills-opening yes))
+
+; Saying it does not is the default, and is not a mistake on any type.
+(type Lobby
+  (kind Space)
+  (geometry area)
+  (description "An entrance hall.")
+  (fills-opening #f))

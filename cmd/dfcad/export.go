@@ -259,6 +259,31 @@ drawing and a window's sill read off an elevation. That is
 what lets whoever opens the file tell a surveyed figure from an assumed one
 without holding the model it came from.
 
+An element within another element is one of two things, and which is its
+type's to say. By default it is a part of the one it is within — a mullion of a
+curtain wall, a baluster of a railing — and is written decomposed out of it by
+an IfcRelAggregates, reaching its storey through its whole rather than being
+contained in it as well. A type declaring (fills-opening #t) says its instances
+stand in an opening of the element they are within instead: such an element
+stays contained in its storey like any product, and the file carries an
+IfcOpeningElement voiding the element it is within, by an IfcRelVoidsElement,
+which it fills, by an IfcRelFillsElement. Nothing else marks one — not the
+type's name and not its classification — so a door nobody said fills an opening
+is written as a part of its wall.
+
+Where both are drawn as runs and the one it is within has a body, the opening
+is cut to the filling's run, widened by the thickness of what it is cut out of
+rather than its own so that it passes right through, and swept from the
+filling's own base, its offset included, through the filling's own height. A
+reader which subtracts openings then draws a wall cut where its doors and
+windows are. A filling whose run does not lie along the run of what it is
+within is refused naming both, rather than cut somewhere the model does not put
+it. Where there is no body to cut, the opening is written without a shape, and
+where there is one but the filling has no body to cut it to, that is a warning
+and the same. Every opening, and the two relationships beside it, carries an
+identifier derived from the id of the element filling it, so it is as stable
+across exports as that element and never shares its identifier.
+
 A space's boundaries reach the file as relationships, drawn or not. Every edge
 of a room's outline which names the element realising it is written as an
 IfcRelSpaceBoundary between the two, classified physical because something
@@ -294,9 +319,10 @@ derive identifiers from, one whose frames disagree about the linear unit, or a
 node whose shape was asked for and could not be drawn: a ring which does not
 close, a corner nothing states the position of, a boundary which does not lie
 at one level, a height or a thickness which is not a distance or is not
-positive, an offset which is not a distance, a body claimed of something no entity here can carry one on. The object
-still comes back, with "derived" false and no files, so a caller reads
-why from the diagnostics on stderr rather than from an empty stream. Exit code
+positive, an offset which is not a distance, a body claimed of something no
+entity here can carry one on, or a filling off the run of what it is set in.
+The object still comes back, with "derived" false and no files, so a caller
+reads why from the diagnostics on stderr rather than from an empty stream. Exit code
 3 is a destination inside the authored tree, which is refused before anything
 is read.
 `
@@ -782,6 +808,11 @@ func exported(
 	sites := out.decompose(out.roots, 0)
 	groups := out.zones()
 
+	// The openings come after the walk because each is cut from two drawings
+	// the walk made — the host's and the filling's — and either may be reached
+	// first.
+	openings := out.openings()
+
 	model := ifc.Model{
 		Header: ifc.Header{
 			Description: []string{"ViewDefinition [CoordinationView]"},
@@ -814,6 +845,7 @@ func exported(
 			Aggregates: out.identify(dfcad.ID("ifc/aggregates/project")),
 			Sites:      sites,
 			Groups:     groups,
+			Openings:   openings,
 		},
 	}
 
@@ -869,6 +901,27 @@ type exporter struct {
 	zoned   []*dfcad.SemanticNode
 	members map[dfcad.ID][]*dfcad.SemanticNode
 
+	// parts are the elements decomposed out of each element, by the id of the
+	// whole: an element within an element whose type does not say it fills an
+	// opening. Each reaches the file through its whole rather than through the
+	// storey.
+	parts map[dfcad.ID][]*dfcad.SemanticNode
+
+	// filled is every element standing in an opening of the element it is
+	// within, in id order, with that element.
+	filled []filling
+
+	// lines is what drawing each node drawn as a line established about it, by
+	// the id of the node, which is what an opening is cut from. It is recorded
+	// as the walk draws rather than drawn a second time, so a claim refused
+	// while drawing a wall is refused once rather than once more for every door
+	// in it.
+	lines map[dfcad.ID]*drawnRun
+
+	// bodied is the ids of the products the walk gave a body, which is what
+	// says there is a solid for an opening to be cut out of at all.
+	bodied map[dfcad.ID]bool
+
 	// proxied is every node whose type declared an IFC4 classification this
 	// writer could not carry, by the id of the node.
 	//
@@ -909,6 +962,9 @@ func (e *exporter) collect() {
 	e.children = make(map[dfcad.ID][]*dfcad.SemanticNode)
 	e.products = make(map[dfcad.ID][]*dfcad.SemanticNode)
 	e.members = make(map[dfcad.ID][]*dfcad.SemanticNode)
+	e.parts = make(map[dfcad.ID][]*dfcad.SemanticNode)
+	e.lines = make(map[dfcad.ID]*drawnRun)
+	e.bodied = make(map[dfcad.ID]bool)
 
 	var nodes []*dfcad.SemanticNode
 	for node := range e.graph.Nodes().All() {
@@ -938,6 +994,22 @@ func (e *exporter) collect() {
 			e.zoned = append(e.zoned, node)
 
 		default:
+			// An element within an element is one of two things, and which is
+			// its type's to say rather than anything this command could infer
+			// from what the type is called
+			// ([0027](docs/decisions/0027-an-element-fills-an-opening-because-its-type-says-so.md)).
+			// A part is decomposed out of its whole and reaches the storey
+			// through it, so it is not contained here as well. A filling
+			// stands in its storey like any product and is related to its
+			// host through the opening it fills.
+			if host, nested := e.nested(node); nested {
+				if !e.fillsOpening(node) {
+					e.parts[host.ID()] = append(e.parts[host.ID()], node)
+					continue
+				}
+				e.filled = append(e.filled, filling{node: node, host: host})
+			}
+
 			// An element or an interface is a thing standing in a spatial
 			// element rather than a part of one, so it is contained by the
 			// nearest spatial ancestor it has. One with none is written
@@ -979,19 +1051,36 @@ func (e *exporter) hold(nodes []*dfcad.SemanticNode) {
 		e.written[id] = true
 
 		for _, product := range e.products[id] {
-			e.written[product.ID()] = true
+			e.holdProduct(product)
 		}
 
 		e.hold(e.children[id])
 	}
 }
 
+// holdProduct records a product and every part decomposed out of it as things
+// the file will hold.
+//
+// The check before the recursion is what bounds it. A model whose elements
+// contain one another in a ring does not load, but this runs on models which
+// loaded with warnings too, and a part already held is not held again.
+func (e *exporter) holdProduct(node *dfcad.SemanticNode) {
+	if e.written[node.ID()] {
+		return
+	}
+	e.written[node.ID()] = true
+
+	for _, part := range e.parts[node.ID()] {
+		e.holdProduct(part)
+	}
+}
+
 // spatialParent is the nearest spatial ancestor of node, and whether it has
 // one.
 //
-// The walk is up the containment chain rather than one step, because an
-// element may sit inside another element and IFC contains it in the storey
-// either way. It is bounded by the number of nodes, which is what stops a
+// The walk is up the containment chain rather than one step, because a
+// filling stands in the storey its host stands in, and a part reaches it
+// through its whole. It is bounded by the number of nodes, which is what stops a
 // containment cycle — a model which does not load, but this runs on models
 // which loaded with warnings too — turning into a hang.
 func (e *exporter) spatialParent(node *dfcad.SemanticNode) (dfcad.ID, bool) {
@@ -1196,6 +1285,16 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode, datum float64) []ifc.P
 			if placed, located := e.placed(node, datum); located {
 				product.Placement = placed
 			}
+
+			e.bodied[node.ID()] = swept(product.Representation)
+		}
+
+		// A part is placed from where its whole is placed from, because IFC
+		// places it relative to the same spatial element, so the datum it is
+		// drawn against is the whole's.
+		if parts := e.parts[node.ID()]; len(parts) > 0 {
+			product.Parts = e.contained(parts, datum)
+			product.Aggregates = e.identify(dfcad.ID("ifc/aggregates/" + node.ID()))
 		}
 
 		out = append(out, product)

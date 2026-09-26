@@ -294,6 +294,20 @@ type Type struct {
 	// case.
 	Classifications []ExternalClassification
 
+	// FillsOpening reports whether an instance written within an Element
+	// stands in an opening cut through that element rather than being a part
+	// of it, which is the registry's `(fills-opening #t)`.
+	//
+	// It is the one thing the containment hierarchy cannot say on its own. A
+	// `within` edge between two elements is physical enclosure either way, and
+	// what it does not say is whether the inner one is built out of the outer —
+	// a baluster of a railing — or set into a hole in it, which the outer one is
+	// then missing where the inner one stands. The engine interprets nothing
+	// here: it is a structural statement about two nodes of one kind, carried
+	// the way a geometry form is, and it holds whatever the type is called
+	// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
+	FillsOpening bool
+
 	// Invariants are the checks which apply to every instance.
 	Invariants []Invariant
 

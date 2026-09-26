@@ -17,7 +17,7 @@ to move.
   },
   "contracts": {
     "output": 2,
-    "entity-format": "1.2"
+    "entity-format": "1.3"
   }
 }
 ```
@@ -91,7 +91,7 @@ dfcad check --root model --entity-format 1.2
   stdout, and says so on stderr naming *both* versions:
 
   ```
-  dfcad check: model authored against entity format 1.3: this engine implements 1.2, which
+  dfcad check: model authored against entity format 1.4: this engine implements 1.3, which
   is older, so the model may hold forms this engine would report as unknown
   ```
 

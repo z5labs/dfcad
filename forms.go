@@ -448,6 +448,7 @@ var (
 			{tag: "geometry", arity: atLeast(1), form: args(exactly(1), "a geometry form or absent")},
 			{tag: "description", arity: exactly(1), form: args(exactly(1), "a string")},
 			{tag: "classification", arity: repeated, form: args(exactly(2), "a system and a code, both strings")},
+			{tag: "fills-opening", arity: atMost(1), form: args(exactly(1), "#t or #f"), omitted: "(fills-opening #f)"},
 			{tag: "invariant", arity: repeated, form: assertForm},
 		},
 	}
