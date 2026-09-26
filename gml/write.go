@@ -176,10 +176,14 @@ func checkFeature(feature Feature, written map[string]bool) error {
 	}
 
 	var kinds int
-	for _, held := range []int{len(feature.Surfaces), len(feature.Curves), len(feature.Points)} {
-		if held > 0 {
-			kinds++
-		}
+	if len(feature.Surfaces) > 0 {
+		kinds++
+	}
+	if len(feature.Curves) > 0 {
+		kinds++
+	}
+	if len(feature.Points) > 0 {
+		kinds++
 	}
 
 	switch {
