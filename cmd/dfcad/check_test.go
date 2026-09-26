@@ -77,7 +77,7 @@ const checkModel = `(node site:Z-01
   (label "Level 1 occupancy")
   (kind Zone)
   (type OccupancyZone)
-  (assert required-claim (predicate width)))
+  (assert zone-members-resolve))
 
 (node site:S-101
   (label "Meeting Room A")
@@ -99,7 +99,14 @@ const checkModel = `(node site:Z-01
   (kind Space)
   (type MeetingRoom)
   (geometry area)
-  (frame frame:building))
+  (frame frame:building)
+  (width
+    (id survey:W-0002)
+    (value 3.6 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-05-06")))
 
 (node site:C-01
   (label "Level 1 corridor")
@@ -133,7 +140,7 @@ const checkModel = `(node site:Z-01
   (label "Room A, north wall")
   (frame frame:building)
   (vertices geom:V-01 geom:V-02)
-  (assert required-claim (predicate position)))
+  (assert edge-endpoints-differ))
 `
 
 // ruled is the fixture tree the check command is run against.
@@ -260,10 +267,10 @@ func TestRunCheckListsWhatWouldRun(t *testing.T) {
 			"site:Z-01 within-resolves",
 			"site:S-101 required-claim (predicate width)",
 			"site:S-102 required-claim (predicate width)",
-			"site:Z-01 required-claim (predicate width)",
+			"site:Z-01 zone-members-resolve",
 			"site:S-101 boundary-loops-close (tolerance boundary-closure)",
 			"geom:V-01 required-claim (predicate position)",
-			"geom:E-01 required-claim (predicate position)",
+			"geom:E-01 edge-endpoints-differ",
 		}, rules(result))
 	})
 
@@ -303,6 +310,17 @@ func TestRunCheckListsWhatWouldRun(t *testing.T) {
 		}
 		assert.Equal(t, would, result.Summary.Runnable)
 	})
+
+	t.Run("lists no rule over a model which loaded as one which decides nothing", func(t *testing.T) {
+		// Every check the engine registers has an implementation, and an
+		// assertion on a thing its check cannot examine does not load. So over a
+		// model which loaded, every rule runs, and the gate's summary counts
+		// every one of them as decided.
+		for _, entry := range result.Checks {
+			assert.True(t, entry.Runs, "%s %s", entry.Subject, entry.Check)
+		}
+		assert.Equal(t, result.Summary.Checks, result.Summary.Runnable)
+	})
 }
 
 // TestRunCheckListsWhyARuleDecidesNothing is its own function because it is
@@ -338,13 +356,19 @@ func TestRunCheckListsWhyARuleDecidesNothing(t *testing.T) {
 	assert.False(t, inapplicable.Applicable)
 	assert.Equal(t, "does not apply to what it is written on", outcome(inapplicable))
 
-	// The rule beside it is one the engine has not implemented, which is a
-	// different answer and is fixed somewhere else.
-	unimplemented, ok := listedFor(result, "site:S-101", "required-claim")
+	// The rule beside it is one the engine implements, bound to a thing it can
+	// examine, which is the only other state a rule in a listing can be in:
+	// every check the engine registers has an implementation, so "declared,
+	// not implemented" is never the reason one decides nothing.
+	implemented, ok := listedFor(result, "site:S-101", "required-claim")
 	require.True(t, ok)
-	assert.False(t, unimplemented.Runs)
-	assert.True(t, unimplemented.Applicable)
-	assert.Equal(t, "declared, not implemented", outcome(unimplemented))
+	assert.True(t, implemented.Runs)
+	assert.True(t, implemented.Applicable)
+	assert.Equal(t, "would run", outcome(implemented))
+
+	for _, entry := range result.Checks {
+		assert.False(t, entry.Applicable && !entry.Runs, "%s %s is listed as deciding nothing", entry.Subject, entry.Check)
+	}
 }
 
 // listedFor is the listed rule which binds one check to one thing.
@@ -892,12 +916,11 @@ func TestCheckReportsWhatItFoundForAPerson(t *testing.T) {
 	assert.Empty(t, quiet)
 
 	// Asked to report itself, it says how the rules went and how long it took.
-	// One of the seven is a check the engine implements bound to a node with no
-	// outline, which passes; the other six name checks which declare themselves
-	// and decide nothing.
-	assert.Contains(t, human, "7 checks: 1 ran")
-	assert.Contains(t, human, "1 passed")
-	assert.Contains(t, human, "6 decided nothing")
+	// Every one of the seven names a check the engine implements, and the model
+	// satisfies them all.
+	assert.Contains(t, human, "7 checks: 7 ran")
+	assert.Contains(t, human, "7 passed")
+	assert.Contains(t, human, "0 decided nothing")
 
 	// Verbosity is progress rather than result, so it says how long the run
 	// took without saying what the run found.
@@ -936,4 +959,123 @@ func TestCheckRendersEveryViolationAsADiagnostic(t *testing.T) {
 	assert.Contains(t, rendered, "0.021 m")
 
 	assert.Empty(t, diagnose(nil))
+}
+
+// requiredClaimRegistry and requiredClaimModel are the reproduction the
+// required-claim story was filed with, as written: a type whose invariant
+// requires a width, over an instance which carries none, beside the three
+// parameterless checks written on things the load has already accepted.
+const requiredClaimRegistry = `(project
+  (label "required-claim repro")
+  (globalid-namespace "https://example.org/models/required-claim"))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type
+  FireZone
+  (kind Zone)
+  (geometry absent)
+  (description "A fire compartment."))
+(type
+  Level
+  (kind Storey)
+  (geometry absent)
+  (description "One storey of a building."))
+(type
+  MeetingRoom
+  (kind Space)
+  (geometry absent)
+  (description "An enclosed room used for meetings.")
+  (invariant required-claim (predicate width)))
+(predicate
+  position
+  (unit m)
+  (shape coordinate)
+  (dimension 2)
+  (description "The location of a thing in its frame."))
+(predicate width (unit m) (shape scalar) (description "How wide a room is."))
+(frame frame:building (label "Building local grid") (unit m))
+`
+
+const requiredClaimModel = `(node site:FZ-01 (label "Fire zone 1") (kind Zone) (type FireZone))
+(node site:L-01 (label "Level 1") (kind Storey) (type Level))
+; No width claim, under a type whose invariant requires one.
+(node
+  site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (within site:L-01)
+  (member-of site:FZ-01)
+  (assert within-resolves)
+  (assert zone-members-resolve))
+(vertex
+  geom:V-01
+  (frame frame:building)
+  (position
+    (value (0.0 0.0) m)
+    (source "Interior control set IC-01")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-09-25")))
+(vertex
+  geom:V-02
+  (frame frame:building)
+  (position
+    (value (4.0 0.0) m)
+    (source "Interior control set IC-01")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-09-25")))
+(edge
+  geom:E-01
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02)
+  (assert edge-endpoints-differ))
+`
+
+// TestRunCheckFailsAnInstanceMissingARequiredClaim is its own function because
+// it is the gate's answer over one model as a consumer's pipeline reads it: the
+// exit code, the summary and the violation, over the reproduction the story was
+// filed with.
+func TestRunCheckFailsAnInstanceMissingARequiredClaim(t *testing.T) {
+	files := map[string]string{
+		"registry.dfc": requiredClaimRegistry,
+		"model.dfc":    requiredClaimModel,
+	}
+
+	t.Run("fails the gate on the instance with no claim", func(t *testing.T) {
+		result, code, stderr := checked(t, files)
+
+		require.Equal(t, exitCheck, code, stderr)
+		assert.False(t, result.Refused)
+
+		assert.Equal(t, 4, result.Summary.Checks)
+		assert.Equal(t, result.Summary.Checks, result.Summary.Runnable, "no rule here decides nothing")
+		assert.Equal(t, 4, result.Summary.Ran)
+		assert.Equal(t, 3, result.Summary.Passed)
+		assert.Equal(t, 1, result.Summary.Failed)
+
+		require.Len(t, result.Violations, 1)
+		violation := result.Violations[0]
+		assert.Equal(t, dfcad.ID("site:S-102"), violation.Instance)
+		assert.Equal(t, "MeetingRoom", violation.Type)
+		assert.Equal(t, "required-claim", violation.Check)
+		assert.Equal(t, []string{"(predicate width)"}, violation.Arguments)
+		assert.Equal(t, "expected a claim under width on the subject, found none", violation.Message)
+		assert.Equal(t, "the type requires one of every instance; write the claim, or take the invariant off the type",
+			violation.Hint)
+	})
+
+	t.Run("lists every rule as one which runs", func(t *testing.T) {
+		result, code, stderr := checked(t, files, "--list")
+
+		require.Equal(t, exitSuccess, code, stderr)
+		require.Len(t, result.Checks, 4)
+		for _, entry := range result.Checks {
+			assert.True(t, entry.Runs, "%s %s", entry.Subject, entry.Check)
+			assert.True(t, entry.Applicable, "%s %s", entry.Subject, entry.Check)
+		}
+	})
 }

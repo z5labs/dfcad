@@ -52,6 +52,8 @@ A check which declares itself and has no implementation is bound, listed and run
 over, and decides nothing: it is counted apart from the ones which ran, because
 "this rule holds" and "nothing has been written to decide whether it holds" are
 different answers. --list is where that is read before a run rather than after.
+Every check this engine registers is implemented, so over a model which loads
+every rule runs, and a count of rules which decided nothing is a fault to report.
 
 How long the run took is written to stderr — with the summary under
 --format human, and on its own under -v in any format. It is not on stdout: the

@@ -6,7 +6,6 @@
 package dfcad
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -14,54 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// runnableRequiredClaim is the registered required-claim check with an
-// implementation of it.
-//
-// The checks the engine compiles in declare themselves and are implemented by
-// the story which writes the initial check set, so a test of what *running* an
-// invariant does has to bring its own. Registering a set of its own is how that
-// is done without reopening the closed registry: a set assembled here and the
-// one the engine compiles in are the same type, exercised the same way.
-type runnableRequiredClaim struct{ requiredClaim }
-
-// Run implements [Runner].
-func (runnableRequiredClaim) Run(subject CheckSubject) []Failure {
-	argument, ok := subject.Argument("predicate")
-	if !ok {
-		return nil
-	}
-
-	predicate, ok := argument.Symbol()
-	if !ok {
-		return nil
-	}
-
-	// The subject rather than the node, because required-claim declares all four
-	// forms and an assertion writes it on any of them: a vertex has no node to
-	// ask, and a check reading one would be answering about the wrong thing on
-	// the three quarters of its declared subjects which are not nodes.
-	for range subject.Graph().Claims().Under(subject.Subject().ID(), predicate) {
-		return nil
-	}
-
-	return []Failure{{
-		Message: fmt.Sprintf("expected a claim under %s on the subject, found none", predicate),
-		Hint:    "the type requires one of every instance; write the claim, or take the invariant off the type",
-	}}
-}
-
-// runnableWithinResolves is the registered within-resolves check with an
-// implementation which is satisfied by everything, which is what a test of an
-// invariant that passes needs.
-type runnableWithinResolves struct{ withinResolves }
-
-// Run implements [Runner].
-func (runnableWithinResolves) Run(CheckSubject) []Failure { return nil }
-
 // runnableChecks is the check set the run tests use: two checks which can be
 // run and one which declares itself and cannot.
+//
+// Every check the engine compiles in has an implementation, so the one which
+// cannot run is made here, by taking the implementation off a registered one.
 func runnableChecks() *checkSet {
-	return newCheckSet(runnableRequiredClaim{}, runnableWithinResolves{}, declaredOnly{boundaryLoopsClose{}})
+	return newCheckSet(requiredClaim{}, withinResolves{}, declaredOnly{boundaryLoopsClose{}})
 }
 
 // invariantFixture is the root of one fixture model whose types carry
@@ -284,7 +242,7 @@ func TestGraphCheckInvariantsQuiet(t *testing.T) {
 
 	// Every check runs and is satisfied, so a model whose instances are all in
 	// order produces no output rather than a line per check which passed.
-	set := newCheckSet(runnableWithinResolves{})
+	set := newCheckSet(withinResolves{})
 	assert.Empty(t, graph.checkInvariants(set))
 }
 

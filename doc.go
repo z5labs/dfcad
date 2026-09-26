@@ -190,10 +190,19 @@
 // zone it is to keep clear of, and that a measurement written down still matches
 // the shape it describes. Each takes its tolerance by name from the registry,
 // and each which measures is told which predicate carries a position, because
-// neither of those is the engine's to assume. A check the registry declares and
-// nothing implements binds, lists and validates exactly as one which does and
-// decides nothing, which [Rule.Runs] is how to tell apart — and "nothing decided
-// this" is a different answer from "this holds".
+// neither of those is the engine's to assume. Beside them are the rules about
+// what was said and whether what it names still stands: that a subject carries a
+// claim under a predicate which has not been retracted, that the node something
+// is within and the zones it belongs to have not been retired while it stands,
+// and that an edge's two ends are not one corner written twice. Each of those
+// decides something the load does not: the load checks that a reference names a
+// node of the right kind, and a retired node is still one.
+//
+// Every check the registry declares has an implementation. One which declared
+// itself and implemented nothing would bind, list and validate exactly as one
+// which does and decide nothing, which [Rule.Runs] is how to tell apart — and
+// "nothing decided this" is a different answer from "this holds", which is why
+// a test over the registry refuses to let the engine ship one.
 //
 // The last of them is the one the rest of the engine cannot state on its own.
 // The conflict register compares claims with each other and has nothing to say

@@ -305,7 +305,7 @@ func TestAssertionsBindToTheCheckRegistry(t *testing.T) {
 	assert.Equal(t, SubjectNode, bindings[1].Form)
 	assert.Equal(t, "required-claim", bindings[1].Check.Name)
 	assert.True(t, bindings[1].Applicable())
-	assert.False(t, bindings[1].Runnable(), "a check which declares itself and implements nothing does not run")
+	assert.True(t, bindings[1].Runnable(), "every check the engine registers has an implementation to run")
 	assert.Equal(t, "site:S-101 required-claim (predicate width)", bindings[1].String())
 
 	argument, ok := bindings[1].Argument("predicate")
@@ -566,8 +566,8 @@ func TestRunningTheAssertionsOfAModel(t *testing.T) {
 
 	set := newCheckSet(
 		declaredOnly{boundaryLoopsClose{}},
-		requiredClaim{},
-		withinResolves{},
+		declaredOnly{requiredClaim{}},
+		declaredOnly{withinResolves{}},
 		runnableEdgeEndpointsDiffer{},
 	)
 

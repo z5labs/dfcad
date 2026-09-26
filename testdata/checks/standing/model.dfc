@@ -1,0 +1,93 @@
+; References which resolve to nodes that stopped existing.
+;
+; Every one of these loads. The load checks that a `within` names a node the
+; hierarchy permits as a parent and that a `member-of` names a Zone, and a
+; retired node is still a node of its kind: retiring keeps the id in the graph so
+; that an old reference still resolves. What the load does not ask is whether
+; the node it resolves to is standing, which is what the two rules here decide.
+
+(node site:L-01 (label "Level 1") (kind Storey) (type Level))
+
+; Demolished, and replaced by the level which stands where it was.
+(node site:L-02
+  (label "Level 2, as first built")
+  (kind Storey)
+  (type Level)
+  (retired
+    (date "2026-06-01")
+    (reason "Demolished in the refurbishment.")
+    (superseded-by site:L-01)))
+
+; Demolished, and nothing replaced it.
+(node site:L-03
+  (label "Mezzanine")
+  (kind Storey)
+  (type Level)
+  (retired
+    (date "2026-06-01")
+    (reason "Removed in the refurbishment.")))
+
+(node site:FZ-01 (label "Fire zone 1") (kind Zone) (type FireZone))
+
+(node site:FZ-02
+  (label "Fire zone 2")
+  (kind Zone)
+  (type FireZone)
+  (retired
+    (date "2026-07-14")
+    (reason "Merged into fire zone 1.")
+    (superseded-by site:FZ-01)))
+
+(node site:FZ-03
+  (label "Fire zone 3")
+  (kind Zone)
+  (type FireZone)
+  (retired
+    (date "2026-07-14")
+    (reason "Compartment removed.")))
+
+; Standing, within a standing storey, a member of a standing zone: satisfied.
+(node site:S-101
+  (label "Meeting Room A")
+  (kind Space)
+  (type Room)
+  (within site:L-01)
+  (member-of site:FZ-01))
+
+; Standing, within a storey which was replaced, and a member of two zones which
+; were each retired: both rules fail, and the second fails once per zone.
+(node site:S-102
+  (label "Meeting Room B")
+  (kind Space)
+  (type Room)
+  (within site:L-02)
+  (member-of site:FZ-01)
+  (member-of site:FZ-02)
+  (member-of site:FZ-03))
+
+; Standing, within a storey nothing replaced.
+(node site:S-103
+  (label "Mezzanine office")
+  (kind Space)
+  (type Room)
+  (within site:L-03))
+
+; Retired along with the storey it was in: the record of where it stood, and
+; satisfied.
+(node site:S-104
+  (label "Mezzanine store")
+  (kind Space)
+  (type Room)
+  (within site:L-03)
+  (member-of site:FZ-03)
+  (retired
+    (date "2026-06-01")
+    (reason "Removed with the mezzanine.")))
+
+; The rule written on the thing rather than by its type.
+(node site:S-105
+  (label "Plant room")
+  (kind Space)
+  (type PlantRoom)
+  (within site:L-02)
+  (assert within-resolves))

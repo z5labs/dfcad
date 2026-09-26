@@ -172,7 +172,9 @@ func TestRulesRunOfNothing(t *testing.T) {
 
 	// A set in which nothing is implemented binds every rule and runs none, so
 	// the model is neither reported sound nor reported broken.
-	declared := graph.rules(newCheckSet(requiredClaim{}, withinResolves{}, declaredOnly{boundaryLoopsClose{}})).Run()
+	declared := graph.rules(newCheckSet(
+		declaredOnly{requiredClaim{}}, declaredOnly{withinResolves{}}, declaredOnly{boundaryLoopsClose{}},
+	)).Run()
 	assert.Equal(t, 7, declared.Rules)
 	assert.Zero(t, declared.Ran)
 	assert.Zero(t, declared.Passed)
