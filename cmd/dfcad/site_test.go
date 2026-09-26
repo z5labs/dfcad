@@ -406,3 +406,186 @@ func TestRunSiteRefusesHalfTheArcVocabulary(t *testing.T) {
 
 	assert.Contains(t, stderr, "--arc-centre")
 }
+
+// setBack is siting with the envelope's setbacks taken off it: the question a
+// plot is usually asked, which is not whether a room fits on it but whether it
+// fits what the plot allows.
+func setBack(args ...string) []string {
+	return siting(append([]string{"--setback", "setback"}, args...)...)
+}
+
+// TestRunSiteInsideWhatTheSetbacksLeave is its own function because the object
+// it asserts about carries fields a fit against the outline does not.
+func TestRunSiteInsideWhatTheSetbacksLeave(t *testing.T) {
+	root := tree(t, model())
+
+	stdout, _ := invoke(t, exitSuccess, root, setBack("site:S-103")...)
+	result := listed[siteResult](t, stdout)
+
+	require.True(t, result.Sited)
+
+	// Three metres inside the plot, and two metres into the five the consent
+	// keeps clear of the road: inside the outline and outside what it allows.
+	assert.Equal(t, "does-not-fit", result.Verdict)
+	assert.True(t, result.Decided)
+	require.NotNil(t, result.Clearance)
+	assert.InDelta(t, -2.0, result.Clearance.Actual, 0.001)
+	assert.True(t, result.Carried, "the room is on the site grid and the plot on the building's")
+
+	// The envelope is what the setbacks leave, and the plot it was derived from
+	// comes back beside it: twenty by twelve, less five, three and two and two.
+	require.NotNil(t, result.Parcel)
+	require.NotNil(t, result.Envelope)
+	assert.InDelta(t, 240.0, result.Parcel.Area, 0.25)
+	assert.InDelta(t, 64.0, result.Envelope.Area, 0.25)
+	assert.False(t, result.Envelope.Empty)
+	assert.NotEmpty(t, result.Parcel.Boundary, "the plot is read from the model, so its runs name their edges")
+
+	// Which setbacks were applied, each off the edge which claims it.
+	require.Len(t, result.Setbacks, 4)
+	for i, expected := range []struct {
+		edge     string
+		distance float64
+	}{
+		{"geom:E-11", 5}, {"geom:E-12", 2}, {"geom:E-13", 3}, {"geom:E-14", 2},
+	} {
+		assert.Equal(t, expected.edge, result.Setbacks[i].Edge)
+		assert.Equal(t, expected.distance, result.Setbacks[i].Distance)
+		assert.Contains(t, result.Setbacks[i].Source, "Planning consent PC-2026-014")
+	}
+
+	// One budget, over the setback claims as well as both sets of corners and
+	// the georeference.
+	require.NotNil(t, result.Budget)
+	var setbackTerms int
+	for _, term := range result.Budget.Terms {
+		if strings.HasPrefix(term.Name, "the setback of ") {
+			setbackTerms++
+		}
+	}
+	assert.Equal(t, 4, setbackTerms)
+	require.NotNil(t, result.Clearance.Uncertainty)
+	assert.Equal(t, result.Budget.Combined.Magnitude, result.Clearance.Uncertainty.Magnitude)
+
+	digest, err := dfcad.DigestOf(root)
+	require.NoError(t, err)
+	assert.Equal(t, digest.String(), result.Digest)
+}
+
+// TestRunSiteInsideWhatTheSetbacksLeaveFollowsTheClaim is its own function
+// because it asserts about two runs over two trees: moving one setback moves
+// the answer and the digest it is keyed by, and nothing else.
+func TestRunSiteInsideWhatTheSetbacksLeaveFollowsTheClaim(t *testing.T) {
+	stdout, _ := invoke(t, exitSuccess, tree(t, model()), setBack("site:S-103")...)
+	before := listed[siteResult](t, stdout)
+
+	moved := model()
+	moved["entities/geometry.dfc"] = strings.Replace(
+		moved["entities/geometry.dfc"], "(value 5.0 m)", "(value 4.0 m)", 1)
+
+	stdout, _ = invoke(t, exitSuccess, tree(t, moved), setBack("site:S-103")...)
+	after := listed[siteResult](t, stdout)
+
+	assert.NotEqual(t, before.Digest, after.Digest)
+	require.NotNil(t, after.Clearance)
+	assert.InDelta(t, -1.0, after.Clearance.Actual, 0.001, "a metre less frontage is a metre less deficit")
+	assert.InDelta(t, before.Parcel.Area, after.Parcel.Area, 0.25, "and the plot itself did not move")
+
+	// The same tree asked twice is the same bytes, which is what makes the
+	// digest a key rather than a label.
+	root := tree(t, model())
+	first, _ := invoke(t, exitSuccess, root, setBack("site:S-103")...)
+	again, _ := invoke(t, exitSuccess, root, setBack("site:S-103")...)
+	assert.Equal(t, first, again)
+	assert.Equal(t, before.Digest, listed[siteResult](t, again).Digest)
+}
+
+// TestRunSiteWhenTheSetbacksLeaveNothing is its own function because the answer
+// carries no clearance, which is a different set of assertions from a fit with
+// one.
+func TestRunSiteWhenTheSetbacksLeaveNothing(t *testing.T) {
+	consumed := model()
+	consumed["entities/geometry.dfc"] = strings.Replace(
+		consumed["entities/geometry.dfc"], "(value 5.0 m)", "(value 10.0 m)", 1)
+
+	stdout, stderr := invoke(t, exitSuccess, tree(t, consumed), setBack("--format", "human", "site:S-103")...)
+	result := listed[siteResult](t, stdout)
+
+	assert.True(t, result.Sited, "nothing fits an empty region, which is an answer")
+	assert.Equal(t, "does-not-fit", result.Verdict)
+	assert.True(t, result.Decided)
+
+	require.NotNil(t, result.Envelope)
+	assert.True(t, result.Envelope.Empty, "the answer says the region was empty")
+	assert.Nil(t, result.Clearance, "there is no boundary to measure a clearance to")
+	assert.Len(t, result.Setbacks, 4)
+
+	assert.Contains(t, stderr, "leave nothing buildable")
+	assert.Contains(t, stderr, "site:S-103 in what the setbacks of site:P-01 leave buildable: does-not-fit")
+}
+
+// TestRunSiteInsideWhatTheSetbacksLeaveRefusals is its own function because
+// every case in it comes back with no answer at all.
+func TestRunSiteInsideWhatTheSetbacksLeaveRefusals(t *testing.T) {
+	testCases := []struct {
+		name             string
+		edit             func(map[string]string)
+		args             []string
+		expectedInStderr []string
+	}{
+		{
+			name: "names the edge a setback was needed for rather than reading the silence as nought",
+			edit: func(files map[string]string) {
+				files["entities/geometry.dfc"] = strings.Replace(
+					files["entities/geometry.dfc"], `(setback
+    (value 3.0 m)
+    (source "Planning consent PC-2026-014, condition 3")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02"))`, "", 1)
+			},
+			args:             setBack("site:S-103"),
+			expectedInStderr: []string{"geom:E-13", "found none on"},
+		},
+		{
+			name:             "names every edge a predicate nobody claims leaves unset",
+			edit:             func(map[string]string) {},
+			args:             siting("--setback", "frontage", "site:S-103"),
+			expectedInStderr: []string{"geom:E-11", "geom:E-12", "geom:E-13", "geom:E-14"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			files := model()
+			testCase.edit(files)
+
+			stdout, stderr := invoke(t, exitCheck, tree(t, files), testCase.args...)
+
+			for _, expected := range testCase.expectedInStderr {
+				assert.Contains(t, stderr, expected)
+			}
+
+			result := listed[siteResult](t, stdout)
+			assert.False(t, result.Sited)
+			assert.Empty(t, result.Verdict)
+			assert.Nil(t, result.Clearance)
+			assert.Empty(t, result.Setbacks)
+		})
+	}
+}
+
+// TestRunSiteWithoutSetbacksWritesNoSetbackFields is its own function because it
+// asserts about the bytes: a run which named no setback predicate is the run it
+// always was, and a key it never wrote is not one it starts writing.
+func TestRunSiteWithoutSetbacksWritesNoSetbackFields(t *testing.T) {
+	for _, args := range [][]string{
+		siting("site:S-103"),
+		siting("--clearance", "1", "site:S-103"),
+	} {
+		stdout, _ := invoke(t, exitSuccess, tree(t, model()), args...)
+
+		assert.NotContains(t, stdout, `"setbacks"`)
+		assert.NotContains(t, stdout, `"parcel"`)
+	}
+}

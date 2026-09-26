@@ -86,6 +86,28 @@ type Siting struct {
 	// is no default beyond nought, and a negative distance is refused — a
 	// requirement to overhang the boundary is not a requirement.
 	Clearance float64
+
+	// Setbacks, where it is given, takes the setback claimed on each edge of
+	// the envelope off it before anything is compared, so that the proposal is
+	// sited inside what the envelope's setbacks leave buildable rather than
+	// inside its outline.
+	//
+	// The region is derived exactly as [Topology.BuildableOf] derives it, from
+	// the same reading of the envelope's outline, and is never authored
+	// ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)):
+	// a buildable area written down as a polygon of its own is a second
+	// statement of where a permanent structure may go. Deriving it inside the
+	// query rather than beside it is what puts the setback claims and the
+	// envelope's corners in the same budget as the proposal's corners and the
+	// transforms, so a term they share is counted once rather than once per
+	// answer.
+	//
+	// The zero Setbacks is the ordinary case and sites inside the outline, as
+	// a run given no setbacks always has. [Siting.Clearance] is kept inside the
+	// region the setbacks leave, and is one distance on top of them rather than
+	// a substitute for them: a clearance is the same on every edge, and
+	// setbacks are what differ from one edge to the next.
+	Setbacks Setbacks
 }
 
 // Fit is the answer to whether one thing sits inside another: the clearance
@@ -166,14 +188,39 @@ type Fit struct {
 	// verdict is what the clearance makes of the question once its own
 	// uncertainty is taken into account.
 	verdict Verdict
+
+	// buildable is the derivation the envelope was, where the siting took the
+	// envelope's setbacks off its outline, and setBack whether it did.
+	buildable Buildable
+	setBack   bool
 }
 
 // Subject returns the id of the node which was sited.
 func (f Fit) Subject() ID { return f.proposal.Subject() }
 
-// Envelope returns the region the proposal had to sit inside, as the model
-// holds it.
+// Envelope returns the region the proposal had to sit inside.
+//
+// It is the envelope's outline as the model holds it, or — where the siting
+// took the envelope's setbacks off it — what those setbacks leave buildable,
+// which [Fit.Buildable] carries the derivation of.
 func (f Fit) Envelope() Region { return f.envelope }
+
+// Buildable returns the derivation the envelope was, and whether the siting
+// took the envelope's setbacks off it at all.
+//
+// It is what says which setback claim moved which edge, and what the outline
+// was before they did. The zero [Buildable] and false come back for a fit
+// which sited inside the outline itself.
+func (f Fit) Buildable() (Buildable, bool) { return f.buildable, f.setBack }
+
+// Consumed reports whether the envelope's setbacks left nothing buildable.
+//
+// Nothing fits inside a region which covers nothing, so a consumed envelope is
+// [VerdictDoesNotFit] whatever the proposal and however well anything is known.
+// There is then no boundary to measure a room to, so [Fit.Clearance] is nought
+// and means nothing; this is what says so, rather than a clearance a caller
+// would have to recognise as a sentinel.
+func (f Fit) Consumed() bool { return f.setBack && f.envelope.Empty() }
 
 // Proposal returns the thing which was sited, expressed in the envelope's
 // frame.
@@ -259,7 +306,9 @@ func (f Fit) Clearance() float64 { return f.clearance }
 // [Fit.Clearance] less [Fit.Required].
 //
 // It is the quantity the verdict is decided on, and it reduces to the clearance
-// itself where nothing beyond fitting at all was required.
+// itself where nothing beyond fitting at all was required. The one verdict not
+// decided on it is a [Fit.Consumed] envelope's, which is decided by there being
+// nothing to fit inside.
 func (f Fit) Margin() float64 { return f.clearance - f.required }
 
 // Budget returns the accumulated accuracy of everything the answer was computed
@@ -290,8 +339,13 @@ func (f Fit) String() string {
 		return "nothing was sited"
 	}
 
+	if f.Consumed() {
+		return fmt.Sprintf("%s in %s: %s, the setbacks leave nothing buildable",
+			sitedName(f.proposal), f.within(), f.verdict)
+	}
+
 	written := fmt.Sprintf("%s in %s: %s, clearance %s%s",
-		sitedName(f.proposal), sitedName(f.envelope), f.verdict,
+		sitedName(f.proposal), f.within(), f.verdict,
 		decimal(f.clearance), unitSuffix(f.Unit()),
 	)
 
@@ -320,6 +374,11 @@ func (f Fit) Report() string {
 	var out strings.Builder
 
 	out.WriteString(f.String())
+
+	for _, setback := range f.buildable.setbacks {
+		out.WriteString("\n  setback ")
+		out.WriteString(setback.String())
+	}
 
 	for _, term := range f.budget.Terms() {
 		fmt.Fprintf(&out, "\n  %s %s: %s%s from %s",
@@ -360,6 +419,18 @@ func (f Fit) Report() string {
 // none was applied. That is the difference the whole arrangement is about: a
 // cross-frame answer costs what the georeference costs, and it says so.
 //
+// Where [Siting.Setbacks] is given, what the proposal is sited inside is not the
+// envelope's outline but what the setback claimed on each of its edges leaves
+// buildable, derived as [Topology.BuildableOf] derives it and refused as it
+// refuses: an edge with no live setback claim is a diagnostic naming that edge,
+// never a setback of nought. The budget then carries the setback claims and the
+// envelope's corners beside the proposal's corners and the transforms, in one
+// budget — a control point behind the boundary survey and the georeference
+// alike is counted once, where combining the answers of `buildable` and of a
+// fit against the outline would count it twice. Setbacks which leave nothing
+// buildable are answered rather than refused: nothing fits inside a region
+// which covers nothing, and [Fit.Consumed] says that was why.
+//
 // The two nodes may be the same node, which fits inside itself with a clearance
 // of nought — an answer rather than a mistake, and one whose uncertainty is the
 // accuracy of its own corners.
@@ -390,6 +461,24 @@ func (t *Topology) FitWithin(
 		return Fit{}, append(diags, overhanging(within, siting.Clearance))
 	}
 
+	// The setbacks are taken off the outline which was just read rather than off
+	// a second reading of it, so the region the proposal is sited inside is the
+	// one [Topology.BuildableOf] would derive and nothing wrong with the outline
+	// is reported twice.
+	var derivation Buildable
+	setBack := siting.Setbacks != (Setbacks{})
+	if setBack {
+		var found []Diagnostic
+		derivation, found = within.buildable(t, siting.Setbacks)
+		diags = append(diags, found...)
+
+		if !derivation.boundary.ready {
+			return Fit{}, diags
+		}
+
+		within = derivation.region
+	}
+
 	carried := sited
 	if sited.frame != within.frame {
 		var refused []Diagnostic
@@ -404,6 +493,30 @@ func (t *Topology) FitWithin(
 		if needed, refused = carried.Buffer(siting.Clearance); len(refused) > 0 {
 			return Fit{}, append(diags, refused...)
 		}
+	}
+
+	// Setbacks which meet in the middle leave nothing to fit inside. That is an
+	// answer and not a refusal — the warning [Topology.BuildableOf] writes for it
+	// is already among the diagnostics — and it is decided by the emptiness
+	// rather than by a margin, because there is no boundary to measure one to.
+	if within.Empty() {
+		result := Fit{
+			declared:  sited.frame,
+			proposal:  carried,
+			envelope:  within,
+			needed:    needed,
+			shared:    within,
+			spill:     needed,
+			required:  siting.Clearance,
+			verdict:   VerdictDoesNotFit,
+			buildable: derivation,
+			setBack:   setBack,
+		}
+		result.chord, result.deviation = drawnOf(within, sited)
+		result.budget.Merge(carried.budget)
+		result.budget.Merge(within.budget)
+
+		return result, diags
 	}
 
 	spill, refused := needed.Difference(within)
@@ -437,17 +550,11 @@ func (t *Topology) FitWithin(
 		spill:     spill,
 		required:  siting.Clearance,
 		clearance: clearanceOf(carried, within, shared, beyond),
+		buildable: derivation,
+		setBack:   setBack,
 	}
 
-	// The tolerance the outlines were drawn to, taken from whichever of them
-	// bent, and the worst deviation either of them achieved. Both were read
-	// from one survey, so a run which drew either drew both to the same name.
-	if tolerance, drawn := within.ChordTolerance(); drawn {
-		result.chord = tolerance
-	} else if tolerance, drawn := sited.ChordTolerance(); drawn {
-		result.chord = tolerance
-	}
-	result.deviation = math.Max(within.Deviation(), sited.Deviation())
+	result.chord, result.deviation = drawnOf(within, sited)
 
 	result.budget.Merge(carried.budget)
 	result.budget.Merge(within.budget)
@@ -459,6 +566,35 @@ func (t *Topology) FitWithin(
 	}
 
 	return result, diags
+}
+
+// drawnOf is the tolerance the two outlines of a fit were drawn to, taken from
+// whichever of them bent, and the worst deviation either of them achieved.
+//
+// Both were read from one survey, so a run which drew either drew both to the
+// same name.
+func drawnOf(within, sited Region) (Tolerance, float64) {
+	var chord Tolerance
+	if tolerance, drawn := within.ChordTolerance(); drawn {
+		chord = tolerance
+	} else if tolerance, drawn := sited.ChordTolerance(); drawn {
+		chord = tolerance
+	}
+
+	return chord, math.Max(within.Deviation(), sited.Deviation())
+}
+
+// within is how a fit names what the proposal had to sit inside.
+//
+// It is the envelope's node where the proposal was sited inside its outline,
+// and says so where it was sited inside what the envelope's setbacks leave:
+// "does-not-fit in site:P-01" of a footprint wholly inside the plot would be
+// read as a statement about the plot.
+func (f Fit) within() string {
+	if f.setBack {
+		return fmt.Sprintf("what the setbacks of %s leave buildable", sitedName(f.envelope))
+	}
+	return sitedName(f.envelope)
 }
 
 // unsitable reports a region there is no figure to site or to site inside.
@@ -511,7 +647,7 @@ func (f Fit) decide() (Verdict, Diagnostic, bool) {
 			Span:     f.proposal.span,
 			Message: fmt.Sprintf(
 				"whether %s fits inside %s cannot be decided: %s",
-				sitedName(f.proposal), sitedName(f.envelope), err,
+				sitedName(f.proposal), f.within(), err,
 			),
 			Hint: "a clearance is a fit only against the uncertainty of the clearance; the margin is still reported, " +
 				"and what it is worth follows from the accuracy of the claims behind it",
@@ -528,7 +664,7 @@ func (f Fit) decide() (Verdict, Diagnostic, bool) {
 			Span:     f.proposal.span,
 			Message: fmt.Sprintf(
 				"whether %s fits inside %s cannot be decided: the clearance is in %s and its uncertainty is %s",
-				sitedName(f.proposal), sitedName(f.envelope), spellUnit(f.envelope.unit), combined,
+				sitedName(f.proposal), f.within(), spellUnit(f.envelope.unit), combined,
 			),
 			Hint: "nothing here converts between units: a margin in metres judged against an uncertainty in " +
 				"millimetres is out by a thousand, and the answer would look like a verdict either way",
@@ -553,7 +689,7 @@ func (f Fit) decide() (Verdict, Diagnostic, bool) {
 		Span:     f.proposal.span,
 		Message: fmt.Sprintf(
 			"%s might fit inside %s: a margin of %s%s against an uncertainty of %s",
-			sitedName(f.proposal), sitedName(f.envelope),
+			sitedName(f.proposal), f.within(),
 			decimal(margin), unitSuffix(f.envelope.unit), combined,
 		),
 		Hint: "the margin is inside the uncertainty of the answer, so the model cannot tell; re-measuring whatever " +

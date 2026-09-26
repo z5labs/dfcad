@@ -1359,7 +1359,7 @@ offsetting each edge on its own produces when the offsets cross over each other.
 ### `site`
 
 Whether one thing fits inside another, across whatever frames the two are declared in, and
-how well that answer is known. It takes the id of the subject and four flags.
+how well that answer is known. It takes the id of the subject and five flags.
 
 | Flag | Meaning |
 |------|---------|
@@ -1367,6 +1367,7 @@ how well that answer is known. It takes the id of the subject and four flags.
 | `--position <predicate>` | The predicate a corner's position is claimed under, which both outlines are read from. Required. |
 | `--tolerance <name>` | The tolerance corners are judged coincident against and rounded corners are drawn to. Required. |
 | `--clearance <distance>` | How much room the subject has to keep between itself and the envelope's boundary, in the linear unit of the envelope's frame. Default `0`, which is "inside it at all". |
+| `--setback <predicate>` | The predicate an edge's setback distance is claimed under. Given, the subject is sited inside what the envelope's setbacks leave buildable rather than inside its outline. No default: without it the subject is sited inside the outline, exactly as before the flag existed. |
 
 The subject is read out of the corners surveyed in its own frame, carried into the envelope's
 frame across the transform claims which relate the two, grown by the required clearance,
@@ -1384,6 +1385,18 @@ well. Combining everything in quadrature reports a narrower answer than the evid
 supports, which is the direction nobody investigates.
 [The worked example](siting-worked-example.md) runs one query end to end, from the claims
 involved to the final budget.
+
+**`--setback` sites inside what the plot allows rather than inside the plot.** The setback
+claimed on each edge of the envelope is taken off that edge exactly as
+[`buildable`](#buildable) takes it off, and the subject is sited inside what is left. The
+region is derived and never authored
+([0009](decisions/0009-derived-values-are-never-written-back.md)), and it is derived inside
+this query rather than beside it, so one budget carries the setback claims and the envelope's
+corners beside the subject's corners and the transforms. A systematic term they share — a
+control point behind the boundary survey and the georeference alike — is counted once. Taking
+`budget.combined` from a `buildable` answer and from a `site` answer against the outline and
+combining the two counts it, and the envelope's corners, twice. `--clearance` is kept on top
+of the setbacks rather than instead of them.
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -1408,7 +1421,9 @@ involved to the final budget.
 | `needed` | object, optional | The proposal grown by the required clearance, which is the shape the envelope had to accommodate. The proposal itself where nothing beyond fitting at all was required. |
 | `shared` | object, optional | What the two have in common. |
 | `spill` | object, optional | What the proposal needs and the envelope does not offer. Where a refusal points: a fit answered only by "no" leaves somebody to work out which corner is over the line. |
-| `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims behind both outlines and the transform claims of every frame the subject was carried through. Same shape as [`budget`](#budget), without `from` and `to`. |
+| `parcel` | object, optional | The envelope's outline as the model holds it, which the setbacks were taken off. Same shape as `buildable`'s `parcel`. Written only where `--setback` was given, so a run without it is the same bytes it always was; `envelope` is then what the setbacks leave, and carries no `boundary` because an operation produced it. |
+| `setbacks` | array, optional | The setbacks which were applied, one per edge of the envelope in the order its loops traverse them. Same shape as `buildable`'s `setbacks[]`: `edge`, `distance`, `unit`, `claim`, `source`, `span`. Written only where `--setback` was given. |
+| `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims behind both outlines, the setback claims where `--setback` was given, and the transform claims of every frame the subject was carried through. Same shape as [`budget`](#budget), without `from` and `to`. |
 
 The four verdicts are four different situations and are never rounded into two. A clearance
 of forty millimetres is a comfortable fit where the answer is known to five and no answer at
@@ -1422,7 +1437,16 @@ A subject which does not fit is **exit `0`**: the command answered, and the answ
 is one whose verdict is withheld, with a warning on stderr saying which of the two reasons it
 was. **Exit `1`** is a question which could not be answered — an outline which could not be
 read, two frames with no measured chain between them, a clearance shorter than the tolerance,
-a clearance written as a distance outwards. The object still comes back with `sited` false.
+a clearance written as a distance outwards — and, under `--setback`, an edge of the envelope
+with no live setback claim, which is a diagnostic naming that edge and never a setback of
+nought, and every other setback `buildable` refuses. The object still comes back with `sited`
+false.
+
+Setbacks which leave nothing buildable are **exit `0`**: nothing fits an empty region, so the
+verdict is `does-not-fit` and `decided` is true, `envelope.empty` is true, and a warning on
+stderr says which parcel its own setbacks consumed. `clearance` is **absent**, because there
+is no boundary to measure a room to and a clearance of nought would read as a subject touching
+one. That is the answer to the question rather than a failure to answer it.
 
 ### `plan`
 

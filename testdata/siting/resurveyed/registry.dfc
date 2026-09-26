@@ -34,6 +34,7 @@
   (globalid-namespace "https://example.org/models/siting"))
 
 (namespace control (description "Survey control the measurements are tied to."))
+(namespace consent (description "Claim ids issued by the planning authority."))
 (namespace frame (description "Coordinate frames declared by this model."))
 (namespace geom (description "Geometric nodes minted by this model."))
 (namespace method (description "Measurement methods used on this project."))
@@ -45,6 +46,11 @@
   (shape coordinate)
   (dimension 3)
   (description "The location of a vertex in its frame."))
+
+(predicate setback
+  (unit m)
+  (shape scalar)
+  (description "How far back from an edge of a plot a permanent structure has to stand."))
 
 (predicate frame-transform
   (shape transform)
@@ -95,10 +101,10 @@
     (method method:estimate)
     (date "2026-04-30")))
 
-(type BuildableArea
+(type Plot
   (kind Site)
   (geometry area)
-  (description "The part of a plot a permanent structure may stand on."))
+  (description "A parcel of land, with the setback its consent requires claimed on each of its edges."))
 
 (type Footprint
   (kind Building)

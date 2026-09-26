@@ -196,7 +196,7 @@ func TestFitWithin(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			answer, diags := sited(t).fit(t, testCase.proposal, "plan:B-01", testCase.clearance)
+			answer, diags := sited(t).fit(t, testCase.proposal, "plan:P-01", testCase.clearance)
 
 			assert.Empty(t, sitingErrors(diags), "a fit which was computed reports no error")
 
@@ -232,7 +232,7 @@ func sitingErrors(diags []Diagnostic) []string {
 // georeference residual is one error reached from both sides of the comparison,
 // and what makes the budget honest is that it appears in the sum exactly once.
 func TestFitWithinCountsTheSharedTermOnce(t *testing.T) {
-	answer, _ := sited(t).fit(t, "plan:S-01", "plan:B-01", 0)
+	answer, _ := sited(t).fit(t, "plan:S-01", "plan:P-01", 0)
 
 	budget := answer.Budget()
 
@@ -300,7 +300,7 @@ func claimIDs(claims []*Claim) []string {
 // somebody acts on is wrong — narrower than the truth, which is the direction
 // nobody investigates.
 func TestFitWithinIsNotQuadrature(t *testing.T) {
-	answer, _ := sited(t).fit(t, "plan:S-01", "plan:B-01", 0)
+	answer, _ := sited(t).fit(t, "plan:S-01", "plan:P-01", 0)
 
 	budget := answer.Budget()
 
@@ -336,8 +336,8 @@ func TestFitWithinFollowsAMoreAccurateClaim(t *testing.T) {
 
 	require.Equal(t, string(before), string(after), "the two fixtures differ only in the georeference")
 
-	original, _ := sited(t).fit(t, "plan:S-01", "plan:B-01", 0)
-	refitted, _ := resited(t).fit(t, "plan:S-01", "plan:B-01", 0)
+	original, _ := sited(t).fit(t, "plan:S-01", "plan:P-01", 0)
+	refitted, _ := resited(t).fit(t, "plan:S-01", "plan:P-01", 0)
 
 	// The answer moves: the building lands twenty millimetres further from the
 	// edge it was tightest against.
@@ -379,7 +379,7 @@ func TestFitWithinFollowsAMoreAccurateClaim(t *testing.T) {
 // answer is as good as the positions and no worse. A budget which carried a
 // transform term anyway would be charging for a measurement nothing read.
 func TestFitWithinInOneFrameReadsNoTransform(t *testing.T) {
-	answer, diags := sited(t).fit(t, "plan:B-01", "plan:B-01", 0)
+	answer, diags := sited(t).fit(t, "plan:P-01", "plan:P-01", 0)
 
 	assert.Empty(t, sitingErrors(diags))
 	assert.False(t, answer.Carried(), "both sides are on the site grid")
@@ -400,7 +400,7 @@ func TestFitWithinInOneFrameReadsNoTransform(t *testing.T) {
 // asserts about the shape a requirement produces rather than about the number
 // it decides.
 func TestFitWithinComposesTheRequiredClearance(t *testing.T) {
-	answer, diags := sited(t).fit(t, "plan:S-01", "plan:B-01", 4.5)
+	answer, diags := sited(t).fit(t, "plan:S-01", "plan:P-01", 4.5)
 
 	assert.Empty(t, sitingErrors(diags))
 
@@ -435,7 +435,7 @@ func TestFitWithinRefusals(t *testing.T) {
 			name:            "refuses a clearance written as a distance outwards",
 			clearance:       -1,
 			frames:          true,
-			expectedMessage: "expected the clearance to keep inside plan:B-01 to be a distance, found -1.0 m",
+			expectedMessage: "expected the clearance to keep inside plan:P-01 to be a distance, found -1.0 m",
 		},
 		{
 			name:            "refuses a clearance shorter than the tolerance corners are judged against",
@@ -457,7 +457,7 @@ func TestFitWithinRefusals(t *testing.T) {
 			proposal, ok := model.nodes.Node("plan:S-01")
 			require.True(t, ok)
 
-			envelope, ok := model.nodes.Node("plan:B-01")
+			envelope, ok := model.nodes.Node("plan:P-01")
 			require.True(t, ok)
 
 			siting := Siting{Clearance: testCase.clearance}
@@ -478,9 +478,9 @@ func TestFitWithinRefusals(t *testing.T) {
 // TestFitReportsWhatItWasComputedFrom is its own function because it asserts
 // about a rendering rather than about a number.
 func TestFitReportsWhatItWasComputedFrom(t *testing.T) {
-	answer, _ := sited(t).fit(t, "plan:S-01", "plan:B-01", 0)
+	answer, _ := sited(t).fit(t, "plan:S-01", "plan:P-01", 0)
 
-	assert.Contains(t, answer.String(), "plan:S-01 in plan:B-01: fits")
+	assert.Contains(t, answer.String(), "plan:S-01 in plan:P-01: fits")
 	assert.Contains(t, answer.String(), "clearance 4.0 m")
 	assert.Contains(t, answer.String(), "k = 1")
 
@@ -518,7 +518,7 @@ func TestVerdictSaysWhetherItDecided(t *testing.T) {
 // asserts about an answer which was computed and cannot be judged, which is a
 // third outcome beside fitting and not fitting.
 func TestFitWithinWithoutAnAccuracyIsUndecided(t *testing.T) {
-	answer, diags := sited(t).fit(t, "plan:S-05", "plan:B-01", 0)
+	answer, diags := sited(t).fit(t, "plan:S-05", "plan:P-01", 0)
 
 	assert.Empty(t, sitingErrors(diags), "the clearance was computed; only the verdict is withheld")
 
@@ -540,6 +540,302 @@ func TestFitWithinWithoutAnAccuracyIsUndecided(t *testing.T) {
 	assert.Contains(t, answer.Report(), "unstated accuracy: survey:C-0002")
 
 	assert.Contains(t, diagnosticMessages(diags),
-		"whether plan:S-05 fits inside plan:B-01 cannot be decided: expected an accuracy on every claim the answer "+
+		"whether plan:S-05 fits inside plan:P-01 cannot be decided: expected an accuracy on every claim the answer "+
 			"was computed from, found 1 with none: an unstated accuracy is unknown rather than zero")
+}
+
+// setBack sites one node inside what the setbacks of another leave buildable,
+// returning what came back and whatever was reported about it.
+func (m sitingModel) setBack(t *testing.T, proposal, envelope ID, clearance float64) (Fit, []Diagnostic) {
+	t.Helper()
+
+	proposed, ok := m.nodes.Node(proposal)
+	require.True(t, ok, "the fixture holds a node %s", proposal)
+
+	within, ok := m.nodes.Node(envelope)
+	require.True(t, ok, "the fixture holds a node %s", envelope)
+
+	return m.topology.FitWithin(proposed, within, m.boundaries, m.survey, Siting{
+		Frames:    m.frames,
+		Clearance: clearance,
+		Setbacks:  Setbacks{Predicate: setbackOf, Claims: m.claims},
+	})
+}
+
+func TestFitWithinWhatTheSetbacksLeave(t *testing.T) {
+	testCases := []struct {
+		name              string
+		proposal          ID
+		clearance         float64
+		expectedClearance float64
+		expectedVerdict   Verdict
+		expectedDeclared  ID
+	}{
+		{
+			name:              "refuses a footprint inside the plot which reaches into its front setback",
+			proposal:          "plan:S-01",
+			expectedClearance: -2,
+			expectedVerdict:   VerdictDoesNotFit,
+			expectedDeclared:  "frame:building",
+		},
+		{
+			name:              "keeps a required clearance on top of the setbacks rather than instead of them",
+			proposal:          "plan:S-01",
+			clearance:         1,
+			expectedClearance: -2,
+			expectedVerdict:   VerdictDoesNotFit,
+			expectedDeclared:  "frame:building",
+		},
+		{
+			name:              "carries a proposal across whichever frame it was set out in",
+			proposal:          "plan:S-05",
+			expectedClearance: -3,
+			expectedVerdict:   VerdictUnknown,
+			expectedDeclared:  "frame:annex",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			answer, diags := sited(t).setBack(t, testCase.proposal, "plan:P-01", testCase.clearance)
+
+			assert.Empty(t, sitingErrors(diags), "a fit which was computed reports no error")
+
+			assert.InDelta(t, testCase.expectedClearance, answer.Clearance(), clearanceSlack)
+			assert.InDelta(t, testCase.expectedClearance-testCase.clearance, answer.Margin(), clearanceSlack)
+			assert.Equal(t, testCase.expectedVerdict, answer.Verdict())
+			assert.Equal(t, testCase.expectedDeclared, answer.DeclaredIn())
+			assert.Equal(t, ID("frame:site"), answer.Frame())
+			assert.False(t, answer.Consumed())
+
+			// The envelope is what the setbacks leave, derived rather than read:
+			// thirty by twenty less six at the front, four at the rear and three
+			// at each flank is twenty-four by ten.
+			derivation, setBack := answer.Buildable()
+			require.True(t, setBack)
+			assert.InDelta(t, 240.0, answer.Envelope().Area(), areaSlack)
+			assert.InDelta(t, 600.0, derivation.Boundary().Area(), areaSlack)
+			assert.Equal(t, answer.Envelope().Area(), derivation.Area())
+
+			applied := derivation.Setbacks()
+			require.Len(t, applied, 4, "one setback per edge, each taken off the edge which claims it")
+			for i, expected := range []struct {
+				edge     ID
+				distance float64
+			}{
+				{"geom:E-01", 6}, {"geom:E-02", 3}, {"geom:E-03", 4}, {"geom:E-04", 3},
+			} {
+				assert.Equal(t, expected.edge, applied[i].Edge().ID())
+				assert.Equal(t, expected.distance, applied[i].Distance())
+			}
+
+			assert.False(t, answer.Spill().Empty(), "the strip over the line is where the refusal points")
+		})
+	}
+}
+
+// TestFitWithinWhatTheSetbacksLeaveIsTheSameRegionBuildableDerives is its own
+// function because it compares two queries rather than asserting about one:
+// the region a footprint is sited inside has to be the region `buildable`
+// reports, or the two commands disagree about where a structure may go.
+func TestFitWithinWhatTheSetbacksLeaveIsTheSameRegionBuildableDerives(t *testing.T) {
+	model := sited(t)
+
+	answer, _ := model.setBack(t, "plan:S-01", "plan:P-01", 0)
+
+	plot, ok := model.nodes.Node("plan:P-01")
+	require.True(t, ok)
+
+	derived, diags := model.topology.BuildableOf(plot, model.boundaries, model.survey,
+		Setbacks{Predicate: setbackOf, Claims: model.claims})
+	require.Empty(t, sitingErrors(diags))
+
+	assert.Equal(t, derived.Region().Pieces(), answer.Envelope().Pieces())
+
+	derivation, _ := answer.Buildable()
+	assert.Equal(t, derived.Setbacks(), derivation.Setbacks())
+}
+
+// TestFitWithinCountsTheSetbacksInOneBudget is its own function because it
+// asserts about the arithmetic of the budget rather than about the answer.
+//
+// Composing `buildable` and a fit against the outline outside the engine counts
+// the control point behind the boundary corners, and the corners themselves,
+// once in each answer. Siting inside the setbacks in one query is what counts
+// them once.
+func TestFitWithinCountsTheSetbacksInOneBudget(t *testing.T) {
+	model := sited(t)
+
+	answer, _ := model.setBack(t, "plan:S-01", "plan:P-01", 0)
+
+	budget := answer.Budget()
+
+	// The setback claims are in the budget beside the corners and the fit, each
+	// an independent term of its own.
+	for _, id := range []string{"consent:SB-01", "consent:SB-02", "consent:SB-03", "consent:SB-04"} {
+		term, ok := termNamed(budget, id)
+		require.True(t, ok, "the budget carries the setback %s", id)
+		assert.Equal(t, TermIndependent, term.Kind)
+		assert.Equal(t, 0.001, term.Magnitude)
+	}
+
+	// The control point is one term however many of the thirteen claims reach it.
+	shared, ok := termNamed(budget, "control:CP-1")
+	require.True(t, ok)
+	assert.Equal(t,
+		[]string{
+			"survey:P-0011", "survey:P-0012", "survey:P-0013", "survey:P-0014",
+			"survey:C-0001",
+			"survey:P-0001", "survey:P-0002", "survey:P-0003", "survey:P-0004",
+		},
+		claimIDs(shared.Contributors),
+	)
+
+	// The single-budget rule: every independent term in quadrature, each
+	// systematic term once and linearly.
+	independent := 4*0.004*0.004 + 4*0.003*0.003 + 0.012*0.012 + 4*0.001*0.001
+	systematic := 0.008 + 0.005
+	single := math.Sqrt(independent + systematic*systematic)
+
+	combined, err := answer.Uncertainty()
+	require.NoError(t, err)
+	assert.InDelta(t, single, combined.Magnitude, 1e-12)
+
+	// And not the figure two separate answers combined in quadrature give,
+	// which counts the boundary's corners and its control point twice.
+	plot, ok := model.nodes.Node("plan:P-01")
+	require.True(t, ok)
+
+	derived, _ := model.topology.BuildableOf(plot, model.boundaries, model.survey,
+		Setbacks{Predicate: setbackOf, Claims: model.claims})
+	buildable, err := derived.Budget().Combined()
+	require.NoError(t, err)
+
+	outline, _ := model.fit(t, "plan:S-01", "plan:P-01", 0)
+	fitted, err := outline.Uncertainty()
+	require.NoError(t, err)
+
+	separate := math.Sqrt(buildable.Magnitude*buildable.Magnitude + fitted.Magnitude*fitted.Magnitude)
+
+	assert.Greater(t, math.Abs(separate-combined.Magnitude), 1e-3,
+		"two answers combined count every term they share twice")
+	assert.Less(t, combined.Magnitude, separate)
+}
+
+// TestFitWithinWhatTheSetbacksLeaveRefusesAnUnclaimedEdge is its own function
+// because every case in it comes back with no answer at all.
+func TestFitWithinWhatTheSetbacksLeaveRefusesAnUnclaimedEdge(t *testing.T) {
+	unclaimed := reclaimed(t, filepath.Join("testdata", "siting", "surveyed"), `(setback
+    (id consent:SB-02)
+    (value 3.0 m)
+    (source "Planning consent PC-2026-017, condition 4: the east flank")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.001 m))
+    (date "2026-01-20"))`, "")
+
+	testCases := []struct {
+		name             string
+		root             string
+		setbacks         func(Setbacks) Setbacks
+		expectedMessages []string
+	}{
+		{
+			name:             "names the edge nothing sets back rather than reading the silence as nought",
+			root:             unclaimed,
+			setbacks:         func(given Setbacks) Setbacks { return given },
+			expectedMessages: []string{"found none on geom:E-02"},
+		},
+		{
+			name:     "names every edge a predicate nobody claims leaves unset",
+			root:     filepath.Join("testdata", "siting", "surveyed"),
+			setbacks: func(given Setbacks) Setbacks { given.Predicate = "frontage"; return given },
+			expectedMessages: []string{
+				"found none on geom:E-01", "found none on geom:E-02",
+				"found none on geom:E-03", "found none on geom:E-04",
+			},
+		},
+		{
+			name:             "refuses setbacks asked for without the predicate they are claimed under",
+			root:             filepath.Join("testdata", "siting", "surveyed"),
+			setbacks:         func(given Setbacks) Setbacks { given.Predicate = ""; return given },
+			expectedMessages: []string{"found no predicate named"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			model := loadSitingModel(t, testCase.root)
+
+			proposal, ok := model.nodes.Node("plan:S-01")
+			require.True(t, ok)
+
+			envelope, ok := model.nodes.Node("plan:P-01")
+			require.True(t, ok)
+
+			answer, diags := model.topology.FitWithin(proposal, envelope, model.boundaries, model.survey, Siting{
+				Frames:   model.frames,
+				Setbacks: testCase.setbacks(Setbacks{Predicate: setbackOf, Claims: model.claims}),
+			})
+
+			assert.Equal(t, Fit{}, answer, "a fit which was refused is not a fit with a verdict")
+
+			errs := sitingErrors(diags)
+			require.Len(t, errs, len(testCase.expectedMessages))
+			for i, expected := range testCase.expectedMessages {
+				assert.Contains(t, errs[i], expected)
+			}
+		})
+	}
+}
+
+// TestFitWithinWhatTheSetbacksLeaveWhenTheyLeaveNothing is its own function
+// because the answer is decided by the envelope covering nothing rather than by
+// a margin, which is a different set of assertions from every fit above.
+func TestFitWithinWhatTheSetbacksLeaveWhenTheyLeaveNothing(t *testing.T) {
+	model := parcels(t)
+
+	plot, ok := model.nodes.Node("plan:P-02")
+	require.True(t, ok)
+
+	answer, diags := model.topology.FitWithin(plot, plot, model.boundaries, model.survey, Siting{
+		Setbacks: Setbacks{Predicate: setbackOf, Claims: model.claims},
+	})
+
+	assert.Empty(t, sitingErrors(diags), "nothing fits an empty region, which is an answer and not a refusal")
+	require.Len(t, diags, 1)
+	assert.Equal(t, SeverityWarning, diags[0].Severity)
+	assert.Contains(t, diags[0].Message, "leave nothing buildable")
+
+	assert.True(t, answer.Consumed(), "the answer says the region was empty")
+	assert.Equal(t, VerdictDoesNotFit, answer.Verdict())
+	assert.True(t, answer.Verdict().Decided())
+	assert.True(t, answer.Envelope().Empty())
+	assert.True(t, answer.Shared().Empty())
+	assert.InDelta(t, answer.Needed().Area(), answer.Spill().Area(), areaSlack,
+		"all of what the proposal needs is what the envelope does not offer")
+
+	derivation, setBack := answer.Buildable()
+	require.True(t, setBack)
+	assert.Len(t, derivation.Setbacks(), 4)
+
+	assert.Contains(t, answer.String(), "the setbacks leave nothing buildable")
+	assert.Contains(t, answer.String(), "does-not-fit")
+}
+
+// TestFitWithinWhatTheSetbacksLeaveReportsIt is its own function because it
+// asserts about a rendering rather than about a number.
+func TestFitWithinWhatTheSetbacksLeaveReportsIt(t *testing.T) {
+	answer, _ := sited(t).setBack(t, "plan:S-01", "plan:P-01", 0)
+
+	assert.Contains(t, answer.String(),
+		"plan:S-01 in what the setbacks of plan:P-01 leave buildable: does-not-fit, clearance -2.0 m")
+
+	report := answer.Report()
+	assert.Contains(t, report, "setback geom:E-01: 6.0 m, from consent:SB-01")
+	assert.Contains(t, report, "independent consent:SB-01")
+
+	outline, _ := sited(t).fit(t, "plan:S-01", "plan:P-01", 0)
+	_, setBack := outline.Buildable()
+	assert.False(t, setBack, "a fit against the outline took nothing off it")
+	assert.NotContains(t, outline.Report(), "setback")
 }

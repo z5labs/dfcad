@@ -1,8 +1,9 @@
 # A siting query, worked end to end
 
 This is one question — *does this building fit on this plot?* — followed from the claims it
-is answered from to the budget it comes back with, and then asked again after one of those
-claims is replaced by a better measurement.
+is answered from to the budget it comes back with, asked again of what the plot's setbacks
+leave buildable, and then asked again after one of those claims is replaced by a better
+measurement.
 
 It is the question the rest of the engine exists to make answerable, and the only one that
 touches every part of it at once: two families of node, two coordinate frames, the claim that
@@ -39,12 +40,12 @@ than a configuration constant: it has a source, a method, a date, and — the pa
 below turns on — an accuracy in three terms. Twelve millimetres of random error in the fit
 itself, eight of shared error at `control:CP-1`, five at `control:CP-2`.
 
-The buildable area is thirty metres by twenty, surveyed on the site grid. Each of its corners
-is a claim:
+The plot is thirty metres by twenty, surveyed on the site grid. Each of its corners is a
+claim:
 
 ```
 (vertex geom:V-01
-  (label "Buildable area, south-west corner")
+  (label "Plot, south-west corner")
   (frame frame:site)
   (position
     (id survey:P-0001)
@@ -72,8 +73,32 @@ than three, and the same `control:CP-1` behind them:
     (date "2026-04-08")))
 ```
 
-Nine claims in all — four corners on each side and the fit between the grids — and
-`control:CP-1` is behind every one of them. That is not a contrivance. A project ties its
+The plot's edges carry claims too — the setback its planning consent requires on each, six
+metres at the road, three at each flank and four at the rear:
+
+```
+(edge geom:E-01
+  (label "Plot, south")
+  (frame frame:site)
+  (vertices geom:V-01 geom:V-02)
+  (setback
+    (id consent:SB-01)
+    (value 6.0 m)
+    (source "Planning consent PC-2026-017, condition 4: the road frontage")
+    (method method:statutory-instrument)
+    (accuracy (independent 0.001 m))
+    (date "2026-01-20")))
+```
+
+**Nothing in the model is the buildable area.** What may be built is derived from the plot and
+those four claims every time it is asked for
+([0009](decisions/0009-derived-values-are-never-written-back.md)); a buildable area written
+down as a polygon of its own would be a second statement of where a permanent structure may
+go, and the day a setback claim changed it would be the wrong one. The first question below
+does not read the setbacks at all, and [the second](#inside-what-the-setbacks-leave) does.
+
+Nine claims in all behind the first question — four corners on each side and the fit between
+the grids — and `control:CP-1` is behind every one of them. That is not a contrivance. A project ties its
 boundary survey, its interior control and its georeference to the same control point as a
 matter of routine, and the consequence is the whole reason this document exists.
 
@@ -81,7 +106,7 @@ matter of routine, and the consequence is the whole reason this document exists.
 
 ```sh
 dfcad site --root testdata/siting/surveyed \
-  --within plan:B-01 \
+  --within plan:P-01 \
   --position position \
   --tolerance boundary-closure \
   plan:S-01
@@ -105,6 +130,8 @@ would be the engine deciding one of them on the project's behalf.
 3. **Offsets by the required clearance,** where one was required. `--clearance 1.5` grows the
    footprint by a metre and a half all round, corners rounded to the declared tolerance, and
    what the envelope has to accommodate is that shape rather than the footprint.
+   `--setback` takes the plot's setbacks off it first, and what the footprint has to sit
+   inside is then what they leave; [see below](#inside-what-the-setbacks-leave).
 4. **Overlays.** What the two have in common is the intersection; what the footprint needs and
    the plot does not offer is the difference, and it is empty for a proposal that fits.
 5. **Measures.** The clearance is the shortest distance between the two boundaries, taken at
@@ -115,7 +142,7 @@ would be the engine deciding one of them on the project's behalf.
 ## The answer
 
 ```
-plan:S-01 in plan:B-01: fits, clearance 4.0 m, known to 0.0203224… m (k = 1.0, ≈ 68%)
+plan:S-01 in plan:P-01: fits, clearance 4.0 m, known to 0.0203224… m (k = 1.0, ≈ 68%)
 ```
 
 Four metres of clearance, known to twenty millimetres at one standard uncertainty. On stdout,
@@ -195,12 +222,12 @@ Four metres against twenty millimetres is not a close call, so the verdict is `f
 verdict exists for the case that is:
 
 ```sh
-dfcad site --root testdata/siting/surveyed --within plan:B-01 \
+dfcad site --root testdata/siting/surveyed --within plan:P-01 \
   --position position --tolerance boundary-closure plan:S-03
 ```
 
 ```
-plan:S-03 in plan:B-01: might-fit, clearance 0.00999… m, known to 0.0203224… m (k = 1.0, ≈ 68%)
+plan:S-03 in plan:P-01: might-fit, clearance 0.00999… m, known to 0.0203224… m (k = 1.0, ≈ 68%)
 ```
 
 Ten millimetres of daylight, and the answer is known to twenty. The clearance is positive and
@@ -211,7 +238,7 @@ whatever dominates the budget, which here is the georeference.
 The fourth verdict is the one that is not a measurement problem at all:
 
 ```
-plan:S-05 in plan:B-01: unknown, clearance 1.0 m, uncertainty unknown
+plan:S-05 in plan:P-01: unknown, clearance 1.0 m, uncertainty unknown
 ```
 
 `plan:S-05` is set out on a third grid whose fit to the site nobody stated an accuracy for. A
@@ -219,6 +246,63 @@ metre of clearance buys no confidence at all, because an unstated accuracy is *u
 than nought — reading it as nought would let a measurement nobody made pass through and come
 out looking like the most accurate input the query had. The clearance is still reported; only
 the verdict is withheld, and the budget names the claim that has to say something.
+
+## Inside what the setbacks leave
+
+Four metres inside the plot is not the question a permit asks. What the plot *allows* is
+narrower: the consent keeps six metres clear of the road, and the footprint's south wall is
+four metres from it. `--setback` names the predicate the setbacks are claimed under, and the
+footprint is sited inside what they leave:
+
+```sh
+dfcad site --root testdata/siting/surveyed \
+  --within plan:P-01 \
+  --setback setback \
+  --position position \
+  --tolerance boundary-closure \
+  plan:S-01
+```
+
+```
+plan:S-01 in what the setbacks of plan:P-01 leave buildable: does-not-fit, clearance -2.0 m, known to 0.0204205… m (k = 1.0, ≈ 68%)
+  setback geom:E-01: 6.0 m, from consent:SB-01
+  setback geom:E-02: 3.0 m, from consent:SB-02
+  setback geom:E-03: 4.0 m, from consent:SB-03
+  setback geom:E-04: 3.0 m, from consent:SB-04
+```
+
+Two metres past the buildable boundary, at the front. The region is the one
+[`buildable`](machine-output.md#buildable) derives — `plan:P-01: 240.0 m² buildable of 600.0
+m²`, from (3, 6) to (27, 16) — taken off each edge by the claim written on that edge, and
+derived inside this query rather than beside it. A `--clearance` is kept on top of the
+setbacks, not instead of them: it is one distance on every edge, and setbacks are what differ
+from one edge to the next. An edge with no live setback claim is refused naming the edge,
+never read as nought, and setbacks which leave nothing at all are answered — nothing fits an
+empty region — rather than refused.
+
+**Deriving it inside the query is what keeps the budget honest.** The answer's budget holds the
+four setback claims beside the eleven terms above, and `control:CP-1` is still one term from
+nine claims:
+
+```
+Σ uᵢ² = 4×0.003² + 0.012² + 4×0.004² + 4×0.001² = 0.000248 m²
+Σ |sⱼ| = 0.008 + 0.005                          = 0.013 m
+
+u = √( 0.000248 + 0.013² ) = √0.000417 = 0.020421 m
+```
+
+Asking `buildable` and `site` separately and combining their two figures gets this wrong.
+`buildable` reports the region known to 0.011489 m and the fit against the outline 0.020322 m,
+and each already contains the plot's four corners and `control:CP-1`:
+
+```
+√( 0.011489² + 0.020322² ) = 0.023345 m
+```
+
+Fourteen per cent wider than the truth, because the boundary survey and its control point are
+counted twice. `TestFitWithinCountsTheSetbacksInOneBudget` asserts both figures. Getting it
+right outside the engine means re-deriving the budget from the terms of both answers, which
+is this query's arithmetic re-implemented in every consumer.
 
 ## Asking again after a re-survey
 
@@ -234,7 +318,7 @@ and the random part of the fit drops from twelve millimetres to two:
 Both halves of the answer move:
 
 ```
-plan:S-01 in plan:B-01: fits, clearance 4.02 m, known to 0.0165227… m (k = 1.0, ≈ 68%)
+plan:S-01 in plan:P-01: fits, clearance 4.02 m, known to 0.0165227… m (k = 1.0, ≈ 68%)
 ```
 
 Nothing was edited to make that happen, and nothing could have been: the fit is recomputed
@@ -267,10 +351,16 @@ for vertex := range topology.Vertices() {
 }
 
 footprint, _ := nodes.Node("plan:S-01")
-buildable, _ := nodes.Node("plan:B-01")
+plot, _ := nodes.Node("plan:P-01")
 
-answer, diags := topology.FitWithin(footprint, buildable, boundaries, survey, dfcad.Siting{
+answer, diags := topology.FitWithin(footprint, plot, boundaries, survey, dfcad.Siting{
     Frames: frames,
+})
+
+// Inside what the plot's setbacks leave, rather than inside the plot.
+allowed, diags := topology.FitWithin(footprint, plot, boundaries, survey, dfcad.Siting{
+    Frames:   frames,
+    Setbacks: dfcad.Setbacks{Predicate: "setback", Claims: claims},
 })
 ```
 
