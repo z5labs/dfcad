@@ -1670,6 +1670,22 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `bands[].band.terms[].unit` | string | What `sigma` is in, which is not always the band's unit: an area is compared in the square of a length and the corners behind it are surveyed in the length. |
 | `bands[].band.terms[].sensitivity` | number | How far the compared figure moves per unit of `sigma`, which carries the term into the band's unit. `1` where the two are already the same unit; the length of the boundary where a corner displacement is carried across to the area it encloses. |
 | `bands[].band.terms[].contribution` | number | `sigma × sensitivity`, in the band's unit, which is the figure combined in quadrature into `applied`. |
+| `chorded` | array, optional | One entry per edge a rule read as the straight line between its ends although the model states a curve on it, per rule, in the order the rules ran — or would run, under `--list`. Rules that **passed** are in here as much as ones that failed. Absent where no rule read a curve straight, which is every run over a model that claims none. |
+| `chorded[].instance` | string | The id of the thing the rule is bound to. |
+| `chorded[].type` | string, optional | The type that declared the rule. Absent for an assertion. |
+| `chorded[].check` | string | The check name the rule names. |
+| `chorded[].arguments` | array, optional | The parameters it is written with, each rendered as it was written. |
+| `chorded[].declared` | span | Where the rule is written, which is where to name the vocabulary that reads the curve. |
+| `chorded[].subject` | span | Where the thing it is bound to is written. |
+| `chorded[].edge` | string | The edge read straight: one bounding a shape the rule reads, which claims a position the rule did not read as an arc. |
+| `chorded[].predicates` | array | The predicates that edge states a position under, in name order — the shape of `chorded` on `measure` and `site`, and what to name on the rule. |
+| `chorded[].span` | span | Where that edge is written. |
+| `drawn` | array, optional | One entry per rule that read a curve through straight segments, in the order the rules ran. Absent where no rule drew one. |
+| `drawn[].instance`, `drawn[].type`, `drawn[].check`, `drawn[].arguments`, `drawn[].declared`, `drawn[].subject` | | The rule, as in `bands`. |
+| `drawn[].chord` | string | The name of the declared tolerance the curves were drawn to — the rule's `(chord ...)`. |
+| `drawn[].value` | number | That tolerance's value. |
+| `drawn[].deviation` | number | How far the worst segment of the drawing fell from the curve it stands in for: what was achieved, never more than `value`. |
+| `drawn[].unit` | string | What `value` and `deviation` are in, the linear unit of the frame. |
 
 The counts are of **rules**, not of violations. One loop that does not close and one that
 closes the wrong way are two ways of failing one check, and a summary counting them as two
@@ -1742,6 +1758,43 @@ and `sits-inside`. A check that decides against the tolerance it was given repor
 is nothing to disclose, because the declared figure is the applied one and it is already
 written in the rule. Neither does a comparison a check declined to make — a room drawn and not
 yet measured discloses nothing, because nothing was tested.
+
+**`chorded` is what keeps a pass over a curve nobody read from reading as a real one.** Five
+checks read a shape — `claim-agrees-with-geometry`, `contained-areas-do-not-overlap`,
+`contained-areas-sum`, `sits-inside` and `stays-clear-of-zone` — and each reads an edge that
+bends as the arc it is, where the rule names the vocabulary the arc is written in, and as the
+straight line between its ends where it does not. All five take the same three optional
+parameters, none of them defaulted and none of them a flag, because a rule is one line of the
+model and its answer must not change with how it was invoked:
+
+| Parameter | Meaning |
+|-----------|---------|
+| `(arc-centre <predicate>)` | The predicate the centre of the arc an edge bends along is claimed under. |
+| `(arc-through <predicate>)` | The predicate a point on the arc is claimed under, which says which of the two arcs between the ends is meant. Named together with `arc-centre`; a rule naming one of the two fails, saying so. |
+| `(chord <tolerance>)` | The tolerance a curve is drawn to where the answer needs straight segments: the overlay `sits-inside`, `stays-clear-of-zone` and the two `contained-areas` checks decide by, and the nesting of rings one of which bends. A rule that reads an arc by an overlay and names no chord fails, naming the edge. |
+
+Which way a check errs over a chord depends on which side of it the question sits, so none
+can be trusted to err safely. A shed standing in the bow of a curved easement passes
+`stays-clear-of-zone` read over the chord and fails it read over the arc; the same easement's
+plat area fails `claim-agrees-with-geometry` over the chord and agrees over the arc. So the
+engine never picks: a rule that names the vocabulary reads the curve, and a rule that does
+not is named in `chorded`, one entry per edge it read straight, each also a warning on stderr
+naming the rule and what to write on it. A **violation** of such a rule says in its own
+message that the figure it compared was the chord's, and points at the edge. A rule that
+names the vocabulary and meets an edge that does not claim both halves of it reads that edge
+straight too, and is in `chorded` the same way.
+
+Where a rule drew a curve to its chord, `drawn` says what to and the deviation that achieved,
+because the answer is then about the drawing and no closer to the arc than that.
+`claim-agrees-with-geometry` reads an arc's area and length from its parameterisation and draws
+nothing, so it appears there only where it had to nest rings.
+
+`--list` says of each rule, before anything runs, how it will read a curve: `curves` is `arc`
+where the rule names the vocabulary and every curved edge of its shapes states both halves,
+`chord` where at least one will be read straight — listed by id under `chorded` on the entry,
+and in the top-level `chorded` as on a run — and absent where the rule reads no curve at all.
+A model that claims no curve carries none of `chorded`, `drawn` or `curves`, and its output is
+byte for byte what it was before a rule could read one.
 
 Rules run in a deterministic order and are reported in it: every invariant, node by node in
 the order the model was read, and then every assertion, thing by thing. Two runs over one

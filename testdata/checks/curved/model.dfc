@@ -1,0 +1,141 @@
+; A model whose shapes are bounded by an edge which bends, checked by every rule
+; which reads a shape.
+;
+; The curve is a semicircle bowing five feet east of a ten by ten square, so the
+; square's east side is its chord: 100 ft² read straight and 139.27 read as the
+; arc. A shed standing two to three feet past that chord is inside the curve and
+; outside the chord, which is the whole of the question — a rule which read the
+; edge straight answers it about ground the model does not describe.
+;
+; Every rule is written twice or more, once naming the vocabulary the arc is
+; written in and once not, on nodes which share their outlines. The outline is
+; one statement; which of the two answers a rule gives is the rule's.
+
+; The easement: a ten by ten square whose east side bows five feet out.
+(vertex geom:Z1 (label "Easement, south-west") (frame frame:site)
+  (position (value (0.0 0.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:Z2 (label "Easement, south-east") (frame frame:site)
+  (position (value (10.0 0.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:Z3 (label "Easement, north-east") (frame frame:site)
+  (position (value (10.0 10.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:Z4 (label "Easement, north-west") (frame frame:site)
+  (position (value (0.0 10.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:M1 (label "Partition, south end") (frame frame:site)
+  (position (value (5.0 0.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:M2 (label "Partition, north end") (frame frame:site)
+  (position (value (5.0 10.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(edge geom:ZE1 (label "Easement, south side") (frame frame:site) (vertices geom:Z1 geom:Z2))
+(edge geom:ZE2 (label "Easement, east side, the bow") (frame frame:site) (vertices geom:Z2 geom:Z3)
+  (arc-centre (value (10.0 5.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25"))
+  (arc-through (value (15.0 5.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25"))
+  (length (value 15.71 ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.01 ft)) (date "2026-09-25"))
+  (assert claim-agrees-with-geometry (predicate length) (position position) (tolerance corner)
+    (discrepancy length-agreement) (arc-centre arc-centre) (arc-through arc-through))
+  (assert claim-agrees-with-geometry (predicate length) (position position) (tolerance corner)
+    (discrepancy length-agreement)))
+(edge geom:ZE3 (label "Easement, north side") (frame frame:site) (vertices geom:Z3 geom:Z4))
+(edge geom:ZE4 (label "Easement, west side") (frame frame:site) (vertices geom:Z4 geom:Z1))
+(loop geom:ZL (label "Easement outline") (frame frame:site) (edges geom:ZE1 geom:ZE2 geom:ZE3 geom:ZE4))
+
+; The west room of the level: the half of the square west of the partition.
+(edge geom:RE1 (label "West room, south side") (frame frame:site) (vertices geom:Z1 geom:M1))
+(edge geom:RE2 (label "The partition") (frame frame:site) (vertices geom:M1 geom:M2))
+(edge geom:RE3 (label "West room, north side") (frame frame:site) (vertices geom:M2 geom:Z4))
+(loop geom:RL1 (label "West room outline") (frame frame:site) (edges geom:RE1 geom:RE2 geom:RE3 geom:ZE4))
+
+; The east room: east of the partition, out to the bow.
+(edge geom:RE4 (label "East room, south side") (frame frame:site) (vertices geom:M1 geom:Z2))
+(edge geom:RE5 (label "East room, north side") (frame frame:site) (vertices geom:Z3 geom:M2))
+(loop geom:RL2 (label "East room outline") (frame frame:site) (edges geom:RE4 geom:ZE2 geom:RE5 geom:RE2))
+
+; The shed: one by two feet, standing in the bow two to three feet past the
+; chord. Inside the arc and outside the straight line.
+(vertex geom:S1 (label "Shed, south-west") (frame frame:site)
+  (position (value (12.0 4.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:S2 (label "Shed, south-east") (frame frame:site)
+  (position (value (13.0 4.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:S3 (label "Shed, north-east") (frame frame:site)
+  (position (value (13.0 6.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:S4 (label "Shed, north-west") (frame frame:site)
+  (position (value (12.0 6.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(edge geom:SE1 (label "Shed, south side") (frame frame:site) (vertices geom:S1 geom:S2))
+(edge geom:SE2 (label "Shed, east side") (frame frame:site) (vertices geom:S2 geom:S3))
+(edge geom:SE3 (label "Shed, north side") (frame frame:site) (vertices geom:S3 geom:S4))
+(edge geom:SE4 (label "Shed, west side") (frame frame:site) (vertices geom:S4 geom:S1))
+(loop geom:SL (label "Shed outline") (frame frame:site) (edges geom:SE1 geom:SE2 geom:SE3 geom:SE4))
+
+; The easement, with its area as the plat records it: the arc's, not the chord's.
+(node site:EASEMENT (label "Utility easement") (kind Zone) (type Easement) (geometry area)
+  (frame frame:site) (boundary geom:ZL)
+  (area (value 139.27 ft2) (source "plat") (method method:plat)
+    (accuracy (independent 0.01 ft2)) (date "2026-09-25"))
+  (assert claim-agrees-with-geometry (predicate area) (position position) (tolerance corner)
+    (discrepancy area-agreement) (arc-centre arc-centre) (arc-through arc-through)))
+
+; The same outline and the same figure, checked by a rule which reads the bow as
+; its chord.
+(node site:EASEMENT-CHORDED (label "Utility easement, read straight") (kind Zone) (type Easement)
+  (geometry area) (frame frame:site) (boundary geom:ZL)
+  (area (value 139.27 ft2) (source "plat") (method method:plat)
+    (accuracy (independent 0.01 ft2)) (date "2026-09-25"))
+  (assert claim-agrees-with-geometry (predicate area) (position position) (tolerance corner)
+    (discrepancy area-agreement)))
+
+; The shed as the issue found it: kept clear of the easement by a rule which reads
+; the bow as its chord, and so passes.
+(node site:SHED (label "Shed") (kind Element) (type Shed) (geometry area) (frame frame:site)
+  (boundary geom:SL)
+  (assert stays-clear-of-zone (zone site:EASEMENT) (tolerance corner) (position position))
+  (assert sits-inside (container site:EASEMENT) (tolerance corner) (position position)))
+
+; The same shed, checked by rules which read the arc.
+(node site:SHED-ARC (label "Shed, read against the arc") (kind Element) (type Shed) (geometry area)
+  (frame frame:site) (boundary geom:SL)
+  (assert stays-clear-of-zone (zone site:EASEMENT) (tolerance corner) (position position)
+    (arc-centre arc-centre) (arc-through arc-through) (chord chord))
+  (assert sits-inside (container site:EASEMENT) (tolerance corner) (position position)
+    (arc-centre arc-centre) (arc-through arc-through) (chord chord)))
+
+; Rules which name half of the vocabulary, and all of it but the chord an overlay
+; needs.
+(node site:SHED-HALF (label "Shed, half named") (kind Element) (type Shed) (geometry area)
+  (frame frame:site) (boundary geom:SL)
+  (assert stays-clear-of-zone (zone site:EASEMENT) (tolerance corner) (position position)
+    (arc-centre arc-centre)))
+
+(node site:SHED-UNDRAWN (label "Shed, no chord named") (kind Element) (type Shed) (geometry area)
+  (frame frame:site) (boundary geom:SL)
+  (assert stays-clear-of-zone (zone site:EASEMENT) (tolerance corner) (position position)
+    (arc-centre arc-centre) (arc-through arc-through)))
+
+; A level whose floor plate is the easement's outline, holding two rooms which
+; divide it at the partition and a closet standing in the bow.
+(node site:L-01 (label "Level 1") (kind Storey) (type Level) (geometry area) (frame frame:site)
+  (boundary geom:ZL)
+  (assert contained-areas-sum (tolerance corner) (area-tolerance area-agreement) (position position)
+    (type Room) (arc-centre arc-centre) (arc-through arc-through) (chord chord))
+  (assert contained-areas-do-not-overlap (tolerance corner) (position position)
+    (arc-centre arc-centre) (arc-through arc-through) (chord chord))
+  (assert contained-areas-do-not-overlap (tolerance corner) (position position)))
+
+(node site:R-01 (label "West room") (kind Space) (type Room) (geometry area) (frame frame:site)
+  (within site:L-01) (boundary geom:RL1))
+
+(node site:R-02 (label "East room") (kind Space) (type Room) (geometry area) (frame frame:site)
+  (within site:L-01) (boundary geom:RL2))
+
+(node site:R-03 (label "Closet in the bow") (kind Space) (type Closet) (geometry area)
+  (frame frame:site) (within site:L-01) (boundary geom:SL))

@@ -205,6 +205,10 @@ type CheckSubject struct {
 	// word its advice: "take the invariant off the type" is no remedy for a rule
 	// written on the thing.
 	declaredBy string
+
+	// log is where a check records the chord tolerance a curve it read was
+	// drawn to, and is nil for a subject nothing reports on.
+	log *curveLog
 }
 
 // Graph returns the model the subject belongs to.
@@ -274,6 +278,11 @@ type Failure struct {
 
 	// Related are the other places which explain this one.
 	Related []RelatedLocation
+
+	// unread records that the failure is about how the rule is written rather
+	// than about a figure it compared, so that a rule which read a curve
+	// straight does not say of it that the figure was the chord's.
+	unread bool
 }
 
 // Runner is a [Check] which can be run against a subject.

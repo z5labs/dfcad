@@ -410,16 +410,16 @@ func ExampleChecks() {
 
 	// Output:
 	// boundary-loops-close (tolerance <tolerance>) (position <predicate>)
-	// claim-agrees-with-geometry (predicate <predicate>) (position <predicate>) (tolerance <tolerance>) (discrepancy <tolerance>)
-	// contained-areas-do-not-overlap (tolerance <tolerance>) (position <predicate>) (kind <kind>)
-	// contained-areas-sum (tolerance <tolerance>) (area-tolerance <tolerance>) (position <predicate>) (predicate <predicate>) (kind <kind>) (type <type>) (member-of <id>)
+	// claim-agrees-with-geometry (predicate <predicate>) (position <predicate>) (tolerance <tolerance>) (discrepancy <tolerance>) (arc-centre <predicate>) (arc-through <predicate>) (chord <tolerance>)
+	// contained-areas-do-not-overlap (tolerance <tolerance>) (position <predicate>) (kind <kind>) (arc-centre <predicate>) (arc-through <predicate>) (chord <tolerance>)
+	// contained-areas-sum (tolerance <tolerance>) (area-tolerance <tolerance>) (position <predicate>) (predicate <predicate>) (kind <kind>) (type <type>) (member-of <id>) (arc-centre <predicate>) (arc-through <predicate>) (chord <tolerance>)
 	// cross-frame-budget-holds (frame <frame>) (limit <tolerance>)
 	// edge-backing-resolves
 	// edge-endpoints-differ
 	// ground-to-grid-stated (crs <predicate>) (ground-to-grid <predicate>) (position <predicate>)
 	// required-claim (predicate <predicate>)
-	// sits-inside (container <id>) (tolerance <tolerance>) (position <predicate>)
-	// stays-clear-of-zone (zone <id>) (tolerance <tolerance>) (position <predicate>)
+	// sits-inside (container <id>) (tolerance <tolerance>) (position <predicate>) (arc-centre <predicate>) (arc-through <predicate>) (chord <tolerance>)
+	// stays-clear-of-zone (zone <id>) (tolerance <tolerance>) (position <predicate>) (arc-centre <predicate>) (arc-through <predicate>) (chord <tolerance>)
 	// within-resolves
 	// zone-members-resolve
 }
