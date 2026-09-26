@@ -36,6 +36,15 @@ A panel, a condenser, a receptacle and a survey monument are each a thing whose
 only interesting geometry is where it is, and a rectangle drawn around one
 would be dimensions nobody measured.
 
+A node whose declared geometry is "line" is written as a line feature: a
+gml:MultiCurve holding one gml:LineString per loop of its boundary, the corners
+of the run in the order the loop walks them, left open rather than closed. A
+trench, a fence, a railing and a partition drawn as its centreline each run
+somewhere and cover nothing, and a polygon drawn around one would be a width
+nobody measured. A run is read exactly as a ring is: a curved edge in it is
+drawn to --chord, it is carried into the root frame by the same chain of
+transforms, and it is refused where its corners do not lie at one level.
+
 The format is GML rather than the interchange format most reached for, and the
 reason is recorded in
 docs/decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md.
@@ -162,6 +171,18 @@ tolerance the document was drawn to with the "deviation" that drawing achieved,
 and "files": one entry per file the artefact consists of, each with the "path"
 it is at and a "status" of "written" or "unchanged".
 
+Where a node the model gives a shape to is not a feature of the document it
+also carries "undrawn": one entry per such node, in id order, with its "node"
+id, its label, kind and type, and a "reason" — "unreadable-boundary" for one
+whose edges could not be read, "no-position" for a node drawn as a point which
+nothing places, "unrooted" for a model whose frames reach no root, "uncarried"
+for one drawn on a frame the chain does not relate to the root, "not-level" for
+one whose corners do not lie at one level. The features and "undrawn" account
+between them for every shaped node the model has not retired, so nothing the
+model shaped leaves this command without a word. Every entry is also an error on
+stderr, so a run which names one writes no file. The key is absent where every
+node was drawn.
+
 The chord and the deviation are of the document rather than of any one feature,
 and they are in the answer because the file carries neither: a GML document is
 positions, and a reader holding one cannot tell a ring which follows its curve
@@ -174,9 +195,9 @@ feature drawn straight through a curve nothing read is a boundary in the wrong
 place in a file somebody keeps, and a deviation of nothing beside a named chord
 tolerance would be this command saying it is in the right one.
 
-Exit code 1 is a model no artefact could be made of: a region which could not be
-drawn, one which could not be carried into the root frame, a coordinate
-reference system written where it does not belong. The object still comes back,
+Exit code 1 is a model no artefact could be made of: a region or a run which
+could not be drawn, one which could not be carried into the root frame, a
+coordinate reference system written where it does not belong. The object still comes back,
 with "derived" false and no files, so a caller reads why from the diagnostics on
 stderr rather than from an empty stream. Exit code 3 is a destination inside the
 authored tree, which is refused before anything is read.
@@ -311,11 +332,77 @@ type exportMapResult struct {
 	// affirmative statement that it is in the right one.
 	Chorded []chordedEntry `json:"chorded,omitempty"`
 
+	// Undrawn is one entry per node the model gives a shape to which is not a
+	// feature of the document, in id order: its id, what it is, and the reason.
+	// Absent where every such node was drawn.
+	//
+	// It is what makes the document an account of the model rather than of the
+	// shapes this command happened to manage. The features written and the
+	// nodes named here are, between them, every shaped node the model has not
+	// retired — so a reader who finds a thing missing from the layer finds it
+	// here, and one who finds nothing here knows the layer is the whole model.
+	// A node named here is an error on stderr too, so a run which names one
+	// writes no file: a layer with one plot quietly missing is worse than none.
+	Undrawn []mapUndrawnEntry `json:"undrawn,omitempty"`
+
 	// Files is one entry per file the artefact consists of. It describes files
 	// which are on disk and never anything else, and it is empty rather than
 	// absent when there are none.
 	Files []exportedFile `json:"files"`
 }
+
+// mapUndrawnEntry is one shaped node the document does not hold, and why.
+//
+// It is the plan's undrawn entry without the annotations: a map carries no
+// claims, so there is nothing written on a node for this to report, and what a
+// reader needs is which node, what it is, and what stopped it.
+type mapUndrawnEntry struct {
+	// Node is the id of the node which was not drawn.
+	Node string `json:"node"`
+
+	// Label is what it is called, absent where it is called nothing. Kind and
+	// Type are what it is.
+	Label string `json:"label,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	Type  string `json:"type,omitempty"`
+
+	// Reason is why, as a token a caller branches on rather than a sentence it
+	// matches. The diagnostics on stderr carry the rest: the loop, the file,
+	// the line.
+	Reason undrawnReason `json:"reason"`
+}
+
+// undrawnReason is why a shaped node is not a feature of the document.
+type undrawnReason string
+
+// The reasons a shaped node is not drawn.
+//
+// The first two are the plan's own, spelled from the engine's constants rather
+// than again here, because they are the same two findings about the same
+// model and a caller reading both answers should not have to learn two words
+// for one. The rest are this command's: they are about putting a shape in the
+// root frame and on a plan, which is what a map does and a plan does not.
+const (
+	// undrawnUnreadable is a node whose boundary could not be read: a ring
+	// which does not close, one which crosses itself, a tolerance the
+	// registry does not declare.
+	undrawnUnreadable = undrawnReason(dfcad.UndrawnUnreadableBoundary)
+
+	// undrawnNoPosition is a node drawn as a point which nothing places.
+	undrawnNoPosition = undrawnReason(dfcad.UndrawnNoPosition)
+
+	// undrawnUnrooted is a node in a model whose frames reach no root, so
+	// there are no coordinates to write it in.
+	undrawnUnrooted undrawnReason = "unrooted"
+
+	// undrawnUncarried is a node drawn on a frame the chain of measured
+	// transforms does not relate to the root.
+	undrawnUncarried undrawnReason = "uncarried"
+
+	// undrawnUnlevel is a node whose corners do not lie at one level in the
+	// root frame, which has no plan this command will draw.
+	undrawnUnlevel undrawnReason = "not-level"
+)
 
 // runExportMap is the export-map command.
 func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
@@ -398,6 +485,7 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	// which also chorded a boundary has two things wrong with it and reporting
 	// one of them sends the author round twice.
 	result.Chorded = made.chorded
+	result.Undrawn = made.undrawn
 
 	if destination == "" {
 		destination = filepath.Join(dfcad.ExportDir(globals.Root), digest.String(), mapFile)
@@ -531,7 +619,8 @@ func drawnMap(graph *dfcad.Graph, drawn shapes, sited georeference) (gml.Collect
 }
 
 // tessellated is what a walk which drew a layer has to say about the drawing
-// itself rather than about any feature of it.
+// itself rather than about any feature of it, and about the nodes it could not
+// make features of.
 //
 // It is one value for the whole document because a layer is one artefact: a
 // consumer opens the file, not the twelfth region of it, and the question it
@@ -552,6 +641,13 @@ type tessellated struct {
 	// chorded is every edge of a drawn region which states a curve the run's
 	// vocabulary did not read, each edge once.
 	chorded []chordedEntry
+
+	// undrawn is every node the walk selected and could not write as a
+	// feature, in the order it met them, which is id order. It is here beside
+	// the rest because it is the other half of the same account: the document
+	// holds the features, and this holds everything the model shaped which the
+	// document does not.
+	undrawn []mapUndrawnEntry
 }
 
 // cartographer is one traversal of the graph into a vector layer's shape.
@@ -615,6 +711,9 @@ func (c *cartographer) unsited(root dfcad.Frame, placed *recordedCRS) {
 // rooms and left out the plot they stand on would be answering a question
 // about kinds which the model already answered by drawing both.
 //
+// A node drawn as a line is here because it has a boundary, and it is written
+// as the run that boundary is rather than as the area it does not enclose.
+//
 // A node drawn as a point has a shape and no boundary. It is here for the same
 // reason a bounded node is: the model says where it is, and a layer which held
 // the rooms and not the panels in them would be a map of a floor with its
@@ -649,8 +748,15 @@ func (c *cartographer) drawable() []*dfcad.SemanticNode {
 	return nodes
 }
 
-// features is every region the model holds, drawn, in the order [drawable]
-// reaches them.
+// features is every node the model gives a shape to, drawn, in the order
+// [drawable] reaches them.
+//
+// Every node [drawable] selected either comes back as a feature or is named in
+// [tessellated.undrawn], and there is no third way out of this loop. That is
+// the whole of the rule it keeps: a node which went missing from the document
+// with nothing said about it is a map a reader trusts and is wrong about — the
+// open runs of a model used to leave exactly that way, drawn as a region, found
+// to cover nothing and skipped without a word.
 func (c *cartographer) features(rooted bool) []gml.Feature {
 	nodes := c.drawable()
 
@@ -659,37 +765,95 @@ func (c *cartographer) features(rooted bool) []gml.Feature {
 	out := make([]gml.Feature, 0, len(nodes))
 
 	for _, node := range nodes {
-		if !rooted {
-			c.unrooted(node)
-			continue
-		}
+		said := len(c.diags)
 
-		feature := gml.Feature{
-			ID:         mapFeature + strconv.Itoa(len(out)+1),
-			Properties: c.properties(node),
-		}
-
-		if geometry, _ := node.Geometry(); geometry == dfcad.GeometryPoint {
-			at, placed := c.located(node)
-			if !placed {
-				continue
-			}
-
-			feature.Points = []gml.Position{at}
-			out = append(out, feature)
-			continue
-		}
-
-		surfaces, drawn := c.surfaces(node)
+		feature, reason, drawn := c.feature(node, rooted, mapFeature+strconv.Itoa(len(out)+1))
 		if !drawn {
+			c.undrawn(node, reason, c.diags[said:])
 			continue
 		}
 
-		feature.Surfaces = surfaces
 		out = append(out, feature)
 	}
 
 	return out
+}
+
+// feature is one node as a feature of the layer, or why it could not be one.
+//
+// Which of the three shapes it is written as is the node's declared geometry
+// and never its kind, for the reason the IFC export decides it that way: a
+// railing and a trench are both a run, and what the kind decides is only which
+// value the feature's kind property holds.
+func (c *cartographer) feature(node *dfcad.SemanticNode, rooted bool, id string) (gml.Feature, undrawnReason, bool) {
+	if !rooted {
+		c.unrooted(node)
+		return gml.Feature{}, undrawnUnrooted, false
+	}
+
+	feature := gml.Feature{ID: id, Properties: c.properties(node)}
+
+	switch geometry, _ := node.Geometry(); geometry {
+	case dfcad.GeometryPoint:
+		at, reason, placed := c.located(node)
+		if !placed {
+			return gml.Feature{}, reason, false
+		}
+		feature.Points = []gml.Position{at}
+
+	case dfcad.GeometryLine:
+		curves, reason, drawn := c.curves(node)
+		if !drawn {
+			return gml.Feature{}, reason, false
+		}
+		feature.Curves = curves
+
+	default:
+		surfaces, reason, drawn := c.surfaces(node)
+		if !drawn {
+			return gml.Feature{}, reason, false
+		}
+		feature.Surfaces = surfaces
+	}
+
+	return feature, "", true
+}
+
+// undrawn records a node [drawable] selected and the document will not hold.
+//
+// It is named in the answer whatever the reason, and it is an error whatever
+// the reason. Most of the ways a node goes undrawn have already said so — the
+// assembly of a ring which does not close, the chain of frames which does not
+// reach — and for those nothing more is raised here, because the same fault
+// reported twice is noise. Where nothing was said, this says it: a node which
+// could be left out of a layer silently is a layer with a plot quietly missing,
+// which looks exactly like land nobody has claimed.
+func (c *cartographer) undrawn(node *dfcad.SemanticNode, reason undrawnReason, said []dfcad.Diagnostic) {
+	c.tessellated.undrawn = append(c.tessellated.undrawn, mapUndrawnEntry{
+		Node:   string(node.ID()),
+		Label:  node.Label(),
+		Kind:   string(node.Kind()),
+		Type:   node.Type(),
+		Reason: reason,
+	})
+
+	for _, diagnostic := range said {
+		if diagnostic.Severity == dfcad.SeverityError {
+			return
+		}
+	}
+
+	geometry, _ := node.Geometry()
+
+	c.diags = append(c.diags, dfcad.Diagnostic{
+		Severity: dfcad.SeverityError,
+		Span:     node.Span(),
+		Message: fmt.Sprintf(
+			"expected %s, whose geometry is %s, to be drawn as a feature of the map, found nothing to draw it from",
+			node.ID(), geometry),
+		Hint: "every node the model gives a shape to is written or named; this one was neither refused nor drawn, " +
+			"and the document would otherwise leave it out without a word",
+	})
 }
 
 // located is one node drawn as a point, carried into the root frame and
@@ -704,7 +868,7 @@ func (c *cartographer) features(rooted bool) []gml.Feature {
 // after the carry rather than before it, because a transform between frames
 // mixes the components and a position flattened first would land somewhere the
 // model does not put it.
-func (c *cartographer) located(node *dfcad.SemanticNode) (gml.Position, bool) {
+func (c *cartographer) located(node *dfcad.SemanticNode) (gml.Position, undrawnReason, bool) {
 	region, diags := c.graph.Topology().RegionOf(
 		node,
 		c.graph.Boundaries(),
@@ -713,21 +877,21 @@ func (c *cartographer) located(node *dfcad.SemanticNode) (gml.Position, bool) {
 	c.diags = append(c.diags, diags...)
 
 	if _, placed := region.Location(); !placed {
-		return gml.Position{}, false
+		return gml.Position{}, undrawnNoPosition, false
 	}
 
 	if region.Frame() != c.root {
 		carried, refused := region.In(c.root, c.graph.Frames())
 		if len(refused) > 0 {
 			c.diags = append(c.diags, refused...)
-			return gml.Position{}, false
+			return gml.Position{}, undrawnUncarried, false
 		}
 		region = carried
 	}
 
 	at, _ := region.Location()
 
-	return gml.Position{Easting: at[0], Northing: at[1]}, true
+	return gml.Position{Easting: at[0], Northing: at[1]}, "", true
 }
 
 // unread records every curve the vocabulary this run named could not read,
@@ -752,14 +916,22 @@ func (c *cartographer) unread(nodes []*dfcad.SemanticNode) {
 	c.diags = append(c.diags, diags...)
 }
 
-// surfaces is one node's outline, drawn, carried into the root frame and taken
-// apart into polygons.
+// drawn is one node's boundary drawn to the run's chord tolerance and carried
+// into the root frame, which is the part of writing a ring and writing a run
+// that is the same arithmetic.
 //
-// A node which references no loop this can assemble comes back with nothing
-// and no diagnostic of its own: the assembly has already said what was wrong
-// with it, and a second complaint about the shape it therefore does not have
-// would be the same fault reported twice.
-func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, bool) {
+// A node whose boundary could not be read comes back with nothing and no
+// diagnostic of its own: the assembly has already said what was wrong with it,
+// and a second complaint about the shape it therefore does not have would be
+// the same fault reported twice. What it does come back with is the reason,
+// which is what names it in the answer.
+//
+// The curves drawn are folded into what the document was drawn to before the
+// region is carried, and whether or not it can be. The tolerance is the same
+// declared value for every region — one in a unit other than the frame's
+// refuses the drawing — and the deviation is the worst of them, because the
+// document is as close to the model as its furthest segment is and no closer.
+func (c *cartographer) drawn(node *dfcad.SemanticNode, read func(dfcad.Region) bool) (dfcad.Region, undrawnReason, bool) {
 	drawn, diags := c.graph.Topology().TessellateRegion(
 		node,
 		c.graph.Boundaries(),
@@ -769,15 +941,10 @@ func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, bool) 
 	c.diags = append(c.diags, diags...)
 
 	region := drawn.Region()
-	if len(region.Pieces()) == 0 {
-		return nil, false
+	if !read(region) {
+		return dfcad.Region{}, undrawnUnreadable, false
 	}
 
-	// What this region was drawn to, folded into what the document was drawn
-	// to. The tolerance is the same declared value for every region — one in a
-	// unit other than the frame's refuses the drawing — and the deviation is
-	// the worst of them, because the document is as close to the model as its
-	// furthest segment is and no closer.
 	if made := drawn.ChordTolerance(); made.Name != "" {
 		c.tessellated.chord = made
 		c.tessellated.deviation = max(c.tessellated.deviation, drawn.Deviation())
@@ -792,25 +959,52 @@ func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, bool) 
 		carried, refused := region.In(c.root, c.graph.Frames())
 		if len(refused) > 0 {
 			c.diags = append(c.diags, refused...)
-			return nil, false
+			return dfcad.Region{}, undrawnUncarried, false
 		}
 		region = carried
 	}
 
+	return region, "", true
+}
+
+// level refuses a boundary whose corners do not lie at one level in the root
+// frame, and reports whether they do.
+//
+// It is asked of a run exactly as of a ring. A map is a plan whichever shape
+// is on it, and a sloping run written with its elevation dropped would be a
+// projection this command chose as surely as a tilted room would.
+func (c *cartographer) level(node *dfcad.SemanticNode, lies levels) bool {
+	if lies.level {
+		return true
+	}
+
+	c.diags = append(c.diags, dfcad.Diagnostic{
+		Severity: dfcad.SeverityError,
+		Span:     node.Span(),
+		Message: fmt.Sprintf(
+			"expected the boundary of %s to lie at one level in %s to draw it in plan, found corners at %s and %s",
+			node.ID(), c.root, figure(lies.elevation), figure(lies.offending)),
+		Hint: "a map is a plan; a boundary which is not level has none, and the projection which would give it " +
+			"one is not this command's to choose",
+	})
+
+	return false
+}
+
+// surfaces is one node's outline, drawn, carried into the root frame and taken
+// apart into polygons.
+func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, undrawnReason, bool) {
+	region, reason, drawn := c.drawn(node, func(region dfcad.Region) bool {
+		return len(region.Pieces()) > 0
+	})
+	if !drawn {
+		return nil, reason, false
+	}
+
 	pieces := region.Pieces()
 
-	lies := levelOf(pieces, region.Tolerance().Value)
-	if !lies.level {
-		c.diags = append(c.diags, dfcad.Diagnostic{
-			Severity: dfcad.SeverityError,
-			Span:     node.Span(),
-			Message: fmt.Sprintf(
-				"expected the boundary of %s to lie at one level in %s to draw it in plan, found corners at %s and %s",
-				node.ID(), c.root, figure(lies.elevation), figure(lies.offending)),
-			Hint: "a map is a plan; a boundary which is not level has none, and the projection which would give it " +
-				"one is not this command's to choose",
-		})
-		return nil, false
+	if !c.level(node, levelOf(pieces, region.Tolerance().Value)) {
+		return nil, undrawnUnlevel, false
 	}
 
 	out := make([]gml.Polygon, 0, len(pieces))
@@ -818,7 +1012,67 @@ func (c *cartographer) surfaces(node *dfcad.SemanticNode) ([]gml.Polygon, bool) 
 		out = append(out, surface(piece))
 	}
 
-	return out, true
+	return out, "", true
+}
+
+// curves is one node drawn as a line: the runs its loops walk, drawn, carried
+// into the root frame and written one line string per loop.
+//
+// A run covers nothing, so a region read from one has no pieces — and that is
+// the shape and not a failure of it. What it has is its boundary, run by run in
+// the order each loop walks it, and that is what the document writes. It used
+// to be read the way a ring is, found to cover nothing and skipped with nothing
+// said, which is how a map of a septic field came out holding the parcel and
+// none of the trenches.
+//
+// One line string per loop rather than one per edge, because a loop is the run
+// the model states: a partition turning a corner is one wall, and a layer which
+// wrote it as two features' worth of pieces would be a join the reader has to
+// make back.
+func (c *cartographer) curves(node *dfcad.SemanticNode) ([]gml.LineString, undrawnReason, bool) {
+	region, reason, drawn := c.drawn(node, func(region dfcad.Region) bool {
+		return len(region.Segments()) > 0
+	})
+	if !drawn {
+		return nil, reason, false
+	}
+
+	runs := walked(region.Segments())
+
+	if !c.level(node, levelOfRings(runs, region.Tolerance().Value)) {
+		return nil, undrawnUnlevel, false
+	}
+
+	out := make([]gml.LineString, 0, len(runs))
+	for _, run := range runs {
+		out = append(out, opened(run))
+	}
+
+	return out, "", true
+}
+
+// walked is the boundary of a run as the corners of each loop in the order it
+// was walked: where the first straight run of the loop leaves from, and where
+// every run of it arrives.
+//
+// The segments of one loop meet end to end, because the assembly walked them
+// that way — which is what lets a chain be read back as its corners rather than
+// as a heap of pairs.
+func walked(segments []dfcad.BoundarySegment) [][]dfcad.Point {
+	var out [][]dfcad.Point
+
+	ring := -1
+	for _, segment := range segments {
+		if len(out) == 0 || segment.Ring() != ring {
+			ring = segment.Ring()
+			out = append(out, []dfcad.Point{segment.From()})
+		}
+
+		last := len(out) - 1
+		out[last] = append(out[last], segment.To())
+	}
+
+	return out
 }
 
 // unrooted refuses a region in a model whose frames reach no root.
@@ -904,4 +1158,16 @@ func closed(ring []dfcad.Point) gml.LinearRing {
 	}
 
 	return gml.LinearRing{Positions: append(positions, positions[0])}
+}
+
+// opened is one run of a line as GML wants it: the third coordinate dropped,
+// because a map is a plan, and nothing repeated, because a run is not closed by
+// being one and saying so would make it a ring.
+func opened(run []dfcad.Point) gml.LineString {
+	positions := make([]gml.Position, 0, len(run))
+	for _, at := range run {
+		positions = append(positions, gml.Position{Easting: at[0], Northing: at[1]})
+	}
+
+	return gml.LineString{Positions: positions}
 }

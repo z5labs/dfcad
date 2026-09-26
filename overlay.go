@@ -175,7 +175,9 @@ type Region struct {
 	// — and they are what [Region.Segments] reports.
 	//
 	// A region an operation produced carries none, and that includes
-	// [Region.In]. The boundary of an intersection runs partly along each
+	// [Region.In] — except for an open run, which is nothing but these and
+	// comes back from a change of frame carrying them attributed to no edge.
+	// The boundary of an intersection runs partly along each
 	// operand and partly along where they cross, so attributing any of it to an
 	// edge somebody wrote would be a lie the next operation would act on; and a
 	// region carried into another frame has corners in that frame and edges
@@ -977,7 +979,11 @@ func (r Region) Location() (Point, bool) { return r.location, r.located }
 // stored nowhere else
 // ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
 func (r Region) Segments() []BoundarySegment {
-	if r.derived {
+	// A run carried into another frame is the one derived region which keeps a
+	// boundary of its own. It has no pieces for one to be produced from — a
+	// chain covers nothing — and [Region.runIn] has already said, run by run,
+	// that the edges no longer produced it.
+	if r.derived && !r.run() {
 		return r.produced()
 	}
 
@@ -1577,7 +1583,10 @@ func nearestTo(at vec, figure []contour) float64 {
 // ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
 //
 // A region which is a [Region.Location] rather than an area is carried the same
-// way and pays the same accuracy for it. What does not apply to one is the rest
+// way and pays the same accuracy for it, and so is an open run: its corners are
+// carried run by run and come back in the rings and the order they were walked
+// in, each attributed to the operation rather than to an edge whose coordinates
+// are in the other frame. What does not apply to one is the rest
 // of the above: a tolerance is what corners are judged coincident against and a
 // plane is what rings are nested in, and a coordinate has neither.
 func (r Region) In(target ID, frames *Frames) (Region, []Diagnostic) {
@@ -1596,6 +1605,10 @@ func (r Region) In(target ID, frames *Frames) (Region, []Diagnostic) {
 
 	if r.located {
 		return r.locatedIn(target, frames)
+	}
+
+	if r.run() {
+		return r.runIn(target, frames)
 	}
 
 	if !r.ready {
@@ -1751,6 +1764,88 @@ func (r Region) locatedIn(target ID, frames *Frames) (Region, []Diagnostic) {
 	result.unit = frameUnit(frames.registry, target)
 	result.budget.Merge(budget)
 	result.location, result.located = at, true
+
+	return result, nil
+}
+
+// run reports whether a region is an open run of edges: a boundary and no area.
+//
+// It is read off the state rather than kept as a flag because the state is what
+// makes it one. A region an operation produced carries no segments, one read
+// from a ring is ready, and one read from a point is located — so what is left,
+// a region which is none of those and still has runs to draw, is a chain.
+func (r Region) run() bool {
+	return !r.ready && !r.located && len(r.segments) > 0
+}
+
+// runIn expresses a region which is an open run in another frame.
+//
+// It is [Region.In] for a chain and skips the part of it which is about an
+// area, for the reason [Region.locatedIn] does: a tolerance is what corners are
+// judged coincident against and a plane is what rings are nested in, and a run
+// is not judged against either. What is left is the two questions which do
+// apply — are the frames related, and where does each corner land — and the
+// accuracy of the transform, merged in exactly as it is for a boundary.
+//
+// Every run comes back in the ring it was in, in the order it was walked, and
+// attributed to no edge. Its corners are in the target frame and the edge's
+// are not, so naming the edge would pair two sets of coordinates which drift
+// the moment either is read on its own — which is the rule every region
+// carried across keeps, and [BoundarySegment.Origin] reports it as the
+// operation it is.
+func (r Region) runIn(target ID, frames *Frames) (Region, []Diagnostic) {
+	budget, err := frames.TransformBudget(r.frame, target)
+	if err != nil {
+		return Region{}, []Diagnostic{{
+			Severity: SeverityError,
+			Span:     r.span,
+			Message: fmt.Sprintf(
+				"expected to express %s in the frame %s, found that the two frames are not related: %s",
+				r.name(), target, err,
+			),
+			Hint: "two frames are related by the chain of measured transforms between them; where there is no chain " +
+				"there is no answer, and a coordinate carried across unchanged would be in neither frame",
+		}}
+	}
+
+	carry := func(point Point) (Point, []Diagnostic) {
+		at, err := frames.TransformPoint(point, r.frame, target)
+		if err != nil {
+			return Point{}, []Diagnostic{{
+				Severity: SeverityError,
+				Span:     r.span,
+				Message: fmt.Sprintf(
+					"expected to express %s in the frame %s, found that %s could not be carried across: %s",
+					r.name(), target, pointText(point, r.printed()), err,
+				),
+				Hint: "a transform which cannot be applied to one corner of a run cannot be applied to the run; " +
+					"nothing here carries the corners it could and leaves the rest",
+			}}
+		}
+		return at, nil
+	}
+
+	moved := make([]BoundarySegment, 0, len(r.segments))
+
+	for _, segment := range r.segments {
+		from, refused := carry(segment.from)
+		if len(refused) > 0 {
+			return Region{}, refused
+		}
+
+		to, refused := carry(segment.to)
+		if len(refused) > 0 {
+			return Region{}, refused
+		}
+
+		moved = append(moved, BoundarySegment{ring: segment.ring, from: from, to: to})
+	}
+
+	result := r.derive()
+	result.frame = target
+	result.unit = frameUnit(frames.registry, target)
+	result.budget.Merge(budget)
+	result.segments = moved
 
 	return result, nil
 }

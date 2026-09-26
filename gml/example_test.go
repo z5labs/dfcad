@@ -147,6 +147,61 @@ func ExampleWrite_point() {
 	// </riverside:FeatureCollection>
 }
 
+// A thing which runs along a line and covers nothing is a feature of curves: a
+// fence, a trench, a pipe. It is written as a gml:MultiCurve of line strings,
+// each the positions of one run in the order it is walked, and left open — the
+// last position is not the first repeated, because a fence is not a paddock.
+func ExampleWrite_curve() {
+	collection := gml.Collection{
+		ID:        "riverside",
+		Namespace: "https://example.org/models/riverside",
+		Prefix:    "riverside",
+		Type:      "region",
+		CRS:       "EPSG:6543",
+		Features: []gml.Feature{{
+			ID: "site.T-01",
+			Properties: []gml.Property{
+				{Name: "id", Value: "site:T-01"},
+				{Name: "label", Value: "Trench 1"},
+			},
+			Curves: []gml.LineString{{Positions: []gml.Position{
+				{Easting: 50, Northing: 50},
+				{Easting: 120, Northing: 50},
+			}}},
+		}},
+	}
+
+	if err := gml.Write(os.Stdout, collection); err != nil {
+		fmt.Println(err)
+	}
+
+	// Output:
+	// <?xml version="1.0" encoding="UTF-8"?>
+	// <riverside:FeatureCollection xmlns:riverside="https://example.org/models/riverside" xmlns:gml="http://www.opengis.net/gml/3.2" gml:id="riverside">
+	//   <gml:boundedBy>
+	//     <gml:Envelope srsName="EPSG:6543" srsDimension="2">
+	//       <gml:lowerCorner>50 50</gml:lowerCorner>
+	//       <gml:upperCorner>120 50</gml:upperCorner>
+	//     </gml:Envelope>
+	//   </gml:boundedBy>
+	//   <gml:featureMember>
+	//     <riverside:region gml:id="site.T-01">
+	//       <riverside:id>site:T-01</riverside:id>
+	//       <riverside:label>Trench 1</riverside:label>
+	//       <riverside:geometry>
+	//         <gml:MultiCurve gml:id="site.T-01.geometry" srsName="EPSG:6543" srsDimension="2">
+	//           <gml:curveMember>
+	//             <gml:LineString gml:id="site.T-01.curve.1">
+	//               <gml:posList>50 50 120 50</gml:posList>
+	//             </gml:LineString>
+	//           </gml:curveMember>
+	//         </gml:MultiCurve>
+	//       </riverside:geometry>
+	//     </riverside:region>
+	//   </gml:featureMember>
+	// </riverside:FeatureCollection>
+}
+
 // A refusal is a value with the fields which made it, so a caller mapping its
 // own vocabulary onto this one can tell what to fix without reading a message.
 func ExampleWrite_refusal() {

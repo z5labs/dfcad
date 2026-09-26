@@ -828,3 +828,46 @@
     (method method:total-station)
     (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
     (date "2026-03-02")))
+
+; A railing in the annex frame: an open run of two edges, written at the numbers
+; the annex room's corners are and standing thirty metres away with it.
+(vertex geom:V-941
+  (label "Annex railing, start")
+  (frame frame:annex)
+  (position
+    (value (0.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-942
+  (label "Annex railing, turn")
+  (frame frame:annex)
+  (position
+    (value (4.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-943
+  (label "Annex railing, end")
+  (frame frame:annex)
+  (position
+    (value (4.0 6.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-941 (label "Annex railing, first run") (frame frame:annex) (vertices geom:V-941 geom:V-942))
+(edge geom:E-942 (label "Annex railing, second run") (frame frame:annex) (vertices geom:V-942 geom:V-943))
+(loop geom:L-94
+  (label "Annex railing run")
+  (frame frame:annex)
+  (edges geom:E-941 geom:E-942))
+(node site:R-11
+  (label "Annex railing")
+  (kind Element)
+  (type Railing)
+  (geometry line)
+  (frame frame:annex)
+  (boundary geom:L-94))

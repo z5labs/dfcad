@@ -119,10 +119,10 @@ func (e DuplicateIDError) Error() string {
 // NoGeometryError is a feature with no shape at all.
 //
 // A feature of this collection is a thing on the ground: that is what it is
-// for, and what a reader of the document will go looking for. One with neither
-// a surface nor a point would be a row in the layer which draws nothing, which
-// is worse than an absent row — it reads as a thing which is there and is
-// nowhere.
+// for, and what a reader of the document will go looking for. One with no
+// surface, no curve and no point would be a row in the layer which draws
+// nothing, which is worse than an absent row — it reads as a thing which is
+// there and is nowhere.
 type NoGeometryError struct {
 	// Feature is the id of the feature which has none.
 	Feature string
@@ -131,11 +131,12 @@ type NoGeometryError struct {
 // Error implements [error].
 func (e NoGeometryError) Error() string {
 	return fmt.Sprintf(
-		"expected the feature %s to hold at least one surface or one point, found neither",
+		"expected the feature %s to hold at least one surface, one curve or one point, found none",
 		strconv.Quote(e.Feature))
 }
 
-// MixedGeometryError is a feature holding both surfaces and points.
+// MixedGeometryError is a feature holding more than one kind of shape:
+// surfaces beside curves, curves beside points, or any other pairing.
 //
 // GML writes one geometry under a feature's geometry property, so there is
 // nowhere for the second kind to go. A writer which picked one would drop the
@@ -144,20 +145,43 @@ func (e NoGeometryError) Error() string {
 // which is the same loss, arrived at by a document nobody can tell is lossy.
 // A caller with a thing which is both an area and a place has two features.
 type MixedGeometryError struct {
-	// Feature is the id of the feature holding both.
+	// Feature is the id of the feature holding more than one kind.
 	Feature string
 
-	// Surfaces and Points are how many of each it holds, so that a caller can
-	// see which of the two it did not mean to give.
+	// Surfaces, Curves and Points are how many of each it holds, so that a
+	// caller can see which of them it did not mean to give.
 	Surfaces int
+	Curves   int
 	Points   int
 }
 
 // Error implements [error].
 func (e MixedGeometryError) Error() string {
 	return fmt.Sprintf(
-		"expected the feature %s to hold either surfaces or points, found %d surfaces and %d points",
-		strconv.Quote(e.Feature), e.Surfaces, e.Points)
+		"expected the feature %s to hold one kind of shape, surfaces, curves or points, found %d surfaces, "+
+			"%d curves and %d points",
+		strconv.Quote(e.Feature), e.Surfaces, e.Curves, e.Points)
+}
+
+// TooShortCurveError is a curve with too few positions to run anywhere.
+//
+// Two is the fewest a line string can have: the two ends of one straight run.
+// One position is a point, and a curve of one would be a place written as a
+// line, which a reader draws as nothing at all.
+type TooShortCurveError struct {
+	// Feature is the id of the feature the curve belongs to.
+	Feature string
+
+	// Positions is how many there were.
+	Positions int
+}
+
+// Error implements [error].
+func (e TooShortCurveError) Error() string {
+	return fmt.Sprintf(
+		"expected every curve of the feature %s to hold at least 2 positions, the two ends of a run, found one "+
+			"holding %d",
+		strconv.Quote(e.Feature), e.Positions)
 }
 
 // TooFewPositionsError is a ring with too few positions to bound anything.

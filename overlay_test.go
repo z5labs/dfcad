@@ -1237,3 +1237,71 @@ func TestALocatedRegionInAnotherFrame(t *testing.T) {
 		assert.Equal(t, SeverityError, diags[0].Severity)
 	})
 }
+
+// TestARunInAnotherFrame is its own function for the reason
+// [TestALocatedRegionInAnotherFrame] is: an open run covers nothing, so the
+// part of carrying a region which is about an area does not apply to it, and
+// what it asserts is that the corners take exactly the step a ring's take and
+// pay the same accuracy for it.
+func TestARunInAnotherFrame(t *testing.T) {
+	model := loadOverlaidModel(t, "shapes")
+
+	railing := model.region(t, "site:R-11")
+	require.Len(t, railing.Segments(), 2, "the railing is two runs as authored")
+
+	carried, diags := railing.In("frame:building", model.frames)
+	require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+	t.Run("lands every corner where the chain of transforms puts it", func(t *testing.T) {
+		assert.Equal(t, ID("frame:building"), carried.Frame())
+		assert.Equal(t, Unit("m"), carried.Unit())
+
+		segments := carried.Segments()
+		require.Len(t, segments, 2)
+
+		// The annex grid stands thirty metres east of the building's.
+		for i, expected := range [][2]Point{
+			{{30, 4, 0}, {34, 4, 0}},
+			{{34, 4, 0}, {34, 6, 0}},
+		} {
+			from, to := segments[i].From(), segments[i].To()
+			assert.InDeltaSlice(t, expected[0][:], from[:], 1e-9)
+			assert.InDeltaSlice(t, expected[1][:], to[:], 1e-9)
+			assert.Equal(t, 0, segments[i].Ring())
+		}
+	})
+
+	t.Run("attributes no run to an edge whose coordinates are in the other frame", func(t *testing.T) {
+		for _, segment := range carried.Segments() {
+			assert.Nil(t, segment.Edge())
+			assert.Equal(t, SegmentOriginOperation, segment.Origin())
+		}
+	})
+
+	t.Run("still covers nothing", func(t *testing.T) {
+		assert.True(t, carried.Empty())
+		assert.Empty(t, carried.Pieces())
+	})
+
+	t.Run("pays for the transform in its budget", func(t *testing.T) {
+		assert.Greater(t, len(carried.Budget().Terms()), len(railing.Budget().Terms()))
+	})
+
+	t.Run("is carried again from where it landed", func(t *testing.T) {
+		back, diags := carried.In("frame:annex", model.frames)
+		require.Empty(t, renderBoundaryDiagnostics(t, diags))
+
+		segments := back.Segments()
+		require.Len(t, segments, 2)
+		from := segments[0].From()
+		assert.InDeltaSlice(t, []float64{0, 4, 0}, from[:], 1e-9)
+	})
+
+	t.Run("refuses a frame nothing relates it to", func(t *testing.T) {
+		unrelated, diags := railing.In("frame:nowhere", model.frames)
+
+		assert.Empty(t, unrelated.Segments())
+		require.Len(t, diags, 1)
+		assert.Equal(t, SeverityError, diags[0].Severity)
+	})
+}

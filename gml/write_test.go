@@ -29,11 +29,11 @@ var updateGolden = flag.Bool("update", false, "rewrite the golden files under te
 
 // plaza is the collection every test below is run over.
 //
-// It is five shapes rather than one because those are the cases a vector
+// It is six shapes rather than one because those are the cases a vector
 // document has to carry: a plain rectangle, a rectangle with a courtyard taken
 // out of it, one thing which covers two disjoint areas, a thing which is at a
-// place and covers nothing, and a feature whose text holds every character XML
-// has to escape. Coordinates are in the millions, which is what a projected
+// place and covers nothing, a thing which runs along a line and covers nothing,
+// and a feature whose text holds every character XML has to escape. Coordinates are in the millions, which is what a projected
 // system in feet looks like, so a document which fell back to an exponent
 // would say so here rather than in somebody's survey.
 func plaza() Collection {
@@ -100,6 +100,19 @@ func plaza() Collection {
 					{Name: "kind", Value: "Element"},
 				},
 				Points: []Position{{Easting: 3502106.5, Northing: 552005.25}},
+			},
+			{
+				ID: "site.T-01",
+				Properties: []Property{
+					{Name: "id", Value: "site:T-01"},
+					{Name: "label", Value: "Drainage trench"},
+					{Name: "kind", Value: "Element"},
+				},
+				Curves: []LineString{{Positions: []Position{
+					{Easting: 3502102.5, Northing: 552026.25},
+					{Easting: 3502138.5, Northing: 552026.25},
+					{Easting: 3502138.5, Northing: 552030.75},
+				}}},
 			},
 		},
 	}
@@ -188,6 +201,12 @@ func TestWriteDeclaresTheExtentTheFeaturesActuallyCover(t *testing.T) {
 			}
 		}
 
+		for _, curve := range feature.Curves {
+			for _, at := range curve.Positions {
+				reach(at)
+			}
+		}
+
 		for _, at := range feature.Points {
 			reach(at)
 		}
@@ -215,6 +234,47 @@ func TestWriteBoundsAPointOutsideEverySurface(t *testing.T) {
 
 	require.True(t, got.Bounded)
 	assert.Equal(t, far, got.Upper, "the envelope reaches the furthest thing in the layer")
+}
+
+// TestWriteBoundsACurveOutsideEverySurface is its own function for the reason
+// [TestWriteBoundsAPointOutsideEverySurface] is: a run is not an area, and an
+// envelope computed over the polygons alone would not reach the far end of a
+// fence which leaves the plot.
+func TestWriteBoundsACurveOutsideEverySurface(t *testing.T) {
+	collection := plaza()
+
+	far := Position{Easting: 3502500.5, Northing: 552900.25}
+	collection.Features = append(collection.Features, Feature{
+		ID: "fence.F-9",
+		Curves: []LineString{{Positions: []Position{
+			{Easting: 3502140.5, Northing: 552024.25},
+			far,
+		}}},
+	})
+
+	got := read(t, written(t, collection))
+
+	require.True(t, got.Bounded)
+	assert.Equal(t, far, got.Upper, "the envelope reaches the end of the furthest run in the layer")
+}
+
+// TestWriteLeavesACurveOpen is its own function because what it asserts is an
+// absence: a run is written with the positions it was given, and a writer
+// which closed it the way a ring is closed would turn a fence into a paddock.
+func TestWriteLeavesACurveOpen(t *testing.T) {
+	collection := plaza()
+
+	got := read(t, written(t, collection))
+
+	var curves []LineString
+	for _, feature := range got.Features {
+		curves = append(curves, feature.Curves...)
+	}
+
+	require.Len(t, curves, 1)
+	positions := curves[0].Positions
+	assert.Len(t, positions, 3)
+	assert.NotEqual(t, positions[0], positions[len(positions)-1])
 }
 
 // TestWriteIsByteIdenticalForOneCollection is its own function because it is
@@ -290,6 +350,7 @@ func TestWriteIdentifiesEveryElementGMLRequiresAnIdentifierFor(t *testing.T) {
 		"site.P-01", "site.P-01.geometry", "site.P-01.surface.1",
 		"site.S-101", "site.S-101.geometry", "site.S-101.surface.1", "site.S-101.surface.2",
 		"site.PNL-01", "site.PNL-01.geometry", "site.PNL-01.point.1",
+		"site.T-01", "site.T-01.geometry", "site.T-01.curve.1",
 	}, found)
 
 	seen := make(map[string]bool, len(found))
@@ -338,6 +399,16 @@ func square() LinearRing {
 		{Easting: 4, Northing: 3},
 		{Easting: 0, Northing: 3},
 		{Easting: 0, Northing: 0},
+	}}
+}
+
+// run is an open line of three positions, which is the smallest shape of a
+// curve that is more than one straight run.
+func run() LineString {
+	return LineString{Positions: []Position{
+		{Easting: 0, Northing: 0},
+		{Easting: 4, Northing: 0},
+		{Easting: 4, Northing: 4},
 	}}
 }
 
@@ -514,6 +585,57 @@ func TestWriteRefusesADocumentNoReaderCouldRead(t *testing.T) {
 				return collection
 			},
 			expected: MixedGeometryError{Feature: "feature", Surfaces: 1, Points: 1},
+		},
+		{
+			name: "a feature which is both an area and a line",
+			collection: func() Collection {
+				collection := one(Polygon{Exterior: square()})
+				collection.Features[0].Curves = []LineString{run()}
+				return collection
+			},
+			expected: MixedGeometryError{Feature: "feature", Surfaces: 1, Curves: 1},
+		},
+		{
+			name: "a feature which is both a line and a place",
+			collection: func() Collection {
+				collection := one()
+				collection.Features[0].Curves = []LineString{run()}
+				collection.Features[0].Points = []Position{{Easting: 2, Northing: 2}}
+				return collection
+			},
+			expected: MixedGeometryError{Feature: "feature", Curves: 1, Points: 1},
+		},
+		{
+			name: "a curve of one position, which is a place rather than a run",
+			collection: func() Collection {
+				collection := one()
+				collection.Features[0].Curves = []LineString{{Positions: run().Positions[:1]}}
+				return collection
+			},
+			expected: TooShortCurveError{Feature: "feature", Positions: 1},
+		},
+		{
+			name: "a curve through a coordinate which is not a number",
+			collection: func() Collection {
+				curve := run()
+				curve.Positions[1].Easting = math.Inf(1)
+				collection := one()
+				collection.Features[0].Curves = []LineString{curve}
+				return collection
+			},
+			expected: NonFiniteCoordinateError{Feature: "feature", Easting: math.Inf(1), Northing: 0},
+		},
+		{
+			name: "a feature whose identifier collides with a curve's derived one",
+			collection: func() Collection {
+				collection := one()
+				collection.Features[0].Curves = []LineString{run()}
+				second := one(Polygon{Exterior: square()}).Features[0]
+				second.ID = "feature.curve.1"
+				collection.Features = append(collection.Features, second)
+				return collection
+			},
+			expected: DuplicateIDError{ID: "feature.curve.1"},
 		},
 	}
 
