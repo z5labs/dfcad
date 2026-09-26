@@ -84,9 +84,9 @@ stderr names each of them.
 
 --setback asks the question a plot is usually asked: not whether a footprint
 fits on it, but whether it fits what the plot allows. The setback claimed on each
-edge of the envelope is taken off that edge exactly as buildable takes it off —
-six metres at the road, three at each flank, four at the rear — and the subject
-is sited inside what is left. That region is derived and never authored, and it
+edge of the envelope is taken off that edge exactly as buildable takes it off,
+whatever distance that claim states — they differ from edge to edge as often as
+not — and the subject is sited inside what is left. That region is derived and never authored, and it
 is derived inside this query rather than beside it, so one budget carries the
 setback claims and the envelope's corners beside the subject's corners and the
 transforms: a control point behind the boundary survey and the georeference
