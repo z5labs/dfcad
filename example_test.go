@@ -3386,9 +3386,9 @@ func ExampleTopology_FitWithin() {
 	// The footprint was set out on the building's own grid and the plot was
 	// surveyed on the site grid, so deciding this reads the georeference.
 	footprint, _ := nodes.Node("plan:S-01")
-	buildable, _ := nodes.Node("plan:B-01")
+	plot, _ := nodes.Node("plan:P-01")
 
-	answer, _ := topology.FitWithin(footprint, buildable, boundaries, survey, dfcad.Siting{Frames: frames})
+	answer, _ := topology.FitWithin(footprint, plot, boundaries, survey, dfcad.Siting{Frames: frames})
 
 	combined, _ := answer.Uncertainty()
 	fmt.Printf("%s: %.2f m clear, ±%.4f m, carried across %s\n",
@@ -3413,13 +3413,28 @@ func ExampleTopology_FitWithin() {
 	// to twenty.
 	tight, _ := nodes.Node("plan:S-03")
 
-	marginal, diags := topology.FitWithin(tight, buildable, boundaries, survey, dfcad.Siting{Frames: frames})
+	marginal, diags := topology.FitWithin(tight, plot, boundaries, survey, dfcad.Siting{Frames: frames})
 	fmt.Println(marginal.Verdict(), marginal.Verdict().Decided(), diags[0].Severity)
+
+	// What the plot allows is narrower than the plot. The setback claimed on each
+	// of its edges is taken off that edge, and the footprint is sited inside
+	// what is left — derived here, never authored, and in the same budget as
+	// everything else, so the plot's control point is still counted once.
+	allowed, _ := topology.FitWithin(footprint, plot, boundaries, survey, dfcad.Siting{
+		Frames:   frames,
+		Setbacks: dfcad.Setbacks{Predicate: "setback", Claims: claims},
+	})
+
+	derivation, _ := allowed.Buildable()
+	within, _ := allowed.Uncertainty()
+	fmt.Printf("%s: %.2f m clear of %.0f m² buildable, ±%.4f m\n",
+		allowed.Verdict(), allowed.Clearance(), derivation.Area(), within.Standard())
 
 	// Output:
 	// fits: 4.00 m clear, ±0.0203 m, carried across frame:building
 	// systematic control:CP-1: 0.008 m from 9 claims
 	// might-fit false warning
+	// does-not-fit: -2.00 m clear of 240 m² buildable, ±0.0204 m
 }
 
 func ExampleLoadObservations() {

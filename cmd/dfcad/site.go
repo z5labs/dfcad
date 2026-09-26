@@ -50,6 +50,10 @@ Flags:
 	--clearance <distance>     how much room the subject has to keep between
 	                           itself and the envelope's boundary, in the
 	                           linear unit of the envelope's frame (default 0)
+	--setback <predicate>      the predicate an edge's setback distance is
+	                           claimed under; given, the subject is sited
+	                           inside what the envelope's setbacks leave
+	                           buildable rather than inside its outline
 	--arc-centre <predicate>   the predicate a curved edge's centre is claimed
 	                           under
 	--arc-through <predicate>  the predicate the point a curved edge passes
@@ -78,6 +82,22 @@ two ends. Where that discarded something the model states, the answer says so:
 curve is written, because an edge has no position of its own — and a warning on
 stderr names each of them.
 
+--setback asks the question a plot is usually asked: not whether a footprint
+fits on it, but whether it fits what the plot allows. The setback claimed on each
+edge of the envelope is taken off that edge exactly as buildable takes it off —
+six metres at the road, three at each flank, four at the rear — and the subject
+is sited inside what is left. That region is derived and never authored, and it
+is derived inside this query rather than beside it, so one budget carries the
+setback claims and the envelope's corners beside the subject's corners and the
+transforms: a control point behind the boundary survey and the georeference
+alike is counted once, where combining the answers of buildable and site would
+count it twice. An edge with no live setback claim is refused naming the edge,
+never read as nought. --clearance is kept on top of the setbacks, not instead of
+them. Setbacks which leave nothing buildable are an answer rather than a
+failure: nothing fits an empty region, so the verdict is does-not-fit, the
+envelope comes back empty, and a warning on stderr says which parcel its own
+setbacks consumed.
+
 The verdict distinguishes fitting from possibly fitting, and it is the reason
 the clearance is never reported on its own:
 
@@ -105,7 +125,11 @@ regions, and the "budget": the accuracy of the answer broken out by term, each
 naming the claims which contributed it. Where either outline bent it also
 carries the "chord" tolerance it was drawn to and the "deviation" that drawing
 achieved, and where a curve went unread it carries "chorded": the edges which
-state one, each with the predicates it states it under.
+state one, each with the predicates it states it under. Where --setback was
+given it also carries the "parcel" outline the setbacks were taken off and the
+"setbacks" applied, one per edge, and "envelope" is what they leave buildable;
+where they leave nothing, "clearance" is absent, there being no boundary to
+measure one to.
 
 Exit code 1 is a question which could not be answered — an outline which could
 not be read, two frames with no measured chain between them, a clearance
@@ -218,9 +242,18 @@ type siteResult struct {
 	// which read every curve and for a model which claims none.
 	Chorded []chordedEntry `json:"chorded,omitempty"`
 
+	// Parcel is the envelope's outline as the model holds it, and Setbacks the
+	// setbacks taken off it, one per edge in the order its loops traverse
+	// them. Both are absent for a run which sited inside the outline itself,
+	// which is what keeps that run's object the same bytes it always was; where
+	// they are present, Envelope is what the setbacks leave buildable.
+	Parcel   *regionEntry   `json:"parcel,omitempty"`
+	Setbacks []setbackEntry `json:"setbacks,omitempty"`
+
 	// Budget is the accuracy of the answer, broken out by term, over the
-	// position claims behind both outlines and the transform claims of every
-	// frame the subject was carried through.
+	// position claims behind both outlines, the setback claims where any were
+	// applied, and the transform claims of every frame the subject was carried
+	// through.
 	Budget *budgetReport `json:"budget,omitempty"`
 }
 
@@ -259,6 +292,7 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	position := flags.String(flagPosition, "", "")
 	tolerance := flags.String(flagTolerance, "", "")
 	clearance := flags.Float64(flagClearance, 0, "")
+	setback := flags.String(flagSetback, "", "")
 	centre := flags.String(flagArcCentre, "", "")
 	through := flags.String(flagArcThrough, "", "")
 	chord := flags.String(flagChord, "", "")
@@ -319,10 +353,18 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	sides := asEntities(proposed, inside)
 	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through, chord: *chord}, sides...)
 
-	answer, diags := graph.Topology().FitWithin(proposed, inside, graph.Boundaries(), survey, dfcad.Siting{
+	siting := dfcad.Siting{
 		Frames:    graph.Frames(),
 		Clearance: *clearance,
-	})
+	}
+
+	// Asked for only where it was named: a run given no setback predicate sites
+	// inside the outline, exactly as it did before there was a flag for it.
+	if *setback != "" {
+		siting.Setbacks = dfcad.Setbacks{Predicate: *setback, Claims: graph.Claims()}
+	}
+
+	answer, diags := graph.Topology().FitWithin(proposed, inside, graph.Boundaries(), survey, siting)
 
 	// What the survey could not bend, over both outlines: a clearance measured
 	// against a chord is measured against a line which is not the boundary, and
@@ -403,20 +445,35 @@ func reportSite(
 		result.Deviation = &measuredValue{Value: answer.Deviation(), Unit: string(answer.Unit())}
 	}
 
-	measured := clearanceEntry{
-		Required: answer.Required(),
-		Actual:   answer.Clearance(),
-		Margin:   answer.Margin(),
-		Unit:     string(answer.Unit()),
+	// An envelope its setbacks consumed has no boundary to measure a room to,
+	// and a clearance of nought written anyway would read as a subject touching
+	// one. The verdict and the empty envelope are the answer.
+	if !answer.Consumed() {
+		measured := clearanceEntry{
+			Required: answer.Required(),
+			Actual:   answer.Clearance(),
+			Margin:   answer.Margin(),
+			Unit:     string(answer.Unit()),
+		}
+		if combined, err := answer.Uncertainty(); err == nil {
+			measured.Uncertainty = &combinedUncertainty{
+				Magnitude:      combined.Magnitude,
+				Unit:           string(combined.Unit),
+				CoverageFactor: combined.CoverageFactor,
+			}
+		}
+		result.Clearance = &measured
 	}
-	if combined, err := answer.Uncertainty(); err == nil {
-		measured.Uncertainty = &combinedUncertainty{
-			Magnitude:      combined.Magnitude,
-			Unit:           string(combined.Unit),
-			CoverageFactor: combined.CoverageFactor,
+
+	if derivation, setBack := answer.Buildable(); setBack {
+		parcel := regionOf(derivation.Boundary())
+		result.Parcel = &parcel
+
+		result.Setbacks = make([]setbackEntry, 0, len(derivation.Setbacks()))
+		for _, applied := range derivation.Setbacks() {
+			result.Setbacks = append(result.Setbacks, setbackOf(applied))
 		}
 	}
-	result.Clearance = &measured
 
 	for _, one := range []struct {
 		region dfcad.Region

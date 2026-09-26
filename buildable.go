@@ -224,18 +224,31 @@ func (t *Topology) BuildableOf(
 		})
 	}
 
-	applied, refused := boundary.setbacksOf(t, setbacks)
+	result, found := boundary.buildable(t, setbacks)
+
+	return result, append(diags, found...)
+}
+
+// buildable is the derivation [Topology.BuildableOf] makes, from a boundary
+// which has already been read.
+//
+// It is separate so that a query which reads the boundary for a reason of its
+// own — [Topology.FitWithin], siting inside what the setbacks leave — derives
+// the region the same way and from the same reading, rather than reading the
+// outline a second time and reporting everything wrong with it twice.
+func (r Region) buildable(t *Topology, setbacks Setbacks) (Buildable, []Diagnostic) {
+	applied, refused := r.setbacksOf(t, setbacks)
 	if len(refused) > 0 {
-		return Buildable{}, append(diags, refused...)
+		return Buildable{}, refused
 	}
 
-	result := Buildable{boundary: boundary, region: boundary.setBack(applied), setbacks: applied}
+	result := Buildable{boundary: r, region: r.setBack(applied), setbacks: applied}
 
 	if result.Empty() {
-		diags = append(diags, boundary.consumed(applied))
+		return result, []Diagnostic{r.consumed(applied)}
 	}
 
-	return result, diags
+	return result, nil
 }
 
 // setbacksOf resolves the setback of every edge of the boundary, in the order
