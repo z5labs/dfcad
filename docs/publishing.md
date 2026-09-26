@@ -176,6 +176,13 @@ finding names no commit, and the shallow-clone refusal `review --against` makes 
 gate's to make instead. A gate that needs findings attributed to commits runs `review --against`
 from a `dfcad` binary on a host that has `git`.
 
+The model gate this repository ships does exactly that when it is given the image:
+`.github/gate/gate.sh --image ghcr.io/z5labs/dfcad@sha256:<digest>` reads the merge base on the
+runner, refuses a shallow history as `review --against` would, and hands both trees to the
+image, with every path mounted where it lies on the host so its annotations name files relative
+to the repository root. [`.github/gate/README.md`](../.github/gate/README.md) says how to adopt
+it.
+
 It is multi-architecture, `linux/amd64` and `linux/arm64`, which is the module's default
 platform list. This repository does not override it: the platforms the image covers are the
 platforms the pipeline builds, and stating them twice is how they come to disagree.

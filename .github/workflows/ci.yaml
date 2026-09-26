@@ -195,25 +195,6 @@ jobs:
           chmod +x ./dfcad
           ./dfcad --help >/dev/null
 
-      # The stamp is applied by the module's link line and by nothing in this
-      # repository, which means nothing here would notice it stopping. A binary
-      # that reports itself unstamped is one no bug report can identify, and it
-      # would look exactly like a working build everywhere else in this job — so
-      # the built binary is asked, every run, and the answer is required to be
-      # yes.
-      #
-      # The symbol names are the module's (main.version, main.commit) and -X
-      # against a name that is not there is a silent no-op, so this is also what
-      # catches a rename or a move of either variable out of package main. See
-      # docs/versioning.md.
-      - name: Confirm the pipeline stamped the binary
-        run: |
-          ./dfcad version | tee /dev/stderr | jq -e '
-            .build.stamped == true
-            and (.build.version | length > 0)
-            and (.build.commit | test("^[0-9a-f]{7,40}$"))
-          ' > /dev/null
-
       # Exercising the gate against two deliberately broken models, every run,
       # and before the gate is believed about anything else. A gate nobody has
       # seen fail is not known to be a gate: a swallowed exit code or a filter
@@ -227,8 +208,36 @@ jobs:
       # requires each of the three stages to have annotated something. A gate
       # which still blocks while saying nothing on the line — which is what a
       # contract bump left behind last time — fails here.
+      #
+      # It is also where the stamp is required. The stamp is applied by the
+      # module's link line and by nothing in this repository, so nothing here
+      # would notice it stopping; the self-test asks the engine's own `dfcad
+      # version` and refuses one which reports itself unstamped, and it does so
+      # for a consumer's engine too. See docs/versioning.md.
       - name: Confirm the gate blocks a broken model, and says where
         run: .github/gate/selftest.sh --binary ./dfcad
+
+      # The same image the build job publishes for this commit, built for
+      # linux/amd64 — this runner's platform — and loaded into the runner's
+      # Docker rather than pushed anywhere. A data repository gates with the published image rather than
+      # with a binary, so that route is proven here, on the pull request that
+      # could break it, rather than first in somebody else's repository.
+      #
+      # It is named by its image ID, which is a digest of what was loaded, so
+      # the gate runs it exactly as a consumer runs a pin: by digest, with
+      # nothing installed but the runtime.
+      - name: Build the dfcad image with the standard pipeline
+        run: |
+          dagger call image export-image --name=dfcad:gate
+          echo "DFCAD_IMAGE=$(docker image inspect --format '{{.Id}}' dfcad:gate)" >> "$GITHUB_ENV"
+
+      # The self-test again, through the image: its contract and its stamp are
+      # read from the image's own `dfcad version`, and both broken models are
+      # gated through it — the review stage included, which the image can only
+      # run because the gate reads the merge base on the runner — with every
+      # annotation required to name a path relative to the repository root.
+      - name: Confirm the gate blocks a broken model through the image, and says where
+        run: .github/gate/selftest.sh --image "$DFCAD_IMAGE"
 
       - name: Open the runtime table
         run: |

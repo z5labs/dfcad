@@ -105,6 +105,35 @@ func (m *Dfcad) Binary(
 	return m.app(version, platform).Container(platform).File(binaryPath), nil
 }
 
+// Image is the dfcad image for one platform, exactly as Publish pushes it for
+// that platform: the same archetype, the same version and the same stamp.
+//
+// It exists so that the model gate can be run through the image on a build
+// which does not publish one. A consumer's gate runs the published image by
+// digest, and the self-test proves that route on every pull request by loading
+// this into the runner's image store — `dagger call image export-image
+// --name=...` — and gating the broken models through it. Building the image a
+// second way for the purpose would be a second definition of the artefact,
+// which is what Binary is careful not to be either.
+//
+// +cache="session"
+func (m *Dfcad) Image(
+	ctx context.Context,
+	// The platform to build for. Defaults to linux/amd64.
+	//
+	// +optional
+	platform dagger.Platform,
+) (*dagger.Container, error) {
+	if platform == "" {
+		platform = defaultBinaryPlatform
+	}
+	version, err := m.Version(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return m.app(version, platform).Container(platform), nil
+}
+
 // app is the archetype's application at version, built for platforms, or for
 // the pipeline's pair when none are given.
 func (m *Dfcad) app(version string, platforms ...dagger.Platform) *dagger.Z5LabsApp {

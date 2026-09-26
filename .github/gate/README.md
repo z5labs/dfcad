@@ -31,8 +31,8 @@ continuous integration section of [`CLAUDE.md`](../../CLAUDE.md).
 
 | Path | What it is |
 |---|---|
-| `gate.sh` | The gate. Runs the commands over one model root, annotates what failed, records how long it took and how much it said, and exits non-zero if any of them said no. |
-| `selftest.sh` | Runs `gate.sh` against both broken models and requires it to block, and to say where. |
+| `gate.sh` | The gate. Runs the commands over one model root, from a binary or from the published image, annotates what failed, records how long it took and how much it said, and exits non-zero if any of them said no. |
+| `selftest.sh` | Asks the engine which contract it writes and whether it is stamped, then runs `gate.sh` against both broken models through it and requires it to block, and to say where. |
 | `broken/` | A deliberately broken model which **loads**: one file not in canonical form, one room whose outline does not close against the invariant its type states, and one corner rewritten with no measurement behind it. |
 | `unloadable/` | A deliberately broken model which **does not load**: one file which does not parse, and one node naming a type the registry does not declare. |
 
@@ -66,10 +66,72 @@ uploads as the `dfcad-gate-results` artifact, holding, per model root:
 | `<root>.timing.json` | How many milliseconds each command took, and the three together. Written on every run, including the ones which found something — those are the runs the gate is slowest on. |
 | `<root>.annotations.json` | How many annotations each stage placed, the output contract they were read against, and whether any result could not be read at all. |
 
-## The binary it runs
+## The engine it runs
 
-The gate takes a `--binary` rather than reaching for `go run`, and the workflow
-passes it the binary the standard pipeline built:
+The gate is told which `dfcad` to run, and never reaches for `go run`. It runs
+one of two things, and exactly one:
+
+| Flag | Runs | Who uses it |
+|---|---|---|
+| `--image <ref>` | the published image, through a container runtime — `docker` unless `--runtime` names another, such as `podman` | a data repository. The registry is the distribution channel ([ADR 0019](../../docs/decisions/0019-the-registry-is-the-distribution-channel.md)), and there is no published file to install |
+| `--binary <path>` | a `dfcad` executable on the runner | this repository, which gates with the binary its own pipeline just built |
+
+### From the published image
+
+```sh
+.github/gate/gate.sh \
+  --image ghcr.io/z5labs/dfcad@sha256:<digest> \
+  --root model \
+  --against origin/main
+```
+
+Pin the image **by digest**, as [`publishing.md`](../../docs/publishing.md) says
+to: the digest names the bytes the signature and the provenance describe, and it
+is what stops the gate's verdict moving under a model nobody changed. Nothing is
+installed on the runner but the container runtime, which every GitHub-hosted
+Ubuntu runner already has. The image is pulled if the runtime does not hold it.
+
+An image run annotates **exactly** what a binary run does, at the same paths,
+because of how the image is run:
+
+- **Every directory it reads is mounted at the path it has on the host,** and the
+  container starts in the directory the gate was run from. `dfcad` writes the
+  paths it walked, and inside the container it walks the paths it was given out
+  here, so an annotation names `model/entities/room.dfc` rather than
+  `/model/entities/room.dfc` — which GitHub would resolve against nothing. The
+  model is mounted read-only; the results directory is writable, because the
+  review stage writes its summary into it.
+- **It runs as the invoking user,** so that what it writes is theirs. On a
+  rootless runtime that is the container's root, which the runtime maps back to
+  the invoking user.
+- **It has no network,** and the SELinux label is disabled for it rather than the
+  checkout relabelled.
+- **The review stage reads git on the runner.** The image carries no `git`, and
+  `review --against` is a host command
+  ([ADR 0026](../../docs/decisions/0026-reading-a-revision-out-of-git-is-a-host-command.md)).
+  So the gate does the git half itself: it finds the merge base of `HEAD` and
+  `--against`, archives that revision into a directory of its own, mounts it,
+  and runs `review --base-root` against it. It refuses what `review --against`
+  refuses — a root outside a working tree, a shallow history — with the same
+  sentence and the same exit code. What it gives up is attribution: a finding
+  names no commit, because the image is given no history to name one from.
+
+The engine is asked `dfcad version` before any stage runs, and the log says
+which build it is gating with. When the engine cannot be run at all, the gate
+says why on stderr and exits **69**, having run no stage:
+
+```
+gate.sh: the container runtime docker is not on the path, so ghcr.io/z5labs/dfcad@sha256:… cannot be run: install it, or name the one this runner has with --runtime; the gate ran no stage over model
+gate.sh: docker could not pull ghcr.io/z5labs/dfcad@sha256:…; the gate ran no stage over model
+gate.sh: ghcr.io/z5labs/dfcad@sha256:… did not answer `dfcad version` under docker; the gate ran no stage over model
+```
+
+None of those is ever a pass: a gate which ran nothing does not know whether the
+model is sound.
+
+### From the binary the pipeline built
+
+This repository's own CI passes the binary the standard pipeline built:
 
 ```sh
 dagger call binary export --path=./dfcad
@@ -82,9 +144,17 @@ second way of producing it, and the gate and the shipped artifact could then
 disagree about what `dfcad check` means — which is the disagreement a gate is
 least able to survive.
 
-A data repository has no `cmd/dfcad` to build. It should install a published
-`dfcad` at a pinned version and pass that path instead; the pin is what stops
-the gate's verdict moving under a model nobody changed.
+The self-test runs the gate both ways on every build: through the binary, and
+through the image the same pipeline builds for this commit, loaded into the
+runner's Docker and named by its image ID —
+
+```sh
+dagger call image export-image --name=dfcad:gate
+.github/gate/selftest.sh --image "$(docker image inspect --format '{{.Id}}' dfcad:gate)"
+```
+
+— so the route a consumer takes is proven on the pull request that could break
+it, rather than first in somebody else's repository.
 
 ## The third question, and why it is opt-in
 
@@ -112,10 +182,11 @@ answer exactly as they did before.
 What a checkout has to be for it to run:
 
 - **on a host with `git` on the path**, because the previous revision is read by running it.
-  The published image carries no `git`, so `review --against` is a host command and the
-  `--binary` this gate runs has to be one on the runner rather than the image;
-  [`publishing.md`](../../docs/publishing.md) says which commands the image does answer, and
-  how to run `review --base-root` from it instead;
+  The published image carries no `git`, so under `--image` the gate reads the merge base on
+  the runner and hands it to the image as `--base-root` (see
+  [the engine it runs](#from-the-published-image)); under `--binary` the binary reads it
+  itself. Either way it is the runner's `git`, which is on every runner that checked the
+  model out;
 - **inside a git working tree**, because that is where the previous revision is;
 - **with the history back to the merge base**, which means `fetch-depth: 0` on
   `actions/checkout`. A shallow clone is refused rather than answered from — git reports a
@@ -182,9 +253,10 @@ things are checked against it:
    written for is reported as an annotation of its own and fails the gate,
    because a gate which cannot read what the tool wrote does not know whether
    the model is sound.
-2. **The self-test checks the binary.** `dfcad version` reports
+2. **The self-test checks the engine.** `dfcad version` reports
    `.contracts.output`, and the self-test requires it to be the number the gate
-   reads. That is the earlier signal of the two: it fails on the build which
+   reads — asked of the binary under `--binary`, and of the image itself under
+   `--image`. That is the earlier signal of the two: it fails on the build which
    bumps the contract, whatever any one result object happens to contain.
 3. **The self-test counts what each stage annotated**, and requires each of
    `fmt`, `check` and `review` to have said something about a model which gives
@@ -214,8 +286,14 @@ construction: everything goes green, which is what a working gate also looks
 like.
 
 So both broken models are committed, and `selftest.sh` runs `gate.sh` against
-each of them before the gate is believed about anything else in the job. It
-requires:
+each of them before the gate is believed about anything else in the job. It is
+given the engine exactly as the gate is — `--binary` or `--image` — and asks
+that engine, not some other build beside it, what it is. It requires:
+
+- the engine's own `dfcad version` to report the output contract the gate's
+  filters read, and to report a **stamped** build: a version, and the commit it
+  was built from. An unstamped engine — which is what `go install` builds — is
+  one nobody can say the provenance of a verdict from;
 
 - a non-zero exit over each of them, and every result file written — including
   `timing.json`, which is written after the annotations and so goes missing when
@@ -229,7 +307,11 @@ requires:
   finding which names a line, an annotation on that line — matched against the
   span the result object carries, parsed a second time here in a different
   engine from the gate's, so that a filter and its assertion cannot agree with
-  each other about a form neither of them reads correctly.
+  each other about a form neither of them reads correctly;
+- every annotation to name a file **relative** to where the gate was run. An
+  absolute path is one GitHub cannot resolve against the repository, and it is
+  what an engine in a container writes when the model is mounted anywhere but
+  where it lies on the host.
 
 A gate which stopped blocking fails there, in the run that broke it. So does one
 which stopped saying where.
@@ -264,13 +346,37 @@ the colons does work.
    canonical, a rule which fails on something that loads, a `*.dfc.prior` file
    holding the revision before the change under review, and — in the other root
    — a file which does not parse.
-2. Install a pinned `dfcad` and pass it as `--binary`.
-3. Call `gate.sh` once per model root you want gated, with `--results` pointing
+2. Pick the image by digest and pass it as `--image`, from a step run at the
+   repository root. Nothing else is installed: the runner's Docker runs it, and
+   `--runtime podman` runs it under Podman instead. Find the digest for a release
+   once, with `docker buildx imagetools inspect ghcr.io/z5labs/dfcad:<tag>
+   --format '{{.Manifest.Digest}}'`, and write it into the workflow.
+3. Run `selftest.sh --image <the same reference>` before the gate, if you copied
+   it. It asks the image's own `dfcad version` whether it writes the output
+   contract the gate's filters read and whether it is a stamped build, then
+   requires the gate to block both broken models through it and to annotate
+   them at paths relative to the repository root.
+4. Call `gate.sh` once per model root you want gated, with `--results` pointing
    at a directory you upload. Add `--against origin/<default branch>` once your
-   checkout has the history for it, and `--policy` for any check your repository
-   wants ruled differently.
-4. Make the job a required status check on your default branch. A gate that does
+   checkout has the history for it — `fetch-depth: 0` on `actions/checkout` —
+   and `--policy` for any check your repository wants ruled differently.
+5. Make the job a required status check on your default branch. A gate that does
    not block is a report.
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    fetch-depth: 0
+- run: .github/gate/selftest.sh --image "$DFCAD_IMAGE"
+- run: |
+    .github/gate/gate.sh \
+      --image "$DFCAD_IMAGE" \
+      --root model \
+      --results gate-results \
+      --against "origin/${{ github.event.repository.default_branch }}"
+env:
+  DFCAD_IMAGE: ghcr.io/z5labs/dfcad@sha256:<digest>
+```
 
 What you do **not** copy is the `build` job. That is this repository's Go
 pipeline, and a data repository has none.

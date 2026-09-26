@@ -20,11 +20,19 @@
 #
 #	gate.sh --binary <dfcad> --root <model root> [--results <dir>] \
 #	        [--against <ref>] [--policy <check>=<ruling>]...
+#	gate.sh --image <ref> [--runtime <command>] --root <model root> ...
 #	gate.sh --contract
 #
 # Run it from the directory paths should be reported relative to, which in CI is
 # the repository root: the paths dfcad writes are the ones it walked, and
 # GitHub resolves an annotation's file against the repository root.
+#
+# The engine is either a dfcad binary on this host (--binary) or the published
+# image, pinned by digest and run through a container runtime (--image). The
+# second is what a data repository has: the registry is the distribution
+# channel, and there is no file to install. Everything after the engine is
+# chosen is the same for both, so an image run annotates exactly what a binary
+# run does, at exactly the same paths.
 
 set -euo pipefail
 
@@ -43,6 +51,8 @@ set -euo pipefail
 readonly OUTPUT_CONTRACT=2
 
 binary=""
+image=""
+runtime=""
 root=""
 results=""
 against=""
@@ -52,11 +62,18 @@ usage() {
 	cat >&2 <<'EOF'
 usage: gate.sh --binary <dfcad> --root <model root> [--results <dir>] \
                [--against <ref>] [--policy <check>=<ruling>]...
+       gate.sh --image <ref> [--runtime <command>] --root <model root> ...
        gate.sh --contract
 
 	--binary   the dfcad executable to run. In CI this is the binary the
 	           standard pipeline built, so the gate and the shipped artifact
 	           cannot diverge.
+	--image    the dfcad image to run instead of a binary, pinned by digest:
+	           ghcr.io/z5labs/dfcad@sha256:<digest>. It is pulled if the
+	           runtime does not already hold it, and nothing but the runtime
+	           need be installed. Exactly one of --binary and --image is given.
+	--runtime  the container runtime --image is run with. Defaults to docker;
+	           podman works too.
 	--root     the model root to gate.
 	--results  where to write the structured results. Defaults to a temporary
 	           directory, which is what a local run wants; CI passes a path it
@@ -73,6 +90,10 @@ usage: gate.sh --binary <dfcad> --root <model root> [--results <dir>] \
 	--contract print the machine output contract version this gate reads and
 	           exit. A build whose `dfcad version` reports a different
 	           `.contracts.output` writes a shape these filters do not read.
+
+Exit codes: 0 the model may be merged, 1 it may not, 64 a usage error, and 69
+the engine could not be run at all — no runtime, or an image which will not
+pull or will not start. A 69 ran no stage, and is never a pass.
 EOF
 }
 
@@ -80,6 +101,14 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 	--binary)
 		binary="${2:-}"
+		shift 2
+		;;
+	--image)
+		image="${2:-}"
+		shift 2
+		;;
+	--runtime)
+		runtime="${2:-}"
 		shift 2
 		;;
 	--root)
@@ -114,13 +143,25 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-if [ -z "$binary" ] || [ -z "$root" ]; then
-	echo "gate.sh: --binary and --root are both required" >&2
+if [ -n "$binary" ] && [ -n "$image" ]; then
+	echo "gate.sh: --binary and --image each name the engine to gate with; pass one of them" >&2
 	usage
 	exit 64
 fi
 
-if [ ! -x "$binary" ]; then
+if { [ -z "$binary" ] && [ -z "$image" ]; } || [ -z "$root" ]; then
+	echo "gate.sh: --root is required, and so is one of --binary and --image" >&2
+	usage
+	exit 64
+fi
+
+if [ -n "$runtime" ] && [ -z "$image" ]; then
+	echo "gate.sh: --runtime says what runs --image, and no --image was given" >&2
+	usage
+	exit 64
+fi
+
+if [ -n "$binary" ] && [ ! -x "$binary" ]; then
 	echo "gate.sh: $binary is not an executable" >&2
 	exit 64
 fi
@@ -134,6 +175,127 @@ if [ -z "$results" ]; then
 	results="$(mktemp -d)"
 fi
 mkdir -p "$results"
+
+# Where an image run's review stage materialises the merge base, removed again
+# however the gate ends. Empty on every other run.
+base_tree=""
+cleanup() {
+	if [ -n "$base_tree" ]; then
+		rm -rf -- "$base_tree"
+	fi
+}
+trap cleanup EXIT
+
+# unavailable is the one way the gate stops after its arguments were accepted
+# and before any stage ran: a sentence on stderr and exit 69. A gate which could
+# not start its engine ran nothing, and must never read as one which ran and
+# found nothing.
+unavailable() {
+	echo "gate.sh: $1; the gate ran no stage over ${root}" >&2
+	exit 69
+}
+
+# dfcad is the engine, as the words a stage is run with. Every stage below runs
+# `"${dfcad[@]}" <command> <flags>` and none of them knows which kind of engine
+# it has, which is what makes an image run annotate exactly as a binary run
+# does rather than nearly.
+dfcad=()
+
+if [ -n "$binary" ]; then
+	dfcad=("$binary")
+else
+	runtime="${runtime:-docker}"
+
+	if ! command -v "$runtime" >/dev/null 2>&1; then
+		unavailable "the container runtime ${runtime} is not on the path, so ${image} cannot be run: install it, or name the one this runner has with --runtime"
+	fi
+
+	# Pulled only when the runtime does not already hold it, so that an image
+	# loaded locally — which is how the self-test is handed the one the pipeline
+	# just built — is run without a registry being asked about it. The pull's
+	# progress goes to stderr, because stdout is not this script's to fill with
+	# prose.
+	if ! "$runtime" image inspect "$image" >/dev/null 2>&1; then
+		if ! "$runtime" pull "$image" >&2; then
+			unavailable "${runtime} could not pull ${image}"
+		fi
+	fi
+
+	# The image runs as 65532, which can read a checkout but cannot write into
+	# the results directory, and the review stage writes its summary there. So
+	# it runs as the user invoking the gate, whose files those are. A rootless
+	# runtime maps its container's root back to exactly that user, and maps the
+	# user's own id to a subordinate one which owns nothing here — so there the
+	# user to run as is 0, which is nobody's root.
+	rootless=false
+	case "$(basename -- "$runtime")" in
+	podman)
+		if [ "$("$runtime" info --format '{{.Host.Security.Rootless}}' 2>/dev/null || true)" = true ]; then
+			rootless=true
+		fi
+		;;
+	*)
+		if "$runtime" info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -q 'name=rootless'; then
+			rootless=true
+		fi
+		;;
+	esac
+	if [ "$rootless" = true ]; then
+		user="0:0"
+	else
+		user="$(id -u):$(id -g)"
+	fi
+
+	# Every directory the engine reads is mounted at the path it has on this
+	# host, and the container starts in this directory. That is the whole of
+	# how an image run's paths come out the same as a binary run's: dfcad
+	# writes the paths it walked, and inside the container it walks exactly the
+	# paths it was given out here. Mounting the model at /model instead would
+	# put /model/... into every annotation, and GitHub would resolve none of
+	# them.
+	#
+	# The working directory and the model are mounted read-only, because no
+	# stage writes to either. The results directory is writable, because the
+	# review stage's summary is written into it from inside the container.
+	root_abs="$(cd -- "$root" && pwd)"
+	results_abs="$(cd -- "$results" && pwd)"
+	mounts=(-v "${PWD}:${PWD}:ro")
+	case "${root_abs}/" in
+	"${PWD%/}"/*) ;;
+	*) mounts+=(-v "${root_abs}:${root_abs}:ro") ;;
+	esac
+	mounts+=(-v "${results_abs}:${results_abs}")
+
+	# image_engine sets dfcad to run the image over what is mounted now. It is
+	# a function because the review stage mounts one more tree before it runs.
+	#
+	# No network, because the engine speaks no protocol and a gate has no
+	# reason to hand it one. The SELinux label is disabled rather than every
+	# mount relabelled: `:z` would rewrite the labels on the checkout of a host
+	# which enforces SELinux, and does nothing on one which does not.
+	image_engine() {
+		dfcad=(
+			"$runtime" run --rm
+			--network none
+			--security-opt label=disable
+			--user "$user"
+			"${mounts[@]}"
+			-w "$PWD"
+			"$image"
+		)
+	}
+	image_engine
+
+	# Asked before any stage, so that an image which will not start — built
+	# for a platform this runner cannot execute, or refused a mount — is one
+	# sentence here rather than three stages which each wrote nothing. The
+	# answer is also the log's record of which engine this run gated with.
+	if ! identity="$("${dfcad[@]}" version)" ||
+		! identity="$(jq -er '"dfcad \(.build.version) (commit \(.build.commit), output contract \(.contracts.output))"' <<<"$identity" 2>/dev/null)"; then
+		unavailable "${image} did not answer \`dfcad version\` under ${runtime}"
+	fi
+	echo "gate.sh: gating with ${identity}, from ${image}" >&2
+fi
 
 # A model root is named in a result file, and a path is not a filename. The
 # slashes become dashes so that two roots gated in one run do not overwrite
@@ -316,7 +478,7 @@ run_stage() {
 	local started ended
 	started="$(now_ms)"
 	set +e
-	"$binary" "$@" >"$out"
+	"${dfcad[@]}" "$@" >"$out"
 	stage_exit=$?
 	set -e
 	ended="$(now_ms)"
@@ -353,7 +515,7 @@ fmt_annotations=$annotation_count
 # than from a local reproduction. --diff writes nothing and implies --check, so
 # this cannot change what the gate just decided.
 if [ "$fmt_exit" -ne 0 ]; then
-	"$binary" fmt --diff --root "$root" >/dev/null || true
+	"${dfcad[@]}" fmt --diff --root "$root" >/dev/null || true
 fi
 echo "::endgroup::"
 
@@ -399,6 +561,79 @@ echo "::endgroup::"
 # whether this revision of the model is sound, but whether the change to it
 # needs an explanation. It runs only when a branch to compare against was named,
 # because it is the one stage which needs two revisions rather than one.
+#
+# From the image it runs differently, and says the same thing. `review
+# --against` reads the merge base out of git, and the published image carries no
+# git (docs/decisions/0026). So an image run does the git half on this runner —
+# which has git, because it checked the model out — and hands the image both
+# trees with `review --base-root`. What that gives up is attribution: a finding
+# names no commit, because the image is given no history to name one from.
+
+# base_root is the model root as the merge base holds it, once materialise_base
+# has written it out.
+base_root=""
+
+# materialise_base writes the merge base of HEAD and --against into a directory
+# of its own and sets base_root to the model root within it. It is the part of
+# `review --against` the image cannot do, and it refuses what that refuses, for
+# the same reasons: a model root outside a working tree has no second revision,
+# and a shallow history reports a merge base at the point it was cut off —
+# which the two revisions never shared, and a review against which would report
+# the branch's whole ancestry as this change.
+#
+# The whole revision is archived rather than a checkout added, as the engine
+# does it: a worktree is a mutation of the repository, and one left behind by a
+# killed run refuses the next. It fails with a sentence on stderr, and the
+# caller turns that into the stage's exit 2.
+materialise_base() {
+	local toplevel prefix shallow merge_base
+
+	if ! command -v git >/dev/null 2>&1; then
+		echo "gate.sh: the review stage reads the merge base out of git on this runner, and git is not on the path" >&2
+		return 1
+	fi
+
+	if ! toplevel="$(git -C "$root" rev-parse --show-toplevel 2>/dev/null)"; then
+		echo "gate.sh: ${root} is not inside a git working tree, so there is no revision to review it against" >&2
+		return 1
+	fi
+	prefix="$(git -C "$root" rev-parse --show-prefix)"
+	# The file listing where a shallow history is cut off, which is empty or
+	# absent for a full one. `--git-path` answers relative to the directory
+	# git was run in unless the path is absolute; it is joined here rather than
+	# asked for with `--path-format=absolute`, which needs git 2.31, because
+	# this script is copied onto runners whose git nobody here chose.
+	shallow="$(git -C "$root" rev-parse --git-path shallow)"
+	case "$shallow" in
+	/*) ;;
+	*) shallow="${root}/${shallow}" ;;
+	esac
+
+	if ! merge_base="$(git -C "$root" merge-base HEAD "$against" 2>/dev/null)"; then
+		if [ -s "$shallow" ]; then
+			echo "gate.sh: the history of ${toplevel} is shallow and does not reach its merge base with ${against}: fetch the full history — \`git fetch --unshallow\`, or \`fetch-depth: 0\` on actions/checkout" >&2
+		else
+			echo "gate.sh: HEAD and ${against} have no merge base, so there is no revision to review ${root} against" >&2
+		fi
+		return 1
+	fi
+	if [ -s "$shallow" ] && grep -qxF "$merge_base" "$shallow"; then
+		echo "gate.sh: the history of ${toplevel} is shallow and is cut off at ${merge_base}, which git then reports as the merge base with ${against}: fetch the full history — \`git fetch --unshallow\`, or \`fetch-depth: 0\` on actions/checkout" >&2
+		return 1
+	fi
+
+	base_tree="$(mktemp -d)"
+	if ! git -C "$toplevel" archive --format=tar "$merge_base" | tar -x -f - -C "$base_tree"; then
+		echo "gate.sh: the merge base ${merge_base} could not be read out of ${toplevel}" >&2
+		return 1
+	fi
+
+	base_root="${base_tree}${prefix:+/${prefix%/}}"
+	mounts+=(-v "${base_tree}:${base_tree}:ro")
+	image_engine
+	echo "gate.sh: comparing against the merge base ${merge_base} of HEAD and ${against}, read out of git on this runner" >&2
+}
+
 review_json="${results}/${slug}.review.json"
 review_md="${results}/${slug}.review.md"
 review_exit=0
@@ -406,10 +641,27 @@ review_ms=0
 
 if [ -n "$against" ]; then
 	echo "::group::dfcad review --root ${root} --against ${against}"
-	run_stage "$review_json" review --root "$root" --against "$against" \
-		--annotate "$review_md" "${policies[@]+"${policies[@]}"}"
-	review_exit=$stage_exit
-	review_ms=$stage_ms
+	if [ -z "$image" ]; then
+		run_stage "$review_json" review --root "$root" --against "$against" \
+			--annotate "$review_md" "${policies[@]+"${policies[@]}"}"
+		review_exit=$stage_exit
+		review_ms=$stage_ms
+	elif materialise_base; then
+		# The summary is named absolutely, because it is written from inside
+		# the container and the results directory is mounted there at the
+		# path it has out here, which a relative name need not reach.
+		run_stage "$review_json" review --root "$root" --base-root "$base_root" \
+			--annotate "${results_abs}/${slug}.review.md" "${policies[@]+"${policies[@]}"}"
+		review_exit=$stage_exit
+		review_ms=$stage_ms
+	else
+		# What `review --against` does when it cannot reach its second
+		# revision: exit 2, nothing on stdout, the reason on stderr above. The
+		# empty result is then reported below exactly as it is for a binary
+		# run which failed the same way.
+		: >"$review_json"
+		review_exit=2
+	fi
 
 	# A finding carries the span of the change and the ruling the policy gave
 	# it, so the annotation lands on the line and says how much it matters. A
