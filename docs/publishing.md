@@ -132,6 +132,50 @@ Three consequences worth knowing before debugging one:
   Authoring commands need `--user` so that they can write into your working tree and leave
   files owned by you.
 
+## Which commands the image answers
+
+Every command but one needs nothing from the host except the model mounted into the
+container. The one is `review` against a revision.
+
+| Command | From the image |
+|---------|----------------|
+| `version`, `fmt`, `check` | yes |
+| the queries — `list-types`, `list-instances`, `list-geometry`, `get`, `resolve`, `traverse`, `claims`, `conflicts`, `route`, `measure`, `tessellate`, `buildable`, `site`, `plan` | yes |
+| the exports — `export`, `export-map` | yes |
+| the authoring commands — `apply`, `add-node`, `add-vertex`, `add-edge`, `add-loop`, `scaffold-loop`, `relate`, `classify-type`, `set-label`, `retire`, `add-claim`, `supersede`, `deprecate-claim` | yes, with a writable mount and `--user` |
+| `review --base-root <dir>` | yes, with the revision to compare against mounted as a second directory |
+| `review --against <ref>`, and `review` with neither flag | **no** — a host command |
+
+`review` compares the model with the merge base of `HEAD` and a branch, and it reads that
+merge base, and the log which attributes each finding to a commit, by running `git`. The image
+has no `git`, and that is deliberate:
+[ADR 0026](./decisions/0026-reading-a-revision-out-of-git-is-a-host-command.md) records why it
+stays `scratch` rather than growing one, and why the engine does not reimplement git's object
+store instead. Run from the image anyway, it fails before reading anything, exits `2`, writes
+nothing on stdout, and says so on stderr:
+
+```
+dfcad review: git rev-parse --show-toplevel in /model: git is not on the path
+dfcad review: comparing against a revision reads it out of git, which is a host command and is not in the published image; run review on a host with git, or pass --base-root <dir> naming a checkout of the revision to compare against, which needs no git
+```
+
+A gate that wants the review from the pinned image does the git half itself, on the runner that
+checked the model out — with `fetch-depth: 0`, because the merge base has to be in the history —
+and hands both trees to the image:
+
+```sh
+base=$(git merge-base HEAD origin/main)
+git worktree add --detach "$RUNNER_TEMP/base" "$base"
+docker run --rm -v "$PWD:/model:ro" -v "$RUNNER_TEMP/base:/base:ro" \
+  ghcr.io/z5labs/dfcad@sha256:<digest> \
+  review --root /model --base-root /base
+```
+
+What that gives up is attribution. Under `--base-root` there is no history to read, so a
+finding names no commit, and the shallow-clone refusal `review --against` makes for you is the
+gate's to make instead. A gate that needs findings attributed to commits runs `review --against`
+from a `dfcad` binary on a host that has `git`.
+
 It is multi-architecture, `linux/amd64` and `linux/arm64`, which is the module's default
 platform list. This repository does not override it: the platforms the image covers are the
 platforms the pipeline builds, and stating them twice is how they come to disagree.
