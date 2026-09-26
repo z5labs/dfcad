@@ -1079,3 +1079,193 @@ func TestRunCheckFailsAnInstanceMissingARequiredClaim(t *testing.T) {
 		}
 	})
 }
+
+// curvedEasement is the model a shed passed stays-clear-of-zone in while standing
+// inside the easement: a ten by ten foot easement whose east side bows five feet
+// out, and a one by two foot shed in the bow, past the chord and inside the arc.
+//
+// reading is written into the shed's assertion after its required parameters,
+// which is how a case says whether the rule reads the curve.
+func curvedEasement(reading string) map[string]string {
+	return map[string]string{"model.dfc": `(project (label "Curved zone") (globalid-namespace "https://example.org/curved-zone"))
+(namespace frame (description "Frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace site (description "Semantic nodes."))
+(namespace method (description "Methods."))
+(frame frame:site (label "Site grid") (unit ft))
+(predicate position (unit ft) (shape coordinate) (dimension 3))
+(predicate arc-centre (unit ft) (shape coordinate) (dimension 3))
+(predicate arc-through (unit ft) (shape coordinate) (dimension 3))
+(type Easement (kind Zone) (geometry area) (description "An easement."))
+(type Shed (kind Element) (geometry area) (description "A shed."))
+(tolerance corner (value 0.01 ft))
+(tolerance chord (value 0.01 ft))
+
+; A 10 x 10 ft easement whose east side bows 5 ft out: a semicircle about (10 5).
+(vertex geom:Z1 (frame frame:site)
+  (position (value (0.0 0.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:Z2 (frame frame:site)
+  (position (value (10.0 0.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:Z3 (frame frame:site)
+  (position (value (10.0 10.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:Z4 (frame frame:site)
+  (position (value (0.0 10.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(edge geom:ZE1 (frame frame:site) (vertices geom:Z1 geom:Z2))
+(edge geom:ZE2 (frame frame:site) (vertices geom:Z2 geom:Z3)
+  (arc-centre (value (10.0 5.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25"))
+  (arc-through (value (15.0 5.0 0.0) ft) (source "plat") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(edge geom:ZE3 (frame frame:site) (vertices geom:Z3 geom:Z4))
+(edge geom:ZE4 (frame frame:site) (vertices geom:Z4 geom:Z1))
+(loop geom:ZL (frame frame:site) (edges geom:ZE1 geom:ZE2 geom:ZE3 geom:ZE4))
+(node site:EASEMENT (kind Zone) (type Easement) (geometry area) (frame frame:site)
+  (boundary geom:ZL))
+
+; A 1 x 2 ft shed in the bulge, 2-3 ft past the chord: inside the arc, outside the chord.
+(vertex geom:S1 (frame frame:site)
+  (position (value (12.0 4.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:S2 (frame frame:site)
+  (position (value (13.0 4.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:S3 (frame frame:site)
+  (position (value (13.0 6.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(vertex geom:S4 (frame frame:site)
+  (position (value (12.0 6.0 0.0) ft) (source "proposal") (method method:plat)
+    (accuracy (independent 0.1 ft)) (date "2026-09-25")))
+(edge geom:SE1 (frame frame:site) (vertices geom:S1 geom:S2))
+(edge geom:SE2 (frame frame:site) (vertices geom:S2 geom:S3))
+(edge geom:SE3 (frame frame:site) (vertices geom:S3 geom:S4))
+(edge geom:SE4 (frame frame:site) (vertices geom:S4 geom:S1))
+(loop geom:SL (frame frame:site) (edges geom:SE1 geom:SE2 geom:SE3 geom:SE4))
+(node site:SHED (kind Element) (type Shed) (geometry area) (frame frame:site)
+  (boundary geom:SL)
+  (assert stays-clear-of-zone (zone site:EASEMENT) (tolerance corner) (position position)` + reading + `))
+`}
+}
+
+// arcReading is the vocabulary the easement's curve is written in, named on a rule.
+const arcReading = " (arc-centre arc-centre) (arc-through arc-through) (chord chord)"
+
+func TestRunCheckSaysWhichCurvesARuleReadStraight(t *testing.T) {
+	result, code, stderr := checked(t, curvedEasement(""))
+
+	require.Equal(t, exitSuccess, code, stderr)
+	require.Equal(t, 1, result.Summary.Passed, "the rule reads the bow as its chord, and the shed is clear of that")
+
+	t.Run("writes the edge on stdout, beside the pass", func(t *testing.T) {
+		require.Len(t, result.Chorded, 1)
+
+		chorded := result.Chorded[0]
+		assert.Equal(t, dfcad.ID("site:SHED"), chorded.Instance)
+		assert.Equal(t, "stays-clear-of-zone", chorded.Check)
+		assert.Equal(t, dfcad.ID("geom:ZE2"), chorded.Edge)
+		assert.Equal(t, []string{"arc-centre", "arc-through"}, chorded.Predicates)
+		assert.Equal(t, 29, chorded.Span.Start.Line)
+	})
+
+	t.Run("warns on stderr, in every format", func(t *testing.T) {
+		assert.Contains(t, stderr, "warning: expected the assertion stays-clear-of-zone")
+		assert.Contains(t, stderr, "to read geom:ZE2 as the arc it states")
+	})
+
+	t.Run("counts the rules for a person, beside the summary which counts them as passes", func(t *testing.T) {
+		_, _, human := checked(t, curvedEasement(""), "--format", "human")
+
+		assert.Contains(t, human, `1 rule read a curve as the straight line between its ends; see "chorded" for which edges`)
+	})
+}
+
+func TestRunCheckReadsACurveTheRuleNames(t *testing.T) {
+	result, code, stderr := checked(t, curvedEasement(arcReading))
+
+	require.Equal(t, exitCheck, code, stderr)
+
+	t.Run("fails the shed standing in the bow", func(t *testing.T) {
+		require.Len(t, result.Violations, 1)
+		assert.Equal(t,
+			"expected site:SHED to stay clear of the zone site:EASEMENT, found it crossing into it over 2.0 ft²",
+			result.Violations[0].Message)
+	})
+
+	t.Run("reads no curve straight", func(t *testing.T) {
+		assert.Empty(t, result.Chorded)
+		assert.NotContains(t, stderr, "warning:")
+	})
+
+	t.Run("says what the curve was drawn to and the deviation achieved", func(t *testing.T) {
+		require.Len(t, result.Drawn, 1)
+
+		drawn := result.Drawn[0]
+		assert.Equal(t, dfcad.ID("site:SHED"), drawn.Instance)
+		assert.Equal(t, "chord", drawn.Chord)
+		assert.Equal(t, 0.01, drawn.Value)
+		assert.Equal(t, dfcad.Unit("ft"), drawn.Unit)
+		assert.Positive(t, drawn.Deviation)
+		assert.LessOrEqual(t, drawn.Deviation, drawn.Value)
+	})
+}
+
+func TestRunCheckListsHowARuleWillReadACurve(t *testing.T) {
+	testCases := []struct {
+		name    string
+		reading string
+		curves  string
+		chorded []string
+		outcome string
+	}{
+		{
+			name:    "as its chord, naming the edge, where the rule names no arc vocabulary",
+			reading: "",
+			curves:  curvesChord,
+			chorded: []string{"geom:ZE2"},
+			outcome: "would run, reading geom:ZE2 as a chord",
+		},
+		{
+			name:    "as an arc where it names the vocabulary",
+			reading: arcReading,
+			curves:  curvesArc,
+			outcome: "would run, reading curves as arcs",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, code, stderr := checked(t, curvedEasement(testCase.reading), "--list")
+			require.Equal(t, exitSuccess, code, stderr)
+
+			entry, held := listedFor(result, "site:SHED", "stays-clear-of-zone")
+			require.True(t, held)
+
+			assert.Equal(t, testCase.curves, entry.Curves)
+			assert.Equal(t, testCase.chorded, entry.Chorded)
+			assert.Equal(t, testCase.outcome, outcome(entry))
+			assert.Zero(t, result.Summary.Ran, "a listing runs nothing")
+		})
+	}
+}
+
+// TestRunCheckOverAModelWithNoCurveIsUnchanged is its own function because it is
+// an assertion about an absence: over a model which claims no curve, check
+// writes exactly the object it wrote before a rule could read one.
+func TestRunCheckOverAModelWithNoCurveIsUnchanged(t *testing.T) {
+	for _, args := range [][]string{nil, {"--list"}} {
+		t.Run("writes no key a curve would add, with "+strings.Join(append([]string{"check"}, args...), " "), func(t *testing.T) {
+			t.Chdir(tree(t, ruled()))
+
+			var stdout, stderr bytes.Buffer
+			run(append([]string{"check"}, args...), &stdout, &stderr)
+
+			for _, key := range []string{`"chorded"`, `"drawn"`, `"curves"`} {
+				assert.NotContains(t, stdout.String(), key)
+			}
+			assert.NotContains(t, stderr.String(), "warning:")
+		})
+	}
+}

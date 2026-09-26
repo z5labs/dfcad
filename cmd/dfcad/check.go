@@ -84,6 +84,18 @@ widened it. Passing rules are in there as much as failing ones, which is the
 point: a pass is where the widening otherwise goes unsaid. "summary.widened"
 counts the rules which passed only because of it.
 
+Where a rule reads a shape bounded by an edge which states a curve, and reads
+that edge as the straight line between its ends, the object carries "chorded":
+one entry per such edge per rule, naming the edge and the predicates it states a
+position under, on a pass as much as on a failure. Each is also a warning on
+stderr. A rule reads the curve instead when it names the vocabulary the curve is
+written in — (arc-centre <predicate>) (arc-through <predicate>), with
+(chord <tolerance>) for a check which decides by an overlay — and where it drew
+the curve to that chord the object carries "drawn": the tolerance and the
+deviation the drawing achieved. --list says of each rule whether it will read a
+curve as an arc or as its chord, under "curves". A model which claims no curve
+carries none of the three.
+
 It also carries "refused", which is true where the model did not load. A run
 over a model which did not load selects no rule, runs none and reports no
 violation, which is what a model with nothing wrong with it reports too — so a
@@ -155,6 +167,23 @@ type checkResult struct {
 	// object distinguishes that run from one which held to the figure as
 	// written.
 	Bands []dfcad.AppliedBand `json:"bands"`
+
+	// Chorded is one entry per edge a rule read as the straight line between its
+	// ends although the model states a curve on it, in the order the rules ran —
+	// or would run, for --list. Absent where no rule read a curve straight,
+	// which is every run over a model which claims no curve.
+	//
+	// It is written for the rules which passed as much as for the ones which
+	// failed, for the reason Bands is. A shed standing inside the bow of a
+	// curved easement passes a rule which read the easement's edge as its chord,
+	// and nothing else in this object tells that pass from one which read the
+	// curve.
+	Chorded []dfcad.ChordedEdge `json:"chorded,omitempty"`
+
+	// Drawn is one entry per rule which read a curve through straight segments:
+	// the chord tolerance it drew to and the deviation that achieved, in the
+	// order the rules ran. Absent where no rule drew one.
+	Drawn []dfcad.DrawnCurve `json:"drawn,omitempty"`
 }
 
 // checkSummary is how many rules a run covered and what became of them.
@@ -224,6 +253,18 @@ type listedCheck struct {
 	// which cannot examine the thing it is bound to, which is why Applicable is
 	// written beside it rather than left to be inferred from this.
 	Runs bool `json:"runs"`
+
+	// Curves says how the rule will read an edge of a shape it reads which
+	// states a curve: "arc" where it names the vocabulary an arc is written in
+	// and every such edge claims both halves of it, "chord" where at least one
+	// such edge will be read as the straight line between its ends. Absent for
+	// a rule which reads no curve at all — one whose check reads no shape, and
+	// one whose shapes state no curve and which names no arc vocabulary.
+	Curves string `json:"curves,omitempty"`
+
+	// Chorded is the edges the rule will read straight, by id, where Curves is
+	// "chord".
+	Chorded []string `json:"chorded,omitempty"`
 
 	// Applicable reports whether the check can examine the thing the rule is
 	// bound to.
@@ -309,6 +350,9 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	switch {
 	case *list:
 		result.Checks = listChecks(rules)
+		for _, rule := range rules {
+			result.Chorded = append(result.Chorded, rule.Chorded()...)
+		}
 	default:
 		run := rules.Run()
 
@@ -318,6 +362,8 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 		result.Summary.Widened = widenedRules(run.Bands)
 		result.Violations = append(result.Violations, run.Violations...)
 		result.Bands = append(result.Bands, run.Bands...)
+		result.Chorded = run.Chorded
+		result.Drawn = run.Drawn
 	}
 	elapsed := time.Since(started)
 
@@ -325,7 +371,11 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	// for whoever wrote it on every run and in every format. The struct above
 	// is the machine form of the same finding; neither is produced by parsing
 	// the other.
-	render(diagnose(result.Violations), stderr)
+	//
+	// A curve a rule read straight is rendered beside them as a warning, for
+	// the same reader and for the same reason: it is in the answer on stdout,
+	// and whoever wrote the rule is the one who can name what reads it.
+	render(append(diagnose(result.Violations), chordWarnings(result.Chorded)...), stderr)
 
 	reportCheck(result, *list, elapsed, globals, stderr)
 
@@ -433,6 +483,7 @@ func listChecks(rules dfcad.Rules) []listedCheck {
 			Applicable: rule.Applicable(),
 			Declared:   rule.Declared,
 		}
+		entry.Curves, entry.Chorded = curvesListed(rule)
 		if rule.Subject != nil {
 			entry.Subject = string(rule.Subject.ID())
 		}
@@ -441,6 +492,60 @@ func listChecks(rules dfcad.Rules) []listedCheck {
 	}
 
 	return out
+}
+
+// The two ways --list says a rule reads a curve.
+const (
+	// curvesArc is a rule which reads every curve its shapes state as the arc.
+	curvesArc = "arc"
+
+	// curvesChord is a rule which reads at least one of them as its chord.
+	curvesChord = "chord"
+)
+
+// curvesListed is how --list says one rule will read a curve, and which edges
+// it will read straight.
+//
+// A rule which names the vocabulary and has nothing curved to read is listed as
+// reading arcs, because that is what it will do with one; a rule which names
+// none and reads nothing curved is listed as neither, because it has no curve to
+// read either way and a listing which called every such rule "chord" would bury
+// the ones which are.
+func curvesListed(rule dfcad.Rule) (string, []string) {
+	chorded := rule.Chorded()
+	if len(chorded) > 0 {
+		edges := make([]string, 0, len(chorded))
+		for _, edge := range chorded {
+			edges = append(edges, string(edge.Edge))
+		}
+		return curvesChord, edges
+	}
+
+	if rule.ReadsArcs() {
+		return curvesArc, nil
+	}
+
+	return "", nil
+}
+
+// chordWarnings is the curves rules read straight as the warnings a person
+// reads.
+func chordWarnings(chorded []dfcad.ChordedEdge) []dfcad.Diagnostic {
+	out := make([]dfcad.Diagnostic, 0, len(chorded))
+	for _, edge := range chorded {
+		out = append(out, edge.Diagnostic())
+	}
+	return out
+}
+
+// chordedRules is how many rules read a curve straight, which is how many rules
+// "chorded" is about.
+func chordedRules(chorded []dfcad.ChordedEdge) int {
+	seen := make(map[string]bool, len(chorded))
+	for _, edge := range chorded {
+		seen[edge.Declared.String()+" "+string(edge.Instance)] = true
+	}
+	return len(seen)
 }
 
 // widenedRules is how many bands decided the answer they were applied to: the
@@ -524,6 +629,15 @@ func reportCheck(result checkResult, list bool, elapsed time.Duration, globals *
 			plural(summary.Widened, "rule"),
 		)
 	}
+
+	// A rule which read a curve straight decided a question about the chord,
+	// whichever way it went, and the counts above cannot say so.
+	if rules := chordedRules(result.Chorded); rules > 0 {
+		_, _ = fmt.Fprintf(stderr,
+			"%s read a curve as the straight line between its ends; see \"chorded\" for which edges\n",
+			plural(rules, "rule"),
+		)
+	}
 }
 
 // writtenRule renders one listed rule the way it reads on the thing it is bound
@@ -542,6 +656,10 @@ func writtenRule(entry listedCheck) string {
 // wrong repository.
 func outcome(entry listedCheck) string {
 	switch {
+	case entry.Runs && entry.Curves == curvesChord:
+		return "would run, reading " + strings.Join(entry.Chorded, ", ") + " as a chord"
+	case entry.Runs && entry.Curves == curvesArc:
+		return "would run, reading curves as arcs"
 	case entry.Runs:
 		return "would run"
 	case !entry.Applicable:

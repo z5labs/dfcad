@@ -133,34 +133,59 @@ func (r Rule) Run() []Violation {
 //
 // [Rule.Run] is this without the bands, for a caller which only wants the gate.
 func (r Rule) Judge() ([]AppliedBand, []Violation) {
+	judged := r.judge()
+	return judged.bands, judged.violations
+}
+
+// judged is everything one run of a rule decided and disclosed.
+type judged struct {
+	bands      []AppliedBand
+	violations []Violation
+
+	// chorded is every edge the rule read straight although the model states a
+	// curve on it, and drawn what the curves it did read were drawn to.
+	chorded []ChordedEdge
+	drawn   *DrawnCurve
+}
+
+// judge is [Rule.Judge] with what the rule did with the curves it read.
+//
+// A violation of a rule which read a curve straight says so in its own message
+// ([chordedViolation]), so that the failure and the disclosure cannot be read
+// apart.
+func (r Rule) judge() judged {
 	if !r.Runs() {
-		return nil, nil
+		return judged{}
 	}
 
-	subject := CheckSubject{graph: r.graph, subject: r.Subject, arguments: r.Arguments, declaredBy: r.Type}
+	subject := r.subject()
+	subject.log = &curveLog{}
+
+	var out judged
+	out.chorded = r.Chorded()
+
+	var failures []Failure
 
 	judge, judges := r.runner.(Judge)
-	if !judges {
-		var out []Violation
-		for _, failure := range r.runner.Run(subject) {
-			out = append(out, r.violation(failure))
+	if judges {
+		var bands []Band
+		bands, failures = judge.Judge(subject)
+		for _, band := range bands {
+			out.bands = append(out.bands, r.applied(band))
 		}
-		return nil, out
+	} else {
+		failures = r.runner.Run(subject)
 	}
 
-	bands, failures := judge.Judge(subject)
-
-	var applied []AppliedBand
-	for _, band := range bands {
-		applied = append(applied, r.applied(band))
-	}
-
-	var out []Violation
 	for _, failure := range failures {
-		out = append(out, r.violation(failure))
+		out.violations = append(out.violations, chordedViolation(r.violation(failure), failure, out.chorded))
 	}
 
-	return applied, out
+	if drawn, ok := r.drawnBy(subject.log); ok {
+		out.drawn = &drawn
+	}
+
+	return out
 }
 
 // violation attaches the rule — what failed, which rule, the parameters it ran
@@ -381,16 +406,20 @@ func (rs Rules) Run() CheckRun {
 
 		out.Ran++
 
-		bands, violations := rule.Judge()
-		out.Bands = append(out.Bands, bands...)
+		judged := rule.judge()
+		out.Bands = append(out.Bands, judged.bands...)
+		out.Chorded = append(out.Chorded, judged.chorded...)
+		if judged.drawn != nil {
+			out.Drawn = append(out.Drawn, *judged.drawn)
+		}
 
-		if len(violations) == 0 {
+		if len(judged.violations) == 0 {
 			out.Passed++
 			continue
 		}
 
 		out.Failed++
-		out.Violations = append(out.Violations, violations...)
+		out.Violations = append(out.Violations, judged.violations...)
 	}
 
 	return out
@@ -428,6 +457,18 @@ type CheckRun struct {
 	// the number the registry states is not the number a widened check applies,
 	// and a passing run is where that goes unsaid.
 	Bands []AppliedBand `json:"bands,omitempty"`
+
+	// Chorded is one entry per edge a rule read as the straight line between
+	// its ends although the model states a curve on it, in the order the rules
+	// were run. A rule which passed is in here as much as one which failed: a
+	// pass over a chord reads exactly like a pass over the curve everywhere
+	// else in a run.
+	Chorded []ChordedEdge `json:"chorded,omitempty"`
+
+	// Drawn is one entry per rule which read a curve through straight segments,
+	// naming the chord tolerance it drew to and the deviation that achieved, in
+	// the order the rules were run.
+	Drawn []DrawnCurve `json:"drawn,omitempty"`
 }
 
 // RuleFilter narrows a run to a subset of the rules a model holds.

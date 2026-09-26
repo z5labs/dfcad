@@ -405,6 +405,16 @@
 // That is what it reports, as a warning naming the edge and the predicates to
 // name, beside whichever answer was computed.
 //
+// A rule is held to the same. Every check which reads a shape takes the
+// vocabulary as optional parameters — (arc-centre ...) and (arc-through ...),
+// and (chord ...) where it decides by an overlay — and reads the curve where
+// they are named. Where they are not, [Rule.Chorded] names each edge the rule
+// reads straight, before a run as well as after, and a [CheckRun] carries them
+// as [ChordedEdge] entries on a pass as much as on a failure; a violation of such
+// a rule says in its own message that the figure it compared was the chord's.
+// Where a rule drew a curve to a chord, the run says what to and the deviation
+// that achieved ([DrawnCurve]).
+//
 // [Topology.TessellateRegion] is the same for a whole semantic node, and is what
 // an export goes through: it draws every ring bounding the node at once and
 // returns a [RegionTessellation] whose outer rings and holes are nested by the

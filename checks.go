@@ -286,7 +286,7 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 		Description: "The measurement claimed of the subject under the named predicate agrees with the one its " +
 			"shape computes to: an area for a subject bounded by loops, a length for one drawn as a line, and the " +
 			"distance between its two corners for an edge.",
-		Parameters: []CheckParameter{
+		Parameters: append([]CheckParameter{
 			{
 				Name:     predicateParameter,
 				Type:     ParameterPredicate,
@@ -315,10 +315,19 @@ func (claimAgreesWithGeometry) Declare() CheckDeclaration {
 					"is compared, so it is declared in the square of the frame's unit for an area — 0.05 m2 where the " +
 					"frame is in m — and in the unit itself for a length.",
 			},
-		},
+		}, curveParameters()...),
 		Forms:      []SubjectForm{SubjectNode, SubjectEdge},
 		Geometries: []Geometry{GeometryArea, GeometrySurface, GeometryLine},
 	}
+}
+
+// reads implements [curveReader]: the one shape this check measures is the
+// subject's own.
+func (claimAgreesWithGeometry) reads(subject CheckSubject) []Entity {
+	if subject.Subject() == nil {
+		return nil
+	}
+	return []Entity{subject.Subject()}
 }
 
 // Run implements [Runner], and is [claimAgreesWithGeometry.Judge] without the
@@ -437,6 +446,10 @@ func (claimAgreesWithGeometry) Judge(subject CheckSubject) ([]Band, []Failure) {
 		return nil, nil
 	}
 
+	if failures := curvesOf(subject).halfNamed(subject); len(failures) > 0 {
+		return nil, failures
+	}
+
 	declared, found := graph.Registry().Tolerance(discrepancy)
 	if !found {
 		// A rule naming a tolerance the registry does not declare is a load
@@ -477,7 +490,7 @@ func (claimAgreesWithGeometry) Judge(subject CheckSubject) ([]Band, []Failure) {
 		}}
 	}
 
-	shape, failures := measuredGeometry(graph, subject.Subject(), tolerance, position)
+	shape, failures := measuredGeometry(subject, tolerance, position)
 	if len(failures) > 0 {
 		return nil, failures
 	}
@@ -599,12 +612,12 @@ func comparing(graph *Graph, entity Entity) (compared, bool) {
 // ends, which is the whole of the difference between the two forms this check
 // runs on. Everything past this point — the unit, the band, the sign of the gap
 // — is one comparison.
-func measuredGeometry(graph *Graph, entity Entity, tolerance, position string) (shape, []Failure) {
-	switch subject := entity.(type) {
+func measuredGeometry(on CheckSubject, tolerance, position string) (shape, []Failure) {
+	switch subject := on.Subject().(type) {
 	case *SemanticNode:
-		return measuredShape(graph, subject, tolerance, position)
+		return measuredShape(on, subject, tolerance, position)
 	case *Edge:
-		return measuredSpan(graph, subject, tolerance, position)
+		return measuredSpan(on, subject, tolerance, position)
 	}
 
 	return shape{}, nil
@@ -722,8 +735,11 @@ func drawn() wording {
 // reading it as a region would assemble its edges into a ring and report the gap
 // where the two ends do not meet, and a wall not being a closed cycle is what a
 // line is rather than a mistake in one.
-func measuredShape(graph *Graph, node *SemanticNode, tolerance, position string) (shape, []Failure) {
+func measuredShape(subject CheckSubject, node *SemanticNode, tolerance, position string) (shape, []Failure) {
+	graph := subject.Graph()
+
 	survey := shapeSurvey(graph, tolerance, position, node)
+	curvesOf(subject).bend(graph, &survey, node)
 
 	if geometry, _ := node.Geometry(); geometry == GeometryLine {
 		return measuredLine(graph, node, survey)
@@ -733,6 +749,8 @@ func measuredShape(graph *Graph, node *SemanticNode, tolerance, position string)
 	if len(diags) > 0 {
 		return shape{}, failuresOf(diags)
 	}
+
+	subject.drew(measurement)
 
 	area, computed := measurement.Area()
 	if !computed {
@@ -821,8 +839,11 @@ func measuredLine(graph *Graph, node *SemanticNode, survey Survey) (shape, []Fai
 // what stopped a span whose ends *are* placed being read: a position in a unit
 // the edge's frame is not in, two ends written with different numbers of
 // components, an edge whose ends are at one point.
-func measuredSpan(graph *Graph, edge *Edge, tolerance, position string) (shape, []Failure) {
+func measuredSpan(subject CheckSubject, edge *Edge, tolerance, position string) (shape, []Failure) {
+	graph := subject.Graph()
+
 	survey := positionSurvey(graph, tolerance, position, graph.Corners(edge))
+	curvesOf(subject).bend(graph, &survey, edge)
 
 	start, end := edge.Vertices()
 	for _, corner := range []ID{start, end} {
@@ -974,7 +995,7 @@ func (containedAreasDoNotOverlap) Declare() CheckDeclaration {
 		Name: "contained-areas-do-not-overlap",
 		Description: "No two nodes written within the subject cover the same ground: every pair of the shapes it " +
 			"contains meets in nothing, judged against the named tolerance.",
-		Parameters: []CheckParameter{
+		Parameters: append([]CheckParameter{
 			{
 				Name:        toleranceParameter,
 				Type:        ParameterTolerance,
@@ -994,9 +1015,21 @@ func (containedAreasDoNotOverlap) Declare() CheckDeclaration {
 				Description: "Compares only the contents of this kind. Every content with a shape is compared where " +
 					"it is left out.",
 			},
-		},
+		}, curveParameters()...),
 		Forms: []SubjectForm{SubjectNode},
 	}
+}
+
+// reads implements [curveReader]: the contents compared, and not the subject,
+// whose own outline this check never reads.
+func (containedAreasDoNotOverlap) reads(subject CheckSubject) []Entity {
+	node := subject.Node()
+	if node == nil {
+		return nil
+	}
+
+	wanted, _ := symbolOf(subject, kindParameter)
+	return contentsOf(subject.Graph(), node, narrowing{kind: wanted})
 }
 
 // Run implements [Runner].
@@ -1024,11 +1057,15 @@ func (containedAreasDoNotOverlap) Run(subject CheckSubject) []Failure {
 		return nil
 	}
 
+	if failures := curvesOf(subject).halfNamed(subject); len(failures) > 0 {
+		return failures
+	}
+
 	graph := subject.Graph()
 
 	wanted, _ := symbolOf(subject, kindParameter)
 
-	shapes, _, out := shapesWithin(graph, node, narrowing{kind: wanted}, tolerance, position)
+	shapes, _, out := shapesWithin(subject, node, narrowing{kind: wanted}, tolerance, position)
 
 	for i, one := range shapes {
 		for _, other := range shapes[i+1:] {
@@ -1074,7 +1111,7 @@ func (containedAreasSum) Declare() CheckDeclaration {
 		Description: "The areas of the nodes written within the subject add up to the subject's own area, or to a " +
 			"figure claimed of it under a named predicate, within the named area tolerance. The set summed can be " +
 			"narrowed to the contents of one kind, of one type, or to the members of one zone.",
-		Parameters: []CheckParameter{
+		Parameters: append([]CheckParameter{
 			{
 				Name:        toleranceParameter,
 				Type:        ParameterTolerance,
@@ -1122,10 +1159,22 @@ func (containedAreasSum) Declare() CheckDeclaration {
 				Description: "Sums only the contents which are members of this zone, so a set nothing else in the " +
 					"model distinguishes can be named once and summed.",
 			},
-		},
+		}, curveParameters()...),
 		Forms:      []SubjectForm{SubjectNode},
 		Geometries: []Geometry{GeometryArea, GeometrySurface},
 	}
+}
+
+// reads implements [curveReader]: the subject's outline, which is the whole, and
+// every content the narrowing sums.
+func (containedAreasSum) reads(subject CheckSubject) []Entity {
+	node := subject.Node()
+	if node == nil {
+		return nil
+	}
+
+	narrowed, _ := narrowingOf(subject, subject.Graph())
+	return append([]Entity{node}, contentsOf(subject.Graph(), node, narrowed)...)
 }
 
 // Run implements [Runner], and is [containedAreasSum.Judge] without the band it
@@ -1210,6 +1259,10 @@ func (containedAreasSum) Judge(subject CheckSubject) ([]Band, []Failure) {
 		return nil, nil
 	}
 
+	if failures := curvesOf(subject).halfNamed(subject); len(failures) > 0 {
+		return nil, failures
+	}
+
 	graph := subject.Graph()
 
 	declared, found := graph.Registry().Tolerance(area)
@@ -1221,7 +1274,7 @@ func (containedAreasSum) Judge(subject CheckSubject) ([]Band, []Failure) {
 		return nil, nil
 	}
 
-	whole, failures := shapeOf(graph, node, tolerance, position)
+	whole, failures := shapeOf(subject, node, tolerance, position)
 	if len(failures) > 0 {
 		return nil, failures
 	}
@@ -1268,7 +1321,7 @@ func (containedAreasSum) Judge(subject CheckSubject) ([]Band, []Failure) {
 		return nil, failures
 	}
 
-	shapes, left, failures := shapesWithin(graph, node, narrowed, tolerance, position)
+	shapes, left, failures := shapesWithin(subject, node, narrowed, tolerance, position)
 	if len(failures) > 0 {
 		return nil, failures
 	}
@@ -1985,7 +2038,7 @@ func (sitsInside) Declare() CheckDeclaration {
 		Description: "The subject's shape lies inside the shape of the named node: nothing of it reaches past that " +
 			"node's boundary by more than the named tolerance, or than the combined accuracy of the two where that " +
 			"is wider.",
-		Parameters: []CheckParameter{
+		Parameters: append([]CheckParameter{
 			{
 				Name:        containerParameter,
 				Type:        ParameterID,
@@ -2004,10 +2057,38 @@ func (sitsInside) Declare() CheckDeclaration {
 				Required:    true,
 				Description: "The predicate a position is claimed under, which is what both shapes are read from.",
 			},
-		},
+		}, curveParameters()...),
 		Forms:      []SubjectForm{SubjectNode},
 		Geometries: []Geometry{GeometryPoint, GeometryLine, GeometryArea, GeometrySurface, GeometrySolid},
 	}
+}
+
+// reads implements [curveReader]: the container's outline, and the subject's
+// where it has one to take away from it.
+//
+// A subject drawn as a point or a line is judged at the places the model puts
+// it, and the run of a line between two corners is not read at all
+// ([sitsInside.Judge]) — so an arc on one is not read straight here, it is not
+// read, and naming the vocabulary would change nothing about the answer.
+func (sitsInside) reads(subject CheckSubject) []Entity {
+	node := subject.Node()
+	if node == nil {
+		return nil
+	}
+
+	var out []Entity
+
+	if written, named := symbolOf(subject, containerParameter); named {
+		if container, held := subject.Graph().Node(ID(written)); held {
+			out = append(out, container)
+		}
+	}
+
+	if geometry, _ := node.Geometry(); geometry != GeometryPoint && geometry != GeometryLine {
+		out = append(out, node)
+	}
+
+	return out
 }
 
 // Run implements [Runner], and is [sitsInside.Judge] without the band it decided
@@ -2097,6 +2178,10 @@ func (sitsInside) Judge(subject CheckSubject) ([]Band, []Failure) {
 		return nil, nil
 	}
 
+	if failures := curvesOf(subject).halfNamed(subject); len(failures) > 0 {
+		return nil, failures
+	}
+
 	graph := subject.Graph()
 
 	container, held := graph.Node(ID(written))
@@ -2113,7 +2198,7 @@ func (sitsInside) Judge(subject CheckSubject) ([]Band, []Failure) {
 		}}
 	}
 
-	enclosing, failures := shapeOf(graph, container, tolerance, position)
+	enclosing, failures := shapeOf(subject, container, tolerance, position)
 	if len(failures) > 0 {
 		return nil, failures
 	}
@@ -2135,19 +2220,21 @@ func (sitsInside) Judge(subject CheckSubject) ([]Band, []Failure) {
 		return sittingPoints(graph, node, container, enclosing, position)
 	}
 
-	return sittingRegion(graph, node, container, enclosing, tolerance, position)
+	return sittingRegion(subject, node, container, enclosing, tolerance, position)
 }
 
 // sittingRegion decides a subject bounded by loops: what of it the container
 // does not cover, and how far past the boundary the furthest corner of that
 // reaches.
 func sittingRegion(
-	graph *Graph,
+	subject CheckSubject,
 	node, container *SemanticNode,
 	enclosing Region,
 	tolerance, position string,
 ) ([]Band, []Failure) {
-	shape, failures := shapeOf(graph, node, tolerance, position)
+	graph := subject.Graph()
+
+	shape, failures := shapeOf(subject, node, tolerance, position)
 	if len(failures) > 0 {
 		return nil, failures
 	}
@@ -2501,7 +2588,7 @@ func (staysClearOfZone) Declare() CheckDeclaration {
 		Name: "stays-clear-of-zone",
 		Description: "The subject's shape does not cross into the named zone's: the two meet in nothing, judged " +
 			"against the named tolerance.",
-		Parameters: []CheckParameter{
+		Parameters: append([]CheckParameter{
 			{
 				Name:        "zone",
 				Type:        ParameterID,
@@ -2520,10 +2607,28 @@ func (staysClearOfZone) Declare() CheckDeclaration {
 				Required:    true,
 				Description: "The predicate a corner's position is claimed under, which is what the shapes are read from.",
 			},
-		},
+		}, curveParameters()...),
 		Forms:      []SubjectForm{SubjectNode},
 		Geometries: []Geometry{GeometryArea, GeometrySurface, GeometrySolid},
 	}
+}
+
+// reads implements [curveReader]: the subject's outline and the zone's.
+func (staysClearOfZone) reads(subject CheckSubject) []Entity {
+	node := subject.Node()
+	if node == nil {
+		return nil
+	}
+
+	out := []Entity{node}
+
+	if written, named := symbolOf(subject, "zone"); named {
+		if zone, held := subject.Graph().Node(ID(written)); held {
+			out = append(out, zone)
+		}
+	}
+
+	return out
 }
 
 // Run implements [Runner].
@@ -2552,6 +2657,10 @@ func (staysClearOfZone) Run(subject CheckSubject) []Failure {
 		return nil
 	}
 
+	if failures := curvesOf(subject).halfNamed(subject); len(failures) > 0 {
+		return failures
+	}
+
 	graph := subject.Graph()
 
 	zone, held := graph.Node(ID(written))
@@ -2576,12 +2685,12 @@ func (staysClearOfZone) Run(subject CheckSubject) []Failure {
 		}}
 	}
 
-	shape, failures := shapeOf(graph, node, tolerance, position)
+	shape, failures := shapeOf(subject, node, tolerance, position)
 	if len(failures) > 0 {
 		return failures
 	}
 
-	keepOut, failures := shapeOf(graph, zone, tolerance, position)
+	keepOut, failures := shapeOf(subject, zone, tolerance, position)
 	if len(failures) > 0 {
 		return failures
 	}
@@ -3158,7 +3267,14 @@ func narrowingOf(subject CheckSubject, graph *Graph) (narrowing, []Failure) {
 // with no outline is not in it: it was left out by having nothing to contribute
 // rather than by the rule, and listing it as a decision the rule made would be
 // telling a reader to go and change something which is already right.
-func shapesWithin(graph *Graph, node *SemanticNode, narrowed narrowing, tolerance, position string) ([]contained, []omitted, []Failure) {
+func shapesWithin(
+	subject CheckSubject,
+	node *SemanticNode,
+	narrowed narrowing,
+	tolerance, position string,
+) ([]contained, []omitted, []Failure) {
+	graph := subject.Graph()
+
 	var (
 		shapes   []contained
 		left     []omitted
@@ -3174,7 +3290,7 @@ func shapesWithin(graph *Graph, node *SemanticNode, narrowed narrowing, toleranc
 		// it. A circuit group the narrowing excluded covers no ground either
 		// way, and counting it among the nodes left out would send a reader to
 		// widen a rule which is already summing everything it could.
-		region, reasons := shapeOf(graph, child, tolerance, position)
+		region, reasons := shapeOf(subject, child, tolerance, position)
 		if len(reasons) > 0 {
 			// A content the narrowing already keeps out is not in the sum, so an
 			// outline it does not need cannot stop this check deciding.
@@ -3199,6 +3315,23 @@ func shapesWithin(graph *Graph, node *SemanticNode, narrowed narrowing, toleranc
 	}
 
 	return shapes, left, failures
+}
+
+// contentsOf is everything written within node which a narrowing keeps, in the
+// order the containment index holds them: the things a check over its contents
+// reads the shapes of.
+func contentsOf(graph *Graph, node *SemanticNode, narrowed narrowing) []Entity {
+	var out []Entity
+
+	for related := range graph.Contains(node) {
+		child := related.Node()
+		if _, left := narrowed.omits(child); left {
+			continue
+		}
+		out = append(out, child)
+	}
+
+	return out
 }
 
 // summedOver is what the hint says the total was taken over: which of the
@@ -3257,11 +3390,27 @@ func composition(graph *Graph, narrowed narrowing, shapes []contained, left []om
 // What comes back is the region and the reasons it is not one. A node which
 // references no loop is neither: it covers nothing and says nothing is wrong,
 // which [Region.ready] is what tells apart from a shape which could not be read.
-func shapeOf(graph *Graph, node *SemanticNode, tolerance, position string) (Region, []Failure) {
+//
+// An edge is read as the arc it states where the rule names the vocabulary an
+// arc is written in ([curves.bend]), and the region is drawn to the chord the
+// rule names; the drawing is recorded against the run, which is what reports it.
+// Where the rule names none the edge is the straight line between its ends, and
+// [Rule.Chorded] is what says so.
+func shapeOf(subject CheckSubject, node *SemanticNode, tolerance, position string) (Region, []Failure) {
+	graph := subject.Graph()
+
 	survey := shapeSurvey(graph, tolerance, position, node)
+	curvesOf(subject).bend(graph, &survey, node)
+
+	if survey.Chord == "" {
+		if bent, curved := bentEdge(graph, survey, node); curved {
+			return Region{}, []Failure{undrawnCurve(graph, node, bent)}
+		}
+	}
 
 	region, diags := graph.Topology().RegionOf(node, graph.Boundaries(), survey)
 	if len(diags) == 0 {
+		subject.drew(region)
 		return region, nil
 	}
 
@@ -3271,6 +3420,43 @@ func shapeOf(graph *Graph, node *SemanticNode, tolerance, position string) (Regi
 	}
 
 	return region, failures
+}
+
+// bentEdge is the first edge bounding node, in the order the boundary reaches
+// them, which the survey reads as an arc.
+func bentEdge(graph *Graph, survey Survey, node *SemanticNode) (*Edge, bool) {
+	for edge := range graph.Bounding(node) {
+		if edge == nil {
+			continue
+		}
+		if _, bent := survey.Curvature[edge.ID()]; bent {
+			return edge, true
+		}
+	}
+	return nil, false
+}
+
+// undrawnCurve is the failure for a rule which reads a curve as its arc and names
+// no chord to draw it to, where the check decides by an overlay.
+//
+// It is the refusal [Topology.RegionOf] makes, worded for the rule rather than
+// for a caller of the library: the remedy is a parameter on the rule, and a hint
+// telling its author to name a tolerance would not say where.
+func undrawnCurve(graph *Graph, node *SemanticNode, edge *Edge) Failure {
+	return Failure{
+		Message: fmt.Sprintf(
+			"expected (%s ...) on the rule to draw %s to, found the rule reads it as an arc and names no chord "+
+				"tolerance",
+			chordParameter, geometricName(edgeTag, edge.ID()),
+		),
+		Hint: fmt.Sprintf(
+			"this check decides by an overlay, which is computed over straight segments, so the arc bounding %s has "+
+				"to be drawn as segments somewhere; name the tolerance they may fall from it by, and the run "+
+				"reports what it was drawn to and the deviation achieved",
+			nodeName(node),
+		),
+		Span: graph.Topology().namedAt(edge.ID(), edge.Span()),
+	}
 }
 
 // shapeSurvey is [positionSurvey] for one node, over everything the model

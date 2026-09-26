@@ -1,0 +1,84 @@
+; The vocabulary the model beside it is checked against.
+;
+; The two predicates an arc is written under are declared here like any other,
+; which is the whole of how a curve enters a model: nothing in the engine knows
+; them by name, and a rule reads a curve only where it names them.
+(project
+  (label "Curved shape fixture")
+  (globalid-namespace "https://example.org/models/curved"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(predicate position
+  (unit ft)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a thing in its frame."))
+
+(predicate arc-centre
+  (unit ft)
+  (shape coordinate)
+  (dimension 3)
+  (description "The centre of the arc an edge bends along."))
+
+(predicate arc-through
+  (unit ft)
+  (shape coordinate)
+  (dimension 3)
+  (description "A point the arc an edge bends along passes through."))
+
+(predicate area
+  (unit ft2)
+  (shape scalar)
+  (description "The area recorded for a thing."))
+
+(predicate length
+  (unit ft)
+  (shape scalar)
+  (description "The length recorded for a run."))
+
+(frame frame:site (label "Site grid") (unit ft))
+
+(tolerance corner
+  (value 0.01 ft)
+  (description "How close two corners are one corner."))
+
+(tolerance chord
+  (value 0.01 ft)
+  (description "How far a straight segment may fall from the curve it stands in for."))
+
+(tolerance area-agreement
+  (value 0.05 ft2)
+  (description "How far an area written down may differ from the one its shape computes to."))
+
+(tolerance length-agreement
+  (value 0.05 ft)
+  (description "How far a length written down may differ from the one its edge computes to."))
+
+(type Easement
+  (kind Zone)
+  (geometry area)
+  (description "Ground a structure may not occupy."))
+
+(type Shed
+  (kind Element)
+  (geometry area)
+  (description "A structure standing on the lot."))
+
+(type Level
+  (kind Storey)
+  (geometry area)
+  (description "One storey, with the outline of its floor plate."))
+
+(type Room
+  (kind Space)
+  (geometry area)
+  (description "A room on a storey."))
+
+(type Closet
+  (kind Space)
+  (geometry area)
+  (description "A closet on a storey."))
