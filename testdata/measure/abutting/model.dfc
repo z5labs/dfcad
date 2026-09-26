@@ -257,6 +257,205 @@
   (boundary geom:L-11)
   (boundary geom:L-14))
 
+; Two rings which overlap from a shared corner: an L-shaped counter drawn as its
+; two runs, four by one and one by four, which overlap in the one-by-one square
+; at the inside of the L. The runs share the corner at the top of the L and part
+; of the side either side of it, so every corner and every midpoint of each run
+; is on the other's boundary or outside it — which is what let the pair read as
+; beside one another and be summed, with the overlap counted twice: eight square
+; metres, which is not the union's seven nor the area of anything else. The pair
+; is named, just as the crossing plates above are.
+(vertex geom:V-121
+  (label "Counter run, corner 1")
+  (frame frame:building)
+  (position
+    (value (30.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-122
+  (label "Counter run, corner 2")
+  (frame frame:building)
+  (position
+    (value (34.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-123
+  (label "Counter run, corner 3")
+  (frame frame:building)
+  (position
+    (value (34.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-124
+  (label "Counter run, corner 4")
+  (frame frame:building)
+  (position
+    (value (30.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-121 (label "Counter run, side 1") (frame frame:building) (vertices geom:V-121 geom:V-122))
+(edge geom:E-122 (label "Counter run, side 2") (frame frame:building) (vertices geom:V-122 geom:V-123))
+(edge geom:E-123 (label "Counter run, side 3") (frame frame:building) (vertices geom:V-123 geom:V-124))
+(edge geom:E-124 (label "Counter run, side 4") (frame frame:building) (vertices geom:V-124 geom:V-121))
+(loop geom:L-121
+  (label "Counter run boundary")
+  (frame frame:building)
+  (edges geom:E-121 geom:E-122 geom:E-123 geom:E-124))
+(vertex geom:V-125
+  (label "Counter leg, corner 1")
+  (frame frame:building)
+  (position
+    (value (30.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-126
+  (label "Counter leg, corner 2")
+  (frame frame:building)
+  (position
+    (value (31.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-127
+  (label "Counter leg, corner 3")
+  (frame frame:building)
+  (position
+    (value (31.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-128
+  (label "Counter leg, corner 4")
+  (frame frame:building)
+  (position
+    (value (30.0 4.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-125 (label "Counter leg, side 1") (frame frame:building) (vertices geom:V-125 geom:V-126))
+(edge geom:E-126 (label "Counter leg, side 2") (frame frame:building) (vertices geom:V-126 geom:V-127))
+(edge geom:E-127 (label "Counter leg, side 3") (frame frame:building) (vertices geom:V-127 geom:V-128))
+(edge geom:E-128 (label "Counter leg, side 4") (frame frame:building) (vertices geom:V-128 geom:V-125))
+(loop geom:L-122
+  (label "Counter leg boundary")
+  (frame frame:building)
+  (edges geom:E-125 geom:E-126 geom:E-127 geom:E-128))
+
+(node site:S-13
+  (label "A counter drawn as two runs which overlap")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-121)
+  (boundary geom:L-122))
+
+; Two plates which overlap from one corner they share as one vertex: four by two
+; and two by four, overlapping in the two-by-two square at that corner. Each runs
+; along two sides of the other from the shared corner, and sharing the corner as
+; one vertex rather than two coincident ones changes nothing about the answer.
+(vertex geom:V-131
+  (label "Overlapping plates, shared corner")
+  (frame frame:building)
+  (position
+    (value (30.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-132
+  (label "Overlapping plate, corner 2")
+  (frame frame:building)
+  (position
+    (value (34.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-133
+  (label "Overlapping plate, corner 3")
+  (frame frame:building)
+  (position
+    (value (34.0 12.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-134
+  (label "Overlapping plate, corner 4")
+  (frame frame:building)
+  (position
+    (value (30.0 12.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-131 (label "Overlapping plate, side 1") (frame frame:building) (vertices geom:V-131 geom:V-132))
+(edge geom:E-132 (label "Overlapping plate, side 2") (frame frame:building) (vertices geom:V-132 geom:V-133))
+(edge geom:E-133 (label "Overlapping plate, side 3") (frame frame:building) (vertices geom:V-133 geom:V-134))
+(edge geom:E-134 (label "Overlapping plate, side 4") (frame frame:building) (vertices geom:V-134 geom:V-131))
+(loop geom:L-131
+  (label "Overlapping plate boundary")
+  (frame frame:building)
+  (edges geom:E-131 geom:E-132 geom:E-133 geom:E-134))
+(vertex geom:V-135
+  (label "Overlapping plate 2, corner 2")
+  (frame frame:building)
+  (position
+    (value (32.0 10.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-136
+  (label "Overlapping plate 2, corner 3")
+  (frame frame:building)
+  (position
+    (value (32.0 14.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex geom:V-137
+  (label "Overlapping plate 2, corner 4")
+  (frame frame:building)
+  (position
+    (value (30.0 14.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge geom:E-135 (label "Overlapping plate 2, side 1") (frame frame:building) (vertices geom:V-131 geom:V-135))
+(edge geom:E-136 (label "Overlapping plate 2, side 2") (frame frame:building) (vertices geom:V-135 geom:V-136))
+(edge geom:E-137 (label "Overlapping plate 2, side 3") (frame frame:building) (vertices geom:V-136 geom:V-137))
+(edge geom:E-138 (label "Overlapping plate 2, side 4") (frame frame:building) (vertices geom:V-137 geom:V-131))
+(loop geom:L-132
+  (label "Overlapping plate 2 boundary")
+  (frame frame:building)
+  (edges geom:E-135 geom:E-136 geom:E-137 geom:E-138))
+
+(node site:S-14
+  (label "Two plates which overlap from a shared corner")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-131)
+  (boundary geom:L-132))
+
 ; Two rings which share nothing: sixteen square metres and four, and twenty
 ; between them.
 (vertex geom:V-41

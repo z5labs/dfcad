@@ -548,6 +548,14 @@ func TestMeasureRefusesRingsItCannotNest(t *testing.T) {
 			name:   "names the two rings nothing tells apart rather than nesting one in the other",
 			region: "site:S-12",
 		},
+		{
+			name:   "names two runs of a counter which overlap along part of a side rather than summing them",
+			region: "site:S-13",
+		},
+		{
+			name:   "names two plates which overlap from a corner they share rather than summing them",
+			region: "site:S-14",
+		},
 	}
 
 	model := loadMeasuredModel(t, "abutting")
