@@ -29,8 +29,8 @@
 (frame frame:building (label "Building local grid") (unit m))
 
 ; A second frame, declared so that a position written in it can be judged
-; against an outline drawn in the first — which is the one thing nothing here
-; does on its own.
+; against an outline drawn in the first — carried across the transform claim
+; below, whose accuracy comes with it.
 (frame frame:annex
   (label "Annex local grid")
   (unit m)

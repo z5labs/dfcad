@@ -238,6 +238,24 @@ func TestABandNamesWhatWidenedIt(t *testing.T) {
 				"well its corners are surveyed (0.008 m) and how well the corners it is judged against are " +
 				"surveyed (0.008 m)",
 		},
+		{
+			name: "names the transform a subject was carried across by the claims which state it",
+			band: banded(
+				Tolerance{Name: "corner", Value: 0.01, Unit: "m"}, 15,
+				bandTerm(BandFromCorners, 0.01, "m", 1),
+				BandTerm{
+					Source:       BandFromTransform,
+					Sigma:        0.02,
+					Unit:         "m",
+					Sensitivity:  1,
+					Contribution: 0.02,
+					Claims:       []ID{"site:T-1", "site:T-2"},
+				},
+			),
+			expected: "0.022360679774997897 m: the tolerance corner, which is 0.01 m, widened by how well its " +
+				"corners are surveyed (0.01 m) and how well the transform it is carried across is known (0.02 m, " +
+				"claimed as site:T-1, site:T-2)",
+		},
 	}
 
 	for _, testCase := range testCases {

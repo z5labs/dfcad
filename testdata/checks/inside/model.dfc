@@ -330,8 +330,10 @@
   (assert sits-inside (container site:L-01) (tolerance boundary-closure) (position position)))
 
 ; A device set out in the annex's own grid, judged against a plate drawn in the
-; building's. Two coordinates in two frames are two numbers rather than two
-; places.
+; building's. The fit relating the two grids is a claim, so the two coordinates
+; are two places: carried across it the pump is thirty-three metres along the
+; building's grid, well past the plate's east face, and the fit's accuracy
+; widens the band it is judged against.
 (node site:D-04
   (label "Annex pump")
   (kind Element)
