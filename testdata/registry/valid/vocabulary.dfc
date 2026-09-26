@@ -15,6 +15,18 @@
   (geometry line)
   (description "A non-loadbearing wall between spaces."))
 
+(type Doorset
+  (kind Element)
+  (geometry line)
+  (description "A door and its frame, set in the wall it is within.")
+  (fills-opening #t))
+
+(type Mullion
+  (kind Element)
+  (geometry line)
+  (description "A vertical member of the curtain wall it is within.")
+  (fills-opening #f))
+
 (predicate colour
   (shape text)
   (claim-bearing #f)

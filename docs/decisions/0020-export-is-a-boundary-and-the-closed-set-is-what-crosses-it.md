@@ -90,7 +90,11 @@ fixes the set:
 Four of the seven — `Site`, `Building`, `Storey` and `Space` — are IFC's spatial structure
 decomposition one for one, which is not a coincidence: that hierarchy is where the set came
 from, and `IfcSite`, `IfcBuilding`, `IfcBuildingStorey` and `IfcSpace` are exactly the
-subtypes of `IfcSpatialStructureElement`. The other three land outside it. `Zone` is a
+subtypes of `IfcSpatialStructureElement`. The `Element` row's `IfcRelAggregates` is what an
+element inside another is written as when it is a part of it; an element whose type declares
+that it fills an opening of what it is within is contained in its storey instead and related
+to that element through an `IfcOpeningElement`
+([0027](./0027-an-element-fills-an-opening-because-its-type-says-so.md)). The other three land outside it. `Zone` is a
 grouping rather than a container, and `IfcZone` is likewise an `IfcGroup` rather than a
 spatial element, so `member-of` and `within` stay as distinct on export as
 [SPEC §6.9.1](../../SPEC.md#691-the-containment-hierarchy) keeps them. `Element` and

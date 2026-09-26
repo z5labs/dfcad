@@ -3807,7 +3807,7 @@ func ExampleAssertEntityFormat() {
 	fmt.Println(dfcad.EntityFormat{Major: 1, Minor: 0}.LoadsUnder(dfcad.SpecFormat()))
 
 	// Output:
-	// the model is 2.0 and this engine is 1.2
+	// the model is 2.0 and this engine is 1.3
 	// <nil>
 	// true
 }

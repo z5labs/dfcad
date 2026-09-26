@@ -159,6 +159,13 @@ type Project struct {
 	// project because a group is not part of the spatial decomposition and
 	// has nowhere else to hang.
 	Groups []Group
+
+	// Openings are the voids cut through the products of the file, each with
+	// the element it voids and the one filling it. They are written beneath the
+	// project for the reason Groups are: an opening is neither contained in the
+	// spatial structure nor decomposed out of anything, and it names the two
+	// products it joins by identifier rather than by where they stand.
+	Openings []Opening
 }
 
 // Spatial is one element of the spatial decomposition: a site, a building, a
@@ -295,6 +302,72 @@ type Product struct {
 	// surfaces the set beside the object so that whoever opens the file can see
 	// which.
 	Properties []PropertySet
+	// Aggregates is the identifier of the IfcRelAggregates joining this
+	// product to Parts, and is required when there are any.
+	Aggregates GlobalID
+
+	// Parts are the products decomposed out of this one: a baluster of a
+	// railing, a mullion of a curtain wall.
+	//
+	// A part is not contained in the spatial structure as well. IFC relates a
+	// part to the storey through the whole it belongs to, and a product both
+	// contained and aggregated is one a receiving system lists twice. Each is
+	// placed relative to the placement the whole is placed relative to — the
+	// spatial element containing the whole — rather than to the whole's own,
+	// so a caller computes the coordinates of a part exactly as it does those
+	// of the whole.
+	Parts []Product
+}
+
+// Opening is IfcOpeningElement: a void cut through one element, and the
+// element standing in it.
+//
+// It is how IFC says a door is in a wall. The door stays contained in its
+// storey like any other product; the wall is voided by the opening
+// (IfcRelVoidsElement) and the door fills it (IfcRelFillsElement), and a reader
+// which subtracts openings takes the opening's body out of the wall's. Nothing
+// else in the file says the wall is missing where the door stands, which is why
+// a file without one shows every wall solid through its doors.
+type Opening struct {
+	// GlobalID is the identifier of the opening itself, which is a rooted
+	// object like any other.
+	GlobalID GlobalID
+
+	// Name, Description and ObjectType are the opening's text attributes. An
+	// empty one is written as absent.
+	Name        string
+	Description string
+	ObjectType  string
+
+	// Host is the identifier of the element the opening voids, and is
+	// required: [MissingOpeningHostError] otherwise. It names a [Product]
+	// written elsewhere in the same model, exactly as a [SpaceBoundary]'s
+	// element does, and one which names an object this model does not hold is
+	// [UnknownOpeningElementError].
+	Host GlobalID
+
+	// Voids is the identifier of the IfcRelVoidsElement joining the host to
+	// the opening, and is required.
+	Voids GlobalID
+
+	// Placement is where the opening's coordinate system sits inside the
+	// host's. A nil placement writes an absent ObjectPlacement.
+	Placement *Placement
+
+	// Representation is the void's shape, expressed in the coordinate system
+	// Placement establishes. A nil representation writes an absent
+	// Representation: the relationships still say which element is voided and
+	// which fills it, which is what a caller with no geometry to cut holds.
+	Representation *Representation
+
+	// Filling is the identifier of the element standing in the opening, and
+	// is empty for a void nothing fills. It names a [Product] written
+	// elsewhere in the same model, under the rule Host does.
+	Filling GlobalID
+
+	// Fills is the identifier of the IfcRelFillsElement joining the opening
+	// to Filling, and is required when there is a filling.
+	Fills GlobalID
 }
 
 // SpaceBoundary is IfcRelSpaceBoundary: the relationship between a space and

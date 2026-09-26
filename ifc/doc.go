@@ -46,10 +46,13 @@
 // One [Model] is one exchange file: a header, a unit assignment, a geometric
 // representation context, and the spatial decomposition beneath one
 // [Project] — sites, buildings, storeys and spaces nested by containment,
-// products contained in them, and zones grouping any of them. The
-// relationships are IFC's own: IfcRelAggregates for the decomposition,
-// IfcRelContainedInSpatialStructure for the products, and
-// IfcRelAssignsToGroup for the zones.
+// products contained in them and the parts decomposed out of those, zones
+// grouping any of them, and the openings cut through products. The
+// relationships are IFC's own: IfcRelAggregates for the decomposition, the
+// spatial one and a product's parts alike, IfcRelContainedInSpatialStructure
+// for the products, IfcRelAssignsToGroup for the zones, and
+// IfcRelVoidsElement and IfcRelFillsElement for the element an [Opening] is
+// cut through and the one standing in it.
 //
 // Which entities a product may be written as is a closed set — [Products] —
 // because IFC4 fixes an attribute list per entity and this package writes

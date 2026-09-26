@@ -498,6 +498,12 @@ func (e *exporter) thickened(
 		return nil, nil
 	}
 
+	// What this drawing establishes is recorded as it is established, so an
+	// opening cut from it later reads the same run, the same thickness and the
+	// same body this drew rather than working them out again.
+	drawn := &drawnRun{runs: runs}
+	e.lines[node.ID()] = drawn
+
 	// The runs came back in the root frame, for the reason a region's rings
 	// do, so the datum the placement already stands at comes off the level
 	// they lie at.
@@ -509,6 +515,8 @@ func (e *exporter) thickened(
 	if !resolved {
 		return nil, nil
 	}
+
+	drawn.thickness, drawn.widened = thickness, true
 
 	plans := widened(runs, thickness)
 	if len(plans) == 0 {
@@ -543,6 +551,8 @@ func (e *exporter) thickened(
 		return representation, properties
 	}
 	properties = append(properties, offset...)
+
+	drawn.base, drawn.height, drawn.swept = base, height, true
 
 	solids := make([]ifc.Item, 0, len(plans))
 	for _, plan := range plans {

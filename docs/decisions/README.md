@@ -77,3 +77,4 @@ the code in front of them and needs the part that is not in the code.
 | [0024](./0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md) | Every coordinate in an export is written in the root frame | Accepted |
 | [0025](./0025-the-map-export-draws-every-region-and-its-properties-are-the-filter.md) | The map export draws every region, and its feature properties are the filter | Accepted |
 | [0026](./0026-reading-a-revision-out-of-git-is-a-host-command.md) | Reading a revision out of git is a host command, and the image stays scratch | Accepted |
+| [0027](./0027-an-element-fills-an-opening-because-its-type-says-so.md) | An element fills an opening because its type says so | Accepted |

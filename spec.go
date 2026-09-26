@@ -24,7 +24,7 @@ import (
 // It moves under the rules SPEC.md section 10 states, and it moves independently
 // of the version of the tool and of the version of the machine output contract.
 // docs/versioning.md is the relationship between the three.
-const SpecVersion = "1.2"
+const SpecVersion = "1.3"
 
 // EntityFormat is one version of the entity format specification: the
 // MAJOR.MINOR pair SPEC.md section 10 states at the top of itself.

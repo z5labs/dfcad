@@ -1,0 +1,13 @@
+testdata/registry/openings/registry.dfc:16:18: error: expected a type which says its instances fill an opening to permit the kind Element, found one permitting Space: only an Element is written within an Element, so nothing of this type could stand in an opening of anything
+16 |   (fills-opening #t))
+   |                  ^^
+   = hint: permit (kind Element) on the type, or take the (fills-opening #t) off it
+testdata/registry/openings/registry.dfc:24:3: error: expected at most one (fills-opening ...) child of the type form, found another
+24 |   (fills-opening #t))
+   |   ^^^^^^^^^^^^^^^^^^
+testdata/registry/openings/registry.dfc:23:3: note: first written here
+23 |   (fills-opening #t)
+   |   ^^^^^^^^^^^^^^^^^^
+testdata/registry/openings/registry.dfc:31:18: error: expected #t or #f, found the symbol yes
+31 |   (fills-opening yes))
+   |                  ^^^

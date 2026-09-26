@@ -111,6 +111,10 @@ func TestLoadRegistry(t *testing.T) {
 			name:    "names both entries when a type is classified twice in one system",
 			fixture: "classifications",
 		},
+		{
+			name:    "names a type which says its instances fill an opening they could never stand in",
+			fixture: "openings",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -194,6 +198,27 @@ func TestRegistryDeclarations(t *testing.T) {
 
 		require.True(t, ok)
 		assert.Empty(t, unclassified.Classifications, "a type maps into no foreign scheme unless it says so")
+	})
+
+	t.Run("declares which types stand in an opening of the element they are within", func(t *testing.T) {
+		testCases := []struct {
+			name     string
+			declared string
+			expected bool
+		}{
+			{name: "a type which says so", declared: "Doorset", expected: true},
+			{name: "a type which says it does not, which is the default written out", declared: "Mullion", expected: false},
+			{name: "a type which says nothing", declared: "Partition", expected: false},
+		}
+
+		for _, testCase := range testCases {
+			t.Run(testCase.name, func(t *testing.T) {
+				declared, ok := registry.Type(testCase.declared)
+
+				require.True(t, ok)
+				assert.Equal(t, testCase.expected, declared.FillsOpening)
+			})
+		}
 	})
 
 	t.Run("reports which kind and which geometry form a type permits", func(t *testing.T) {
@@ -285,7 +310,7 @@ func TestRegistryDeclarations(t *testing.T) {
 		for declared := range registry.Types() {
 			types = append(types, declared.Name)
 		}
-		assert.Equal(t, []string{"MeetingRoom", "Partition"}, types)
+		assert.Equal(t, []string{"Doorset", "MeetingRoom", "Mullion", "Partition"}, types)
 
 		var predicates []string
 		for predicate := range registry.Predicates() {

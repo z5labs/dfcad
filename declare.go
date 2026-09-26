@@ -362,6 +362,8 @@ func (l *registryLoader) declareType(node *Node) {
 
 	l.classify(&declared, node)
 
+	l.fillsOpening(&declared, node)
+
 	var invariants []typeInvariant
 	for _, child := range childForms(node, "invariant") {
 		check, _, ok := l.name(child, "a check name")
@@ -391,6 +393,48 @@ func (l *registryLoader) declareType(node *Node) {
 // classificationChild is the tag a type's external classification is written
 // with, per specification section 7.3.
 const classificationChild = "classification"
+
+// fillsOpeningChild is the tag a type says its instances stand in an opening
+// of the element they are within with, per specification section 7.3.
+const fillsOpeningChild = "fills-opening"
+
+// fillsOpening reads the `fills-opening` child of a type declaration.
+//
+// A type saying so which permits no Element is refused where it is written,
+// rather than carried as a flag nothing could ever read. Only an Element may be
+// written within an Element ([6.9.1](SPEC.md#691-the-containment-hierarchy)),
+// so an instance of such a type is never inside anything it could fill an
+// opening in — the same reasoning which refuses an invariant no instance of its
+// type could be examined by.
+func (l *registryLoader) fillsOpening(declared *Type, node *Node) {
+	arg, ok := argumentOf(node, fillsOpeningChild)
+	if !ok {
+		return
+	}
+
+	written, ok := l.boolean(arg, "#t or #f")
+	if !ok || !written {
+		return
+	}
+
+	// A type whose every kind was refused has already been told why, and
+	// saying here that it permits nothing would be the same mistake twice.
+	if len(declared.Kinds) > 0 && !declared.PermitsKind(KindElement) {
+		l.add(Diagnostic{
+			Severity: SeverityError,
+			Span:     arg.Span,
+			Message: fmt.Sprintf(
+				"expected a type which says its instances fill an opening to permit the kind %s, found one "+
+					"permitting %s: only an %s is written within an %s, so nothing of this type could stand in "+
+					"an opening of anything",
+				KindElement, join(spellings(declared.Kinds), "and"), KindElement, KindElement),
+			Hint: "permit (kind Element) on the type, or take the (fills-opening #t) off it",
+		})
+		return
+	}
+
+	declared.FillsOpening = true
+}
 
 // classify reads the `classification` children of a type declaration.
 //

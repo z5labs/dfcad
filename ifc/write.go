@@ -118,6 +118,9 @@ const (
 	entityAggregates Entity = "IFCRELAGGREGATES"
 	entityContains   Entity = "IFCRELCONTAINEDINSPATIALSTRUCTURE"
 	entityAssigns    Entity = "IFCRELASSIGNSTOGROUP"
+	entityVoids      Entity = "IFCRELVOIDSELEMENT"
+	entityFills      Entity = "IFCRELFILLSELEMENT"
+	entityOpening    Entity = "IFCOPENINGELEMENT"
 	entityBoundary   Entity = "IFCRELSPACEBOUNDARY"
 	entityConnection Entity = "IFCCONNECTIONCURVEGEOMETRY"
 	entityProject    Entity = "IFCPROJECT"
@@ -162,6 +165,13 @@ const (
 // solid this package does not write.
 const profileArea = "AREA"
 
+// openingThrough is the IfcOpeningElementTypeEnum member every opening this
+// package writes is: a void through the whole depth of its host. It is stated
+// rather than left NOTDEFINED because it is known — a door or a window in a
+// wall stands in a hole through it — and RECESS, a void part of the way into
+// one, is what a reader would otherwise have to rule out.
+const openingThrough = "OPENING"
+
 // Write serialises model as an ISO 10303-21 exchange file.
 //
 // The bytes are a pure function of the model. Two calls with equal models
@@ -176,6 +186,7 @@ func Write(w io.Writer, model Model) error {
 	out := &writer{
 		interned: make(map[string]reference),
 		objects:  make(map[GlobalID]reference),
+		elements: make(map[GlobalID]placedProduct),
 		contexts: make(map[string]reference),
 	}
 
@@ -223,6 +234,12 @@ type writer struct {
 	// identifier written on two objects.
 	objects map[GlobalID]reference
 
+	// elements maps a product's identifier to the instance which holds it and
+	// the placement it was placed by. It is what resolves the two ends of an
+	// opening: only a product can be voided or fill a void, so a name which
+	// resolves to a storey or a zone here is one which resolves to nothing.
+	elements map[GlobalID]placedProduct
+
 	// contexts maps a representation context's identifier to the instance
 	// which holds it. The model's own context is under the empty string, so a
 	// shape which names no subcontext resolves through the same lookup as one
@@ -241,6 +258,13 @@ type writer struct {
 	// element contains it, and the walk may not have reached it yet. Resolving
 	// as they are met would refuse a wall in the next storey for not existing.
 	boundaries []pending
+}
+
+// placedProduct is one product as the file holds it: its instance, and the
+// placement its own coordinate system is established by.
+type placedProduct struct {
+	at        reference
+	placement value
 }
 
 // pending is one space boundary and the space which stated it, waiting for the
@@ -262,8 +286,9 @@ type pending struct {
 // first because the project references them, then the context for the same
 // reason, then the georeference, which converts out of that context, then the
 // project, then the spatial decomposition depth first in the order the caller
-// wrote it, then the groups, which may assign anything above them, and last the
-// space boundaries, which may name any element the walk wrote.
+// wrote it, then the groups, which may assign anything above them, then the
+// space boundaries, which may name any element the walk wrote, and last the
+// openings, which name two of them each.
 func (w *writer) model(model Model) error {
 	units, err := w.units(model.Units)
 	if err != nil {
@@ -309,7 +334,11 @@ func (w *writer) model(model Model) error {
 		return err
 	}
 
-	return w.spaceBoundaries()
+	if err := w.spaceBoundaries(); err != nil {
+		return err
+	}
+
+	return w.openings(project.Openings)
 }
 
 // units writes the unit assignment and returns the reference to it.
@@ -646,45 +675,8 @@ func (w *writer) products(element Spatial, in reference, under reference) error 
 
 	contained := make(list, 0, len(element.Products))
 	for _, product := range element.Products {
-		tail, known := products[product.Entity]
-		if !known {
-			return UnknownEntityError{
-				Entity:   product.Entity,
-				Position: "a product",
-				Known:    keys(products),
-			}
-		}
-
-		placement, err := w.placement(product.Placement, under)
+		at, err := w.product(product, under)
 		if err != nil {
-			return err
-		}
-
-		// The shape comes before the product which carries it, because an
-		// instance may only reference one already written.
-		representation, err := w.representation(product.Representation, product.GlobalID)
-		if err != nil {
-			return err
-		}
-
-		attributes := []value{
-			text(product.GlobalID),
-			absent{}, // OwnerHistory
-			optionalText(product.Name),
-			optionalText(product.Description),
-			optionalText(product.ObjectType),
-			placement,
-			representation,
-			absent{}, // Tag
-		}
-		attributes = append(attributes, absents(tail)...)
-
-		at, err := w.rooted(product.Entity, product.GlobalID, attributes)
-		if err != nil {
-			return err
-		}
-
-		if err := w.properties(product.Properties, at); err != nil {
 			return err
 		}
 
@@ -705,6 +697,78 @@ func (w *writer) products(element Spatial, in reference, under reference) error 
 	})
 
 	return err
+}
+
+// product writes one product beneath the placement under, and then the parts
+// decomposed out of it and the relationship aggregating them.
+//
+// A part is placed beneath the same placement as its whole, rather than beneath
+// the whole's own: see [Product.Parts]. It is written after the whole and its
+// property sets, depth first, so a product with no parts is written exactly as
+// it was before a product could have any.
+func (w *writer) product(product Product, under reference) (reference, error) {
+	tail, known := products[product.Entity]
+	if !known {
+		return 0, UnknownEntityError{
+			Entity:   product.Entity,
+			Position: "a product",
+			Known:    keys(products),
+		}
+	}
+
+	placement, err := w.placement(product.Placement, under)
+	if err != nil {
+		return 0, err
+	}
+
+	// The shape comes before the product which carries it, because an
+	// instance may only reference one already written.
+	representation, err := w.representation(product.Representation, product.GlobalID)
+	if err != nil {
+		return 0, err
+	}
+
+	attributes := []value{
+		text(product.GlobalID),
+		absent{}, // OwnerHistory
+		optionalText(product.Name),
+		optionalText(product.Description),
+		optionalText(product.ObjectType),
+		placement,
+		representation,
+		absent{}, // Tag
+	}
+	attributes = append(attributes, absents(tail)...)
+
+	at, err := w.rooted(product.Entity, product.GlobalID, attributes)
+	if err != nil {
+		return 0, err
+	}
+
+	w.elements[product.GlobalID] = placedProduct{at: at, placement: placement}
+
+	if err := w.properties(product.Properties, at); err != nil {
+		return 0, err
+	}
+
+	parts := make([]value, 0, len(product.Parts))
+	for _, part := range product.Parts {
+		held, err := w.product(part, under)
+		if err != nil {
+			return 0, err
+		}
+		parts = append(parts, held)
+	}
+
+	if len(parts) > 0 && product.Aggregates == "" {
+		return 0, MissingGlobalIDError{Entity: entityAggregates, Of: product.GlobalID}
+	}
+
+	if err := w.aggregates(product.Aggregates, at, parts); err != nil {
+		return 0, err
+	}
+
+	return at, nil
 }
 
 // aggregates writes the IfcRelAggregates joining one object to the things
@@ -812,6 +876,115 @@ func (w *writer) spaceBoundaries() error {
 			connection,
 			enumeration(string(boundary.Physical)),
 			enumeration(string(boundary.Internal)),
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// openings writes the voids cut through the products of the model, with the
+// relationship voiding each host and the one filling each opening.
+//
+// They come last for the reason the space boundaries do: an opening names its
+// host and its filling by identifier, and either may stand anywhere in the
+// decomposition — a door is contained in its storey and its wall may be a part
+// of something else entirely.
+//
+// Each is placed relative to its host's placement, which is the convention
+// IFC's implementer agreements give an opening: moving a wall moves the holes
+// in it.
+func (w *writer) openings(openings []Opening) error {
+	for _, opening := range openings {
+		if opening.Host == "" {
+			return MissingOpeningHostError{Opening: opening.GlobalID}
+		}
+
+		host, known := w.elements[opening.Host]
+		if !known {
+			return UnknownOpeningElementError{
+				Opening:   opening.GlobalID,
+				Attribute: "RelatingBuildingElement",
+				Element:   opening.Host,
+			}
+		}
+
+		if opening.Voids == "" {
+			return MissingGlobalIDError{Entity: entityVoids, Of: opening.GlobalID}
+		}
+
+		var filling placedProduct
+		if opening.Filling != "" {
+			filling, known = w.elements[opening.Filling]
+			if !known {
+				return UnknownOpeningElementError{
+					Opening:   opening.GlobalID,
+					Attribute: "RelatedBuildingElement",
+					Element:   opening.Filling,
+				}
+			}
+
+			if opening.Fills == "" {
+				return MissingGlobalIDError{Entity: entityFills, Of: opening.GlobalID}
+			}
+		}
+
+		relativeTo, placed := host.placement.(reference)
+		if !placed {
+			relativeTo = 0
+		}
+
+		placement, err := w.placement(opening.Placement, relativeTo)
+		if err != nil {
+			return err
+		}
+
+		representation, err := w.representation(opening.Representation, opening.GlobalID)
+		if err != nil {
+			return err
+		}
+
+		at, err := w.rooted(entityOpening, opening.GlobalID, []value{
+			text(opening.GlobalID),
+			absent{}, // OwnerHistory
+			optionalText(opening.Name),
+			optionalText(opening.Description),
+			optionalText(opening.ObjectType),
+			placement,
+			representation,
+			absent{}, // Tag
+			// Every opening this package writes goes through its host, which
+			// is what IfcOpeningElementTypeEnum calls an opening rather than a
+			// recess.
+			enumeration(openingThrough),
+		})
+		if err != nil {
+			return err
+		}
+
+		if _, err := w.rooted(entityVoids, opening.Voids, []value{
+			text(opening.Voids),
+			absent{}, // OwnerHistory
+			absent{}, // Name
+			absent{}, // Description
+			host.at,
+			at,
+		}); err != nil {
+			return err
+		}
+
+		if opening.Filling == "" {
+			continue
+		}
+
+		if _, err := w.rooted(entityFills, opening.Fills, []value{
+			text(opening.Fills),
+			absent{}, // OwnerHistory
+			absent{}, // Name
+			absent{}, // Description
+			at,
+			filling.at,
 		}); err != nil {
 			return err
 		}
