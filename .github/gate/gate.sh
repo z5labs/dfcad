@@ -598,7 +598,16 @@ materialise_base() {
 		return 1
 	fi
 	prefix="$(git -C "$root" rev-parse --show-prefix)"
-	shallow="$(git -C "$root" rev-parse --path-format=absolute --git-path shallow)"
+	# The file listing where a shallow history is cut off, which is empty or
+	# absent for a full one. `--git-path` answers relative to the directory
+	# git was run in unless the path is absolute; it is joined here rather than
+	# asked for with `--path-format=absolute`, which needs git 2.31, because
+	# this script is copied onto runners whose git nobody here chose.
+	shallow="$(git -C "$root" rev-parse --git-path shallow)"
+	case "$shallow" in
+	/*) ;;
+	*) shallow="${root}/${shallow}" ;;
+	esac
 
 	if ! merge_base="$(git -C "$root" merge-base HEAD "$against" 2>/dev/null)"; then
 		if [ -s "$shallow" ]; then
@@ -614,7 +623,7 @@ materialise_base() {
 	fi
 
 	base_tree="$(mktemp -d)"
-	if ! git -C "$toplevel" archive --format=tar "$merge_base" | tar -x -C "$base_tree"; then
+	if ! git -C "$toplevel" archive --format=tar "$merge_base" | tar -x -f - -C "$base_tree"; then
 		echo "gate.sh: the merge base ${merge_base} could not be read out of ${toplevel}" >&2
 		return 1
 	fi
