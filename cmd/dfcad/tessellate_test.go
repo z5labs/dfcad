@@ -218,8 +218,7 @@ const curvedModel = `(vertex geom:V-01
 (node site:Z-01
   (label "The estate the plate is part of")
   (kind Zone)
-  (type Campus)
-  (geometry absent))
+  (type Campus))
 
 ; A second level holding one room whose east wall bows out into a bay.
 ;
@@ -614,7 +613,7 @@ func TestRunTessellateReportsTheDigestItWasDrawnFrom(t *testing.T) {
 	require.NotEmpty(t, result.Digest)
 
 	files := curved()
-	files["entities/geometry.dfc"] += "\n(node site:S-02 (kind Space) (type MeetingRoom) (geometry absent))\n"
+	files["entities/geometry.dfc"] += "\n(node site:Z-02 (kind Zone) (type Campus))\n"
 
 	moved, _ := drawn(t, exitSuccess, files, "--chord", "chord-deviation", "site:S-01")
 

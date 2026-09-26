@@ -368,7 +368,10 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 	predicate := arguments[1]
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, loadRefused := loadGate(cmd, globals, stderr)
+	if loadRefused {
+		return exitLoad
+	}
 	registry := graph.Registry()
 
 	entity, held := graph.Entity(subject)

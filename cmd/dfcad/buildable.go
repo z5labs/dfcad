@@ -365,7 +365,10 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, loadRefused := loadGate(cmd, globals, stderr)
+	if loadRefused {
+		return exitLoad
+	}
 
 	node, err := traversable(graph, subject)
 	if err != nil {
