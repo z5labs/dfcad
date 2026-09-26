@@ -22,19 +22,15 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # Pinned to the engineVersion the module itself declares, so the CLI and the
-  # engine it provisions are the pair the module was written against. An engine
-  # the module has not been run on is a difference between this repository's CI
-  # and everybody else's, which is the whole thing the module exists to prevent.
-  DAGGER_VERSION: "0.21.7"
-
 jobs:
   # The Z5Labs standard pipeline: fmt, vet, golangci-lint and `go test -race`,
-  # then a scratch image per platform, published when the ref matches publishOn.
-  # It is one `dagger call` and it stays one: a step here which reran any of
-  # those stages would be a second definition of the standard, and the two would
-  # drift. See the continuous integration section of CLAUDE.md.
+  # then an image per platform, published when a ref at HEAD matches publishOn.
+  # Every stage is the z5labs module's, reached through this repository's root
+  # Dagger module (dagger.json, .dagger/), which pins it by commit and adds only
+  # the version and the publish decision the module leaves to its caller. A step
+  # here which reran any of those stages would be a second definition of the
+  # standard, and the two would drift. See the continuous integration section of
+  # CLAUDE.md.
   #
   # The job keeps the name `build`, which is what branch protection on main
   # already requires. What it runs has changed; what it asserts has not.
@@ -47,66 +43,79 @@ jobs:
       # which is one of the two reasons such a run cannot publish; the other
       # is that its ref does not match publishOn.
       packages: write
-      # The workload identity token the module exchanges to sign the SLSA
-      # provenance it attaches to every published digest. Without it the
-      # module refuses to publish rather than publishing unattested, so this
-      # is not an optional grant on a job that pushes anything.
+      # The workload identity token the module exchanges to sign the image and
+      # its SLSA provenance. Without it the module refuses to publish rather
+      # than publishing unsigned, so this is not an optional grant on a job
+      # that pushes anything.
       id-token: write
     steps:
       - name: Check out the repository
         uses: actions/checkout@v7
         with:
-          # The module reads the refs at HEAD to decide whether to publish and
-          # how to tag, so it needs real git metadata rather than a snapshot of
+          # The version and the publish decision are read out of the refs at
+          # HEAD, and the module stamps and annotates every image from the
+          # commit, so this needs real git metadata rather than a snapshot of
           # the tree.
           fetch-depth: 0
 
+      # Pinned to the engineVersion the root module declares, read out of
+      # dagger.json rather than repeated here. The CLI provisions an engine of
+      # its own version, so a number typed into this file could drift from the
+      # module's and leave CI running the pipeline on an engine it has never
+      # been run against — which is how every pull request here came to fail
+      # once already.
       - name: Install the Dagger CLI
         run: |
           curl -fsSL https://dl.dagger.io/dagger/install.sh \
-            | DAGGER_VERSION="$DAGGER_VERSION" BIN_DIR="$HOME/.local/bin" sh
+            | DAGGER_VERSION="$(jq -r .engineVersion dagger.json | tr -d v)" \
+              BIN_DIR="$HOME/.local/bin" sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      - name: Run the standard checks
+        run: dagger call ci
+
+      # The version a build is stamped with and whether it publishes, checked
+      # against a table of literal cases. A release is the one run where
+      # finding out is too late, so the rules are exercised on every pull
+      # request rather than first on the tag.
+      - name: Check the version scheme
+        run: dagger call version-scheme
+
       # The registry, the credentials and the publishOn regex are inputs to
-      # the module call, so this one step covers the pull request that must
-      # not publish and the tag push that must. Nothing here decides which:
+      # the one call, so this step covers the pull request that must not
+      # publish and the tag push that must. Nothing here decides which:
       # publishOn is matched against the refs pointing at HEAD, a pull
       # request's merge commit carries none of them, and the same command
       # therefore builds on a pull request and publishes on a tag.
       #
-      # --binary-name carries the owner because it is the repository path
-      # within the registry, and GHCR has no single-segment repositories:
-      # the module publishes to <registry>/<binaryName>, so ghcr.io plus
-      # `dfcad` would be ghcr.io/dfcad, which does not exist and cannot be
-      # created. Lower-cased because a docker repository path may not carry
-      # capitals and a fork's owner may.
-      - name: Run the standard pipeline
+      # --repository carries the owner because it is the repository path
+      # within the registry, and GHCR has no single-segment repositories.
+      # Lower-cased because a docker repository path may not carry capitals
+      # and a fork's owner may.
+      - name: Build the image, and publish it where the ref says to
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           args=(
-            go-app --source=. --pkg=./cmd/dfcad
-            --binary-name="${GITHUB_REPOSITORY,,}"
-            --registry=ghcr.io
-            --auth-username="$GITHUB_ACTOR"
-            --auth=env:GITHUB_TOKEN
+            publish
             --publish-on='^refs/(heads/main|tags/v.+)$'
+            --registry=ghcr.io
+            --repository="${GITHUB_REPOSITORY,,}"
+            --username="$GITHUB_ACTOR"
+            --password=env:GITHUB_TOKEN
           )
           # The OIDC endpoint is present only where `id-token: write` was
           # actually granted, which a fork's pull request does not get. The
-          # inputs are passed when they exist rather than passed empty,
-          # because an empty secret would be a credential the module accepts
-          # and then fails to exchange; a run that is missing them and does
-          # try to publish is refused by the module, naming both of them.
+          # inputs are passed when they exist rather than passed empty; a run
+          # that is missing them and does try to publish is refused by the
+          # module, naming both of them.
           if [ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
             args+=(
               --id-token-request-url="$ACTIONS_ID_TOKEN_REQUEST_URL"
               --id-token-request-token=env:ACTIONS_ID_TOKEN_REQUEST_TOKEN
             )
           fi
-          dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
-            "${args[@]}" \
-            ci
+          dagger call "${args[@]}"
 
   # Repo-specific verification, which the module has no hook for and which
   # therefore lives here as its own job rather than as a step beside a module
@@ -168,22 +177,21 @@ jobs:
           # shallow checkout does not reach one.
           fetch-depth: 0
 
+      # At the engineVersion dagger.json declares, as in the build job.
       - name: Install the Dagger CLI
         run: |
           curl -fsSL https://dl.dagger.io/dagger/install.sh \
-            | DAGGER_VERSION="$DAGGER_VERSION" BIN_DIR="$HOME/.local/bin" sh
+            | DAGGER_VERSION="$(jq -r .engineVersion dagger.json | tr -d v)" \
+              BIN_DIR="$HOME/.local/bin" sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # Builder is the module's local-dev sibling: it routes through the same
-      # per-platform build Ci does, so the binary the gate runs is the one the
-      # pipeline ships. `go run ./cmd/dfcad` would be a second way of producing
-      # it, and the gate and the artifact could then disagree about what the
-      # tool does.
+      # Taken out of the image the module builds, so the binary the gate runs
+      # is the one the pipeline ships. `go run ./cmd/dfcad` would be a second
+      # way of producing it, and the gate and the artifact could then disagree
+      # about what the tool does.
       - name: Build the dfcad binary with the standard pipeline
         run: |
-          dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
-            go-app --source=. --pkg=./cmd/dfcad \
-            builder binary export --path=./dfcad
+          dagger call binary export --path=./dfcad
           chmod +x ./dfcad
           ./dfcad --help >/dev/null
 

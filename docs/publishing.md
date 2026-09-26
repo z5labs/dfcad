@@ -29,9 +29,11 @@ tool, not to run it.
 
 ## What publishes, and what does not
 
-The registry, the credentials and the `publishOn` regex are inputs to the one `dagger call`
-in [`ci.yaml`](../.github/workflows/ci.yaml). Nothing in the workflow decides whether a run
-publishes; the module matches `publishOn` against the refs pointing at `HEAD`:
+The registry, the credentials and the `publishOn` regex are inputs to the one
+`dagger call publish` in [`ci.yaml`](../.github/workflows/ci.yaml). Nothing in the workflow
+decides whether a run publishes; this repository's root Dagger module
+([`.dagger/version.go`](../.dagger/version.go)) matches `publishOn` against the refs
+pointing at `HEAD`, a remote-tracking branch counting as the branch it tracks:
 
 ```
 ^refs/(heads/main|tags/v.+)$
@@ -54,34 +56,43 @@ does not fail the pipeline at the publish; it fails it at the start, which is th
 
 ## The tags
 
-The tag is the module's, applied verbatim to what git says. This is a description of
-`GoApp`'s behaviour rather than a convention this repository chose:
+The version is read out of git at `HEAD` by the root module, and the image is published
+under it:
 
-| Ref at `HEAD` | Image tag |
-|---------------|-----------|
-| `refs/tags/v1.2.3` | `v1.2.3` |
-| `refs/heads/main` | `<short-sha>-<commit-time>`, e.g. `f205b64-2026-08-05T12-00-00Z` |
+| Ref at `HEAD` | Version | Image tags |
+|---------------|---------|------------|
+| `refs/tags/v1.2.3` | `v1.2.3` | `v1.2.3`, `v1.2`, `v1`, `latest` |
+| `refs/tags/v1.2.3-rc.1` | `v1.2.3-rc.1` | `v1.2.3-rc.1` |
+| `refs/heads/main` | `<short-sha>-<commit-time>`, e.g. `f205b64-2026-08-05T12-00-00Z` | the version alone |
 
-Both strings are the same ones the binary reports as `.build.version`, so an image tag and
-the `dfcad version` output of the binary inside it agree by construction rather than by
-anybody keeping them in step. The tag charset costs the convention some freedom — no semver
-build metadata, no path-shaped tags — and [`versioning.md`](./versioning.md) has the table.
+The version is the same string the binary reports as `.build.version`, so the immutable
+image tag and the `dfcad version` output of the binary inside it agree by construction
+rather than by anybody keeping them in step. The tag charset costs the convention some
+freedom — no semver build metadata, no path-shaped tags — and
+[`versioning.md`](./versioning.md) has the table. `dagger call version-scheme` checks the
+derivation against literal cases on every pull request.
 
-Where a release tag sits on the tip of `main`, both refs match and the same bytes are pushed
-twice under two tags. One digest, two names; that is the module publishing every matching
-ref rather than choosing between them.
+Which tags a version implies is not this repository's to decide. It is the z5labs module's
+tag family: a release also moves `vMAJOR.MINOR`, `vMAJOR` and `latest` onto its digest, a
+prerelease moves none of them, and a version that is not semver — every branch build —
+publishes as the one tag. Every tag of one publish names one digest.
 
-### There is no `latest`
+Where a release tag sits on the tip of `main`, the tag is the version and the build is
+published once, as the release. It is not also pushed under a branch-build tag: the binary
+is stamped with the version, so the two would be different bytes.
 
-`latest` is not published, and no upstream issue asks for it. The module maps a ref to a tag
-and pushes what it built; an alias means pushing a name that points at something built from
-a different commit, which is a second thing to keep true and a name that is wrong for the
-window in which it is being updated.
+### `latest`, and ADR 0019
 
-More to the point, `latest` answers a question nobody automating this should be asking. A
-pipeline that pulls `latest` is a pipeline whose behaviour changes without a commit in it,
-and it cannot say afterwards what it ran. The recorded reasoning is
-[ADR 0019](./decisions/0019-the-registry-is-the-distribution-channel.md).
+[ADR 0019](./decisions/0019-the-registry-is-the-distribution-channel.md) decided there would
+be no `latest`: a pipeline that pulls it is one whose behaviour changes without a commit in
+it, and it cannot say afterwards what it ran. The module this repository publishes through
+now publishes `latest`, `vMAJOR` and `vMAJOR.MINOR` for every release regardless, and offers
+no way to switch the family off. No release has been cut yet, so none of those tags exists;
+the first `v*` tag pushed will create all three.
+
+The reasoning in the ADR still stands for anybody consuming the image: **pin a digest**, or
+at the least a full version tag. A moving tag is a convenience for a person at a terminal,
+not something for a pipeline to use.
 
 ## Digests are authoritative; tags are advisory
 
@@ -105,9 +116,10 @@ for the same reason, so a pin by digest is also what makes those attachments che
 
 ## What the image is
 
-The module's scratch image: one statically linked binary and nothing else. No shell, no
-package manager, no libc, no CA bundle, no writable temporary directory. The entrypoint is
-the binary, so arguments go straight to it.
+The z5labs module's image: one statically linked binary at `/app/dfcad`, a read-only home
+directory, and nothing else. No shell, no package manager, no libc, no CA bundle. The
+entrypoint is the binary, so arguments go straight to it. It runs as `65532:65532`, not as
+root.
 
 That the engine reads files and writes files, has no daemon and speaks no network protocol
 is why a scratch image is enough — see the non-goals in the [README](../README.md).
@@ -116,8 +128,9 @@ Three consequences worth knowing before debugging one:
 
 - `docker exec ... sh` does not work, and neither does any `RUN` in a derived image.
 - The model has to be mounted; there is nothing in the image to copy it in with.
-- Writes land as the container's user. Authoring commands need `--user` to avoid leaving
-  root-owned files in your working tree.
+- Writes land as the container's user, which is `65532` unless you say otherwise.
+  Authoring commands need `--user` so that they can write into your working tree and leave
+  files owned by you.
 
 It is multi-architecture, `linux/amd64` and `linux/arm64`, which is the module's default
 platform list. This repository does not override it: the platforms the image covers are the
@@ -166,14 +179,14 @@ already does:
 
 - **Source annotations** on every platform variant — `org.opencontainers.image.revision`
   (the full `HEAD` SHA), `.source` (the origin URL), `.created` (the commit's committer time,
-  not the build's wall clock), and `.version` on a tag build. The commit an image was built
-  from is readable off the manifest without pulling it.
-- **An SPDX and a CycloneDX SBOM per platform**, generated from the binaries the pipeline
-  compiled.
+  not the build's wall clock), and `.version`. The commit an image was built from is
+  readable off the manifest without pulling it.
+- **An SPDX and a CycloneDX SBOM per platform**, describing everything in the image.
+- **A keyless cosign signature** on the index and on every per-platform manifest beneath it.
 - **A signed SLSA provenance statement**, whose build identity comes from an exchanged
   workload identity token.
 
-The provenance is why the `build` job carries `id-token: write`. The module resolves the
+The signature and the provenance are why the `build` job carries `id-token: write`. The module resolves the
 signing identity before it pushes a byte and refuses the publish if it cannot, so there is no
 configuration of this repository that publishes an unattested image.
 
@@ -190,9 +203,9 @@ older than **90 days**, keeping the newest **10** whatever their age. Run it man
 Two things it deliberately never deletes, both of which the obvious version of this job gets
 wrong:
 
-- **A version carrying any other tag.** A release cut from the tip of `main` is one digest
-  wearing both `v1.2.3` and a branch-build tag. Matching on every tag rather than on one is
-  what keeps that release.
+- **A version carrying any other tag.** A release carries its full version and whichever of
+  the moving tags still point at it. Matching on every tag rather than on one is what keeps
+  a version that is anything other than a branch build.
 - **Untagged versions.** On GHCR the per-platform manifests beneath a multi-architecture
   index are untagged versions of the same package, as are the referrer manifests holding the
   attestations. "Delete all untagged versions" is the recipe everybody reaches for, and on a
@@ -208,5 +221,5 @@ git push origin v1.2.3
 ```
 
 The pipeline runs the same checks it runs on a pull request, builds the image for both
-platforms, publishes it as `ghcr.io/z5labs/dfcad:v1.2.3`, and attaches the SBOMs and the
-provenance. `docs/versioning.md` says which component of the version a change moves.
+platforms, publishes it as `ghcr.io/z5labs/dfcad:v1.2.3` — moving `v1.2`, `v1` and `latest`
+onto it — and signs it and attaches the SBOMs and the provenance. `docs/versioning.md` says which component of the version a change moves.

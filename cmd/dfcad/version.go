@@ -32,8 +32,8 @@ recollection of when the binary was installed, and says which contract the
 output beside it was written against.
 
 The version and the commit are stamped at link time by the Z5Labs standard
-pipeline, so a binary built by ` + "`dagger call ... ci`" + ` and one built by
-` + "`dagger call ... builder binary`" + ` report the same values for the same commit.
+pipeline, so the binary in the published image and one built by
+` + "`dagger call binary`" + ` report the same values for the same commit.
 A plain ` + "`go build`" + ` stamps nothing, and such a binary says so: it reports
 the placeholders below and "stamped": false, rather than reporting a version it
 does not have.

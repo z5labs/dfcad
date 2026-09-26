@@ -12,7 +12,7 @@
 # needs an explanation.
 #
 # It is the repository-specific half of CI. The Go half — fmt, vet, lint and
-# `go test -race` — belongs to GoApp.Ci in the z5labs daggerverse module and is
+# `go test -race` — belongs to the Go chain's Ci in the z5labs daggerverse module and is
 # not restated here or anywhere else in this repository. See README.md beside
 # this file for what a consuming data repository has to change to adopt it.
 #

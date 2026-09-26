@@ -13,7 +13,7 @@ load-bearing. That is the whole of what it is for.
 
 | Half | What it checks | Where it comes from |
 |---|---|---|
-| The Go half | `fmt`, `vet`, `golangci-lint`, `go test -race`, the per-platform image build and the publish | `GoApp.Ci` in [`z5labs/devex/daggerverse/z5labs`](https://github.com/z5labs/devex/tree/main/daggerverse/z5labs), invoked as one `dagger call` |
+| The Go half | `fmt`, `vet`, `golangci-lint`, `go test -race`, the per-platform image build and the publish | The Go chain in [`z5labs/devex/daggerverse/z5labs`](https://github.com/z5labs/devex/tree/main/daggerverse/z5labs), invoked through this repository's root Dagger module as `dagger call ci` and `dagger call publish` |
 | The model half | `dfcad fmt --check`, `dfcad check` and `dfcad review` over a model root | **this directory** |
 
 **This is the model half, and it is the half a consuming data repository
@@ -72,13 +72,12 @@ The gate takes a `--binary` rather than reaching for `go run`, and the workflow
 passes it the binary the standard pipeline built:
 
 ```sh
-dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
-  go-app --source=. --pkg=./cmd/dfcad \
-  builder binary export --path=./dfcad
+dagger call binary export --path=./dfcad
 ```
 
-`Builder` routes through the same per-platform build `Ci` does, so the tool the
-gate runs is the tool the pipeline ships. A `go run ./cmd/dfcad` would be a
+`binary` is this repository's root Dagger module taking the binary out of the image
+the standard pipeline builds, so the tool the gate runs is the tool the pipeline
+ships. A `go run ./cmd/dfcad` would be a
 second way of producing it, and the gate and the shipped artifact could then
 disagree about what `dfcad check` means — which is the disagreement a gate is
 least able to survive.
