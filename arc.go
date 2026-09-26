@@ -95,13 +95,16 @@ type Curvature map[ID]Arc
 // An edge either bends or does not, so an arc with only one of its two positions
 // resolved bends nothing. That is not a curve half stated, it is a claim
 // somebody has yet to write.
+//
+// Either half stated with no accuracy is read by the rule [Survey.Place] reads a
+// corner by: it is unranked rather than absent.
 func (s *Survey) Bend(edge ID, centre, through Resolution) {
-	middle, ok := through.Value()
+	middle, ok := currentClaim(through)
 	if !ok {
 		return
 	}
 
-	value, ok := centre.Value()
+	claim, ok := currentClaim(centre)
 	if !ok {
 		return
 	}
@@ -109,12 +112,7 @@ func (s *Survey) Bend(edge ID, centre, through Resolution) {
 	if s.Curvature == nil {
 		s.Curvature = make(Curvature)
 	}
-	s.Curvature[edge] = Arc{Centre: value, Through: middle}
-
-	claim, ok := centre.Claim()
-	if !ok {
-		return
-	}
+	s.Curvature[edge] = Arc{Centre: claim.Value(), Through: middle.Value()}
 
 	if s.Evidence == nil {
 		s.Evidence = make(Evidence)
@@ -346,7 +344,7 @@ func (t *Topology) TessellateLoop(loop *Loop, survey Survey, chord string) (Tess
 				"expected a position for the corner the traversal of the loop %s ends at, found none for %s",
 				geometricName(loopTag, loop.id), out.last,
 			),
-			Hint: m.positionHint(),
+			Hint: m.positionHint(out.last),
 		})
 		return Tessellation{}, m.diags
 	}

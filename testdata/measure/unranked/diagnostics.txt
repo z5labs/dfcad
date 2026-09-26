@@ -1,0 +1,32 @@
+testdata/measure/unranked/model.dfc:187:3: error: expected a position for both ends of the edge geom:E-11, found none for geom:V-11 and geom:V-12
+187 |   geom:E-11
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:192:3: error: expected a position for both ends of the edge geom:E-12, found none for geom:V-12 and geom:V-13
+192 |   geom:E-12
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:197:3: error: expected a position for both ends of the edge geom:E-13, found none for geom:V-13 and geom:V-14
+197 |   geom:E-13
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:202:3: error: expected a position for both ends of the edge geom:E-14, found none for geom:V-14 and geom:V-11
+202 |   geom:E-14
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:212:3: error: expected a position for both ends of the edge geom:E-22, found none for geom:V-23
+212 |   geom:E-22
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:217:3: error: expected a position for both ends of the edge geom:E-23, found none for geom:V-23
+217 |   geom:E-23
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:232:3: error: expected a position for every corner of the loop geom:L-11, found none for geom:V-11, geom:V-12, geom:V-13 and geom:V-14
+232 |   geom:L-11
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which
+testdata/measure/unranked/model.dfc:237:3: error: expected a position for every corner of the loop geom:L-21, found none for geom:V-23
+237 |   geom:L-21
+    |   ^^^^^^^^^
+    = hint: a position is read from the claim it resolves to, or from its one claim where none states an accuracy; a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere — resolving its position says which

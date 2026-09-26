@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/z5labs/dfcad"
@@ -277,6 +278,13 @@ type budgetReport struct {
 	// accuracy, named the way a diagnostic names a claim. One of them taints
 	// the whole budget: an unstated accuracy is unknown rather than zero.
 	Unknown []string `json:"unknown,omitempty"`
+
+	// Unranked are the things the answer read a claim of which stated no
+	// accuracy at all, each once, in the order they were read: a corner nobody
+	// gave an accuracy to is where the model says it is (specification section
+	// 6.5), and the answer names it rather than folding it in as though it
+	// carried one. Each such claim is also among Unknown.
+	Unranked []string `json:"unranked,omitempty"`
 
 	// Units are the units the terms were written in where they disagree, each
 	// once. Nothing converts between them, so a budget whose terms disagree
@@ -712,12 +720,25 @@ func budgetOf(budget dfcad.Budget) budgetReport {
 		if errors.As(err, &unknown) {
 			report.Unknown = named(unknown.Claims)
 		}
+		report.Unranked = subjects(budget.Unranked())
 		if errors.As(err, &mixed) {
 			report.Units = spellings(mixed.Units)
 		}
 	}
 
 	return report
+}
+
+// subjects is what a set of claims is about, each thing once, in the order the
+// claims came.
+func subjects(claims []*dfcad.Claim) []string {
+	var out []string
+	for _, claim := range claims {
+		if subject := string(claim.Subject()); !slices.Contains(out, subject) {
+			out = append(out, subject)
+		}
+	}
+	return out
 }
 
 // named is a set of claims as a budget names them: the claim's own id where it

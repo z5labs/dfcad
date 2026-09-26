@@ -1053,7 +1053,9 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 // A vertex whose position does not resolve is not a candidate. That is a state
 // and not a failure — nothing was claimed about it, or the claims tie and the tie
 // is unbroken — and a corner cannot be said to land on a vertex nobody can say
-// the whereabouts of.
+// the whereabouts of. One whose only position states no accuracy is a
+// candidate: it is unranked rather than unknown, and is read wherever the model
+// is, by the rule [currentClaim] states.
 func (s *scaffolder) candidates() {
 	registry := s.tx.graph.Registry()
 
@@ -1067,8 +1069,13 @@ func (s *scaffolder) candidates() {
 			continue
 		}
 
-		value, ok := resolution.Value()
-		if !ok || value.Unit() != s.unit {
+		claim, ok := currentClaim(resolution)
+		if !ok {
+			continue
+		}
+
+		value := claim.Value()
+		if value.Unit() != s.unit {
 			continue
 		}
 

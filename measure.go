@@ -94,10 +94,19 @@ type Survey struct {
 // a corner whose position is measured and whose provenance is not — which shows
 // up much later as an answer with a narrower budget than the evidence supports.
 //
-// A resolution which resolved nothing places nothing, which is the ordinary
-// state of a vertex nobody has surveyed yet.
+// A position claim which states no accuracy is placed, and is its own
+// evidence. Specification section 6.5 makes it unrankable rather than absent:
+// it cannot win, and it is still the answer where nothing rankable was said. It
+// contributes no term to any budget computed from it — it taints the budget as
+// unknown, which is what [Budget.Unranked] then names — so a corner nobody gave
+// an accuracy to is measured from where the model says it is, and the answer
+// says it rests on a claim nobody ranked rather than folding it in as though it
+// carried an accuracy.
+//
+// A resolution which read nothing places nothing: a vertex nobody has surveyed
+// yet, and one whose claims tie, which the rule declined to choose between.
 func (s *Survey) Place(vertex ID, resolution Resolution) {
-	value, ok := resolution.Value()
+	claim, ok := currentClaim(resolution)
 	if !ok {
 		return
 	}
@@ -105,12 +114,7 @@ func (s *Survey) Place(vertex ID, resolution Resolution) {
 	if s.Positions == nil {
 		s.Positions = make(Positions)
 	}
-	s.Positions[vertex] = value
-
-	claim, ok := resolution.Claim()
-	if !ok {
-		return
-	}
+	s.Positions[vertex] = claim.Value()
 
 	if s.Evidence == nil {
 		s.Evidence = make(Evidence)
@@ -1071,6 +1075,7 @@ func (m *measurer) assembled(loop *Loop, open bool) (*outline, bool) {
 // so.
 func (m *measurer) locate(loop *Loop, out *outline) bool {
 	var missing []string
+	var unread []ID
 	var components [][]float64
 
 	walked := out.walked()
@@ -1079,6 +1084,7 @@ func (m *measurer) locate(loop *Loop, out *outline) bool {
 		written, ok := m.at(corner)
 		if !ok {
 			missing = append(missing, string(corner))
+			unread = append(unread, corner)
 			continue
 		}
 		components = append(components, written)
@@ -1097,7 +1103,7 @@ func (m *measurer) locate(loop *Loop, out *outline) bool {
 				"expected a position for every corner of the %s %s, found none for %s",
 				shape, geometricName(loopTag, loop.id), join(missing, "and"),
 			),
-			Hint: m.positionHint(),
+			Hint: m.positionHint(unread...),
 		})
 		return false
 	}
@@ -1189,14 +1195,45 @@ func edgeIDs(edges []*Edge) []ID {
 	return ids
 }
 
-// positionHint says what a position has to be for anything to be measured from
-// it, naming the unit where there is one to name.
-func (m *measurer) positionHint() string {
+// positionHint says why the positions of the things named could not be read.
+//
+// There are two reasons and they want different fixes, so the hint is the one
+// which applies rather than one sentence covering both. A thing the survey
+// placed in a unit other than its frame's, or in a frame the registry does not
+// declare, was written and is not read — the unit is the problem, and the hint
+// names it. A thing the survey placed nowhere had nothing to read: no live claim
+// under the position predicate, or claims the resolution rule could not choose
+// between. A claim which states no accuracy is not that; it is placed, as
+// unranked, and never reaches here.
+func (m *measurer) positionHint(missing ...ID) string {
 	hint := "a position is read in the unit of its frame and nothing is converted"
 	if m.unit == "" {
 		return hint + "; this frame is not one the registry declares, so nothing here has a unit to be read in"
 	}
-	return fmt.Sprintf("%s; this frame is in %s, so a position written in another unit is not read at all", hint, m.unit)
+
+	for _, id := range missing {
+		value, placed := m.survey.Positions[id]
+		if !placed {
+			continue
+		}
+
+		if value.Unit() != m.unit {
+			written := "with no unit"
+			if value.Unit() != "" {
+				written = "in " + string(value.Unit())
+			}
+			return fmt.Sprintf("%s; this frame is in %s, so a position written %s is not read at all",
+				hint, m.unit, written)
+		}
+
+		if _, coordinate := value.Coordinate(); !coordinate {
+			return "a position is a coordinate, and a value of any other shape places nothing"
+		}
+	}
+
+	return "a position is read from the claim it resolves to, or from its one claim where none states an accuracy; " +
+		"a thing with no live position claim, or with claims the resolution rule cannot separate, is placed nowhere " +
+		"— resolving its position says which"
 }
 
 // at is a vertex's position in the unit of the subject's frame, and whether it
@@ -2123,7 +2160,7 @@ func (m *measurer) vertex(vertex *Vertex) {
 				"expected a position for the vertex %s, found none to read",
 				geometricName(vertexTag, vertex.id),
 			),
-			Hint: m.positionHint(),
+			Hint: m.positionHint(vertex.id),
 		})
 		return
 	}
@@ -2158,7 +2195,7 @@ func (m *measurer) located(node *SemanticNode) {
 				node.id, GeometryPoint,
 			),
 			Hint: "a node drawn as a point is where the model says it is, and it says so with a claim written on the " +
-				"node under the same predicate a corner's position is written under; " + m.positionHint(),
+				"node under the same predicate a corner's position is written under; " + m.positionHint(node.id),
 		})
 		return
 	}
@@ -2225,15 +2262,18 @@ func (m *measurer) edge(edge *Edge) {
 // read and a pair written with different numbers of components.
 func (m *measurer) ends(edge *Edge) (Point, Point, int, bool) {
 	var missing []string
+	var unread []ID
 
 	from, ok := m.at(edge.start)
 	if !ok {
 		missing = append(missing, string(edge.start))
+		unread = append(unread, edge.start)
 	}
 
 	to, ok := m.at(edge.end)
 	if !ok {
 		missing = append(missing, string(edge.end))
+		unread = append(unread, edge.end)
 	}
 
 	if len(missing) > 0 {
@@ -2244,7 +2284,7 @@ func (m *measurer) ends(edge *Edge) (Point, Point, int, bool) {
 				"expected a position for both ends of the edge %s, found none for %s",
 				geometricName(edgeTag, edge.id), join(missing, "and"),
 			),
-			Hint: m.positionHint(),
+			Hint: m.positionHint(unread...),
 		})
 		return Point{}, Point{}, 0, false
 	}

@@ -149,6 +149,7 @@ is where the tests of that layer read them from.
 | 6.4           | A ring whose two long sides cross in the middle of it | `measure/self-intersecting/`                |
 | 6.4, 7.6      | A ring with a corner out of the plane of the others by more than the declared tolerance | `measure/not-planar/`     |
 | 6.4, 6.6      | A ring with a corner no position resolves for         | `measure/unmeasurable/`                     |
+| 6.4, 6.5, 6.6 | A ring with a corner whose one position claim states no accuracy, which is read as unranked; one whose corners are read under a predicate in another unit than their frame's; and one with a corner taped twice with no accuracy either time | `measure/unranked/` |
 | 6.4, 6.9, 7.6 | A region bounded by two rings which face the same way in different planes | `measure/two-planes/`   |
 | 6.3, 6.4      | An arc of no radius, one whose ends are not the same distance from its centre, one whose point on the curve is in line with its centre, past the far end, or out of the ring's plane, and one with no centre at all | `measure/arcs/` |
 | 4.5, 7.5      | A frame declaring a unit which is no linear unit      | `registry/unknown-unit/`                    |

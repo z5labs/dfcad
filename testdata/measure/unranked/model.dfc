@@ -1,0 +1,240 @@
+; Three rooms, each with one corner whose position states no accuracy or is
+; otherwise not what a measurement can read.
+;
+; site:S-01's third corner was taken off a drawing with no accuracy stated.
+; Specification section 6.5 makes that claim unrankable rather than absent: it
+; cannot win resolution, and it is still the answer where nothing rankable was
+; said. The room is measured from it, and its budget is unknown and names that
+; corner as why. Nothing about that room is a diagnostic.
+;
+; site:S-11's corners were surveyed in feet, in a frame in metres. Nothing
+; converts, so a measurement reading them under the imperial predicate reads
+; none of them and says the unit is why — the one case in which it is. One
+; reading under the metric predicate finds nothing claimed, and says that.
+;
+; site:S-21's third corner was taped twice, with no accuracy stated either time.
+; Two unrankable claims are ambiguity rather than an unranked answer, so that
+; corner is placed nowhere, and the diagnostic says so rather than blaming a
+; unit.
+(node
+  site:S-01
+  (label "Taped room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-01))
+(node
+  site:S-11
+  (label "Imperial room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-11))
+(node
+  site:S-21
+  (label "Twice-taped room")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (boundary geom:L-21))
+(vertex
+  geom:V-01
+  (label "Taped room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-02
+  (label "Taped room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-03
+  (label "Taped room, corner 3")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Drawing A-101")
+    (method method:tape)
+    (date "2026-02-18")))
+(vertex
+  geom:V-04
+  (label "Taped room, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-11
+  (label "Imperial room, corner 1")
+  (frame frame:building)
+  (imperial-position
+    (value (0.0 0.0 0.0) ft)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.013 ft))
+    (date "2026-02-18")))
+(vertex
+  geom:V-12
+  (label "Imperial room, corner 2")
+  (frame frame:building)
+  (imperial-position
+    (value (13.12 0.0 0.0) ft)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.013 ft))
+    (date "2026-02-18")))
+(vertex
+  geom:V-13
+  (label "Imperial room, corner 3")
+  (frame frame:building)
+  (imperial-position
+    (value (13.12 9.84 0.0) ft)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.013 ft))
+    (date "2026-02-18")))
+(vertex
+  geom:V-14
+  (label "Imperial room, corner 4")
+  (frame frame:building)
+  (imperial-position
+    (value (0.0 9.84 0.0) ft)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.013 ft))
+    (date "2026-02-18")))
+(vertex
+  geom:V-21
+  (label "Twice-taped room, corner 1")
+  (frame frame:building)
+  (position
+    (value (0.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-22
+  (label "Twice-taped room, corner 2")
+  (frame frame:building)
+  (position
+    (value (4.0 0.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(vertex
+  geom:V-23
+  (label "Twice-taped room, corner 3")
+  (frame frame:building)
+  (position
+    (value (4.0 3.0 0.0) m)
+    (source "Drawing A-101")
+    (method method:tape)
+    (date "2026-02-18"))
+  (position
+    (value (4.1 3.0 0.0) m)
+    (source "Drawing A-102")
+    (method method:tape)
+    (date "2026-02-19")))
+(vertex
+  geom:V-24
+  (label "Twice-taped room, corner 4")
+  (frame frame:building)
+  (position
+    (value (0.0 3.0 0.0) m)
+    (source "Interior control set IC-01, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.008 m control:CP-3))
+    (date "2026-02-18")))
+(edge
+  geom:E-01
+  (label "Taped room, side 1")
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02))
+(edge
+  geom:E-02
+  (label "Taped room, side 2")
+  (frame frame:building)
+  (vertices geom:V-02 geom:V-03))
+(edge
+  geom:E-03
+  (label "Taped room, side 3")
+  (frame frame:building)
+  (vertices geom:V-03 geom:V-04))
+(edge
+  geom:E-04
+  (label "Taped room, side 4")
+  (frame frame:building)
+  (vertices geom:V-04 geom:V-01))
+(edge
+  geom:E-11
+  (label "Imperial room, side 1")
+  (frame frame:building)
+  (vertices geom:V-11 geom:V-12))
+(edge
+  geom:E-12
+  (label "Imperial room, side 2")
+  (frame frame:building)
+  (vertices geom:V-12 geom:V-13))
+(edge
+  geom:E-13
+  (label "Imperial room, side 3")
+  (frame frame:building)
+  (vertices geom:V-13 geom:V-14))
+(edge
+  geom:E-14
+  (label "Imperial room, side 4")
+  (frame frame:building)
+  (vertices geom:V-14 geom:V-11))
+(edge
+  geom:E-21
+  (label "Twice-taped room, side 1")
+  (frame frame:building)
+  (vertices geom:V-21 geom:V-22))
+(edge
+  geom:E-22
+  (label "Twice-taped room, side 2")
+  (frame frame:building)
+  (vertices geom:V-22 geom:V-23))
+(edge
+  geom:E-23
+  (label "Twice-taped room, side 3")
+  (frame frame:building)
+  (vertices geom:V-23 geom:V-24))
+(edge
+  geom:E-24
+  (label "Twice-taped room, side 4")
+  (frame frame:building)
+  (vertices geom:V-24 geom:V-21))
+(loop
+  geom:L-01
+  (label "Taped room boundary")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
+(loop
+  geom:L-11
+  (label "Imperial room boundary")
+  (frame frame:building)
+  (edges geom:E-11 geom:E-12 geom:E-13 geom:E-14))
+(loop
+  geom:L-21
+  (label "Twice-taped room boundary")
+  (frame frame:building)
+  (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
