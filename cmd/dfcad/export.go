@@ -114,6 +114,9 @@ Flags:
 	--thickness <predicate>    the predicate the thickness of a node drawn as a
 	                           line is claimed under, which is what widens its
 	                           run into a solid
+	--offset <predicate>       the predicate a node's body is claimed to start
+	                           above or below its boundary's level by, which is
+	                           what moves the base of the body
 	--crs <predicate>          the predicate the identifier of the project's
 	                           coordinate reference system is written under
 	--crs-definition <predicate>
@@ -174,6 +177,19 @@ drawn as a line with no thickness claimed carries no shape at all: a centreline
 of no width is not a solid, and IFC has nowhere to put one. A height or a
 thickness which resolves to nought or less is refused naming the claim, because
 a solid is bounded by positive length measures.
+
+--offset says where a body starts. A body is swept from the level its
+boundary's corners lie at, and where --offset names a predicate and a node's
+offset resolves under it, the body's base is written at that level plus the
+offset instead: a window's sill above the floor it is set in, a garage slab
+stepped down below the floor whose walls it shares. The offset is signed, and
+it moves the sweep and nothing else — a room and a window are moved alike
+whatever their kind, the FootPrint stays the plan the model states, and the
+storey's own elevation composes with it as it does with every body. It has no
+default either, and a run naming none sweeps every body from its boundary's
+level exactly as before. It is read only where a body is swept, so it needs
+--height beside it. An offset which is not a distance, or is not in the unit of
+the boundary, is refused naming the claim; one of nought is today's answer.
 
 A node somebody claimed a height of whose type is classified as an IFC entity
 which cannot carry a shape — a relationship, a spatial element — is refused
@@ -236,9 +252,10 @@ the file.
 
 Where a body is written, each claim behind it goes into the file beside it as a
 property set: the predicate, the value, the source, the method, the accuracy,
-the date and which step of the resolution rule chose it. A height and a
-thickness are two sets rather than one, because they are two measurements — a
-wall's height may be surveyed and its thickness taken off a drawing. That is
+the date and which step of the resolution rule chose it. A height, a thickness
+and an offset are separate sets rather than one, because they are separate
+measurements — a wall's height may be surveyed, its thickness taken off a
+drawing and a window's sill read off an elevation. That is
 what lets whoever opens the file tell a surveyed figure from an assumed one
 without holding the model it came from.
 
@@ -277,7 +294,7 @@ derive identifiers from, one whose frames disagree about the linear unit, or a
 node whose shape was asked for and could not be drawn: a ring which does not
 close, a corner nothing states the position of, a boundary which does not lie
 at one level, a height or a thickness which is not a distance or is not
-positive, a body claimed of something no entity here can carry one on. The object
+positive, an offset which is not a distance, a body claimed of something no entity here can carry one on. The object
 still comes back, with "derived" false and no files, so a caller reads
 why from the diagnostics on stderr rather than from an empty stream. Exit code
 3 is a destination inside the authored tree, which is refused before anything
@@ -465,6 +482,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	through := flags.String(flagArcThrough, "", "")
 	height := flags.String(flagHeight, "", "")
 	thickness := flags.String(flagThickness, "", "")
+	offset := flags.String(flagOffset, "", "")
 
 	crs := flags.String(flagCRS, "", "")
 	crsDefinition := flags.String(flagCRSDefinition, "", "")
@@ -486,9 +504,14 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		arcThrough: *through,
 		height:     *height,
 		thickness:  *thickness,
+		offset:     *offset,
 	}
 
 	if err := shapeVocabularyOf(drawn); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	if err := offsetVocabularyOf(drawn); err != nil {
 		return usageError(cmd, err, stderr, true)
 	}
 

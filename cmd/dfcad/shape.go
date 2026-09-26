@@ -18,14 +18,15 @@ import (
 // The flags export takes to name the predicates a body is built from, named
 // here because the usage and the errors which refuse them name them.
 //
-// Neither has a default and neither ever will. Which predicate carries a
-// room's height and which carries a partition's thickness is project
-// vocabulary, and a figure compiled in here would be this command measuring
-// something nobody measured
+// None has a default and none ever will. Which predicate carries a room's
+// height, which carries a partition's thickness and which carries how far a
+// window's sill stands above its floor is project vocabulary, and a figure
+// compiled in here would be this command measuring something nobody measured
 // ([0012](docs/decisions/0012-tolerances-are-registry-data.md)).
 const (
 	flagHeight    = "height"
 	flagThickness = "thickness"
+	flagOffset    = "offset"
 )
 
 // The representations a space is written with, and the views of the model's
@@ -78,6 +79,9 @@ const (
 
 	thicknessProvenance            = "dfcad_ThicknessProvenance"
 	thicknessProvenanceDescription = "The claim the swept run's thickness was resolved from, and what is known about it."
+
+	offsetProvenance            = "dfcad_OffsetProvenance"
+	offsetProvenanceDescription = "The claim the extruded body's base was offset from its boundary's level by, and what is known about it."
 )
 
 // The properties that set holds, in the order they are written.
@@ -90,6 +94,7 @@ const (
 	propertyPredicate = "Predicate"
 	propertyHeight    = "Height"
 	propertyThickness = "Thickness"
+	propertyOffset    = "Offset"
 	propertyUnit      = "Unit"
 	propertySource    = "Source"
 	propertyMethod    = "Method"
@@ -133,6 +138,13 @@ type shapes struct {
 	// over. A run which names none draws no line at all: a centreline of no
 	// width is not a solid, and IFC has nowhere to put one.
 	thickness string
+
+	// offset is the predicate a node's body is claimed to start above or below
+	// its boundary's level by: a window's sill above the floor it is set in, a
+	// garage slab stepped down below the floor whose walls it shares. A run
+	// which names none sweeps every body from the level its boundary lies at,
+	// which is what this command did before it could read one.
+	offset string
 }
 
 // curvature is the vocabulary a curved edge is read under, which every survey
@@ -251,8 +263,43 @@ func (s shapes) bodied() []string {
 	if s.thickness != "" {
 		asked = append(asked, flagThickness)
 	}
+	if s.offset != "" {
+		asked = append(asked, flagOffset)
+	}
 
 	return asked
+}
+
+// UnsweptOffsetError is a run which named the predicate a body's base is offset
+// by without naming the one a body is swept through.
+//
+// An offset moves a body and nothing else — the footprint is the plan the model
+// states and stays where it is — so a run which sweeps no body has nothing for
+// one to move. It is refused rather than read and dropped, because a run which
+// asked for its windows to stand at their sills and got a file with no windows
+// standing anywhere would have to find that out by opening it.
+type UnsweptOffsetError struct {
+	// Offset is the predicate the run named under --offset.
+	Offset string
+}
+
+// Error implements [error].
+func (e UnsweptOffsetError) Error() string {
+	return fmt.Sprintf(
+		"expected --%s alongside --%s %s, found none: an offset moves the base of a body, and a run which sweeps "+
+			"no body has nothing for it to move",
+		flagHeight, flagOffset, e.Offset,
+	)
+}
+
+// offsetVocabularyOf refuses an offset named with no height to sweep a body
+// through.
+func offsetVocabularyOf(drawn shapes) error {
+	if drawn.offset == "" || drawn.height != "" {
+		return nil
+	}
+
+	return UnsweptOffsetError{Offset: drawn.offset}
 }
 
 // shaped is the geometry of one space: the footprint its boundary states, the
@@ -335,6 +382,14 @@ func (e *exporter) shaped(
 		return representation, nil, drawn
 	}
 
+	properties := e.provenance(node, swept, drawn.Unit(), height, resolution)
+
+	base, offset, sweepable := e.based(node, elevation, drawn.Unit())
+	if !sweepable {
+		return representation, nil, drawn
+	}
+	properties = append(properties, offset...)
+
 	solids := make([]ifc.Item, 0, len(plans))
 	for _, piece := range plans {
 		// The holes are the region's own, which is what carries the even-odd
@@ -348,11 +403,12 @@ func (e *exporter) shaped(
 		solids = append(solids, ifc.ExtrudedArea{
 			Profile: ifc.ArbitraryProfile{Outer: planar(piece.outer), Inner: inner},
 			// The profile is drawn in the xy of this placement, so the
-			// elevation the boundary sits at goes here. The footprint beside
+			// elevation the body starts at goes here. The footprint beside
 			// it is a plan and carries no elevation at all, which is what
 			// makes the two different drawings of one room rather than two
-			// disagreeing ones.
-			Position:  ifc.Placement{Location: ifc.Point{Z: elevation}},
+			// disagreeing ones — and is why an offset moves this and never
+			// the outline.
+			Position:  ifc.Placement{Location: ifc.Point{Z: base}},
 			Direction: ifc.Direction{Z: 1},
 			Depth:     height,
 		})
@@ -365,7 +421,7 @@ func (e *exporter) shaped(
 		Items:      solids,
 	})
 
-	return representation, e.provenance(node, swept, drawn.Unit(), height, resolution), drawn
+	return representation, properties, drawn
 }
 
 // modelled is the geometry of a node standing in a spatial element: the outline
@@ -480,13 +536,21 @@ func (e *exporter) thickened(
 		return representation, properties
 	}
 
+	properties = append(properties, e.provenance(node, swept, unit, height, over)...)
+
+	base, offset, sweepable := e.based(node, elevation, unit)
+	if !sweepable {
+		return representation, properties
+	}
+	properties = append(properties, offset...)
+
 	solids := make([]ifc.Item, 0, len(plans))
 	for _, plan := range plans {
 		solids = append(solids, ifc.ExtrudedArea{
 			Profile: ifc.ArbitraryProfile{Outer: plan},
 			// The profile is drawn in the xy of this placement, so the level the
-			// run sits at goes here, exactly as a room's does.
-			Position:  ifc.Placement{Location: ifc.Point{Z: elevation}},
+			// body starts at goes here, exactly as a room's does.
+			Position:  ifc.Placement{Location: ifc.Point{Z: base}},
 			Direction: ifc.Direction{Z: 1},
 			Depth:     height,
 		})
@@ -499,7 +563,46 @@ func (e *exporter) thickened(
 		Items:      solids,
 	})
 
-	return representation, append(properties, e.provenance(node, swept, unit, height, over)...)
+	return representation, properties
+}
+
+// based is the elevation a node's body starts at — the level its boundary lies
+// at, moved by the offset claimed of it — the property set recording that
+// offset, and whether the body can be swept at all.
+//
+// It is one function for both shapes because the offset moves the sweep, and
+// the sweep is one operation: a window drawn as a run along its wall and a slab
+// drawn as a ring are moved alike, whatever their kind.
+//
+// The offset is signed. A sill stands above the floor it is set in and a garage
+// slab steps down below the floor whose walls it shares, and both are the same
+// claim about the same thing: where a body starts, measured from the plan it is
+// drawn on. A node nothing claims an offset of, and a run which names no
+// predicate for one, start where their boundary lies — which is what every body
+// did before one could be read. An offset of nought is that same answer.
+//
+// It is read only where a body is about to be swept. The footprint is the plan
+// the model states and an offset does not move it, so a node with no body has
+// nothing an offset could say anything about.
+func (e *exporter) based(
+	node *dfcad.SemanticNode,
+	elevation float64,
+	unit dfcad.Unit,
+) (float64, []ifc.PropertySet, bool) {
+	claimed := offsetOf(e.shapes.offset)
+
+	before := len(e.diags)
+
+	offset, resolution, resolved := e.length(node, claimed, unit)
+	if !resolved {
+		// A claim which resolved to nothing is no offset and the body starts
+		// where its boundary lies. One which was refused is no body at all: a
+		// solid swept from somewhere the model said it does not start is one
+		// the file gives no reason for.
+		return elevation, nil, len(e.diags) == before
+	}
+
+	return elevation + offset, e.provenance(node, claimed, unit, offset, resolution), true
 }
 
 // placed is where a node drawn as a point stands, as the placement of the
@@ -682,9 +785,15 @@ type dimension struct {
 	set         string
 	description string
 
-	// segment is the piece of a derived identifier which keeps the two sets on
-	// one node apart.
+	// segment is the piece of a derived identifier which keeps the sets on one
+	// node apart.
 	segment string
+
+	// signed says the figure may be nought or less. A height and a thickness
+	// bound a solid and have to be positive; an offset says where one starts,
+	// and a base below the level its boundary lies at is as ordinary as one
+	// above it.
+	signed bool
 }
 
 // heightOf is the height claim, under the predicate a run named.
@@ -712,6 +821,21 @@ func thicknessOf(predicate string) dimension {
 		set:         thicknessProvenance,
 		description: thicknessProvenanceDescription,
 		segment:     "thickness",
+	}
+}
+
+// offsetOf is the offset claim, under the predicate a run named.
+func offsetOf(predicate string) dimension {
+	return dimension{
+		predicate:   predicate,
+		noun:        "offset",
+		plural:      "offsets",
+		purpose:     "move its body's base by",
+		property:    propertyOffset,
+		set:         offsetProvenance,
+		description: offsetProvenanceDescription,
+		segment:     "offset",
+		signed:      true,
 	}
 }
 
@@ -780,10 +904,19 @@ func (e *exporter) length(
 		return 0, resolution, false
 	}
 
+	// A signed figure has no sign to refuse, but it still has to be a number:
+	// one which is not would reach the writer as a coordinate with no spelling.
+	if of.signed && (math.IsNaN(length) || math.IsInf(length, 0)) {
+		e.refuseAt(value.Span(), fmt.Sprintf(
+			"expected %s to be a finite distance, found %s", claimed, figure(length)+" "+string(value.Unit())),
+			fmt.Sprintf("an %s is one number of the unit its boundary is drawn in, above nought or below it", of.noun))
+		return 0, resolution, false
+	}
+
 	// Written as a comparison against zero rather than as `<=` so that a length
 	// which is not a number is refused here too, naming the claim, rather than
 	// reaching the writer as a depth with no spelling.
-	if !(length > 0) {
+	if !of.signed && !(length > 0) {
 		e.refuseAt(value.Span(), fmt.Sprintf(
 			"expected %s to be a positive distance, found %s",
 			claimed, figure(length)+" "+string(value.Unit())),
