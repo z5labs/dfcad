@@ -166,9 +166,10 @@ const (
 const profileArea = "AREA"
 
 // openingThrough is the IfcOpeningElementTypeEnum member every opening this
-// package writes is: a void through the whole depth of its host. The other
-// member, RECESS, is a void part of the way into one, which a caller describing
-// a door or a window in a wall does not have.
+// package writes is: a void through the whole depth of its host. It is stated
+// rather than left NOTDEFINED because it is known — a door or a window in a
+// wall stands in a hole through it — and RECESS, a void part of the way into
+// one, is what a reader would otherwise have to rule out.
 const openingThrough = "OPENING"
 
 // Write serialises model as an ISO 10303-21 exchange file.

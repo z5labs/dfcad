@@ -80,7 +80,7 @@ So the comparison is asked for. **Every command takes `--entity-format <MAJOR.MI
 version the model was authored against, asserted by whoever authored it.
 
 ```sh
-dfcad check --root model --entity-format 1.2
+dfcad check --root model --entity-format 1.3
 ```
 
 - The engine implements that format, or a later MINOR of the same MAJOR — the run proceeds
@@ -88,7 +88,7 @@ dfcad check --root model --entity-format 1.2
   Files that loaded still load, which is what a MINOR bump means.
 - The engine does not — a later MINOR than it implements, or a MAJOR apart in either
   direction — the run **stops before it reads anything**, exits `2`, writes nothing to
-  stdout, and says so on stderr naming *both* versions:
+  stdout, and says so on stderr naming *both* versions. A model asserting `1.4` gives:
 
   ```
   dfcad check: model authored against entity format 1.4: this engine implements 1.3, which
