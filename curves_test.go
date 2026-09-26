@@ -47,7 +47,7 @@ func TestEveryCheckWhichReadsAShapeCanBeToldHowToReadACurve(t *testing.T) {
 
 		t.Run(name+" says which shapes it reads", func(t *testing.T) {
 			_, reads := registeredChecks.runner(name).(curveReader)
-			assert.True(t, reads, "a check which reads a shape and cannot say which cannot say which curves it read straight")
+			assert.True(t, reads, "a check which reads shapes without saying which ones cannot report the curves it read straight")
 		})
 	}
 }
