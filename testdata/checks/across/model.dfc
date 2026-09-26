@@ -1,0 +1,98 @@
+; A model whose every containment crosses a frame.
+;
+; A frame is related to the one it is measured against by a transform claim,
+; and a position in one is a position in the other. So a device set out in the
+; annex's grid is inside the plate drawn in the root's or it is not, and saying
+; which is a matter of carrying it across the fit — whose accuracy comes with it.
+
+; The main floor plate, 20 m by 10 m, drawn in frame:main.
+(vertex geom:V-1 (frame frame:main) (position (value (0.0 0.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-2 (frame frame:main) (position (value (20.0 0.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-3 (frame frame:main) (position (value (20.0 10.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-4 (frame frame:main) (position (value (0.0 10.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(edge geom:E-1 (frame frame:main) (vertices geom:V-1 geom:V-2))
+(edge geom:E-2 (frame frame:main) (vertices geom:V-2 geom:V-3))
+(edge geom:E-3 (frame frame:main) (vertices geom:V-3 geom:V-4))
+(edge geom:E-4 (frame frame:main) (vertices geom:V-4 geom:V-1))
+(loop geom:L-1 (frame frame:main) (edges geom:E-1 geom:E-2 geom:E-3 geom:E-4))
+(node site:L1 (kind Storey) (type Level) (geometry area) (frame frame:main) (boundary geom:L-1))
+
+; A device drawn in frame:annex. Carried into frame:main it is at (12, 5): inside the plate.
+(node site:D-1 (kind Element) (type Device) (geometry point) (frame frame:annex) (within site:L1)
+  (position (value (2.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25"))
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; Another, 15 m past the plate's east edge once carried: (35, 5).
+(node site:D-2 (kind Element) (type Device) (geometry point) (frame frame:annex) (within site:L1)
+  (position (value (25.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25"))
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; A room drawn in frame:annex, 4 m square. Carried into frame:main it spans (11, 1) to (15, 5).
+(vertex geom:V-5 (frame frame:annex) (position (value (1.0 1.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-6 (frame frame:annex) (position (value (5.0 1.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-7 (frame frame:annex) (position (value (5.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-8 (frame frame:annex) (position (value (1.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(edge geom:E-5 (frame frame:annex) (vertices geom:V-5 geom:V-6))
+(edge geom:E-6 (frame frame:annex) (vertices geom:V-6 geom:V-7))
+(edge geom:E-7 (frame frame:annex) (vertices geom:V-7 geom:V-8))
+(edge geom:E-8 (frame frame:annex) (vertices geom:V-8 geom:V-5))
+(loop geom:L-2 (frame frame:annex) (edges geom:E-5 geom:E-6 geom:E-7 geom:E-8))
+(node site:R-1 (kind Space) (type Room) (geometry area) (frame frame:annex) (within site:L1) (boundary geom:L-2)
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; A second room in frame:annex. Carried into frame:main it spans (18, 1) to
+; (22, 5), which is two metres past the plate's east edge — and where it is
+; past it is said in frame:main, where the plate is drawn.
+(vertex geom:V-21 (frame frame:annex) (position (value (8.0 1.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-22 (frame frame:annex) (position (value (12.0 1.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-23 (frame frame:annex) (position (value (12.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-24 (frame frame:annex) (position (value (8.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(edge geom:E-21 (frame frame:annex) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (frame frame:annex) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (frame frame:annex) (vertices geom:V-23 geom:V-24))
+(edge geom:E-24 (frame frame:annex) (vertices geom:V-24 geom:V-21))
+(loop geom:L-21 (frame frame:annex) (edges geom:E-21 geom:E-22 geom:E-23 geom:E-24))
+(node site:R-2 (kind Space) (type Room) (geometry area) (frame frame:annex) (within site:L1) (boundary geom:L-21)
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; Two devices drawn in frame:wing, at (6, 5) once carried. The first is set out
+; from the control point the wing's fit is tied to, and the second is not.
+(node site:D-3 (kind Element) (type Device) (geometry point) (frame frame:wing) (within site:L1)
+  (position (value (1.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m) (systematic 0.03 m control:CP-1)) (date "2026-09-25"))
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+(node site:D-4 (kind Element) (type Device) (geometry point) (frame frame:wing) (within site:L1)
+  (position (value (1.0 5.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25"))
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; A device on the storey upstairs, which is three metres above the plate once
+; carried and inside its footprint: a point is judged in its container's plane.
+(node site:D-5 (kind Element) (type Device) (geometry point) (frame frame:upper) (within site:L1)
+  (position (value (2.0 2.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25"))
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; A wall upstairs, which runs ten metres past the plate's east edge seen from
+; above: a line is judged in its container's plane as well.
+(vertex geom:V-31 (frame frame:upper) (position (value (2.0 2.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-32 (frame frame:upper) (position (value (10.0 2.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-33 (frame frame:upper) (position (value (30.0 2.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(edge geom:E-31 (frame frame:upper) (vertices geom:V-31 geom:V-32))
+(edge geom:E-32 (frame frame:upper) (vertices geom:V-32 geom:V-33))
+(loop geom:L-31 (frame frame:upper) (edges geom:E-31 geom:E-32))
+(node site:W-1 (kind Element) (type Wall) (geometry line) (frame frame:upper) (within site:L1) (boundary geom:L-31)
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))
+
+; A room upstairs, inside the plate seen from above and three metres over it.
+; A region has to lie in its container's plane, carried or not: two plates on
+; different storeys are inside each other seen from above and are not inside
+; each other.
+(vertex geom:V-41 (frame frame:upper) (position (value (1.0 1.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-42 (frame frame:upper) (position (value (3.0 1.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-43 (frame frame:upper) (position (value (3.0 3.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(vertex geom:V-44 (frame frame:upper) (position (value (1.0 3.0 0.0) m) (source "Tape") (method method:tape) (accuracy (independent 0.01 m)) (date "2026-09-25")))
+(edge geom:E-41 (frame frame:upper) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42 (frame frame:upper) (vertices geom:V-42 geom:V-43))
+(edge geom:E-43 (frame frame:upper) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (frame frame:upper) (vertices geom:V-44 geom:V-41))
+(loop geom:L-41 (frame frame:upper) (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+(node site:R-3 (kind Space) (type Room) (geometry area) (frame frame:upper) (within site:L1) (boundary geom:L-41)
+  (assert sits-inside (container site:L1) (tolerance corner) (position position)))

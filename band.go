@@ -33,6 +33,16 @@ const (
 	// against, where the check compares two shapes rather than a shape and a
 	// number.
 	BandFromContainer BandSource = "container"
+
+	// BandFromTransform is the accumulated accuracy of the transform claims a
+	// subject was carried across to reach the frame it is judged in, where the
+	// two shapes of a comparison are declared in different frames.
+	//
+	// It is a side of its own rather than part of the subject's corners because
+	// it is fixed somewhere else: a corner is re-surveyed, and a fit between two
+	// frames is re-fitted. A reader told only that the subject is loosely known
+	// would go and re-occupy corners which were never the problem.
+	BandFromTransform BandSource = "transform"
 )
 
 // BandTerm is one accuracy which went into a band.
@@ -71,6 +81,13 @@ type BandTerm struct {
 	// declared tolerance, and a reader doing the multiplication is a reader who
 	// can do it wrong.
 	Contribution float64 `json:"contribution"`
+
+	// Claims are the claims the term was read from, where the side is not one
+	// the comparison already names. It is written for [BandFromTransform] — the
+	// fits a subject was carried across are claims on frames, which appear
+	// nowhere else in the answer — and is empty for every other source, whose
+	// claims are the positions of the shapes the failure already points at.
+	Claims []ID `json:"claims,omitempty"`
 }
 
 // bandTerm is one term with its contribution worked out, which is the only way
@@ -222,6 +239,14 @@ func (b Band) against() string {
 func (b Band) widenedBy() string {
 	written := make([]string, 0, len(b.Terms))
 	for _, term := range b.Terms {
+		if term.Sensitivity == 1 && len(term.Claims) > 0 {
+			written = append(written, fmt.Sprintf(
+				"%s (%s %s, claimed as %s)",
+				term.Source.phrase(), decimal(term.Sigma), term.Unit, idList(term.Claims),
+			))
+			continue
+		}
+
 		if term.Sensitivity == 1 {
 			written = append(written, fmt.Sprintf("%s (%s %s)", term.Source.phrase(), decimal(term.Sigma), term.Unit))
 			continue
@@ -247,6 +272,17 @@ func (s BandSource) phrase() string {
 		return "how well its corners are surveyed"
 	case BandFromContainer:
 		return "how well the corners it is judged against are surveyed"
+	case BandFromTransform:
+		return "how well the transform it is carried across is known"
 	}
 	return string(s)
+}
+
+// idList is ids written for a reader, in the order they were given.
+func idList(ids []ID) string {
+	written := make([]string, 0, len(ids))
+	for _, id := range ids {
+		written = append(written, string(id))
+	}
+	return strings.Join(written, ", ")
 }

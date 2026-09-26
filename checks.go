@@ -6,6 +6,7 @@
 package dfcad
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"math"
@@ -2037,7 +2038,8 @@ func (sitsInside) Declare() CheckDeclaration {
 		Name: "sits-inside",
 		Description: "The subject's shape lies inside the shape of the named node: nothing of it reaches past that " +
 			"node's boundary by more than the named tolerance, or than the combined accuracy of the two where that " +
-			"is wider.",
+			"is wider. A subject declared in another frame is carried into the container's across the transform " +
+			"claims relating the two, and their accuracy joins the band.",
 		Parameters: append([]CheckParameter{
 			{
 				Name:        containerParameter,
@@ -2144,6 +2146,26 @@ func (c sitsInside) Run(subject CheckSubject) []Failure {
 // would refuse the whole motivating case, while two floor plates on different
 // storeys are inside each other seen from above and are not inside each other.
 //
+// # Across frames
+//
+// A subject declared in another frame than its container is carried into the
+// container's frame before anything is compared, across the transform claims
+// which relate the two ([routeTo]) — the chain `resolve --frame` and `site`
+// walk, in either direction (specification section 7.5.1). A shape is declared
+// in one frame and transformed on demand, and a transform walked at a query
+// converts no stored value, so this is not the conversion
+// [0005](docs/decisions/0005-one-linear-unit-per-frame.md) keeps out of the
+// loader: it is the measurement the model states between the two frames, and
+// its accuracy comes with it.
+//
+// Carrying happens first and every rule above applies to what arrives. A region
+// still has to lie in its container's plane, a point or a line is still judged
+// in that plane, and where a subject reaches past the boundary is still a
+// coordinate of the container's frame. A route which cannot be walked — a frame
+// nothing declares, two chains which never meet, a transform nothing claims or
+// one which cannot be inverted — is refused naming what stopped it, and never
+// judged as though the two frames were one.
+//
 // # Uncertainty
 //
 // The declared tolerance is the floor rather than the whole test, exactly as it
@@ -2158,7 +2180,10 @@ func (c sitsInside) Run(subject CheckSubject) []Failure {
 // tolerance the rule was given, the figure the reach past the boundary was
 // actually judged against, and how well each of the two shapes is surveyed —
 // on a subject which sits inside as much as on one which does not, because a
-// pass decided against a band nobody wrote down is a pass nobody can check.
+// pass decided against a band nobody wrote down is a pass nobody can check. A
+// subject carried across frames adds the fits it was carried across as a third
+// side, [BandFromTransform], named by their claims; a subject which was not
+// carried adds nothing, and its band is the band it always was.
 func (sitsInside) Judge(subject CheckSubject) ([]Band, []Failure) {
 	node, ok := subject.Subject().(*SemanticNode)
 	if !ok {
@@ -2251,6 +2276,30 @@ func sittingRegion(
 		}}
 	}
 
+	// The subject's own accuracy is taken before it is carried anywhere.
+	// [Region.In] folds the transform into the budget of what it carries, which
+	// is right for a region and is the one thing a band must not do: the two are
+	// fixed in different places, so they are reported as two terms.
+	own := shape.Budget()
+
+	var route Budget
+	if shape.Frame() != enclosing.Frame() {
+		carried, refused := routeTo(graph, node, nodeName(node), shape.Frame(), container, enclosing)
+		if refused != nil {
+			return nil, []Failure{*refused}
+		}
+		route = carried
+
+		moved, diags := shape.In(enclosing.Frame(), graph.Frames())
+		if len(diags) > 0 {
+			return nil, failuresOf(diags)
+		}
+		shape = moved
+	}
+
+	// The plane rule is applied here, to what arrived: [Region.Difference]
+	// refuses two regions which do not lie in one plane, and a subject carried
+	// into its container's frame is in that frame's coordinates by now.
 	beyond, diags := shape.Difference(enclosing)
 	if len(diags) > 0 {
 		return nil, failuresOf(diags)
@@ -2264,12 +2313,12 @@ func sittingRegion(
 	// something outside would report the band on exactly the answers a reader
 	// can already see.
 	if beyond.Empty() {
-		return []Band{insideBand(declared, 0, shape.Budget(), enclosing.Budget())}, nil
+		return []Band{insideBand(declared, 0, own, enclosing.Budget(), route)}, nil
 	}
 
 	at, depth := enclosing.deepest(beyond)
 
-	band := insideBand(declared, depth, shape.Budget(), enclosing.Budget())
+	band := insideBand(declared, depth, own, enclosing.Budget(), route)
 	bands := []Band{band}
 
 	if band.holds() {
@@ -2304,7 +2353,7 @@ func sittingPoints(
 	enclosing Region,
 	position string,
 ) ([]Band, []Failure) {
-	placements, budget, failures := placementsOf(graph, node, container, enclosing, position)
+	placements, budget, route, failures := placementsOf(graph, node, container, enclosing, position)
 	if len(failures) > 0 {
 		return nil, failures
 	}
@@ -2336,7 +2385,7 @@ func sittingPoints(
 	// that is a reach past the boundary of nothing rather than a comparison
 	// nobody made. The band is what decided it either way, so it is reported
 	// either way.
-	band := insideBand(enclosing.Tolerance(), depth, budget, enclosing.Budget())
+	band := insideBand(enclosing.Tolerance(), depth, budget, enclosing.Budget(), route)
 	bands := []Band{band}
 
 	if !outside || band.holds() {
@@ -2369,7 +2418,14 @@ type placement struct {
 }
 
 // placementsOf reads where the model puts a subject which covers no area,
-// together with the accuracy of the claims which put it there.
+// together with the accuracy of the claims which put it there and of the
+// transforms which carried it into the container's frame.
+//
+// A place declared in another frame than the container's is carried into it
+// across the transform claims relating the two, as [Frames.TransformPoint]
+// carries any position ([routeTo]). The two budgets are kept apart because the
+// band reports them apart: the claims which put the subject somewhere, and the
+// fits which say where that somewhere is in the container's frame.
 //
 // A subject the model places nowhere is reported rather than passed. A device
 // nobody has set out yet is not a device inside its storey, and answering "it
@@ -2378,31 +2434,73 @@ type placement struct {
 //
 // Every corner which could not be read is reported and not only the first. A
 // run of wall nobody has surveyed is a list of corners to go and occupy, and
-// naming one of them per run turns fixing it into a loop.
+// naming one of them per run turns fixing it into a loop. A route which cannot
+// be walked is reported once per frame it starts from, rather than once per
+// corner declared in that frame: it is one fault, fixed in one place.
 func placementsOf(
 	graph *Graph,
 	node, container *SemanticNode,
 	enclosing Region,
 	position string,
-) ([]placement, Budget, []Failure) {
-	var budget Budget
+) ([]placement, Budget, Budget, []Failure) {
+	var budget, route Budget
+
+	walked := make(map[ID]bool)
+	refused := make(map[ID]bool)
+
+	// carry is the one place a placement is moved into the container's frame,
+	// and it reports whether there is a placement left to judge. A frame whose
+	// route was refused is refused once, and every later corner in it is left
+	// out quietly: the failure already names the route, and naming it again per
+	// corner would be the same fault as many times as the run has corners.
+	carry := func(what string, frame ID, at Point) (Point, *Failure, bool) {
+		if frame == enclosing.Frame() {
+			return at, nil, true
+		}
+
+		if refused[frame] {
+			return Point{}, nil, false
+		}
+
+		if !walked[frame] {
+			carried, failure := routeTo(graph, node, what, frame, container, enclosing)
+			if failure != nil {
+				refused[frame] = true
+				return Point{}, failure, false
+			}
+
+			walked[frame] = true
+			route.Merge(carried)
+		}
+
+		// The route was walked with a point already, so every step of it
+		// resolved and none of it is singular; a position cannot fail where the
+		// origin did not.
+		moved, _ := graph.Frames().TransformPoint(at, frame, enclosing.Frame())
+
+		return moved, nil, true
+	}
 
 	if geometry, _ := node.Geometry(); geometry == GeometryPoint {
 		frame, declared := node.Frame()
-		if !declared || frame != enclosing.Frame() {
-			mismatch := frameMismatch(graph, node, nodeName(node), frame, container, enclosing)
-			return nil, budget, []Failure{mismatch}
+		if !declared || frame == "" {
+			return nil, budget, route, []Failure{unframed(graph, node, nodeName(node), container, enclosing)}
 		}
 
 		claim, at, placed := placedAt(graph, node.ID(), position)
 		if !placed {
 			where := graph.Nodes().named(node)
-			return nil, budget, []Failure{unplaced(graph, node, nodeName(node), container, position, where)}
+			return nil, budget, route, []Failure{unplaced(graph, node, nodeName(node), container, position, where)}
+		}
+
+		moved, failure, carried := carry(nodeName(node), frame, at)
+		if !carried {
+			return nil, budget, route, []Failure{*failure}
 		}
 
 		budget.Add(claim)
 
-		return []placement{{at: at, name: "it", span: claim.Span()}}, budget, nil
+		return []placement{{at: moved, name: "it", span: claim.Span()}}, budget, route, nil
 	}
 
 	var (
@@ -2416,9 +2514,8 @@ func placementsOf(
 
 		corner, where := string(vertex.ID()), graph.named(vertex)
 
-		if vertex.Frame() != enclosing.Frame() {
-			failures = append(failures,
-				frameMismatch(graph, node, corner, vertex.Frame(), container, enclosing))
+		if vertex.Frame() == "" {
+			failures = append(failures, unframed(graph, node, corner, container, enclosing))
 			continue
 		}
 
@@ -2428,16 +2525,24 @@ func placementsOf(
 			continue
 		}
 
+		moved, failure, carried := carry(corner, vertex.Frame(), at)
+		if !carried {
+			if failure != nil {
+				failures = append(failures, *failure)
+			}
+			continue
+		}
+
 		budget.Add(claim)
-		placements = append(placements, placement{at: at, name: corner, span: where})
+		placements = append(placements, placement{at: moved, name: corner, span: where})
 	}
 
 	switch {
 	case len(failures) > 0:
-		return nil, budget, failures
+		return nil, budget, route, failures
 
 	case corners == 0:
-		return nil, budget, []Failure{{
+		return nil, budget, route, []Failure{{
 			Message: fmt.Sprintf(
 				"expected a shape on %s to judge against the container %s, found no edge drawing it",
 				nodeName(node), container.ID(),
@@ -2448,7 +2553,7 @@ func placementsOf(
 		}}
 	}
 
-	return placements, budget, nil
+	return placements, budget, route, nil
 }
 
 // placedAt is where one thing's current claim under a predicate puts it, and
@@ -2500,38 +2605,119 @@ func unplaced(
 	}
 }
 
-// frameMismatch is the failure for a position written in one frame and a
-// container drawn in another.
+// unframed is the failure for a place declared in no frame at all, which there
+// is no route out of.
 //
-// Nothing here converts between frames on its own
-// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)), so two coordinates
-// in two frames are two numbers rather than two places, and judging one against
-// the other would be an answer rather than a refusal. It is the refusal
-// [Region.comparable] makes of two regions, made of a point.
-func frameMismatch(
+// A subject in another frame than its container's is carried into it
+// ([routeTo]); a subject in none has nowhere to be carried from. Its
+// coordinates are numbers which no frame says the meaning of, and judging them
+// as though they were written in the container's frame would be choosing one
+// for the author.
+func unframed(
 	graph *Graph,
 	node *SemanticNode,
 	what string,
-	frame ID,
 	container *SemanticNode,
 	enclosing Region,
 ) Failure {
-	found := "no frame at all"
-	if frame != "" {
-		found = string(frame)
-	}
-
 	return Failure{
 		Message: fmt.Sprintf(
-			"expected %s to be declared in %s, the frame the container %s is drawn in, found %s",
-			what, enclosing.Frame(), container.ID(), found,
+			"expected %s to be declared in a frame to carry into %s, the frame the container %s is drawn in, "+
+				"found no frame at all",
+			what, enclosing.Frame(), container.ID(),
 		),
-		Hint: "nothing here converts between frames on its own: the transform between two of them is a measurement " +
-			"with an accuracy of its own, so a position in one frame and an outline in another are two numbers " +
-			"rather than two places",
+		Hint: "a position is carried into its container's frame across the transforms the model claims between the " +
+			"two, and a position declared in no frame has no route to be carried along; declare the frame it was " +
+			"measured in",
 		Span:    graph.Nodes().named(node),
 		Related: pointingAt(graph, container, "the container it names is written here"),
 	}
+}
+
+// routeTo walks the route from the frame a subject is declared in to the frame
+// its container is drawn in, and returns the budget of the transform claims
+// along it — or the failure naming what stopped it.
+//
+// It is the chain [Frames.TransformPoint] composes, walked in both directions
+// (specification section 7.5.1), which is what `resolve --frame` and `site`
+// carry a position along. Nothing here converts a stored value: a transform
+// walked at a query is the measurement §7.5 describes, and its accuracy comes
+// with it.
+//
+// The route is walked with a point as well as budgeted, because the two can
+// fail apart. A transform which collapses a frame onto a plane has a budget and
+// has no way back, and learning that at the first corner rather than here would
+// report it once per corner, as a failure of the corner.
+//
+// A route which cannot be walked is refused and never judged as though the two
+// frames were one. A position in one frame compared with an outline in another
+// is two numbers, and the answer would be decided by where the two frames'
+// origins happen to be.
+func routeTo(
+	graph *Graph,
+	node *SemanticNode,
+	what string,
+	from ID,
+	container *SemanticNode,
+	enclosing Region,
+) (Budget, *Failure) {
+	frames, to := graph.Frames(), enclosing.Frame()
+
+	budget, err := frames.TransformBudget(from, to)
+	if err == nil {
+		_, err = frames.TransformPoint(Point{}, from, to)
+	}
+	if err == nil {
+		return budget, nil
+	}
+
+	return Budget{}, &Failure{
+		Message: fmt.Sprintf(
+			"expected a route from %s, the frame %s is declared in, to %s, the frame the container %s is drawn in, "+
+				"found that %s",
+			from, what, to, container.ID(), err,
+		),
+		Hint:    routeHint(err),
+		Span:    graph.Nodes().named(node),
+		Related: pointingAt(graph, container, "the container it names is written here"),
+	}
+}
+
+// routeHint is what to do about a route which could not be walked, which
+// depends on what stopped it.
+func routeHint(err error) string {
+	var (
+		undeclared UndeclaredFrameError
+		unrelated  UnrelatedFramesError
+		unmeasured UnmeasuredFrameError
+		singular   SingularTransformError
+	)
+
+	switch {
+	case errors.As(err, &undeclared):
+		return fmt.Sprintf(
+			"a frame is declared in the registry, and %s is declared nowhere; a position in a frame nothing "+
+				"declares has no transform to carry it anywhere",
+			undeclared.Frame,
+		)
+	case errors.As(err, &unrelated):
+		return "two frames are related by the chain of measured transforms between them, and these two chains " +
+			"never meet; a subject and a container on no common chain are two numbers rather than two places"
+	case errors.As(err, &unmeasured):
+		return fmt.Sprintf(
+			"the relationship between %s and %s is a measurement, and nothing measured it; claim the transform "+
+				"the frame names and the subject can be carried across it",
+			unmeasured.Frame, unmeasured.Parent,
+		)
+	case errors.As(err, &singular):
+		return "a transform which collapses a frame onto a plane, a line or a point maps more than one position to " +
+			"each position in its parent, so there is no one place to carry a subject back to; the fit is the thing " +
+			"to re-measure"
+	}
+
+	return "a subject is carried into its container's frame across the transforms the model claims between the " +
+		"two; where that route cannot be walked there is nothing to judge, and judging the two frames as one would " +
+		"compare two numbers rather than two places"
 }
 
 // pointingAt is the one related location a failure of this check sends a reader
@@ -2544,24 +2730,116 @@ func pointingAt(graph *Graph, node *SemanticNode, message string) []RelatedLocat
 // tolerance, or the combined one-sigma uncertainty of the two shapes where that
 // is wider — together with what widened it and the reach it was applied to.
 //
-// The terms are combined in quadrature, as two separate measurements of where
-// one boundary is relative to another. A side which stated no accuracy
-// contributes no term rather than stopping the arithmetic, because the declared
-// tolerance is the floor under the answer and is what decides a comparison the
-// evidence cannot narrow.
-func insideBand(declared Tolerance, depth float64, subject, container Budget) Band {
+// The terms are combined in quadrature, as separate measurements of where one
+// boundary is relative to another. A side which stated no accuracy contributes
+// no term rather than stopping the arithmetic, because the declared tolerance is
+// the floor under the answer and is what decides a comparison the evidence
+// cannot narrow.
+//
+// The route is the budget of the transform claims the subject was carried
+// across, and is empty where it was declared in its container's frame — which
+// adds no term, so the band of a subject which was not carried is the band it
+// always was. Where it was carried the fits are a third side of the comparison,
+// named as such and attributed to the claims which state them.
+func insideBand(declared Tolerance, depth float64, subject, container, route Budget) Band {
 	var terms []BandTerm
 
-	// Both budgets are distances and so is the reach past the boundary, so
-	// neither needs carrying across: the sensitivity is one on both sides.
+	// Every budget is a distance and so is the reach past the boundary, so none
+	// needs carrying across: the sensitivity is one on every side.
 	if own, surveyed := sigmaIn(subject, declared.Unit); surveyed {
 		terms = append(terms, bandTerm(BandFromCorners, own, declared.Unit, 1))
 	}
 	if theirs, drawn := sigmaIn(container, declared.Unit); drawn {
 		terms = append(terms, bandTerm(BandFromContainer, theirs, declared.Unit, 1))
 	}
+	if fitted, measured := sigmaApart(route, declared.Unit, subject, container); measured {
+		term := bandTerm(BandFromTransform, fitted, declared.Unit, 1)
+		term.Claims = routeClaims(route)
+		terms = append(terms, term)
+	}
 
 	return banded(declared, depth, terms...)
+}
+
+// sigmaApart is [sigmaIn] for the budget of a route, less every systematic term
+// either shape already carries.
+//
+// A fit tied to the same control point as the corners it carries shares that
+// control point's error with them, and a shared error does not average away and
+// is not two errors either
+// ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)): it is counted once,
+// exactly as [Budget] counts it. The shape's term is where it already is, so the
+// route's term is what the route adds. Sameness is what [Budget] makes it — a
+// systematic term with the same source, in the same unit.
+//
+// A route which stated no accuracy, whose terms are in another unit, or all of
+// whose terms are already counted adds nothing to report. The first two are not
+// zero and reporting zero would narrow the band on evidence which does not
+// support it; the last is counted, on the side it was first reached through.
+func sigmaApart(route Budget, unit Unit, counted ...Budget) (float64, bool) {
+	if len(route.inputs) == 0 || !route.Known() {
+		return 0, false
+	}
+
+	var (
+		squares, shared float64
+		kept            bool
+	)
+
+	for _, term := range route.terms {
+		if term.Unit != unit {
+			return 0, false
+		}
+
+		if term.Kind == TermSystematic && term.Source != "" && carriedBy(term, counted) {
+			continue
+		}
+
+		kept = true
+
+		magnitude := math.Abs(term.Magnitude)
+		switch term.Kind {
+		case TermIndependent:
+			squares += magnitude * magnitude
+		case TermSystematic:
+			shared += magnitude
+		}
+	}
+
+	if !kept {
+		return 0, false
+	}
+
+	return math.Sqrt(squares + shared*shared), true
+}
+
+// carriedBy reports whether a systematic term is one any of the budgets already
+// holds.
+func carriedBy(term BudgetTerm, budgets []Budget) bool {
+	for _, budget := range budgets {
+		for _, held := range budget.terms {
+			if held.Kind == TermSystematic && held.Source == term.Source && held.Unit == term.Unit {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// routeClaims is the written id of every claim a budget accumulated, in the order it
+// accumulated them, which is what a band term names as its source.
+//
+// A claim which wrote no id is left out rather than named by something made up.
+// A transform is referenced from its frame by id, so the claims this is asked
+// about have one.
+func routeClaims(budget Budget) []ID {
+	var out []ID
+	for _, claim := range budget.inputs {
+		if id, written := claim.ID(); written {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // outsideHint is what to do about a shape which reaches past its container,

@@ -1,0 +1,81 @@
+; The vocabulary the model beside it is checked against.
+;
+; One root frame and three frames measured against it. Every containment in the
+; model beside this crosses one of them, which is the ordinary state of a model
+; that draws each storey in its own plan frame and its boundary survey in
+; another: a frame is a coordinate system somebody chose, and a shape is inside
+; another wherever the two are drawn.
+(project
+  (label "Containment across frames fixture")
+  (globalid-namespace "https://example.org/models/inside-across"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace method (description "Measurement methods."))
+(namespace site (description "Semantic nodes."))
+
+(predicate frame-transform (shape transform))
+(predicate position (unit m) (shape coordinate) (dimension 3))
+
+(tolerance corner (value 0.01 m))
+
+(frame frame:main (unit m))
+
+; Ten metres east of the root, fitted by tape.
+(frame frame:annex
+  (unit m)
+  (parent frame:main)
+  (transform site:T-1)
+  (frame-transform
+    (id site:T-1)
+    (value
+      (transform
+        (translation 10.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record")
+    (method method:tape)
+    (accuracy (independent 0.02 m))
+    (date "2026-09-25")))
+
+; Five metres east of the root, fitted against a control point some of the
+; corners set out in it are tied to as well. That error is one error, however
+; many of the things a comparison reads carry it.
+(frame frame:wing
+  (unit m)
+  (parent frame:main)
+  (transform site:T-2)
+  (frame-transform
+    (id site:T-2)
+    (value
+      (transform
+        (translation 5.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record")
+    (method method:tape)
+    (accuracy (independent 0.02 m) (systematic 0.03 m control:CP-1))
+    (date "2026-09-25")))
+
+; Three metres above the root: the plan frame of the storey upstairs.
+(frame frame:upper
+  (unit m)
+  (parent frame:main)
+  (transform site:T-3)
+  (frame-transform
+    (id site:T-3)
+    (value
+      (transform
+        (translation 0.0 0.0 3.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record")
+    (method method:tape)
+    (accuracy (independent 0.02 m))
+    (date "2026-09-25")))
+
+(type Level (kind Storey) (geometry area) (description "A floor plate."))
+(type Room (kind Space) (geometry area) (description "A room."))
+(type Wall (kind Element) (geometry line) (description "A wall, drawn as the run it follows."))
+(type Device (kind Element) (geometry point) (description "A device."))

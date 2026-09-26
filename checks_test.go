@@ -6,8 +6,10 @@
 package dfcad
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -974,11 +976,10 @@ func TestSitsInside(t *testing.T) {
 			},
 		},
 		{
-			name:     "refuses a position written in one frame against an outline drawn in another",
+			name:     "judges a position written in one frame against an outline drawn in another, carried across",
 			instance: "site:D-04",
 			expected: []string{
-				"expected site:D-04 to be declared in frame:building, the frame the container site:L-01 is " +
-					"drawn in, found frame:annex",
+				"expected site:D-04 to sit inside site:L-01, found it 23.0 m outside the boundary, at (33.0 2.0 0.0)",
 			},
 		},
 		{
@@ -1187,6 +1188,30 @@ func TestSitsInsideReportsTheBandItApplied(t *testing.T) {
 			},
 		},
 		{
+			name:     "names the fit a position was carried across as a side of its own, attributed to its claim",
+			instance: "site:D-04",
+			expected: Band{
+				Tolerance:  "boundary-closure",
+				Floor:      0.005,
+				Applied:    0.013416407864998738,
+				Unit:       "m",
+				Difference: 23,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.004, Unit: "m", Sensitivity: 1, Contribution: 0.004},
+					{Source: BandFromContainer, Sigma: 0.008, Unit: "m", Sensitivity: 1, Contribution: 0.008},
+					{
+						Source:       BandFromTransform,
+						Sigma:        0.01,
+						Unit:         "m",
+						Sensitivity:  1,
+						Contribution: 0.01,
+						Claims:       []ID{"survey:C-0001"},
+					},
+				},
+			},
+		},
+		{
 			name:     "reports the band behind a failure too, which is what the reach was measured past",
 			instance: "site:D-02",
 			expected: Band{
@@ -1209,6 +1234,493 @@ func TestSitsInsideReportsTheBandItApplied(t *testing.T) {
 			got := bandOf(t, run, "sits-inside", testCase.instance)
 
 			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestSitsInsideAcrossFrames is its own function because its fixture varies the
+// frame a subject is declared in rather than its form.
+//
+// Every containment in it crosses a frame, and the rule is the rule it is in one
+// frame: the subject is carried into its container's frame across the transform
+// claims relating the two, as `resolve --frame` and `site` carry it, and judged
+// there. What does not change with carrying is the plane rule — a region still
+// has to lie in its container's plane, and a point or a line is still judged in
+// it — which is what the storey upstairs is for.
+func TestSitsInsideAcrossFrames(t *testing.T) {
+	run := runCheckFixture(t, "across")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "holds of a device which is inside its container once carried into the container's frame",
+			instance: "site:D-1",
+			expected: nil,
+		},
+		{
+			name:     "reports a device which is outside its container once carried, where it is in the container's frame",
+			instance: "site:D-2",
+			expected: []string{
+				"expected site:D-2 to sit inside site:L1, found it 15.0 m outside the boundary, at (35.0 5.0 0.0)",
+			},
+		},
+		{
+			name:     "holds of an outline which is inside its container once carried",
+			instance: "site:R-1",
+			expected: nil,
+		},
+		{
+			name:     "reports where an outline carried across reaches past the boundary in the container's frame",
+			instance: "site:R-2",
+			expected: []string{
+				"expected site:R-2 to sit inside site:L1, found 8.0 m² of it outside, reaching 2.0 m past the " +
+					"boundary at (22.0 1.0 0.0)",
+			},
+		},
+		{
+			name:     "holds of a device set out from the control point its frame's fit is tied to",
+			instance: "site:D-3",
+			expected: nil,
+		},
+		{
+			name:     "holds of a device carried up out of a frame above its container, judged in the container's plane",
+			instance: "site:D-5",
+			expected: nil,
+		},
+		{
+			name:     "reports a run of wall carried out of a frame above its container, judged in the container's plane",
+			instance: "site:W-1",
+			expected: []string{
+				"expected site:W-1 to sit inside site:L1, found geom:V-33 10.0 m outside the boundary, at " +
+					"(30.0 2.0 3.0)",
+			},
+		},
+		{
+			name:     "refuses an outline which is out of its container's plane once carried",
+			instance: "site:R-3",
+			expected: []string{
+				"expected both operands of the difference to lie in one plane within the tolerance corner, which " +
+					"is 0.01 m, found site:L1 3.0 m out of the plane of the region derived from site:R-3",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, reportedBy(run, "sits-inside", testCase.instance))
+		})
+	}
+
+	t.Run("decides every rule the fixture states either way", func(t *testing.T) {
+		assert.Equal(t, 9, run.Rules)
+		assert.Equal(t, run.Rules, run.Ran)
+		assert.Equal(t, 4, run.Failed)
+		assert.Equal(t, 5, run.Passed)
+	})
+}
+
+// TestSitsInsideAcrossFramesReportsTheTransformInTheBand is its own function
+// because its assertion is about the answer's disclosure rather than about the
+// answer.
+//
+// The fit between two frames is a measurement, so a subject carried across one
+// is known only as well as the fit is, and a subject inside its container only
+// within that is a pass the survey decided. The band names the fit as a side of
+// its own, attributed to the claims which state it — on a pass as much as on a
+// failure — and counts an error the fit shares with the subject once.
+func TestSitsInsideAcrossFramesReportsTheTransformInTheBand(t *testing.T) {
+	run := runCheckFixture(t, "across")
+
+	plate := BandTerm{Source: BandFromContainer, Sigma: 0.02, Unit: "m", Sensitivity: 1, Contribution: 0.02}
+	annex := BandTerm{
+		Source:       BandFromTransform,
+		Sigma:        0.02,
+		Unit:         "m",
+		Sensitivity:  1,
+		Contribution: 0.02,
+		Claims:       []ID{"site:T-1"},
+	}
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected Band
+	}{
+		{
+			name:     "names the transform on a device which passes",
+			instance: "site:D-1",
+			expected: Band{
+				Tolerance: "corner",
+				Floor:     0.01,
+				Applied:   0.03,
+				Unit:      "m",
+				Widened:   true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.01, Unit: "m", Sensitivity: 1, Contribution: 0.01},
+					plate,
+					annex,
+				},
+			},
+		},
+		{
+			name:     "names the transform on a device which fails",
+			instance: "site:D-2",
+			expected: Band{
+				Tolerance:  "corner",
+				Floor:      0.01,
+				Applied:    0.03,
+				Unit:       "m",
+				Difference: 15,
+				Widened:    true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.01, Unit: "m", Sensitivity: 1, Contribution: 0.01},
+					plate,
+					annex,
+				},
+			},
+		},
+		{
+			name:     "names the transform on an outline, as the siting budget does",
+			instance: "site:R-1",
+			expected: Band{
+				Tolerance: "corner",
+				Floor:     0.01,
+				Applied:   0.034641016151377546,
+				Unit:      "m",
+				Widened:   true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.02, Unit: "m", Sensitivity: 1, Contribution: 0.02},
+					plate,
+					annex,
+				},
+			},
+		},
+		{
+			name:     "counts the control point a device shares with its frame's fit once, on the device's side",
+			instance: "site:D-3",
+			expected: Band{
+				Tolerance: "corner",
+				Floor:     0.01,
+				Applied:   0.04242640687119285,
+				Unit:      "m",
+				Widened:   true,
+				Terms: []BandTerm{
+					{
+						Source:       BandFromCorners,
+						Sigma:        0.03162277660168379,
+						Unit:         "m",
+						Sensitivity:  1,
+						Contribution: 0.03162277660168379,
+					},
+					plate,
+					{
+						Source:       BandFromTransform,
+						Sigma:        0.02,
+						Unit:         "m",
+						Sensitivity:  1,
+						Contribution: 0.02,
+						Claims:       []ID{"site:T-2"},
+					},
+				},
+			},
+		},
+		{
+			name:     "counts the control point on the fit's side where the device does not share it",
+			instance: "site:D-4",
+			expected: Band{
+				Tolerance: "corner",
+				Floor:     0.01,
+				Applied:   0.04242640687119285,
+				Unit:      "m",
+				Widened:   true,
+				Terms: []BandTerm{
+					{Source: BandFromCorners, Sigma: 0.01, Unit: "m", Sensitivity: 1, Contribution: 0.01},
+					plate,
+					{
+						Source:       BandFromTransform,
+						Sigma:        0.03605551275463989,
+						Unit:         "m",
+						Sensitivity:  1,
+						Contribution: 0.03605551275463989,
+						Claims:       []ID{"site:T-2"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, bandOf(t, run, "sits-inside", testCase.instance))
+		})
+	}
+}
+
+// TestInsideBandCountsASharedTermOnce is its own function because it asserts
+// about the arithmetic of the band rather than about a model.
+//
+// A systematic error is one error however many of the things a comparison reads
+// carry it ([0006](docs/decisions/0006-accuracy-is-one-sigma.md)). The shapes'
+// terms are what they are in one frame, so a term the route shares with either
+// of them is left out of the route's, and the route's term is what the route
+// adds.
+func TestInsideBandCountsASharedTermOnce(t *testing.T) {
+	declared := Tolerance{Name: "corner", Value: 0.01, Unit: "m"}
+
+	testCases := []struct {
+		name      string
+		subject   Budget
+		container Budget
+		route     Budget
+		expected  []BandTerm
+	}{
+		{
+			name:      "adds no term where nothing was carried",
+			subject:   budgetOf(measured("survey:P-1", independent(0.01))),
+			container: budgetOf(measured("survey:P-2", independent(0.02))),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.01, "m", 1),
+				bandTerm(BandFromContainer, 0.02, "m", 1),
+			},
+		},
+		{
+			name:      "counts every term of a route which shares nothing",
+			subject:   budgetOf(measured("survey:P-1", independent(0.01))),
+			container: budgetOf(measured("survey:P-2", independent(0.02))),
+			route:     budgetOf(measured("survey:T-1", independent(0.03), systematic(0.04, "control:CP-1"))),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.01, "m", 1),
+				bandTerm(BandFromContainer, 0.02, "m", 1),
+				{
+					Source:       BandFromTransform,
+					Sigma:        0.05,
+					Unit:         "m",
+					Sensitivity:  1,
+					Contribution: 0.05,
+					Claims:       []ID{"survey:T-1"},
+				},
+			},
+		},
+		{
+			name:      "leaves out of the route a term the subject carries",
+			subject:   budgetOf(measured("survey:P-1", systematic(0.04, "control:CP-1"))),
+			container: budgetOf(measured("survey:P-2", independent(0.02))),
+			route:     budgetOf(measured("survey:T-1", independent(0.03), systematic(0.04, "control:CP-1"))),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.04, "m", 1),
+				bandTerm(BandFromContainer, 0.02, "m", 1),
+				{
+					Source:       BandFromTransform,
+					Sigma:        0.03,
+					Unit:         "m",
+					Sensitivity:  1,
+					Contribution: 0.03,
+					Claims:       []ID{"survey:T-1"},
+				},
+			},
+		},
+		{
+			name:      "leaves out of the route a term the container carries",
+			subject:   budgetOf(measured("survey:P-1", independent(0.01))),
+			container: budgetOf(measured("survey:P-2", systematic(0.04, "control:CP-1"))),
+			route:     budgetOf(measured("survey:T-1", independent(0.03), systematic(0.04, "control:CP-1"))),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.01, "m", 1),
+				bandTerm(BandFromContainer, 0.04, "m", 1),
+				{
+					Source:       BandFromTransform,
+					Sigma:        0.03,
+					Unit:         "m",
+					Sensitivity:  1,
+					Contribution: 0.03,
+					Claims:       []ID{"survey:T-1"},
+				},
+			},
+		},
+		{
+			name:      "adds no term for a route all of whose error is already counted",
+			subject:   budgetOf(measured("survey:P-1", systematic(0.04, "control:CP-1"))),
+			container: budgetOf(measured("survey:P-2", independent(0.02))),
+			route:     budgetOf(measured("survey:T-1", systematic(0.04, "control:CP-1"))),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.04, "m", 1),
+				bandTerm(BandFromContainer, 0.02, "m", 1),
+			},
+		},
+		{
+			name:      "adds no term for a route which stated no accuracy, rather than an exact one",
+			subject:   budgetOf(measured("survey:P-1", independent(0.01))),
+			container: budgetOf(measured("survey:P-2", independent(0.02))),
+			route:     budgetOf(unmeasured("survey:T-1")),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.01, "m", 1),
+				bandTerm(BandFromContainer, 0.02, "m", 1),
+			},
+		},
+		{
+			name:      "adds no term for a route stated in another unit, which nothing here converts",
+			subject:   budgetOf(measured("survey:P-1", independent(0.01))),
+			container: budgetOf(measured("survey:P-2", independent(0.02))),
+			route:     budgetOf(measured("survey:T-1", independentIn(0.1, "ft"))),
+			expected: []BandTerm{
+				bandTerm(BandFromCorners, 0.01, "m", 1),
+				bandTerm(BandFromContainer, 0.02, "m", 1),
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			band := insideBand(declared, 0, testCase.subject, testCase.container, testCase.route)
+
+			require.Len(t, band.Terms, len(testCase.expected))
+			for i, expected := range testCase.expected {
+				assert.Equal(t, expected.Source, band.Terms[i].Source)
+				assert.InDelta(t, expected.Sigma, band.Terms[i].Sigma, budgetTolerance)
+				assert.InDelta(t, expected.Contribution, band.Terms[i].Contribution, budgetTolerance)
+				assert.Equal(t, expected.Unit, band.Terms[i].Unit)
+				assert.Equal(t, expected.Claims, band.Terms[i].Claims)
+			}
+		})
+	}
+}
+
+// runAcrossWith runs the rules of the across-frames fixture with some of its
+// text replaced, and whatever the load reports besides.
+//
+// The route cases are models which do not load clean — two root frames, a
+// transform nothing claims — so the fixture cannot hold them, and a table whose
+// cases differ by one line is clearer with the line in the table. Each
+// replacement has to match exactly once, so that a fixture which drifted fails
+// here rather than running a model the case does not describe.
+func runAcrossWith(t *testing.T, registry, model [][2]string) CheckRun {
+	t.Helper()
+
+	root := t.TempDir()
+
+	for file, replacements := range map[string][][2]string{"registry": registry, "model": model} {
+		written, err := os.ReadFile(filepath.Join(checkFixture("across"), file+Extension))
+		require.NoError(t, err)
+
+		text := string(written)
+		for _, replacement := range replacements {
+			require.Equal(t, 1, strings.Count(text, replacement[0]), "%s holds %q once", file, replacement[0])
+			text = strings.Replace(text, replacement[0], replacement[1], 1)
+		}
+
+		require.NoError(t, os.WriteFile(filepath.Join(root, file+Extension), []byte(text), 0o644))
+	}
+
+	graph, _ := LoadGraph(root)
+	require.NotNil(t, graph, "a load always yields a usable graph")
+
+	return graph.Rules().Run()
+}
+
+// TestSitsInsideRefusesARouteItCannotWalk is its own function because every
+// case in it is a model rather than a subject, and each one is refused rather
+// than judged.
+//
+// A route which cannot be walked leaves two numbers in two frames, and judging
+// them as though the frames were one would decide by where the two origins
+// happen to be. Each refusal names what stopped the route, and none of them
+// reports a band: nothing was compared.
+func TestSitsInsideRefusesARouteItCannotWalk(t *testing.T) {
+	testCases := []struct {
+		name     string
+		registry [][2]string
+		model    [][2]string
+		instance ID
+		expected []string
+	}{
+		{
+			name: "names a frame nothing declares",
+			model: [][2]string{{
+				"(node site:D-1 (kind Element) (type Device) (geometry point) (frame frame:annex)",
+				"(node site:D-1 (kind Element) (type Device) (geometry point) (frame frame:nowhere)",
+			}},
+			instance: "site:D-1",
+			expected: []string{
+				"expected a route from frame:nowhere, the frame site:D-1 is declared in, to frame:main, the frame " +
+					"the container site:L1 is drawn in, found that no frame frame:nowhere is declared",
+			},
+		},
+		{
+			name: "names two frames whose chains never meet",
+			registry: [][2]string{
+				{"(frame frame:main (unit m))", "(frame frame:main (unit m))\n(frame frame:other (unit m))"},
+				{"  (parent frame:main)\n  (transform site:T-1)", "  (parent frame:other)\n  (transform site:T-1)"},
+			},
+			instance: "site:R-1",
+			expected: []string{
+				"expected a route from frame:annex, the frame site:R-1 is declared in, to frame:main, the frame " +
+					"the container site:L1 is drawn in, found that the frames frame:annex and frame:main reach no " +
+					"common frame",
+			},
+		},
+		{
+			name:     "names a frame whose transform nothing claims",
+			registry: [][2]string{{"  (transform site:T-1)", "  (transform site:T-9)"}},
+			instance: "site:D-2",
+			expected: []string{
+				"expected a route from frame:annex, the frame site:D-2 is declared in, to frame:main, the frame " +
+					"the container site:L1 is drawn in, found that the transform from frame:annex to frame:main " +
+					"resolves to no transform claim",
+			},
+		},
+		{
+			name: "names a transform which cannot be run backwards",
+			registry: [][2]string{{
+				"        (translation 10.0 0.0 0.0)\n        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)",
+				"        (translation 10.0 0.0 0.0)\n        (rotation 1.0 0.0 0.0 1.0 0.0 0.0 0.0 0.0 1.0)",
+			}},
+			model: [][2]string{{
+				"(node site:D-5 (kind Element) (type Device) (geometry point) (frame frame:upper) (within site:L1)\n" +
+					"  (position (value (2.0 2.0 0.0) m) (source \"Tape\") (method method:tape) " +
+					"(accuracy (independent 0.01 m)) (date \"2026-09-25\"))\n" +
+					"  (assert sits-inside (container site:L1)",
+				"(node site:D-5 (kind Element) (type Device) (geometry point) (frame frame:main) (within site:L1)\n" +
+					"  (position (value (2.0 2.0 0.0) m) (source \"Tape\") (method method:tape) " +
+					"(accuracy (independent 0.01 m)) (date \"2026-09-25\"))\n" +
+					"  (assert sits-inside (container site:R-1)",
+			}},
+			instance: "site:D-5",
+			expected: []string{
+				"expected a route from frame:main, the frame site:D-5 is declared in, to frame:annex, the frame " +
+					"the container site:R-1 is drawn in, found that the transform from frame:annex to frame:main " +
+					"cannot be inverted",
+			},
+		},
+		{
+			name:     "names the route once for a run of wall rather than once per corner",
+			registry: [][2]string{{"  (transform site:T-3)", "  (transform site:T-9)"}},
+			instance: "site:W-1",
+			expected: []string{
+				"expected a route from frame:upper, the frame geom:V-31 is declared in, to frame:main, the frame " +
+					"the container site:L1 is drawn in, found that the transform from frame:upper to frame:main " +
+					"resolves to no transform claim",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			run := runAcrossWith(t, testCase.registry, testCase.model)
+
+			assert.Equal(t, testCase.expected, reportedBy(run, "sits-inside", testCase.instance))
+
+			for _, applied := range run.Bands {
+				assert.NotEqual(t, testCase.instance, applied.Instance, "a comparison never made reports no band")
+			}
+
+			for _, violation := range run.Violations {
+				if violation.Instance == testCase.instance {
+					assert.NotEmpty(t, violation.Hint)
+				}
+			}
 		})
 	}
 }
