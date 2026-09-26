@@ -76,9 +76,10 @@ jobs:
           #
           # A version carrying any tag that is not a branch build is kept, and
           # `all` rather than a match on the first tag is what enforces it: a
-          # release cut from the tip of main is one digest wearing both
-          # `v1.2.3` and `<short-sha>-<commit-time>`, and deleting it as a
-          # branch build would delete the release.
+          # release is one digest wearing its version and whichever of `v1.2`,
+          # `v1` and `latest` still point at it, and a digest wearing both a
+          # release tag and a branch-build tag must never be deleted as a
+          # branch build.
           #
           # An untagged version is kept. On GHCR the per-platform manifests
           # under a multi-architecture index are untagged versions of the same

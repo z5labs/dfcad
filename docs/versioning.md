@@ -148,30 +148,30 @@ to get an image published and exercised before the version is claimed. Nothing e
 pre-release identifier here — no `-alpha`, no `-beta.1+build`, no date suffixes — because
 the fewer shapes there are, the fewer there are to check against the constraint below.
 
-**One tag per commit.** Where more than one tag points at `HEAD`, the standard pipeline
-takes the most recently created and stamps that; a second tag on the same commit therefore
+**One tag per commit.** Where more than one tag points at `HEAD`, the pipeline takes the
+most recently created and stamps that; a second tag on the same commit therefore
 decides the version by creation order, which is not a fact anybody reading the repository
 can see.
 
 ### Why the convention stops where it does
 
-The convention is constrained by what the standard pipeline does with a tag, not chosen
-freely. `GoApp` in [`z5labs/devex/daggerverse/z5labs`](https://github.com/z5labs/devex/tree/main/daggerverse/z5labs)
-maps a git tag pointing at `HEAD` to the published image tag **verbatim**, and stamps the
-same string into the binary as `.build.version`. Verbatim is subject to one rewrite: a
-docker tag may hold only `[A-Za-z0-9_.-]` and may not begin with `.` or `-`, so any other
-character is replaced with `-`.
+The convention is constrained by what an image tag can hold, not chosen freely. The pipeline
+([`.dagger/version.go`](../.dagger/version.go)) takes a git tag pointing at `HEAD` as the
+version **verbatim**, stamps it into the binary as `.build.version`, and publishes the image
+under it. A docker tag may hold only `[A-Za-z0-9_.-]` and may not begin with `.` or `-`, so
+a git tag outside that is refused — the build fails, naming the tag — rather than rewritten
+into something nobody wrote:
 
-A tag scheme that survives that rewrite unchanged is one this repository can use. A scheme
-that does not is not, because the version in the image tag and the version in the binary
-would no longer be the version anybody wrote:
-
-| Tag | Published as | Usable |
-|-----|--------------|--------|
+| Tag | Version | Usable |
+|-----|---------|--------|
 | `v1.2.3` | `v1.2.3` | yes |
 | `v1.2.3-rc.1` | `v1.2.3-rc.1` | yes — `-` and `.` are both in the charset |
-| `v1.2.3+build.5` | `v1.2.3-build.5` | **no** — semver build metadata is mangled, and the result collides with the legitimate pre-release tag `v1.2.3-build.5` |
-| `release/v1.2.3` | `release-v1.2.3` | **no** — the prefix survives as noise and the tag no longer parses as semver |
+| `v1.2.3+build.5` | refused | **no** — `+` is not in the charset, and dropping the metadata would publish two builds under one tag |
+| `release/v1.2.3` | refused | **no** — `/` is not in the charset, and the tag does not parse as semver |
+
+The shape of a release tag matters one step further on, too: a tag that parses as semver
+moves `vMAJOR.MINOR`, `vMAJOR` and `latest` when it is published, and a prerelease moves
+none of them. [`publishing.md`](./publishing.md) has the table.
 
 So: **no build metadata and no path-shaped tags.** Semver permits the first and plenty of
 projects use the second; neither is available here, and the reason is one level down in the
@@ -212,9 +212,9 @@ commit, and the values beside it mean nothing — the placeholders are words rat
 blanks so that this case reads as itself rather than as a version somebody has to go and
 look up.
 
-There is no build path in this repository that stamps a binary by hand. `dagger call ...
-ci` and `dagger call ... builder binary` stamp identically for the same commit, because
-both route through the same per-platform compile in the module; `builder` is how a stamp is
+There is no build path in this repository that stamps a binary by hand. `dagger call
+publish` and `dagger call binary` stamp identically for the same commit, because both route
+through the same per-platform compile in the z5labs module; `binary` is how a stamp is
 checked locally without a push. Adding a second, bespoke link line here to produce a
 stamped binary would be a second definition of the build, and the two would drift — see the
 continuous integration section of [`CLAUDE.md`](../CLAUDE.md). The `model` job in CI runs

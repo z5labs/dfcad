@@ -27,6 +27,7 @@ The engine is a library first and a command second.
 | `cmd/dfcad`         | The command line interface. `package main`, and nothing reusable.      |
 | `ifc`               | The IFC4 writer: a file format library which imports nothing of this module. |
 | `gml`               | The GML 3.2 writer, under the same rule. Named for the format, not for the use. |
+| `.dagger`           | The pipeline: the root Dagger module CI calls. A Go module of its own, so nothing in it is part of the library. |
 
 Rules that hold as the tree grows:
 
@@ -187,39 +188,50 @@ gofmt -l .
 
 CI and release are not hand-rolled in YAML. They call
 [`z5labs/devex/daggerverse/z5labs`](https://github.com/z5labs/devex/tree/main/daggerverse/z5labs),
-the Dagger module that implements the Z5Labs standard pipeline for a shippable,
-containerized application. dfcad ships `cmd/dfcad`, so it is the module's `GoApp`
-archetype — not `GoLib`.
+the Dagger module that implements the Z5Labs standard pipeline, through this repository's
+own root Dagger module — `dagger.json` and `.dagger/`, the shape
+[`z5labs/avroc`](https://github.com/z5labs/avroc) uses. dfcad ships `cmd/dfcad`, so it
+builds an application off the module's Go chain rather than stopping at its checks.
 
-A workflow job is a thin wrapper around one Dagger call:
+A workflow step is a thin wrapper around one Dagger call against the root module:
 
 ```sh
-dagger call -m github.com/z5labs/devex/daggerverse/z5labs \
-  go-app --source=. --pkg=./cmd/dfcad \
-  ci
+dagger call ci                     # fmt, vet, golangci-lint, go test -race
+dagger call version-scheme         # the version and publish rules, over literal cases
+dagger call publish --publish-on=… # every platform's image; pushed only where the ref says
+dagger call binary export --path=./dfcad
 ```
 
 What follows from that:
 
-- **`GoApp.Ci` owns the check stages.** It runs `fmt`, `vet`, `golangci-lint` and
-  `go test -race` against the source, then builds a scratch image per platform and
-  publishes it when the ref matches `publishOn`. Do not reimplement any of those as
-  their own workflow steps — a step that duplicates a module stage is a second
-  definition of the standard, and the two will drift.
-- **`--source` must be a git working tree.** The module reads refs from `HEAD` to
-  decide whether to publish and how to tag, so a checkout with `fetch-depth: 0` and
-  the `.git` directory intact is required. A tarball or a shallow, detached checkout
-  fails the pipeline up front.
-- **Publishing is by ref, not by an `if:` on the job.** The registry, the credentials
-  and the `publishOn` regex are inputs to the module call. Branch builds tag as
-  `<short-sha>-<commit-time>`; tag builds tag as the git tag.
-- **`Builder` is the local sibling.** `builder container` / `builder binary` produce
-  the same artifact single-arch, so a change to the pipeline is testable without a
-  push.
+- **The z5labs module owns the check stages and the image.** `Ci` is the Go chain's own
+  `Ci`, and the images, their SBOMs, signatures and provenance are its `App` and `Publish`.
+  Do not reimplement any of those as workflow steps or as functions in `.dagger/` — a step
+  that duplicates a module stage is a second definition of the standard, and the two will
+  drift.
+- **The root module adds only what the standard leaves to its caller:** which version a
+  build is, and whether it publishes (`.dagger/version.go`). A tag at `HEAD` is the version
+  verbatim; anything else is `<short-sha>-<commit-time>`. A build publishes when a ref at
+  `HEAD` matches `--publish-on`, which is why publishing is by ref and not by an `if:` on
+  the job.
+- **The z5labs module is pinned by commit in `dagger.json`,** and the CLI is installed at
+  the `engineVersion` beside it rather than at a number typed into a workflow. An unpinned
+  module is a pipeline that changes without a commit here; it broke every pull request
+  twice, once when `GoApp` was replaced by the Go chain and once when the module moved to
+  an engine the pinned CLI could not load. Moving the pin is a pull request of its own.
+- **The source must be a git working tree.** The version, the publish decision and the
+  stamp are all read from `HEAD`, so a checkout with `fetch-depth: 0` and the `.git`
+  directory intact is required. The root module binds `.git` apart from the source, so the
+  check stages keep their cache across commits.
+- **Every function runs locally exactly as CI runs it.** `dagger call binary` is the stamped
+  binary out of the same image `publish` pushes, so a change to the pipeline is testable
+  without a push.
+- **`.dagger/internal` and `.dagger/dagger.gen.go` are generated and committed.** Regenerate
+  them with `dagger develop` after moving the pin or changing a function's signature.
 - **Repo-specific verification stays in this repo,** but as its own job — the golden
   regeneration check (`go test . -update` and a clean `git diff -- testdata`), and
-  anything that runs the `dfcad` binary against the fixture model. The module has no
-  hook for project commands, and the standard is not the place to put them.
+  anything that runs the `dfcad` binary against the fixture model. The z5labs module has
+  no hook for project commands, and the standard is not the place to put them.
 - **A GDAL read of the map export drops a `.gfs` beside the file it read.** A job — or a
   consumer's pipeline — which opens `model.gml` with `ogrinfo`, `ogr2ogr` or anything else
   on GDAL makes it infer the document's schema and cache that inference as `model.gfs` next
