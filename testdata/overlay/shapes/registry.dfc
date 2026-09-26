@@ -59,6 +59,11 @@
   (geometry point)
   (description "A piece of equipment recorded at the point it was set out at."))
 
+(type Railing
+  (kind Element)
+  (geometry line)
+  (description "A guard rail, recorded as the run of its centreline."))
+
 (tolerance boundary-closure
   (value 0.005 m)
   (description "How far a loop may fail to close, how far out of one plane its corners may lie, and how close two corners are one corner."))

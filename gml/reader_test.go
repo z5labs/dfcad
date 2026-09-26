@@ -152,6 +152,8 @@ func readFeature(t *testing.T, member tree) (Feature, string) {
 				feature.Surfaces, crs = readSurfaces(t, shape)
 			case "MultiPoint":
 				feature.Points, crs = readPoints(t, shape)
+			case "MultiCurve":
+				feature.Curves, crs = readCurves(t, shape)
 			default:
 				t.Fatalf("unexpected geometry: %s", shape.XMLName.Local)
 			}
@@ -226,6 +228,26 @@ func readPoints(t *testing.T, points tree) ([]Position, string) {
 	}
 
 	return out, attributeOf(t, points, "", "srsName")
+}
+
+// readCurves is the line strings of one multi curve, and the system they are
+// in.
+func readCurves(t *testing.T, curves tree) ([]LineString, string) {
+	t.Helper()
+
+	require.Equal(t, strconv.Itoa(Dimension), attributeOf(t, curves, "", "srsDimension"))
+
+	var out []LineString
+
+	for _, member := range curves.Children {
+		require.Equal(t, "curveMember", member.XMLName.Local)
+
+		list := only(t, only(t, member, Namespace, "LineString"), Namespace, "posList")
+
+		out = append(out, LineString{Positions: readPositions(t, list.Text)})
+	}
+
+	return out, attributeOf(t, curves, "", "srsName")
 }
 
 // readRing is the positions of one ring.

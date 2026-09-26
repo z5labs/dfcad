@@ -47,6 +47,9 @@ const (
 	pointMemberElement   = "pointMember"
 	pointElement         = "Point"
 	posElement           = "pos"
+	multiCurveElement    = "MultiCurve"
+	curveMemberElement   = "curveMember"
+	lineStringElement    = "LineString"
 )
 
 // The attributes carrying an identity and a coordinate reference system.
@@ -66,6 +69,7 @@ const (
 	geometrySuffix = ".geometry"
 	surfaceSuffix  = ".surface."
 	pointSuffix    = ".point."
+	curveSuffix    = ".curve."
 )
 
 // ReservedPropertyError is a property whose name is the one this package
@@ -96,7 +100,7 @@ func (e ReservedPropertyError) Error() string {
 // refusal leaves the writer untouched rather than half a document followed by
 // an error. What is checked is what would make the document unreadable — a
 // name XML cannot spell, an id written twice, a ring which does not close, a
-// coordinate which is not a number — and nothing else: this package has no
+// curve with one end, a coordinate which is not a number — and nothing else: this package has no
 // opinion about whether a shape is the right shape, only about whether it is
 // one.
 func Write(w io.Writer, collection Collection) error {
@@ -171,13 +175,25 @@ func checkFeature(feature Feature, written map[string]bool) error {
 		return NotAnNCNameError{What: "the id of a feature", Name: feature.ID}
 	}
 
+	var kinds int
+	if len(feature.Surfaces) > 0 {
+		kinds++
+	}
+	if len(feature.Curves) > 0 {
+		kinds++
+	}
+	if len(feature.Points) > 0 {
+		kinds++
+	}
+
 	switch {
-	case len(feature.Surfaces) == 0 && len(feature.Points) == 0:
+	case kinds == 0:
 		return NoGeometryError{Feature: feature.ID}
-	case len(feature.Surfaces) > 0 && len(feature.Points) > 0:
+	case kinds > 1:
 		return MixedGeometryError{
 			Feature:  feature.ID,
 			Surfaces: len(feature.Surfaces),
+			Curves:   len(feature.Curves),
 			Points:   len(feature.Points),
 		}
 	}
@@ -185,6 +201,9 @@ func checkFeature(feature Feature, written map[string]bool) error {
 	identifiers := []string{feature.ID, feature.ID + geometrySuffix}
 	for i := range feature.Surfaces {
 		identifiers = append(identifiers, feature.ID+surfaceSuffix+strconv.Itoa(i+1))
+	}
+	for i := range feature.Curves {
+		identifiers = append(identifiers, feature.ID+curveSuffix+strconv.Itoa(i+1))
 	}
 	for i := range feature.Points {
 		identifiers = append(identifiers, feature.ID+pointSuffix+strconv.Itoa(i+1))
@@ -214,8 +233,33 @@ func checkFeature(feature Feature, written map[string]bool) error {
 		}
 	}
 
+	for _, curve := range feature.Curves {
+		if err := checkCurve(feature.ID, curve); err != nil {
+			return err
+		}
+	}
+
 	for _, at := range feature.Points {
 		if err := checkPosition(feature.ID, at); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// checkCurve is one line string: long enough, and made of numbers.
+//
+// Nothing about whether it closes is checked, in either direction. A run which
+// ends where it began is still a run — a fence round a paddock is one — and a
+// curve which happens to close is not a ring a reader should fill.
+func checkCurve(feature string, curve LineString) error {
+	if len(curve.Positions) < 2 {
+		return TooShortCurveError{Feature: feature, Positions: len(curve.Positions)}
+	}
+
+	for _, at := range curve.Positions {
+		if err := checkPosition(feature, at); err != nil {
 			return err
 		}
 	}
@@ -383,9 +427,12 @@ func (out *writer) feature(collection Collection, feature Feature) {
 	}
 
 	out.open(3, collection.Prefix+":"+geometryElement)
-	if len(feature.Points) > 0 {
+	switch {
+	case len(feature.Points) > 0:
 		out.points(collection, feature)
-	} else {
+	case len(feature.Curves) > 0:
+		out.curves(collection, feature)
+	default:
 		out.surfaces(collection, feature)
 	}
 	out.close(3, collection.Prefix+":"+geometryElement)
@@ -418,6 +465,35 @@ func (out *writer) points(collection Collection, feature Feature) {
 	}
 
 	out.close(4, Prefix+":"+multiPointElement)
+}
+
+// curves writes a feature's shape as one multi curve of line strings.
+//
+// Always a multi curve, including for a feature of one run, for the reason
+// [writer.surfaces] always writes a multi surface. The members are
+// gml:LineString rather than any of GML's other curves because a line string is
+// the curve of the Simple Features profile — positions joined by straight runs
+// — and a reader which accepts one curve accepts that one. A run which bends is
+// the caller's to draw into straight runs before it arrives here, which is also
+// why nothing in this package holds an arc.
+func (out *writer) curves(collection Collection, feature Feature) {
+	attributes := append(
+		[]attribute{{Prefix + ":" + idAttribute, feature.ID + geometrySuffix}},
+		out.reference(collection.CRS)...,
+	)
+
+	out.open(4, Prefix+":"+multiCurveElement, attributes...)
+
+	for i, curve := range feature.Curves {
+		out.open(5, Prefix+":"+curveMemberElement)
+		out.open(6, Prefix+":"+lineStringElement,
+			attribute{Prefix + ":" + idAttribute, feature.ID + curveSuffix + strconv.Itoa(i+1)})
+		out.leaf(7, Prefix+":"+posListElement, positionList(curve.Positions))
+		out.close(6, Prefix+":"+lineStringElement)
+		out.close(5, Prefix+":"+curveMemberElement)
+	}
+
+	out.close(4, Prefix+":"+multiCurveElement)
 }
 
 // surfaces writes a feature's shape as one multi surface.
@@ -453,21 +529,27 @@ func (out *writer) surfaces(collection Collection, feature Feature) {
 
 // ring writes one ring under the role it plays in its polygon.
 func (out *writer) ring(depth int, role string, ring LinearRing) {
-	positions := make([]byte, 0, len(ring.Positions)*16)
-	for i, at := range ring.Positions {
-		if i > 0 {
-			positions = append(positions, ' ')
-		}
-		positions = append(positions, ordinate(at.Easting)...)
-		positions = append(positions, ' ')
-		positions = append(positions, ordinate(at.Northing)...)
-	}
-
 	out.open(depth, Prefix+":"+role)
 	out.open(depth+1, Prefix+":"+linearRingElement)
-	out.leaf(depth+2, Prefix+":"+posListElement, string(positions))
+	out.leaf(depth+2, Prefix+":"+posListElement, positionList(ring.Positions))
 	out.close(depth+1, Prefix+":"+linearRingElement)
 	out.close(depth, Prefix+":"+role)
+}
+
+// positionList is a run of positions as a gml:posList holds them: every
+// ordinate in order, easting first, separated by single spaces.
+func positionList(positions []Position) string {
+	list := make([]byte, 0, len(positions)*16)
+	for i, at := range positions {
+		if i > 0 {
+			list = append(list, ' ')
+		}
+		list = append(list, ordinate(at.Easting)...)
+		list = append(list, ' ')
+		list = append(list, ordinate(at.Northing)...)
+	}
+
+	return string(list)
 }
 
 // reference is the coordinate reference system as a geometry carries it.
@@ -506,6 +588,12 @@ func extent(collection Collection) (lower, upper Position, bounded bool) {
 				for _, at := range ring.Positions {
 					reach(at)
 				}
+			}
+		}
+
+		for _, curve := range feature.Curves {
+			for _, at := range curve.Positions {
+				reach(at)
 			}
 		}
 

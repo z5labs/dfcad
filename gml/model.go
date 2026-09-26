@@ -69,6 +69,19 @@ type LinearRing struct {
 	Positions []Position
 }
 
+// LineString is an open run of positions: a line on the ground with two ends.
+//
+// It is the shape of a thing which runs somewhere and covers nothing — a fence,
+// a trench, a pipe, a wall drawn as its centreline. Unlike a [LinearRing] it is
+// not closed, and it is not required to be: a run whose last position happens
+// to repeat its first is still a line, and a caller which means an area gives
+// a polygon.
+type LineString struct {
+	// Positions are the corners of the run, in the order it is walked. Two is
+	// the fewest there can be: one straight run between two ends.
+	Positions []Position
+}
+
 // Polygon is one area: an outer ring, and the rings taken out of it.
 type Polygon struct {
 	// Exterior is the ring bounding the area.
@@ -123,12 +136,22 @@ type Feature struct {
 	// place and cover none, and a layer which had to give one of them a
 	// rectangle would be inventing dimensions nobody measured.
 	//
-	// A feature carries surfaces or points and never both. GML puts one
-	// geometry under a feature's geometry property, so a feature holding two
-	// kinds is a document a reader takes the first of and discards the rest
-	// of; [MixedGeometryError] refuses it rather than choosing which half to
-	// write.
+	// A feature carries surfaces, curves or points, and only one of the three.
+	// GML puts one geometry under a feature's geometry property, so a feature
+	// holding two kinds is a document a reader takes the first of and discards
+	// the rest of; [MixedGeometryError] refuses it rather than choosing which
+	// part to write.
 	Points []Position
+
+	// Curves are the lines the feature runs along, written as one
+	// gml:MultiCurve of gml:LineString members.
+	//
+	// It is the third shape a thing on a map has, between the other two. A
+	// fence, a trench and a pipe run somewhere and cover nothing, and a layer
+	// which could only give one a polygon would be inventing a width nobody
+	// measured, while one which could only give it points would lose the run
+	// between them.
+	Curves []LineString
 
 	// Properties are its attributes, written in the order they are given.
 	Properties []Property

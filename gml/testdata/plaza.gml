@@ -3,7 +3,7 @@
   <gml:boundedBy>
     <gml:Envelope srsName="EPSG:6543" srsDimension="2">
       <gml:lowerCorner>3502100.5 552000.25</gml:lowerCorner>
-      <gml:upperCorner>3502140.5 552024.25</gml:upperCorner>
+      <gml:upperCorner>3502140.5 552030.75</gml:upperCorner>
     </gml:Envelope>
   </gml:boundedBy>
   <gml:featureMember>
@@ -73,6 +73,22 @@
             </gml:Point>
           </gml:pointMember>
         </gml:MultiPoint>
+      </riverside:geometry>
+    </riverside:region>
+  </gml:featureMember>
+  <gml:featureMember>
+    <riverside:region gml:id="site.T-01">
+      <riverside:id>site:T-01</riverside:id>
+      <riverside:label>Drainage trench</riverside:label>
+      <riverside:kind>Element</riverside:kind>
+      <riverside:geometry>
+        <gml:MultiCurve gml:id="site.T-01.geometry" srsName="EPSG:6543" srsDimension="2">
+          <gml:curveMember>
+            <gml:LineString gml:id="site.T-01.curve.1">
+              <gml:posList>3502102.5 552026.25 3502138.5 552026.25 3502138.5 552030.75</gml:posList>
+            </gml:LineString>
+          </gml:curveMember>
+        </gml:MultiCurve>
       </riverside:geometry>
     </riverside:region>
   </gml:featureMember>

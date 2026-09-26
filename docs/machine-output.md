@@ -3193,6 +3193,9 @@ field of its own that [`export`](#export) does.
 | `chorded[].edge` | string | An edge of a drawn region which states a curve this run did not read, each edge once however many features reach it. Absent for a run which read every curve and for a model which claims none. |
 | `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |
 | `chorded[].span` | object | Where that edge was written. |
+| `undrawn[].node` | string | A node the model gives a shape to — one with a boundary, or one drawn as a point — which is not a feature of the document, in id order. Absent where every such node was drawn. |
+| `undrawn[].label`, `undrawn[].kind`, `undrawn[].type` | string, optional | What that node is called and what it is, each absent where the node has none. |
+| `undrawn[].reason` | string | Why: `unreadable-boundary` for edges this run could not read, `no-position` for a point nothing places, `unrooted` for a model whose frames reach no root, `uncarried` for a frame the chain does not relate to the root, `not-level` for corners which do not lie at one level. The first two are [`plan`](#plan)'s words for the same findings. |
 
 Everything else — `derived`, `digest`, `files[]` — is the shared shape, with the meanings
 documented there. There is no `identifiers`: this format derives no identifier of the
@@ -3245,6 +3248,21 @@ and none is pointed at; GDAL infers the schema from the instance and everything 
 goes through GDAL. A reader which insists on resolving a schema before it will open a document
 refuses this one
 ([0023](./decisions/0023-the-map-export-names-its-coordinate-system-in-the-file.md)).
+
+**Every node the model gave a shape to is drawn in the shape it was given.** A node bounded by
+rings is a `gml:MultiSurface`; one whose declared geometry is `point` is a `gml:MultiPoint` at
+the position claimed of it; one whose declared geometry is `line` is a `gml:MultiCurve` holding
+one `gml:LineString` per loop of its boundary, the corners of the run in the order the loop
+walks them and left open. A trench, a fence, a railing and a partition drawn as its centreline
+cover nothing and are still on the map. A run is read, carried and judged for level exactly as a
+ring is, and a curved edge in one is drawn to `chord` or listed under `chorded` exactly as an
+edge of a ring is.
+
+**Nothing the model shaped leaves the document without a word.** The features and `undrawn`
+account between them for every node with a shape which has not been retired, so a reader who
+finds a thing missing from the layer finds it named in the answer. A node named under `undrawn`
+is an error on stderr as well, and a run which names one writes no file — a layer with one plot
+quietly missing looks exactly like land nobody has claimed.
 
 **`chord` and `deviation` are here because the file carries neither.** A GML document is
 positions, so a reader holding one cannot tell a ring which follows its curve to a tenth of a

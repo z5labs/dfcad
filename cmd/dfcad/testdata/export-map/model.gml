@@ -79,4 +79,23 @@
       </dfcad:geometry>
     </dfcad:region>
   </gml:featureMember>
+  <gml:featureMember>
+    <dfcad:region gml:id="region.4">
+      <dfcad:id>site:W-01</dfcad:id>
+      <dfcad:label>Partition off Meeting Room A</dfcad:label>
+      <dfcad:kind>Element</dfcad:kind>
+      <dfcad:type>Partition</dfcad:type>
+      <dfcad:within>site:L-01</dfcad:within>
+      <dfcad:frame>frame:building</dfcad:frame>
+      <dfcad:geometry>
+        <gml:MultiCurve gml:id="region.4.geometry" srsName="EPSG:6543" srsDimension="2">
+          <gml:curveMember>
+            <gml:LineString gml:id="region.4.curve.1">
+              <gml:posList>3502108 552007 3502108 552010 3502106 552010</gml:posList>
+            </gml:LineString>
+          </gml:curveMember>
+        </gml:MultiCurve>
+      </dfcad:geometry>
+    </dfcad:region>
+  </gml:featureMember>
 </dfcad:FeatureCollection>
