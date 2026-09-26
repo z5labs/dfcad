@@ -427,6 +427,25 @@ func (b Budget) Terms() []BudgetTerm {
 // which is what [Budget.Known] reports.
 func (b Budget) Unknown() []*Claim { return slices.Clone(b.unknown) }
 
+// Unranked returns the accumulated claims which stated no accuracy at all, in
+// the order they arrived.
+//
+// They are the claims specification section 6.5 calls unrankable, which an
+// answer still reads where nothing rankable was said — a corner nobody gave an
+// accuracy to is where the model says it is. Each is among [Budget.Unknown], and
+// taints the budget exactly as any unknown claim does; this names them apart
+// from a claim whose accuracy was written and could not be read, because the fix
+// for each is different: one wants an accuracy stated, the other one corrected.
+func (b Budget) Unranked() []*Claim {
+	var out []*Claim
+	for _, claim := range b.unknown {
+		if !claim.Rankable() {
+			out = append(out, claim)
+		}
+	}
+	return out
+}
+
 // Known reports whether every claim the budget accumulated stated an accuracy.
 //
 // A false answer is the taint: the budget still holds and reports the terms it

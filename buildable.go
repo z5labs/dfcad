@@ -322,7 +322,10 @@ func (r Region) setbackOf(t *Topology, edge *Edge, setbacks Setbacks) (Setback, 
 		return Setback{}, r.contested(edge, at, setbacks, resolution), false
 	}
 
-	claim, resolved := resolution.Claim()
+	// A setback nobody stated an accuracy for is read, as unranked, by the rule
+	// a corner's position is read by ([currentClaim]); it taints the budget of
+	// the region derived from it rather than being reported as absent.
+	claim, resolved := currentClaim(resolution)
 	if !resolved {
 		return Setback{}, r.unclaimed(edge, at, setbacks), false
 	}

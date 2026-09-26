@@ -759,6 +759,7 @@ what is known about it.
 | `budget.terms[].contributors` | array | The claims that carried the term, each once. More than one is a shared term counted once. |
 | `budget.combined` | object, optional | The terms reduced to one standard uncertainty: `magnitude`, `unit` and `coverage-factor`, which is `1` for everything the engine produces. |
 | `budget.unknown` | array, optional | The claims the answer was computed from that stated no accuracy. One of them taints the whole budget, and `combined` is then absent: an unstated accuracy is unknown rather than zero. |
+| `budget.unranked` | array, optional | The things — a vertex, a node, an edge — the answer read a claim of that stated no accuracy at all, each once. Such a claim is unrankable and is still read where nothing rankable was said ([SPEC §6.5](../SPEC.md#65-claims)): a corner nobody gave an accuracy to is where the model says it is, and this names it rather than folding it into the budget as though it carried one. Each such claim is also in `unknown`. |
 | `budget.units` | array, optional | The units the terms were written in where they disagree. Nothing converts between them, so `combined` is absent rather than reconciled. |
 
 The terms are a list rather than a figure on purpose. "±0.0098 m" is an answer nobody can

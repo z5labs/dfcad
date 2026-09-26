@@ -624,20 +624,23 @@ func measuredGeometry(on CheckSubject, tolerance, position string) (shape, []Fai
 	return shape{}, nil
 }
 
-// currentClaim is the claim a shape is compared against, and whether the model
-// states one to compare it against at all.
+// currentClaim is the claim a consumer of a value reads, and whether the model
+// states one to read at all.
 //
 // It is the claim resolution picked, and otherwise the one live claim resolution
-// could not rank. A claim which states no accuracy is unrankable and so is never
-// what [Resolution.Claim] reports, and skipping it here would leave every
-// unmeasured number in a model exempt from this check — which is the one place
-// a stale figure is most likely to be sitting. It is still what the model says
-// about the subject; what it is not is a figure which can narrow the band, and
-// the declared discrepancy is the floor which decides it instead.
+// could not rank. Specification section 6.5 says what that claim is: it can never
+// win resolution and is not given a default, and it is still the candidate when
+// nothing rankable exists. So it is read, by every consumer alike — a corner's
+// position ([Survey.Place]), the centre of an arc ([Survey.Bend]), and a figure a
+// shape is compared against here. What it is not is a figure with an accuracy:
+// a budget it enters is unknown rather than narrowed ([Budget.Unranked]), and a
+// band it is compared against is decided by the declared discrepancy instead.
+// Skipping it would leave every unmeasured number in a model exempt from the
+// answers computed over it, and report the thing it describes as missing.
 //
 // More than one candidate is left alone. Two equally current claims are a
-// conflict the register reports, and comparing one of them against the shape
-// would be picking a winner this check has no rule for.
+// conflict the register reports, and reading one of them would be picking a
+// winner there is no rule for.
 func currentClaim(resolution Resolution) (*Claim, bool) {
 	if claim, resolved := resolution.Claim(); resolved {
 		return claim, true

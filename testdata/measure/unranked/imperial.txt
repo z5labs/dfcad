@@ -1,0 +1,4 @@
+testdata/measure/unranked/model.dfc:232:3: error: expected a position for every corner of the loop geom:L-11, found none for geom:V-11, geom:V-12, geom:V-13 and geom:V-14
+232 |   geom:L-11
+    |   ^^^^^^^^^
+    = hint: a position is read in the unit of its frame and nothing is converted; this frame is in m, so a position written in ft is not read at all

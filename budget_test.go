@@ -340,6 +340,31 @@ func TestBudgetTaintsOnAnUnstatedAccuracy(t *testing.T) {
 	})
 }
 
+// TestBudgetNamesTheUnrankedClaimsApartFromTheUnreadable is its own function
+// because it is about which claims come back rather than about a figure: a claim
+// which stated no accuracy and one whose accuracy could only be read in part both
+// taint the budget, and only the first is unrankable.
+func TestBudgetNamesTheUnrankedClaimsApartFromTheUnreadable(t *testing.T) {
+	unranked := writtenClaims(unmeasured("survey:C-02"))[0]
+	unreadable := &Claim{
+		id:          "survey:C-03",
+		subject:     resolutionSubject,
+		predicate:   "width",
+		accuracy:    Accuracy{Terms: []AccuracyTerm{independent(math.NaN())}},
+		hasAccuracy: true,
+	}
+	ranked := writtenClaims(measured("survey:C-01", independent(0.004)))[0]
+
+	var budget Budget
+	budget.Add(ranked, unranked, unreadable)
+
+	assert.Equal(t, []*Claim{unranked, unreadable}, budget.Unknown(), "both taint the budget")
+	assert.Equal(t, []*Claim{unranked}, budget.Unranked(), "only the claim which stated no accuracy is unranked")
+
+	var empty Budget
+	assert.Empty(t, empty.Unranked(), "the zero budget read nothing unranked")
+}
+
 // TestBudgetTaintsOnAnAccuracyItCouldOnlyPartlyRead is its own function because
 // the claims it needs cannot be written by [writtenClaims]: the loader reports
 // each of these as a diagnostic, so a claim carrying one only reaches the

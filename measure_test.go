@@ -624,6 +624,10 @@ func TestMeasureRefusesAShapeWhichIsNotOne(t *testing.T) {
 			name:    "names the corner nobody has surveyed rather than measuring around it",
 			fixture: "unmeasurable",
 		},
+		{
+			name:    "names the corners it could not read, and not the one whose position states no accuracy",
+			fixture: "unranked",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1610,4 +1614,148 @@ func TestMeasuringALocatedNodeIsDeterministic(t *testing.T) {
 	assert.Empty(t, renderBoundaryDiagnostics(t, secondDiags))
 	assert.Equal(t, first, second)
 	assert.Equal(t, first.Report(), second.Report())
+}
+
+// TestMeasureReadsACornerWhosePositionStatesNoAccuracy is its own function
+// because the assertion is on what the answer rests on as well as on the figure:
+// a corner whose position claim states no accuracy is unrankable, which
+// specification section 6.5 says is still the answer where nothing rankable was
+// said, and the answer read from it must say it rests on a claim nobody ranked.
+func TestMeasureReadsACornerWhosePositionStatesNoAccuracy(t *testing.T) {
+	model := loadMeasuredModel(t, "unranked")
+
+	measurement, diags := model.measure(t, "site:S-01")
+	require.Empty(t, renderBoundaryDiagnostics(t, diags), "an unranked corner is read, not refused")
+
+	t.Run("measures the room from where the unranked claim puts the corner", func(t *testing.T) {
+		area, ok := measurement.Area()
+		require.True(t, ok)
+		assert.InDelta(t, 12.0, area, 1e-9)
+
+		length, ok := measurement.Length()
+		require.True(t, ok)
+		assert.InDelta(t, 14.0, length, 1e-9)
+	})
+
+	t.Run("names the corner as unranked rather than folding it into the budget", func(t *testing.T) {
+		budget := measurement.Budget()
+
+		unranked := budget.Unranked()
+		require.Len(t, unranked, 1)
+		assert.Equal(t, ID("geom:V-03"), unranked[0].Subject())
+		assert.False(t, unranked[0].Rankable())
+
+		assert.Equal(t, unranked, budget.Unknown(), "the unranked claim taints the budget")
+		assert.False(t, budget.Known())
+
+		for _, term := range budget.Terms() {
+			for _, contributor := range term.Contributors {
+				assert.NotEqual(t, ID("geom:V-03"), contributor.Subject(),
+					"a claim which stated no accuracy contributes no term")
+			}
+		}
+	})
+
+	t.Run("combines to nothing, naming the unranked claim as why", func(t *testing.T) {
+		_, err := measurement.Budget().Combined()
+
+		var unknown UnknownAccuracyError
+		require.ErrorAs(t, err, &unknown)
+		require.Len(t, unknown.Claims, 1)
+		assert.Equal(t, ID("geom:V-03"), unknown.Claims[0].Subject())
+	})
+}
+
+// TestMeasureBlamesTheUnitOnlyWhereTheUnitIsWhy is its own function because the
+// survey it measures against is not the fixture's: it reads the corners under a
+// predicate declared in feet, in a frame in metres, which is the one way a
+// position is written and still not read.
+func TestMeasureBlamesTheUnitOnlyWhereTheUnitIsWhy(t *testing.T) {
+	root := filepath.Join("testdata", "measure", "unranked")
+	model := loadMeasuredModel(t, "unranked")
+
+	claims, claimDiags := LoadClaims(root, model.registry)
+	require.Empty(t, claimDiags)
+
+	survey := Survey{Tolerance: closureTolerance, Registry: model.registry}
+	for vertex := range model.topology.Vertices() {
+		resolution, err := claims.Resolve(vertex.ID(), "imperial-position", model.registry)
+		require.NoError(t, err)
+
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	region, ok := model.nodes.Node("site:S-11")
+	require.True(t, ok)
+
+	_, diags := model.topology.MeasureRegion(region, model.boundaries, survey)
+	got := renderBoundaryDiagnostics(t, diags)
+
+	path := filepath.Join(root, "imperial.txt")
+	if *updateGolden {
+		require.NoError(t, os.WriteFile(path, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	assert.Equal(t, string(want), got)
+}
+
+func TestSurveyPlace(t *testing.T) {
+	testCases := []struct {
+		name     string
+		vertex   ID
+		placed   bool
+		evidence bool
+	}{
+		{
+			name:     "places a corner from the claim which won, with that claim as its evidence",
+			vertex:   "geom:V-01",
+			placed:   true,
+			evidence: true,
+		},
+		{
+			name:     "places a corner from its one claim where none states an accuracy, with that claim as its evidence",
+			vertex:   "geom:V-03",
+			placed:   true,
+			evidence: true,
+		},
+		{
+			name:   "places nothing for a corner whose claims the rule cannot separate",
+			vertex: "geom:V-23",
+		},
+		{
+			name:   "places nothing for a corner nothing is claimed of under the predicate",
+			vertex: "geom:V-11",
+		},
+	}
+
+	root := filepath.Join("testdata", "measure", "unranked")
+
+	registry, registryDiags := LoadRegistry(root)
+	require.Empty(t, registryDiags)
+
+	claims, claimDiags := LoadClaims(root, registry)
+	require.Empty(t, claimDiags)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			resolution, err := claims.Resolve(testCase.vertex, "position", registry)
+			require.NoError(t, err)
+
+			var survey Survey
+			survey.Place(testCase.vertex, resolution)
+
+			position, placed := survey.Positions[testCase.vertex]
+			assert.Equal(t, testCase.placed, placed)
+
+			claim, evidenced := survey.Evidence[testCase.vertex]
+			assert.Equal(t, testCase.evidence, evidenced)
+
+			if placed && evidenced {
+				assert.Equal(t, claim.Value(), position, "the position and its evidence are one claim")
+			}
+		})
+	}
 }

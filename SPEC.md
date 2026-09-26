@@ -543,6 +543,19 @@ Rules:
   in a supersession chain are each a load error naming both ends.
 - A claim with no `accuracy` loads and is **unrankable**: it can never win resolution, and it
   is not given a default. It is still returned as a candidate when nothing rankable exists.
+- **An unrankable claim standing alone is read.** Wherever a value is consumed — `resolve`
+  answering it, a geometric answer reading a corner's position or the centre of an arc, an
+  export sweeping a body through a height, a derivation applying a setback — the one live
+  claim under a predicate nothing rankable was said about is the value, exactly as a winner
+  would be. There is one rule for every predicate, whatever its shape: a position is not
+  treated as absent where a scalar would be read. What an unrankable claim never does is
+  contribute an accuracy. An answer computed from one carries an unknown budget, with no
+  combined figure, and names the thing whose claim it was — a measurement over a room one of
+  whose corners states no accuracy is still that room's area, and says that its uncertainty
+  cannot be computed and which corner is why. Several unrankable claims, and several
+  rankable ones the rule cannot separate, are ambiguity rather than an unranked answer: none
+  of them is read, and a consumer which needs one reports that the claims tie rather than
+  that nothing was claimed.
 
 ### 6.6 Value shapes
 

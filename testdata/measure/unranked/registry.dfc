@@ -1,0 +1,36 @@
+; The vocabulary the model beside this file is measured against.
+;
+; It is the unmeasurable fixture's, with one predicate added: a position written
+; in feet, which is what a corner surveyed in the wrong unit for its frame looks
+; like to a measurement asked to read it.
+(project
+  (label "Measurement fixture")
+  (globalid-namespace "https://example.org/models/measure"))
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type
+  MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+(predicate
+  imperial-position
+  (unit ft)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex, surveyed in feet."))
+(predicate
+  position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (description "The location of a vertex in its frame."))
+(tolerance
+  boundary-closure
+  (value 0.005 m)
+  (description
+    "How far a loop may fail to close, and how far out of one plane its corners may lie."))
+(frame frame:building (label "Building local grid") (unit m))
