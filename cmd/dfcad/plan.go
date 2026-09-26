@@ -406,7 +406,10 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, unloaded := loadGate(cmd, globals, stderr)
+	if unloaded {
+		return exitLoad
+	}
 
 	node, err := traversable(graph, subject)
 	if err != nil {

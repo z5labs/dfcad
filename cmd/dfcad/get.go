@@ -175,6 +175,7 @@ func (e UnknownIDError) Error() string {
 // getResult is the object get writes to stdout.
 type getResult struct {
 	envelope
+	loadState
 
 	// Entity is the thing the id named.
 	Entity getEntity `json:"entity"`
@@ -534,7 +535,7 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 
 	entity, ok := graph.Entity(id)
 	if !ok {
@@ -543,8 +544,9 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 	}
 
 	result := getResult{
-		envelope: newEnvelope(cmd.name),
-		Entity:   describe(graph, entity, *selection, *deprecated),
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+		Entity:    describe(graph, entity, *selection, *deprecated),
 	}
 
 	// The files are opened here and nowhere else in this command: everything

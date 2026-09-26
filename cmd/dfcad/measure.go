@@ -299,7 +299,10 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, unloaded := loadGate(cmd, globals, stderr)
+	if unloaded {
+		return exitLoad
+	}
 
 	// Any of the four families answers, so the lookup is the whole of the
 	// dispatch: what a measurement of an id is depends on which family holds it,

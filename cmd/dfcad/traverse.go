@@ -317,6 +317,7 @@ func article(word string) string {
 // traverseResult is the object traverse writes to stdout.
 type traverseResult struct {
 	envelope
+	loadState
 
 	// Subject is the id the walk started from.
 	Subject string `json:"subject"`
@@ -467,7 +468,7 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 
 	if err := checkFilters(graph.Registry(), *declaredType, *kind, ""); err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -479,11 +480,12 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	}
 
 	result := traverseResult{
-		envelope: newEnvelope(cmd.name),
-		Subject:  string(id),
-		Query:    asked.name,
-		Depth:    int(depth),
-		Results:  narrow(asked.walk(graph, subject, int(depth)), *kind, *declaredType),
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+		Subject:   string(id),
+		Query:     asked.name,
+		Depth:     int(depth),
+		Results:   narrow(asked.walk(graph, subject, int(depth)), *kind, *declaredType),
 	}
 
 	// Depth first and then id, so that two runs over one model diff against each

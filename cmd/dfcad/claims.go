@@ -160,6 +160,7 @@ func (e UnknownPredicateError) Error() string {
 // claimsResult is the object claims writes to stdout.
 type claimsResult struct {
 	envelope
+	loadState
 
 	// Subject is the id the claims below are written on, which is the id asked
 	// for.
@@ -173,6 +174,7 @@ type claimsResult struct {
 // conflictsResult is the object conflicts writes to stdout.
 type conflictsResult struct {
 	envelope
+	loadState
 
 	// Conflicts is one entry per pair the model states more than once, in
 	// subject and then predicate order. Empty rather than null when nothing
@@ -241,7 +243,7 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		predicate = arguments[1]
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 
 	if _, ok := graph.Entity(subject); !ok {
 		nearest, _ := graph.Nearest(subject)
@@ -252,9 +254,10 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	result := claimsResult{
-		envelope: newEnvelope(cmd.name),
-		Subject:  string(subject),
-		Claims:   audited(graph, subject, predicate),
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+		Subject:   string(subject),
+		Claims:    audited(graph, subject, predicate),
 	}
 
 	reportClaims(result, globals, stderr)
@@ -289,7 +292,7 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	// The model is loaded before the filters are checked because the registry is
 	// what says whether a type or a predicate exists, and the registry is the
 	// model.
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 	registry := graph.Registry()
 
 	if *ambiguous && *resolved {
@@ -306,7 +309,8 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	}
 
 	result := conflictsResult{
-		envelope: newEnvelope(cmd.name),
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
 
 		// Made rather than declared so that a model nobody disagrees about
 		// writes an empty list rather than a null, and a caller indexing it

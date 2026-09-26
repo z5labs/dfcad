@@ -103,9 +103,9 @@ Answering: what kinds of thing are in this model, and which meeting rooms exist.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-types` | 245 | 224 |
-| `dfcad list-instances MeetingRoom` | 183 | 182 |
-| **the whole path** | **428** | **406** |
+| `dfcad list-types` | 250 | 229 |
+| `dfcad list-instances MeetingRoom` | 188 | 187 |
+| **the whole path** | **438** | **416** |
 
 Target 500 tokens: **met**. Regression ceiling 460 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -115,12 +115,12 @@ Answering: how big is Meeting Room B on level 1, starting from nothing.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-types` | 245 | 224 |
-| `dfcad list-instances MeetingRoom` | 183 | 182 |
+| `dfcad list-types` | 250 | 229 |
+| `dfcad list-instances MeetingRoom` | 188 | 187 |
 | `dfcad resolve site:S-111 area` | 71 | 68 |
-| **the whole path** | **499** | **474** |
+| **the whole path** | **509** | **484** |
 
-Target 500 tokens: **met**. Regression ceiling 530 tokens. Claimed at 4 times cheaper than reading the model.
+Target 500 tokens: **missed**. Regression ceiling 530 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of the same question once the vocabulary is known
 
@@ -128,9 +128,9 @@ Answering: how big is Meeting Room B on level 1, for an agent which has already 
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-instances MeetingRoom` | 183 | 182 |
+| `dfcad list-instances MeetingRoom` | 188 | 187 |
 | `dfcad resolve site:S-111 area` | 71 | 68 |
-| **the whole path** | **254** | **250** |
+| **the whole path** | **259** | **255** |
 
 Target 300 tokens: **met**. Regression ceiling 280 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -140,11 +140,11 @@ Answering: how big is Meeting Room B on level 1, retrieving the thing itself on 
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-types` | 245 | 224 |
-| `dfcad list-instances MeetingRoom` | 183 | 182 |
-| `dfcad get site:S-111` | 275 | 269 |
+| `dfcad list-types` | 250 | 229 |
+| `dfcad list-instances MeetingRoom` | 188 | 187 |
+| `dfcad get site:S-111` | 280 | 274 |
 | `dfcad resolve site:S-111 area` | 71 | 68 |
-| **the whole path** | **774** | **743** |
+| **the whole path** | **789** | **758** |
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 820 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -154,10 +154,10 @@ Answering: how big is Meeting Room B on level 1 by the corners it is drawn on, s
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-types` | 245 | 224 |
-| `dfcad list-instances MeetingRoom` | 183 | 182 |
+| `dfcad list-types` | 250 | 229 |
+| `dfcad list-instances MeetingRoom` | 188 | 187 |
 | `dfcad measure site:S-111` | 496 | 475 |
-| **the whole path** | **924** | **881** |
+| **the whole path** | **934** | **891** |
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 960 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -167,8 +167,8 @@ Answering: which corners of this model anybody has surveyed a position for.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad list-geometry --predicate position --family vertex` | 2427 | 2370 |
-| **the whole path** | **2427** | **2370** |
+| `dfcad list-geometry --predicate position --family vertex` | 2432 | 2375 |
+| **the whole path** | **2432** | **2375** |
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 2500 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -192,10 +192,10 @@ from" figure differs by a token or two from the same call in the tables above.
 
 | Field | Answer | `o200k_base` without it | `cl100k_base` without it |
 |-------|--------|--------|--------|
-| the descriptions `--describe` adds | `dfcad list-types --describe` | 245, down from 336 | 224, down from 315 |
-| the classifications `--classification` adds | `dfcad list-types --classification` | 245, down from 411 | 224, down from 389 |
+| the descriptions `--describe` adds | `dfcad list-types --describe` | 250, down from 341 | 229, down from 320 |
+| the classifications `--classification` adds | `dfcad list-types --classification` | 250, down from 416 | 229, down from 394 |
 | the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 72, down from 180 | 68, down from 174 |
-| the spans in `get` | `dfcad get site:S-111` | 211, down from 277 | 206, down from 269 |
+| the spans in `get` | `dfcad get site:S-111` | 216, down from 282 | 211, down from 274 |
 | the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 72 | 49, down from 68 |
 | the error budget in `measure` | `dfcad measure site:S-111` | 164, down from 494 | 162, down from 471 |
 | the claims named under each budget term in `measure` | `dfcad measure site:S-111` | 343, down from 494 | 333, down from 471 |
@@ -211,11 +211,11 @@ from" figure differs by a token or two from the same call in the tables above.
 
 | Path | Against the whole model | Against the one file |
 |------|-------------------------|----------------------|
-| discovery | 48.4×, 51.3× | 8.6×, 9.1× |
-| a dimensional question from a cold start | 41.5×, 44.0× | 7.4×, 7.8× |
-| the same question once the vocabulary is known | 81.6×, 83.3× | 14.4×, 14.7× |
-| the same question by way of a whole retrieval | 26.8×, 28.0× | 4.7×, 5.0× |
-| the same question answered from the geometry rather than from a claim | 22.4×, 23.6× | 4.0×, 4.2× |
+| discovery | 47.3×, 50.1× | 8.4×, 8.9× |
+| a dimensional question from a cold start | 40.7×, 43.0× | 7.2×, 7.6× |
+| the same question once the vocabulary is known | 80.0×, 81.7× | 14.2×, 14.4× |
+| the same question by way of a whole retrieval | 26.3×, 27.5× | 4.7×, 4.9× |
+| the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.1× |
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
 | reading a storey as an annotated plan | 2.6×, 2.7× | 0.5×, 0.5× |
 

@@ -272,6 +272,7 @@ func (e UnexpectedArgumentsError) Error() string {
 // listTypesResult is the object list-types writes to stdout.
 type listTypesResult struct {
 	envelope
+	loadState
 
 	// Types is one entry per declared type, in name order.
 	Types []listedType `json:"types"`
@@ -334,6 +335,7 @@ type listedClassification struct {
 // listInstancesResult is the object list-instances writes to stdout.
 type listInstancesResult struct {
 	envelope
+	loadState
 
 	// Instances is one entry per instance which satisfied every filter, in id
 	// order.
@@ -374,6 +376,7 @@ type listedInstance struct {
 // listGeometryResult is the object list-geometry writes to stdout.
 type listGeometryResult struct {
 	envelope
+	loadState
 
 	// Predicate is the predicate the nodes below carry, which is the one asked
 	// for.
@@ -458,10 +461,11 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
 	}
 
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 
 	result := listTypesResult{
-		envelope: newEnvelope(cmd.name),
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
 
 		// Made rather than declared so that a model declaring nothing writes an
 		// empty list rather than a null, and a caller indexing it needs no
@@ -524,7 +528,7 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 	// model. Its diagnostics reach stderr either way, so a name which is
 	// unknown because a registry file did not parse is reported beside the
 	// reason it did not.
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 	registry := graph.Registry()
 
 	if err := checkFilters(registry, declaredType, *kind, *frame); err != nil {
@@ -533,6 +537,7 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 
 	result := listInstancesResult{
 		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
 		Instances: make([]listedInstance, 0),
 	}
 
@@ -619,7 +624,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	// model. Its diagnostics reach stderr either way, so a predicate which is
 	// unknown because a registry file did not parse is reported beside the
 	// reason it did not.
-	graph := loadModel(cmd, globals, stderr)
+	graph, loaded := loadModel(cmd, globals, stderr)
 
 	if err := checkPredicate(graph.Registry(), *predicate); err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -627,6 +632,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 
 	result := listGeometryResult{
 		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
 		Predicate: *predicate,
 
 		// Made rather than declared so that a predicate nothing carries writes an
@@ -844,13 +850,14 @@ func classificationsOf(declared dfcad.Type) []listedClassification {
 	return out
 }
 
-// loadModel reads the whole model beneath the root and renders whatever is
-// wrong with it to stderr.
+// loadModel reads the whole model beneath the root, renders whatever is wrong
+// with it to stderr, and says whether the load refused it.
 //
-// Diagnostics go to stderr on every run and in every format, because they are
-// for whoever wrote the file. The graph which comes back is usable whatever
-// they say, so a listing of a model somebody is part way through writing is
-// still a listing of what is there.
+// It is the load a discovery read makes: the listings, get, traverse, claims
+// and conflicts. Diagnostics go to stderr on every run and in every format,
+// because they are for whoever wrote the file. The graph which comes back is
+// usable whatever they say, so a listing of a model somebody is part way
+// through writing is still a listing of what is there.
 //
 // They do not change the exit code. A listing says what a model holds, and a
 // node whose containment does not resolve is still a node the model holds; the
@@ -860,9 +867,30 @@ func classificationsOf(declared dfcad.Type) []listedClassification {
 // is halfway through writing, which is the model discovery is most needed on:
 // a call that refuses to describe a tree until the tree is finished is a call
 // nobody reaches for.
-func loadModel(cmd command, globals *globals, stderr io.Writer) *dfcad.Graph {
-	graph, _ := loadGate(cmd, globals, stderr)
-	return graph
+//
+// What it does change is the answer object, which carries the [loadState] this
+// returns: a caller reading the exit code alone cannot tell a listing of a
+// model which loads from one of a model which does not, and a caller acting on
+// the listing is owed that difference in the object it acts on.
+//
+// A derivation — measure, resolve, tessellate, buildable, site, plan, route —
+// does not load through here. Its answer is a figure computed out of the
+// model, and a figure computed out of a model the load refused is an answer to
+// a question nobody asked, so it loads through [loadGate] and exits as a load
+// failure instead.
+func loadModel(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, loadState) {
+	graph, refused := loadGate(cmd, globals, stderr)
+	return graph, loadState{Refused: refused}
+}
+
+// loadState is what a discovery read's answer says about the load it was read
+// out of, embedded after the envelope of every object [loadModel] feeds.
+type loadState struct {
+	// Refused reports that the load refused the model: that at least one
+	// diagnostic on stderr is an error rather than a warning, which is what
+	// makes `dfcad check` exit 2 over the same tree. The answer beside it is
+	// still what the model holds, read through those errors.
+	Refused bool `json:"refused"`
 }
 
 // loadGate is [loadModel] with what the diagnostics said about the model kept,

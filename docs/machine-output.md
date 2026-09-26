@@ -305,6 +305,7 @@ before. It takes no arguments and one flag.
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `types` | array | One entry per declared type, in name order. Empty rather than null when the registry declares none. |
 | `types[].name` | string | The type name, which is what `list-instances` takes. |
 | `types[].kinds` | array | The kinds an instance may declare, in specification order rather than the order the declaration was written in. |
@@ -371,6 +372,7 @@ caller reading a mixed listing can tell which is which without asking about each
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `instances` | array | One entry per instance that satisfied every filter, in id order. Empty rather than null when nothing did. |
 | `instances[].id` | string | The id the model holds it under. |
 | `instances[].label` | string, optional | Its name for a person reading it. Absent when it was not written. |
@@ -462,6 +464,7 @@ A vertex and a loop carry the same shape without `start` and `end`:
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `predicate` | string | The predicate the nodes below carry, which is the one asked for. It travels with the answer because an empty list means nothing without it. |
 | `nodes` | array | One entry per geometric node carrying a live claim under that predicate, in id order. Empty rather than null when nothing does. |
 | `nodes[].id` | string | The id the model holds it under, which is what every other command takes. |
@@ -540,6 +543,7 @@ which came back and so which of the fields to expect.
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `entity` | object | The thing the id named. |
 | `entity.id` | string | The id the model holds it under, which is the id that was asked for. |
 | `entity.family` | string | One of `node`, `vertex`, `edge`, `loop`. It says which of the fields below to expect. |
@@ -819,6 +823,7 @@ takes a query, an id, and three flags.
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `subject` | string | The id the walk started from. |
 | `query` | string | The query it answered, which is what says which relation the results carry. |
 | `depth` | integer | The bound the walk was given, and `-1` where it was told to follow the relation as far as the model goes. It is what tells a caller reading a stored result whether the walk stopped where the model ran out or where the bound did. |
@@ -919,6 +924,7 @@ replaced them, so a retraction is followable forward without a second call.
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `subject` | string | The id the claims below are written on, which is the id that was asked for. |
 | `claims` | array | Every claim written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. Each entry is the claim object `get` writes, documented above. |
 
@@ -1006,6 +1012,7 @@ empty answer would read as a model nobody disagrees about.
 
 | Field | Type | Meaning |
 |-------|------|---------|
+| `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `conflicts` | array | One entry per pair the model states more than once, ordered by subject and then by predicate. Empty rather than null when nothing disagrees. |
 | `conflicts[].subject` | string | The id of the thing the competing claims are about. |
 | `conflicts[].predicate` | string | The predicate they were written under. |
@@ -3318,11 +3325,37 @@ frames preserves the plane a region lies in but not which plane that is.
 
 ### Diagnostics and the exit code of a read
 
-The listings, `get`, `traverse`, `claims` and `conflicts` exit `0` whenever they answered,
-whatever the model's diagnostics say. Those diagnostics are still rendered in full on stderr.
+Every command which reads the model renders the diagnostics its load reported, in full, on
+stderr. What an **error** among them does to the rest of the run depends on what the command
+answers, and there are two answers.
+
+**A discovery read answers through it, and says that it did.** The listings, `get`,
+`traverse`, `claims` and `conflicts` exit `0` whenever they answered, whatever the model's
+diagnostics say, and carry `"refused": true` in the object they write where the load refused
+the model — the same field, meaning the same thing, as `check`'s. Over a model which loads it
+is `false`; it is written on every run so that a caller can read it without asking first
+whether it is there.
 
 A listing says what a model holds, and a node whose containment does not resolve is still a
 node the model holds. Whether the model is *sound* is what `dfcad check` answers; answering
 it in two commands, with two definitions of sound, is how the two come to disagree. It also
 keeps discovery usable on a model somebody is halfway through writing, which is the model
-discovery is most needed on.
+discovery is most needed on. What a caller acting on the listing is owed is the difference
+between a listing of a model which loads and one of a model which does not, and an exit code
+of `0` on both cannot carry it — so the object does.
+
+**Everything else exits `2`, as `check` does.** `resolve`, `route`, `measure`, `tessellate`,
+`buildable`, `site` and `plan` are derivations: each computes an answer *out of* the model —
+the value a predicate resolves to, the file a node would be written to, an area, a region, a
+fit, a sheet — rather than reporting what the model holds. A figure computed out of a model the
+load refused is, in `check`'s words, answering a question nobody asked: a caller reading the
+exit code of `measure` could not tell it from a figure over a model which loads, and would
+carry it on. So each of them is a **load failure** — exit `2`, nothing on stdout — on any tree
+whose load reports an error, whether or not that error is anywhere near the subject it was
+asked about. The exports, `review` and every write command already were, for the same reason.
+
+The line is drawn by what the command answers and not by which error the load reported. An
+error a derivation could be shown not to depend on — a frame declared in a namespace nothing
+declares, say, which leaves the frame usable — is still an error in a model `check` refuses,
+and a derivation that answered through the errors it judged harmless would be a second
+definition of sound, which is what the paragraph above says there must not be.
