@@ -384,8 +384,8 @@ func (e *exporter) shaped(
 
 	properties := e.provenance(node, swept, drawn.Unit(), height, resolution)
 
-	base, offset, moved := e.based(node, elevation, drawn.Unit())
-	if !moved {
+	base, offset, sweepable := e.based(node, elevation, drawn.Unit())
+	if !sweepable {
 		return representation, nil, drawn
 	}
 	properties = append(properties, offset...)
@@ -538,8 +538,8 @@ func (e *exporter) thickened(
 
 	properties = append(properties, e.provenance(node, swept, unit, height, over)...)
 
-	base, offset, moved := e.based(node, elevation, unit)
-	if !moved {
+	base, offset, sweepable := e.based(node, elevation, unit)
+	if !sweepable {
 		return representation, properties
 	}
 	properties = append(properties, offset...)
