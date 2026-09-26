@@ -1617,3 +1617,410 @@ func namedSpanOf(t *testing.T, graph *Graph, id ID) Span {
 
 	return graph.Nodes().named(node)
 }
+
+// TestNoRegisteredCheckDecidesNothing covers the registry as a whole: every
+// check the engine compiles in has an implementation to run.
+//
+// A check which declares itself and implements nothing binds, lists and loads
+// exactly as one which does, and a gate over it exits 0 whatever the model says.
+// The machinery keeps that state reportable, and this is what keeps the compiled
+// registry out of it: a rule the documentation describes as deciding has to
+// decide.
+func TestNoRegisteredCheckDecidesNothing(t *testing.T) {
+	for _, declared := range Checks() {
+		t.Run(declared.Name, func(t *testing.T) {
+			assert.NotNil(t, registeredChecks.runner(declared.Name),
+				"%s is registered and has no implementation, so every rule naming it decides nothing", declared.Name)
+		})
+	}
+}
+
+// TestRequiredClaim covers what the check decides of each subject in a model
+// which loads clean — every one of these is a file the load accepts, so the
+// answer is the rule's and nobody else's.
+func TestRequiredClaim(t *testing.T) {
+	run := runCheckFixture(t, "claimed")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "passes a subject carrying a claim which is still asserted",
+			instance: "site:S-101",
+		},
+		{
+			name:     "fails a subject carrying no claim under the predicate",
+			instance: "site:S-102",
+			expected: []string{"expected a claim under width on the subject, found none"},
+		},
+		{
+			name:     "fails a subject whose only claim under the predicate is deprecated",
+			instance: "site:S-103",
+			expected: []string{
+				"expected a claim under width on the subject which is still asserted, found one, and it is deprecated",
+			},
+		},
+		{
+			name:     "passes a subject whose one claim is unranked",
+			instance: "site:S-104",
+		},
+		{
+			name:     "passes a subject whose claims are ambiguous",
+			instance: "site:S-105",
+		},
+		{
+			name:     "fails a node the rule is asserted on rather than required by its type",
+			instance: "site:C-01",
+			expected: []string{"expected a claim under width on the subject, found none"},
+		},
+		{
+			name:     "passes a vertex carrying the claim",
+			instance: "geom:V-01",
+		},
+		{
+			name:     "fails a vertex carrying none",
+			instance: "geom:V-04",
+			expected: []string{"expected a claim under position on the subject, found none"},
+		},
+		{
+			name:     "passes an edge carrying the claim",
+			instance: "geom:E-01",
+		},
+		{
+			name:     "fails an edge carrying none",
+			instance: "geom:E-02",
+			expected: []string{"expected a claim under width on the subject, found none"},
+		},
+		{
+			name:     "fails a loop carrying none",
+			instance: "geom:L-01",
+			expected: []string{"expected a claim under width on the subject, found none"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, reportedBy(run, "required-claim", testCase.instance))
+		})
+	}
+
+	t.Run("decides every rule the fixture states", func(t *testing.T) {
+		assert.Equal(t, run.Rules, run.Ran, "a rule which decided nothing would pass this gate unexamined")
+		assert.Equal(t, 6, run.Failed)
+	})
+}
+
+// TestRequiredClaimDecidesOnEveryFormItDeclares is its own function because it
+// is about the declaration rather than about any one subject: a check which says
+// it applies to a form has to decide on it, in both spellings a rule is written
+// in.
+func TestRequiredClaimDecidesOnEveryFormItDeclares(t *testing.T) {
+	rules := loadCheckFixture(t, "claimed").Rules().Select(RuleFilter{Checks: []string{"required-claim"}})
+
+	declared, ok := LookupCheck("required-claim")
+	require.True(t, ok)
+
+	decided := map[SubjectForm]bool{}
+	var invariants, assertions int
+	for _, rule := range rules {
+		require.True(t, rule.Runs(), "%s", rule)
+		decided[rule.Form] = true
+
+		if rule.Invariant() {
+			invariants++
+		} else {
+			assertions++
+		}
+	}
+
+	for _, form := range declared.Forms {
+		assert.True(t, decided[form], "the fixture decides no rule on a %s", form)
+	}
+	assert.NotZero(t, invariants, "a type's invariant is one spelling of the rule")
+	assert.NotZero(t, assertions, "an assertion on the thing is the other")
+}
+
+// TestRequiredClaimReportsTheDocumentedViolation is its own function because it
+// asserts the whole of one violation against what docs/machine-output.md shows
+// for the same rule, which is the promise the documentation makes.
+func TestRequiredClaimReportsTheDocumentedViolation(t *testing.T) {
+	run := runCheckFixture(t, "claimed")
+
+	var found []Violation
+	for _, violation := range run.Violations {
+		if violation.Instance == "site:S-102" {
+			found = append(found, violation)
+		}
+	}
+	require.Len(t, found, 1)
+
+	violation := found[0]
+	assert.Equal(t, "MeetingRoom", violation.Type)
+	assert.Equal(t, "required-claim", violation.Check)
+	assert.Equal(t, []string{"(predicate width)"}, violation.Arguments)
+	assert.Equal(t, "expected a claim under width on the subject, found none", violation.Message)
+	assert.Equal(t, "the type requires one of every instance; write the claim, or take the invariant off the type",
+		violation.Hint)
+	assert.Empty(t, violation.Related)
+}
+
+// TestRequiredClaimAdvisesOnTheRuleAsItWasWritten covers the hint, which names
+// where the rule is to be taken off: a type for an invariant, the thing for an
+// assertion.
+func TestRequiredClaimAdvisesOnTheRuleAsItWasWritten(t *testing.T) {
+	run := runCheckFixture(t, "claimed")
+
+	hints := map[ID]string{}
+	for _, violation := range run.Violations {
+		hints[violation.Instance] = violation.Hint
+	}
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected string
+	}{
+		{
+			name:     "sends an invariant's reader to the type",
+			instance: "site:S-102",
+			expected: "take the invariant off the type",
+		},
+		{
+			name:     "sends an assertion's reader to the thing it is written on",
+			instance: "geom:E-02",
+			expected: "take the assertion off it",
+		},
+		{
+			name:     "says a deprecated claim no longer counts",
+			instance: "site:S-103",
+			expected: "a deprecated claim is retracted",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Contains(t, hints[testCase.instance], testCase.expected)
+		})
+	}
+}
+
+// TestRequiredClaimPointsAtWhatWasRetracted is its own function because it is
+// about the related locations: "retracted and never replaced here" is fixed by
+// reading the claim which was retracted, and the failure has to lead there.
+func TestRequiredClaimPointsAtWhatWasRetracted(t *testing.T) {
+	graph := loadCheckFixture(t, "claimed")
+	run := graph.Rules().Run()
+
+	var related []RelatedLocation
+	for _, violation := range run.Violations {
+		if violation.Instance == "site:S-103" {
+			related = violation.Related
+		}
+	}
+	require.Len(t, related, 1)
+
+	claim, ok := graph.Claims().Claim("survey:W-0003")
+	require.True(t, ok)
+
+	assert.Equal(t, claim.Span(), related[0].Span)
+	assert.Equal(t, "deprecated here, superseded by survey:W-0001", related[0].Message)
+}
+
+// TestWithinResolvesAndZoneMembersResolve covers the two checks over references
+// the load accepts: every one of them names a node of the right kind, and some of
+// those nodes were retired.
+func TestWithinResolvesAndZoneMembersResolve(t *testing.T) {
+	run := runCheckFixture(t, "standing")
+
+	testCases := []struct {
+		name     string
+		check    string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "passes a node within a storey which is standing",
+			check:    "within-resolves",
+			instance: "site:S-101",
+		},
+		{
+			name:     "passes a node whose zones are standing",
+			check:    "zone-members-resolve",
+			instance: "site:S-101",
+		},
+		{
+			name:     "fails a standing node within a storey which was retired",
+			check:    "within-resolves",
+			instance: "site:S-102",
+			expected: []string{
+				"expected the node site:S-102 is within to be standing, found site:L-02, which was retired on 2026-06-01",
+			},
+		},
+		{
+			name:     "fails a standing node once for each of its zones which was retired",
+			check:    "zone-members-resolve",
+			instance: "site:S-102",
+			expected: []string{
+				"expected every zone site:S-102 is a member of to be standing, found site:FZ-02, which was retired on 2026-07-14",
+				"expected every zone site:S-102 is a member of to be standing, found site:FZ-03, which was retired on 2026-07-14",
+			},
+		},
+		{
+			name:     "fails a standing node within a storey nothing replaced",
+			check:    "within-resolves",
+			instance: "site:S-103",
+			expected: []string{
+				"expected the node site:S-103 is within to be standing, found site:L-03, which was retired on 2026-06-01",
+			},
+		},
+		{
+			name:     "passes a node retired along with the storey it was within",
+			check:    "within-resolves",
+			instance: "site:S-104",
+		},
+		{
+			name:     "passes a node retired along with the zone it belonged to",
+			check:    "zone-members-resolve",
+			instance: "site:S-104",
+		},
+		{
+			name:     "fails a node the rule is asserted on rather than required by its type",
+			check:    "within-resolves",
+			instance: "site:S-105",
+			expected: []string{
+				"expected the node site:S-105 is within to be standing, found site:L-02, which was retired on 2026-06-01",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, reportedBy(run, testCase.check, testCase.instance))
+		})
+	}
+
+	t.Run("decides every rule the fixture states", func(t *testing.T) {
+		assert.Equal(t, run.Rules, run.Ran)
+	})
+}
+
+// TestARetiredReferenceNamesWhatReplacedIt is its own function because it is
+// about the hint and the related location rather than the message: a reference
+// to a retired node is fixed by pointing it at the replacement, where there is
+// one, and the failure says which.
+func TestARetiredReferenceNamesWhatReplacedIt(t *testing.T) {
+	graph := loadCheckFixture(t, "standing")
+	run := graph.Rules().Run()
+
+	testCases := []struct {
+		name     string
+		check    string
+		instance ID
+		retired  ID
+		expected string
+	}{
+		{
+			name:     "names the storey which replaced the one it is within",
+			check:    "within-resolves",
+			instance: "site:S-102",
+			retired:  "site:L-02",
+			expected: "write (within site:L-01), the node which replaced it",
+		},
+		{
+			name:     "names the zone which replaced the one it belongs to",
+			check:    "zone-members-resolve",
+			instance: "site:S-102",
+			retired:  "site:FZ-02",
+			expected: "write (member-of site:FZ-01), the node which replaced it",
+		},
+		{
+			name:     "says nothing replaced it where nothing did",
+			check:    "within-resolves",
+			instance: "site:S-103",
+			retired:  "site:L-03",
+			expected: "nothing replaced it",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node, held := graph.Node(testCase.retired)
+			require.True(t, held)
+			retirement, retired := node.Retirement()
+			require.True(t, retired)
+
+			var matched []Violation
+			for _, violation := range run.Violations {
+				if violation.Check == testCase.check && violation.Instance == testCase.instance {
+					for _, related := range violation.Related {
+						if related.Span == retirement.Span() {
+							matched = append(matched, violation)
+						}
+					}
+				}
+			}
+			require.Len(t, matched, 1)
+
+			assert.Contains(t, matched[0].Hint, testCase.expected)
+		})
+	}
+}
+
+// TestEdgeEndpointsDiffer covers edges between two different vertices, which is
+// all the load asks, and whether the two stand at two places, which it does not.
+func TestEdgeEndpointsDiffer(t *testing.T) {
+	run := runCheckFixture(t, "coincident")
+
+	testCases := []struct {
+		name     string
+		instance ID
+		expected []string
+	}{
+		{
+			name:     "passes an edge whose ends stand apart",
+			instance: "geom:E-01",
+		},
+		{
+			name:     "fails an edge whose ends are one corner written twice",
+			instance: "geom:E-02",
+			expected: []string{
+				"expected the two ends of geom:E-02 to stand at different places, found geom:V-01 and geom:V-03 " +
+					"both at (0.0 0.0) m under position",
+			},
+		},
+		{
+			name:     "reads where a vertex stands now rather than where a retracted claim put it",
+			instance: "geom:E-03",
+		},
+		{
+			name:     "decides nothing of an end whose position is ambiguous",
+			instance: "geom:E-04",
+		},
+		{
+			name:     "compares a coordinate only with one under the same predicate",
+			instance: "geom:E-05",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, reportedBy(run, "edge-endpoints-differ", testCase.instance))
+		})
+	}
+
+	t.Run("points at the claim which placed each end", func(t *testing.T) {
+		var related []RelatedLocation
+		for _, violation := range run.Violations {
+			if violation.Instance == "geom:E-02" {
+				related = violation.Related
+			}
+		}
+		require.Len(t, related, 2)
+
+		assert.Equal(t, "the edge starts at geom:V-01, placed here", related[0].Message)
+		assert.Equal(t, "the edge ends at geom:V-03, placed here", related[1].Message)
+		assert.NotEqual(t, related[0].Span, related[1].Span)
+	})
+}

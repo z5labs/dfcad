@@ -1,0 +1,38 @@
+; The vocabulary the model beside it is checked against.
+;
+; One type requires a width of every instance and one requires nothing, so the
+; rule is written in both of the spellings a rule has: an invariant of a type,
+; and an assertion on the thing itself.
+(project
+  (label "Required claim fixture")
+  (globalid-namespace "https://example.org/models/claimed"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 2)
+  (description "The location of a vertex in its frame."))
+
+(predicate width
+  (unit m)
+  (shape scalar)
+  (description "How wide a thing is."))
+
+(frame frame:building (label "Building local grid") (unit m))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry absent)
+  (description "An enclosed room used for meetings.")
+  (invariant required-claim (predicate width)))
+
+(type Corridor
+  (kind Space)
+  (geometry absent)
+  (description "A circulation space between rooms."))

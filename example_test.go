@@ -491,11 +491,10 @@ func ExampleRules_Run() {
 	run := rules.Run()
 
 	// Every check the engine registers declares what it constrains and takes,
-	// and some of them have an implementation to run. So a run reports three
-	// answers rather than two: the room references no loop, so the check which
-	// reads its outline finds nothing to disagree with and passes, while the two
-	// rules naming a check nothing implements decide nothing — which is not the
-	// same answer as a rule which held.
+	// and every one of them has an implementation to run. The room references
+	// no loop, so the check which reads its outline finds nothing to disagree
+	// with and passes; the first room carries its width and the second does
+	// not, so the type's requirement holds of one and fails the other.
 	fmt.Println("rules:", run.Rules)
 	fmt.Println("passed:", run.Passed)
 	fmt.Println("undecided:", run.Rules-run.Ran)
@@ -506,9 +505,9 @@ func ExampleRules_Run() {
 	// site:S-102 required-claim (predicate width)
 	// site:S-101 boundary-loops-close (tolerance boundary-closure)
 	// rules: 3
-	// passed: 1
-	// undecided: 2
-	// failed: 0
+	// passed: 2
+	// undecided: 0
+	// failed: 1
 }
 
 func ExampleRules_Run_structuralInvariants() {
@@ -596,8 +595,8 @@ func ExampleGraph_Assertions() {
 	// within-resolves
 	// required-claim (predicate width)
 	// boundary-loops-close (tolerance boundary-closure)
-	// within-resolves: The node the subject is written within is one the model holds, and the containment hierarchy permits it as a parent of the subject's kind.
-	// required-claim: The subject carries a claim under the named predicate which is still asserted, so the predicate has a resolvable value on it.
+	// within-resolves: The node the subject is written within is one the model holds, the containment hierarchy permits it as a parent of the subject's kind, and it has not been retired while the subject still stands.
+	// required-claim: The subject carries at least one claim under the named predicate which is still asserted — one not deprecated. Whether several such claims resolve to one of them, and whether any can be ranked, is not what this decides: an unranked or an ambiguous value is still a value somebody claimed, and the conflict register is what reports it.
 	// boundary-loops-close: Every loop bounding the subject closes: traversing its edges returns to the vertex it started from, within the named tolerance. A loop every node bounded by it draws as a line is an open run and is not asked to close.
 }
 

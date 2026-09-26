@@ -137,7 +137,7 @@ func (r Rule) Judge() ([]AppliedBand, []Violation) {
 		return nil, nil
 	}
 
-	subject := CheckSubject{graph: r.graph, subject: r.Subject, arguments: r.Arguments}
+	subject := CheckSubject{graph: r.graph, subject: r.Subject, arguments: r.Arguments, declaredBy: r.Type}
 
 	judge, judges := r.runner.(Judge)
 	if !judges {

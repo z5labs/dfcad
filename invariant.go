@@ -199,6 +199,12 @@ type CheckSubject struct {
 	graph     *Graph
 	subject   Entity
 	arguments []Argument
+
+	// declaredBy is the type which declared the rule being run, and is empty
+	// for an assertion written on the subject itself. A check reads it only to
+	// word its advice: "take the invariant off the type" is no remedy for a rule
+	// written on the thing.
+	declaredBy string
 }
 
 // Graph returns the model the subject belongs to.

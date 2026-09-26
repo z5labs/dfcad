@@ -1,0 +1,32 @@
+; The vocabulary the model beside it is checked against.
+;
+; Rooms require the storey they are within and the zones they belong to to be
+; standing, as invariants of their type. The storey states nothing, and the rule
+; is written on it as an assertion instead where the fixture wants one.
+(project
+  (label "Standing reference fixture")
+  (globalid-namespace "https://example.org/models/standing"))
+
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type Level
+  (kind Storey)
+  (geometry absent)
+  (description "One storey of a building."))
+
+(type FireZone
+  (kind Zone)
+  (geometry absent)
+  (description "A fire compartment."))
+
+(type Room
+  (kind Space)
+  (geometry absent)
+  (description "A room, which stands on a storey that is standing.")
+  (invariant within-resolves)
+  (invariant zone-members-resolve))
+
+(type PlantRoom
+  (kind Space)
+  (geometry absent)
+  (description "A room holding plant, which states no rule of its own."))

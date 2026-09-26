@@ -1,0 +1,23 @@
+; The vocabulary the model beside it is checked against.
+(project
+  (label "Coincident corner fixture")
+  (globalid-namespace "https://example.org/models/coincident"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 2)
+  (description "The location of a vertex in its frame."))
+
+(predicate label-anchor
+  (unit m)
+  (shape coordinate)
+  (dimension 2)
+  (description "Where a vertex's tag is drawn on a sheet, which is not where it stands."))
+
+(frame frame:building (label "Building local grid") (unit m))

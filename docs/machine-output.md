@@ -1593,7 +1593,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
   "version": 2,
   "command": "check",
   "refused": false,
-  "summary": {"checks": 7, "runnable": 6, "ran": 6, "passed": 4, "failed": 2, "widened": 1},
+  "summary": {"checks": 7, "runnable": 7, "ran": 7, "passed": 5, "failed": 2, "widened": 1},
   "violations": [
     {
       "instance": "site:S-102",
@@ -1710,6 +1710,14 @@ A check that declares itself and has no implementation is bound, listed and coun
 from the ones that ran. "This rule holds" and "nothing has been written to decide whether it
 holds" are different answers, and a summary that folded the second into the first would report
 a model sound because nothing looked at it.
+
+**Every check this engine registers has an implementation**, and a test over the registry
+keeps it that way — a check the documentation describes as deciding, shipped deciding nothing,
+is a gate that exits `0` over a model breaking it. So of the two reasons, only the second is
+one a listing from this engine shows, and only over a model the load refused: over a model
+that loaded, `runnable` equals `checks`. The field and the first reason stay in the contract
+because they are how a registry which ever broke that rule would say so, rather than passing
+quietly.
 
 **`bands` is what makes a passing run falsifiable.** Some checks treat the tolerance they are
 declared with as a floor rather than as the whole test: two figures that differ by less than

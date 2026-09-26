@@ -10,6 +10,8 @@ import (
 	"iter"
 	"math"
 	"slices"
+	"strings"
+	"time"
 )
 
 // This file is the check set: what the engine's closed registry holds, what
@@ -2635,16 +2637,145 @@ func (staysClearOfZone) Run(subject CheckSubject) []Failure {
 }
 
 // edgeEndpointsDiffer is the check that an edge has an extent.
+//
+// The load already refuses an edge whose two ends name one vertex (specification
+// section 6.3), so an edge which reaches a run names two different ids. What the
+// load cannot see is whether those two ids stand at two different places: a
+// position is a claim, resolved at run and never at load, and two vertices at
+// one point are the corner written twice — the copied vertex a hand edit leaves
+// behind, which draws an edge with no length and a loop through it with no
+// direction. That is what this decides and the load does not.
 type edgeEndpointsDiffer struct{}
 
 // Declare implements [Check].
 func (edgeEndpointsDiffer) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "edge-endpoints-differ",
-		Description: "The two endpoints an edge names are different vertices, so the edge has an extent and a " +
-			"loop through it has a direction.",
+		Description: "The two endpoints an edge names stand at different places: no coordinate either of them " +
+			"currently holds under a predicate is exactly the one the other holds under it, so the edge has an " +
+			"extent and a loop through it has a direction.",
 		Forms: []SubjectForm{SubjectEdge},
 	}
+}
+
+// Run implements [Runner].
+//
+// It names no predicate. Which predicate carries a position is the consuming
+// repository's ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)),
+// and an edge's two ends are in one frame — the load refuses anything else — so
+// every coordinate-shaped predicate both ends currently hold a value under is a
+// reading of where they stand, whatever it is called.
+//
+// The comparison is exact, and deliberately. Two corners a millimetre apart may
+// be two corners, and how near is near enough is a tolerance, which is registry
+// data and is never written into a check
+// ([0012](docs/decisions/0012-tolerances-are-registry-data.md)). Two which are
+// bit for bit the same point are one corner written twice under two ids, and
+// that needs no tolerance to say.
+//
+// A value is the one a predicate currently resolves to — the winner, or the one
+// live claim nothing rankable was said about. A pair still ambiguous under a
+// predicate has no one place to compare, and the conflict register is what
+// reports it.
+func (edgeEndpointsDiffer) Run(subject CheckSubject) []Failure {
+	edge, ok := subject.Subject().(*Edge)
+	if !ok {
+		return nil
+	}
+
+	graph := subject.Graph()
+	start, end := edge.Vertices()
+	if start == "" || end == "" || start == end {
+		return nil
+	}
+
+	claims := graph.Claims()
+
+	seen := make(map[string]bool)
+	for claim := range claims.Of(start) {
+		predicate := claim.Predicate()
+		if seen[predicate] {
+			continue
+		}
+		seen[predicate] = true
+
+		from, ok := currentCoordinate(claims, start, predicate)
+		if !ok {
+			continue
+		}
+		to, ok := currentCoordinate(claims, end, predicate)
+		if !ok {
+			continue
+		}
+
+		if from.value.Unit() != to.value.Unit() {
+			continue
+		}
+		if !slices.Equal(from.components, to.components) {
+			continue
+		}
+
+		return []Failure{{
+			Message: fmt.Sprintf(
+				"expected the two ends of %s to stand at different places, found %s and %s both at %s under %s",
+				edge.ID(), start, end, coordinateText(from.components, from.value.Unit()), predicate,
+			),
+			Hint: "two vertices at one point are one corner written twice, and an edge between them has no length; " +
+				"have the edge end at the vertex already standing there, or correct the claim which put the other " +
+				"one on top of it",
+			Related: []RelatedLocation{
+				{Span: from.claim.Span(), Message: fmt.Sprintf("the edge starts at %s, placed here", start)},
+				{Span: to.claim.Span(), Message: fmt.Sprintf("the edge ends at %s, placed here", end)},
+			},
+		}}
+	}
+
+	return nil
+}
+
+// placed is the coordinate one subject currently holds under one predicate, and
+// the claim it was read from.
+type placed struct {
+	claim      *Claim
+	value      Value
+	components []float64
+}
+
+// currentCoordinate is the coordinate subject currently resolves to under
+// predicate, and whether there is one.
+//
+// Current is the claim resolution picked, or the one live claim nothing
+// rankable was said about, which is still what the model says ([ReasonUnranked]).
+// Several claims nothing separates have no one current value, and nothing
+// deprecated is ever current.
+func currentCoordinate(claims *Claims, subject ID, predicate string) (placed, bool) {
+	claim, ok := currentClaim(claims.resolve(subject, predicate))
+	if !ok {
+		return placed{}, false
+	}
+
+	value := claim.Value()
+	components, ok := value.Coordinate()
+	if !ok {
+		return placed{}, false
+	}
+
+	return placed{claim: claim, value: value, components: components}, true
+}
+
+// coordinateText writes a coordinate as a claim writes it, so a failure quotes
+// the point in the spelling the author would search the file for.
+func coordinateText(components []float64, unit Unit) string {
+	written := make([]string, 0, len(components))
+	for _, component := range components {
+		written = append(written, decimal(component))
+	}
+
+	text := "(" + strings.Join(written, " ") + ")"
+	if unit != "" {
+		text += " " + string(unit)
+	}
+	return text
 }
 
 // requiredClaim is the check that a subject carries a claim under a predicate.
@@ -2654,8 +2785,10 @@ type requiredClaim struct{}
 func (requiredClaim) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "required-claim",
-		Description: "The subject carries a claim under the named predicate which is still asserted, so the " +
-			"predicate has a resolvable value on it.",
+		Description: "The subject carries at least one claim under the named predicate which is still asserted — " +
+			"one not deprecated. Whether several such claims resolve to one of them, and whether any can be " +
+			"ranked, is not what this decides: an unranked or an ambiguous value is still a value somebody " +
+			"claimed, and the conflict register is what reports it.",
 		Parameters: []CheckParameter{
 			{
 				Name:        predicateParameter,
@@ -2668,31 +2801,199 @@ func (requiredClaim) Declare() CheckDeclaration {
 	}
 }
 
+// Run implements [Runner].
+//
+// A deprecated claim does not count. It is retracted rather than out-ranked, and
+// resolution never sees it ([0007](docs/decisions/0007-rank-is-closed.md)), so a
+// subject whose only claims under the predicate are deprecated has nothing said
+// about it under that predicate any longer. It fails with those claims pointed
+// at, because "the claim was retracted and never replaced" and "nobody ever
+// wrote one" are fixed differently.
+//
+// Everything past that is resolution's question and not this check's. One claim
+// nothing rankable was said about is still what the model says, and two nothing
+// separates are two things somebody measured: both are a claim under the
+// predicate, which is what the rule requires, and whether they settle on one
+// value is reported where ambiguity is reported rather than a second time here.
+func (requiredClaim) Run(subject CheckSubject) []Failure {
+	predicate, ok := symbolOf(subject, predicateParameter)
+	if !ok {
+		return nil
+	}
+
+	var retracted []*Claim
+	for claim := range subject.Graph().Claims().Under(subject.Subject().ID(), predicate) {
+		if claim.Rank() != RankDeprecated {
+			return nil
+		}
+		retracted = append(retracted, claim)
+	}
+
+	remedy := "the assertion requires one of this subject; write the claim, or take the assertion off it"
+	if subject.declaredBy != "" {
+		remedy = "the type requires one of every instance; write the claim, or take the invariant off the type"
+	}
+
+	if len(retracted) == 0 {
+		return []Failure{{
+			Message: fmt.Sprintf("expected a claim under %s on the subject, found none", predicate),
+			Hint:    remedy,
+		}}
+	}
+
+	related := make([]RelatedLocation, 0, len(retracted))
+	for _, claim := range retracted {
+		message := "deprecated here"
+		if replacement, ok := claim.SupersededBy(); ok {
+			message = fmt.Sprintf("deprecated here, superseded by %s", replacement)
+		}
+		related = append(related, RelatedLocation{Span: claim.Span(), Message: message})
+	}
+
+	found := "one, and it is deprecated"
+	if len(retracted) > 1 {
+		found = fmt.Sprintf("%d, and every one of them is deprecated", len(retracted))
+	}
+
+	return []Failure{{
+		Message: fmt.Sprintf(
+			"expected a claim under %s on the subject which is still asserted, found %s", predicate, found,
+		),
+		Hint:    "a deprecated claim is retracted and says nothing any longer; " + remedy,
+		Related: related,
+	}}
+}
+
 // withinResolves is the check that a node's containment is a parent the
-// hierarchy permits.
+// hierarchy permits, and one which is still standing.
+//
+// The first half is the load's: a `within` naming nothing, naming the node
+// itself or naming a kind the hierarchy does not permit does not load
+// (specification section 6.1), so every model a run sees already satisfies it.
+// What the load accepts is a parent which was retired. Retiring keeps the id in
+// the graph ([0002](docs/decisions/0002-immutable-id-mutable-label.md)), so the
+// reference still resolves — to a node which says it stopped existing. The write
+// path refuses to leave a live node inside one ([Tx.Retire] redirects or refuses
+// every reference), and a model written by hand has nothing to refuse it but
+// this. That is what this decides and the load does not.
 type withinResolves struct{}
 
 // Declare implements [Check].
 func (withinResolves) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "within-resolves",
-		Description: "The node the subject is written within is one the model holds, and the containment " +
-			"hierarchy permits it as a parent of the subject's kind.",
+		Description: "The node the subject is written within is one the model holds, the containment hierarchy " +
+			"permits it as a parent of the subject's kind, and it has not been retired while the subject still " +
+			"stands.",
 		Forms: []SubjectForm{SubjectNode},
 	}
 }
 
-// zoneMembersResolve is the check that a node's zone memberships name zones.
+// Run implements [Runner].
+//
+// A retired subject is satisfied. Its containment is the history of where it
+// stood, and a room retired along with the storey it was in is the record
+// written as it happened rather than a reference left dangling.
+func (withinResolves) Run(subject CheckSubject) []Failure {
+	node := subject.Node()
+	if node == nil || node.Retired() {
+		return nil
+	}
+
+	within, ok := node.Within()
+	if !ok {
+		return nil
+	}
+
+	graph := subject.Graph()
+	parent, held := graph.Nodes().Node(within)
+	if !held {
+		return nil
+	}
+
+	retirement, retired := parent.Retirement()
+	if !retired {
+		return nil
+	}
+
+	return []Failure{{
+		Message: fmt.Sprintf(
+			"expected the node %s is within to be standing, found %s, which was retired on %s",
+			nodeName(node), within, retirement.Date().Format(time.DateOnly),
+		),
+		Hint:    standingHint(retirement, "within"),
+		Related: []RelatedLocation{{Span: retirement.Span(), Message: "the parent is retired here"}},
+	}}
+}
+
+// zoneMembersResolve is the check that a node's zone memberships name zones
+// which are still standing.
+//
+// As with [withinResolves], the load already refuses a membership naming
+// nothing or naming anything but a Zone (specification section 6.1). What it
+// accepts is a zone which was retired, and that is what this decides.
 type zoneMembersResolve struct{}
 
 // Declare implements [Check].
 func (zoneMembersResolve) Declare() CheckDeclaration {
 	return CheckDeclaration{
 		Name: "zone-members-resolve",
-		Description: "Every zone the subject is a member of is a node the model holds, and each of them is of " +
-			"kind Zone.",
+		Description: "Every zone the subject is a member of is a node the model holds, each of them is of kind " +
+			"Zone, and none of them has been retired while the subject still stands.",
 		Forms: []SubjectForm{SubjectNode},
 	}
+}
+
+// Run implements [Runner].
+//
+// One failure per retired zone, in the order the memberships were written,
+// because each is a line of the model to change. A retired subject is satisfied
+// for the reason it is in [withinResolves.Run].
+func (zoneMembersResolve) Run(subject CheckSubject) []Failure {
+	node := subject.Node()
+	if node == nil || node.Retired() {
+		return nil
+	}
+
+	graph := subject.Graph()
+
+	var out []Failure
+	for _, id := range node.MemberOf() {
+		zone, held := graph.Nodes().Node(id)
+		if !held {
+			continue
+		}
+
+		retirement, retired := zone.Retirement()
+		if !retired {
+			continue
+		}
+
+		out = append(out, Failure{
+			Message: fmt.Sprintf(
+				"expected every zone %s is a member of to be standing, found %s, which was retired on %s",
+				nodeName(node), id, retirement.Date().Format(time.DateOnly),
+			),
+			Hint:    standingHint(retirement, "member-of"),
+			Related: []RelatedLocation{{Span: retirement.Span(), Message: "the zone is retired here"}},
+		})
+	}
+
+	return out
+}
+
+// standingHint says what to do about a reference to a retired node, naming the
+// node which replaced it where one did.
+func standingHint(retirement Retirement, tag string) string {
+	if replacement, ok := retirement.SupersededBy(); ok {
+		return fmt.Sprintf(
+			"a retired node stopped existing, and a node still standing cannot rest on it; write (%s %s), the "+
+				"node which replaced it, or retire this one too",
+			tag, replacement,
+		)
+	}
+	return "a retired node stopped existing and nothing replaced it; name a node which is standing, or retire " +
+		"this one too"
 }
 
 // contained is one node written within another, together with the shape it
