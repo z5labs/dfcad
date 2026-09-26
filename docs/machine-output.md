@@ -2911,15 +2911,30 @@ because the joint where two segments meet is a detail the model does not state a
 command's to invent. A node drawn as a line with no thickness claimed carries no shape at all:
 a centreline of no width is not a solid, and IFC has nowhere to put one.
 
+**`--offset <predicate>` says where a body starts, and has no default either.** A body is
+swept from the level its boundary's corners lie at. Where `--offset` names a predicate and a
+node's offset resolves under it, the `IfcExtrudedAreaSolid` is positioned at that level plus
+the offset instead — a window's sill above the floor it is set in, a garage slab stepped down
+below the floor whose walls it shares. The offset is signed, so a base below the boundary's
+level is as ordinary as one above it, and an offset of nought is the answer a run naming none
+gives. It moves the sweep and nothing else: a node drawn as an area and one drawn as a line
+are moved alike whatever their kind, the `FootPrint` stays the plan the model states, and a
+storey's frame-chain elevation composes with it exactly as it does with an unmoved body. That
+is what lets a window stay a run between two jambs of its wall's centreline — the corners the
+wall shares — rather than a second copy of them authored at the sill's height, which nothing
+relates to the first. The offset is read only where a body is swept, so a run naming
+`--offset` without `--height` is a usage error. An offset which is not a distance, or not in
+the unit of its boundary, is refused naming the claim.
+
 **Each claim behind a body travels into the file beside it**, as an `IfcPropertySet` named
-`dfcad_HeightProvenance` or `dfcad_ThicknessProvenance` attached through
+`dfcad_HeightProvenance`, `dfcad_ThicknessProvenance` or `dfcad_OffsetProvenance` attached through
 `IfcRelDefinesByProperties`. Each carries the predicate, the figure and its unit, and whatever
 the claim states: its source, its method, its accuracy, its date, its id, and which step of
 the resolution rule chose it. That last is how a surveyed height is told from an assumed one
 without holding the model — a claim nothing rankable was said about reads as `unranked`, and
-is still used, because it is what the model says. They are two sets rather than one because
-they are two measurements: a wall's height may be surveyed and its thickness taken off a
-drawing.
+is still used, because it is what the model says. They are separate sets rather than one
+because they are separate measurements: a wall's height may be surveyed, its thickness taken
+off a drawing, and a window's sill read off an elevation.
 
 **A body claimed of something no entity here can carry one on is refused, naming the claim.**
 The proxy fallback above is the answer to a classification this writer has no attribute list

@@ -1258,3 +1258,572 @@ func TestRunExportDrawsABodyOnADoor(t *testing.T) {
 		require.Fail(t, "the file holds a door")
 	})
 }
+
+// offsetRegistry is the vocabulary of the smallest model a body's offset shows
+// on: a wall drawn as a run through two jambs, a window drawn as the run between
+// them, a room whose floor steps down from the level it is drawn at, and a slab
+// stepped down with it.
+//
+// It is the reproduction the story was filed with, in US survey feet, with the
+// room and the slab added so that an area and a line are both moved, and so
+// that an offset below the boundary's level is exercised beside one above it.
+const offsetRegistry = `(project
+  (label "Body offset repro")
+  (description "A window set in a wall, with a claim that puts its bottom above the floor.")
+  (globalid-namespace "https://example.org/models/sill-repro"))
+
+(namespace claim (description "Claim ids issued on this project."))
+(namespace frame (description "Coordinate frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace method (description "How a value was obtained."))
+(namespace site (description "Semantic nodes."))
+
+(frame frame:plan (label "Plan grid") (unit usft))
+
+(tolerance corner (value 0.01 usft) (description "How close two corners are one corner."))
+
+(tolerance facet (value 0.05 usft) (description "How far a chord may fall from its curve."))
+
+(predicate position (unit usft) (shape coordinate) (dimension 3) (description "Where a corner is."))
+
+(predicate height (unit usft) (shape scalar) (description "How tall a thing is, from its base."))
+
+(predicate thickness (unit usft) (shape scalar) (description "How thick a run is."))
+
+(predicate sill (unit usft) (shape scalar) (description "How far a thing's base is above its floor."))
+
+(type House (kind Building) (geometry absent) (description "A dwelling."))
+
+(type Level (kind Storey) (geometry absent) (description "One floor."))
+
+(type Room (kind Space) (geometry area) (description "A room.")
+  (classification "IFC4" "IfcSpace"))
+
+(type Slab (kind Element) (geometry area) (description "A floor slab.")
+  (classification "IFC4" "IfcSlab"))
+
+(type Wall (kind Element) (geometry line) (description "A wall drawn as its centreline.")
+  (classification "IFC4" "IfcWall"))
+
+(type Window (kind Element) (geometry line) (description "A window drawn along its wall's run.")
+  (classification "IFC4" "IfcWindow"))
+`
+
+// offsetGeometry is the wall's run through the two jambs the window shares with
+// it, and the outline of a room behind the wall.
+//
+// Every corner is at nought. That is the point of the fixture: the window's
+// jambs are corners of the wall's run and are written once, and nothing in the
+// coordinates says the window stands anywhere but on the floor.
+const offsetGeometry = `
+(vertex geom:A (frame frame:plan) (position (value (0.0 0.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+(vertex geom:J1 (frame frame:plan) (position (value (8.0 0.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+(vertex geom:J2 (frame frame:plan) (position (value (11.0 0.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+(vertex geom:B (frame frame:plan) (position (value (20.0 0.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+
+(edge geom:A-J1 (frame frame:plan) (vertices geom:A geom:J1))
+(edge geom:J1-J2 (frame frame:plan) (vertices geom:J1 geom:J2))
+(edge geom:J2-B (frame frame:plan) (vertices geom:J2 geom:B))
+
+(loop geom:WALL (frame frame:plan) (edges geom:A-J1 geom:J1-J2 geom:J2-B))
+(loop geom:WINDOW (frame frame:plan) (edges geom:J1-J2))
+
+(vertex geom:R1 (frame frame:plan) (position (value (0.0 1.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+(vertex geom:R2 (frame frame:plan) (position (value (20.0 1.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+(vertex geom:R3 (frame frame:plan) (position (value (20.0 10.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+(vertex geom:R4 (frame frame:plan) (position (value (0.0 10.0 0.0) usft) (source "Plan") (method method:take-off) (accuracy (independent 0.01 usft)) (date "2026-09-25")))
+
+(edge geom:R1-R2 (frame frame:plan) (vertices geom:R1 geom:R2))
+(edge geom:R2-R3 (frame frame:plan) (vertices geom:R2 geom:R3))
+(edge geom:R3-R4 (frame frame:plan) (vertices geom:R3 geom:R4))
+(edge geom:R4-R1 (frame frame:plan) (vertices geom:R4 geom:R1))
+
+(loop geom:ROOM (frame frame:plan) (edges geom:R1-R2 geom:R2-R3 geom:R3-R4 geom:R4-R1))
+`
+
+// offsetEntities is the storey the wall, the window, the room and the slab
+// stand in.
+//
+// The wall claims no offset and starts where its run lies. The window claims a
+// sill above it, the room a floor below it, and the slab a base further below
+// again — so one run of the export moves bodies up, moves them down and leaves
+// one where it was.
+const offsetEntities = `(node site:B (label "House") (kind Building) (type House))
+
+(node site:L (label "Main floor") (kind Storey) (type Level) (within site:B))
+
+(node site:W (label "North wall") (kind Element) (type Wall) (geometry line) (within site:L)
+  (boundary geom:WALL)
+  (height (value 9.0 usft) (source "Section") (method method:take-off) (date "2026-09-25"))
+  (thickness (value 0.5 usft) (source "Section") (method method:take-off) (date "2026-09-25")))
+
+(node site:N (label "North window") (kind Element) (type Window) (geometry line) (within site:L)
+  (boundary geom:WINDOW)
+  (height (value 3.0 usft) (source "Window schedule") (method method:take-off) (date "2026-09-25"))
+  (thickness (value 0.5 usft) (source "Section") (method method:take-off) (date "2026-09-25"))
+  (sill (value 4.0 usft) (source "Elevation") (method method:take-off) (date "2026-09-25")))
+
+(node site:R (label "Sunken den") (kind Space) (type Room) (geometry area) (within site:L)
+  (boundary geom:ROOM)
+  (height (value 9.0 usft) (source "Section") (method method:take-off) (date "2026-09-25"))
+  (sill
+    (id claim:SILL-R)
+    (value -0.667 usft)
+    (source "Section S-3")
+    (method method:level)
+    (accuracy (independent 0.01 usft))
+    (date "2026-09-25")))
+
+(node site:S (label "Den slab") (kind Element) (type Slab) (geometry area) (within site:L)
+  (boundary geom:ROOM)
+  (height (value 0.5 usft) (source "Section") (method method:take-off) (date "2026-09-25"))
+  (sill (value -1.167 usft) (source "Section S-3") (method method:take-off) (date "2026-09-25")))
+`
+
+// offsetModel is the fixture tree the offset export is run against.
+func offsetModel() map[string]string {
+	return map[string]string{
+		"registry.dfc":      offsetRegistry,
+		"geometry/plan.dfc": offsetGeometry,
+		"entities/site.dfc": offsetEntities,
+	}
+}
+
+// offsetFlags is the vocabulary the fixture above is read under, with the
+// predicate a body's offset is claimed under named as the story's consumer
+// names it.
+func offsetFlags() []string {
+	return []string{
+		"--position", "position", "--tolerance", "corner", "--chord", "facet",
+		"--height", "height", "--thickness", "thickness", "--offset", "sill",
+	}
+}
+
+// exportOffset runs export over a fixture under the vocabulary given and
+// returns the artefact it wrote.
+func exportOffset(t *testing.T, files map[string]string, args ...string) string {
+	t.Helper()
+
+	result, _, stderr := exporting(t, exitSuccess, files, args...)
+	require.True(t, result.Derived, stderr)
+
+	return artefact(t, result)
+}
+
+func TestRunExportOffsetsABodyByTheClaimMadeOfIt(t *testing.T) {
+	got := exportOffset(t, offsetModel(), offsetFlags()...)
+
+	assert.Equal(t, offsetGolden(t, got), got,
+		"the offset artefact is stale; regenerate it with: go test ./cmd/dfcad -update")
+}
+
+// offsetGolden is the recorded offset artefact, rewritten from got under
+// -update.
+func offsetGolden(t *testing.T, got string) string {
+	t.Helper()
+
+	const path = "testdata/export/offsets.ifc"
+
+	if *updateGolden {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	return string(want)
+}
+
+// withStoreyElevation is the offset fixture with its storey written at an
+// elevation: the plan grid every corner is drawn on is measured the given
+// height above a root frame, and the storey declares it.
+func withStoreyElevation(t *testing.T, lift string) map[string]string {
+	t.Helper()
+
+	files := offsetModel()
+
+	registry := strings.Replace(files["registry.dfc"],
+		`(frame frame:plan (label "Plan grid") (unit usft))`,
+		`(predicate frame-transform (shape transform) (description "The rigid transform from a frame to its parent."))
+
+(frame frame:site (label "Site datum") (unit usft))
+
+(frame frame:plan
+  (label "Plan grid")
+  (unit usft)
+  (parent frame:site)
+  (transform claim:T-PLAN)
+  (frame-transform
+    (id claim:T-PLAN)
+    (value
+      (transform
+        (translation 0.0 0.0 `+lift+`)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record")
+    (method method:level)
+    (accuracy (independent 0.01 usft))
+    (date "2026-09-25")))`, 1)
+	require.NotEqual(t, files["registry.dfc"], registry, "the fixture declares the plan grid")
+	files["registry.dfc"] = registry
+
+	entities := strings.Replace(files["entities/site.dfc"],
+		`(type Level) (within site:B)`, `(type Level) (frame frame:plan) (within site:B)`, 1)
+	require.NotEqual(t, files["entities/site.dfc"], entities, "the fixture declares the storey")
+	files["entities/site.dfc"] = entities
+
+	return files
+}
+
+func TestRunExportStartsABodyAtItsBoundarysLevelPlusItsOffset(t *testing.T) {
+	testCases := []struct {
+		name     string
+		files    func(t *testing.T) map[string]string
+		subject  string
+		expected span
+	}{
+		{
+			name:     "starts a window at the sill claimed of it",
+			files:    func(*testing.T) map[string]string { return offsetModel() },
+			subject:  "site:N",
+			expected: span{low: 4, high: 7},
+		},
+		{
+			name:     "leaves the wall the window is set in where its run lies",
+			files:    func(*testing.T) map[string]string { return offsetModel() },
+			subject:  "site:W",
+			expected: span{low: 0, high: 9},
+		},
+		{
+			name:     "starts a room below its outline where the offset claimed of it is negative",
+			files:    func(*testing.T) map[string]string { return offsetModel() },
+			subject:  "site:R",
+			expected: span{low: -0.667, high: 8.333},
+		},
+		{
+			name:     "moves an element drawn as an area exactly as it moves one drawn as a line",
+			files:    func(*testing.T) map[string]string { return offsetModel() },
+			subject:  "site:S",
+			expected: span{low: -1.167, high: -0.667},
+		},
+		{
+			name:     "composes the offset with the elevation the storey's frame chain puts it at",
+			files:    func(t *testing.T) map[string]string { return withStoreyElevation(t, "2.5") },
+			subject:  "site:N",
+			expected: span{low: 6.5, high: 9.5},
+		},
+		{
+			name:     "composes a negative offset with the storey's elevation too",
+			files:    func(t *testing.T) map[string]string { return withStoreyElevation(t, "2.5") },
+			subject:  "site:R",
+			expected: span{low: 1.833, high: 10.833},
+		},
+		{
+			name: "starts a body where its boundary lies when the offset claimed is nought",
+			files: func(t *testing.T) map[string]string {
+				files := offsetModel()
+				files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"],
+					"(sill (value 4.0 usft)", "(sill (value 0.0 usft)", 1)
+				return files
+			},
+			subject:  "site:N",
+			expected: span{low: 0, high: 3},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			source := exportOffset(t, testCase.files(t), offsetFlags()...)
+
+			got := bodyOf(t, source, testCase.subject)
+
+			assert.InDelta(t, testCase.expected.low, got.low, 1e-9, "the base of the body")
+			assert.InDelta(t, testCase.expected.high, got.high, 1e-9, "the top of the body")
+		})
+	}
+}
+
+// TestRunExportSweepsEveryBodyFromItsBoundaryWhereTheRunNamesNoOffset is its
+// own function because it compares two runs rather than reading one: a run
+// naming no offset predicate reads no offset claim, so a model full of them
+// exports exactly as it did before one could be read.
+func TestRunExportSweepsEveryBodyFromItsBoundaryWhereTheRunNamesNoOffset(t *testing.T) {
+	flags := offsetFlags()
+	unmoved := exportOffset(t, offsetModel(), flags[:len(flags)-2]...)
+
+	for _, subject := range []string{"site:N", "site:W", "site:R", "site:S"} {
+		assert.Zero(t, bodyOf(t, unmoved, subject).low, "%s starts where its boundary lies", subject)
+	}
+
+	assert.NotContains(t, unmoved, "dfcad_OffsetProvenance", "and no offset is recorded, because none was read")
+}
+
+// TestRunExportLeavesTheFootprintWhereTheModelStatesIt is its own function
+// because what it compares is two drawings of one model: the offset moves the
+// sweep and nothing else, so every two dimensional point the plan is written
+// with is the same whether or not the run read it.
+func TestRunExportLeavesTheFootprintWhereTheModelStatesIt(t *testing.T) {
+	flags := offsetFlags()
+
+	moved := exportOffset(t, offsetModel(), flags...)
+	unmoved := exportOffset(t, offsetModel(), flags[:len(flags)-2]...)
+
+	plan := regexp.MustCompile(`IFCCARTESIANPOINT\(\([^,()]+,[^,()]+\)\)`)
+
+	assert.Equal(t, plan.FindAllString(unmoved, -1), plan.FindAllString(moved, -1),
+		"the plan the model states is written identically")
+	assert.Equal(t, strings.Count(unmoved, "'FootPrint','Curve2D'"), strings.Count(moved, "'FootPrint','Curve2D'"))
+}
+
+func TestRunExportRecordsTheClaimABodyWasOffsetBy(t *testing.T) {
+	source := exportOffset(t, offsetModel(), offsetFlags()...)
+
+	testCases := []struct {
+		name     string
+		expected string
+	}{
+		{
+			name:     "records the offset in a set of its own",
+			expected: "'dfcad_OffsetProvenance'",
+		},
+		{
+			name:     "names the predicate the offset was claimed under",
+			expected: "IFCPROPERTYSINGLEVALUE('Predicate',$,IFCTEXT('sill'),$)",
+		},
+		{
+			name:     "writes a sill above the floor as the figure it was claimed as",
+			expected: "IFCPROPERTYSINGLEVALUE('Offset',$,IFCTEXT('4'),$)",
+		},
+		{
+			name:     "writes a step down with its sign",
+			expected: "IFCPROPERTYSINGLEVALUE('Offset',$,IFCTEXT('-0.667'),$)",
+		},
+		{
+			name:     "writes the unit the offset is in",
+			expected: "IFCPROPERTYSINGLEVALUE('Unit',$,IFCTEXT('usft'),$)",
+		},
+		{
+			name:     "carries the source the offset was read off",
+			expected: "IFCPROPERTYSINGLEVALUE('Source',$,IFCTEXT('Elevation'),$)",
+		},
+		{
+			name:     "carries the method it was read by",
+			expected: "IFCPROPERTYSINGLEVALUE('Method',$,IFCTEXT('method:level'),$)",
+		},
+		{
+			name:     "carries the accuracy it is known to",
+			expected: "IFCPROPERTYSINGLEVALUE('Accuracy',$,IFCTEXT('independent 0.01 usft'),$)",
+		},
+		{
+			name:     "carries the date it was read",
+			expected: "IFCPROPERTYSINGLEVALUE('Date',$,IFCTEXT('2026-09-25'),$)",
+		},
+		{
+			name:     "names the claim it was resolved from",
+			expected: "IFCPROPERTYSINGLEVALUE('Claim',$,IFCTEXT('claim:SILL-R'),$)",
+		},
+		{
+			name:     "says which step of the resolution rule chose it",
+			expected: "IFCPROPERTYSINGLEVALUE('Reason',$,IFCTEXT('unranked'),$)",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Contains(t, source, testCase.expected)
+		})
+	}
+
+	t.Run("writes one offset set per body a claim moved", func(t *testing.T) {
+		assert.Equal(t, 3, strings.Count(source, "'dfcad_OffsetProvenance'"),
+			"the window, the room and the slab claim an offset, and the wall claims none")
+	})
+}
+
+func TestRunExportRefusesAnOffsetWhichIsNotADistance(t *testing.T) {
+	testCases := []struct {
+		name     string
+		edits    []edit
+		expected string
+	}{
+		{
+			name: "an offset of another shape than one number",
+			edits: []edit{
+				{"registry.dfc", "(predicate sill (unit usft) (shape scalar)",
+					"(predicate sill (unit usft) (shape coordinate) (dimension 3)"},
+				{"entities/site.dfc", "(value -0.667 usft)", "(value (0.0 0.0 -0.667) usft)"},
+				{"entities/site.dfc", "(value 4.0 usft)", "(value (0.0 0.0 4.0) usft)"},
+				{"entities/site.dfc", "(value -1.167 usft)", "(value (0.0 0.0 -1.167) usft)"},
+			},
+			expected: "found a value of another shape",
+		},
+		{
+			name: "an offset in another unit than the frame its boundary is drawn in",
+			edits: []edit{
+				{"registry.dfc", "(predicate sill (unit usft)", "(predicate sill (unit ft)"},
+				{"entities/site.dfc", "(value -0.667 usft)", "(value -0.667 ft)"},
+				{"entities/site.dfc", "(value 4.0 usft)", "(value 4.0 ft)"},
+				{"entities/site.dfc", "(value -1.167 usft)", "(value -1.167 ft)"},
+			},
+			expected: "which is the unit of the frame",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			files := offsetModel()
+			for _, one := range testCase.edits {
+				replaced := strings.Replace(files[one.file], one.from, one.to, 1)
+				require.NotEqual(t, files[one.file], replaced, "%s holds %q", one.file, one.from)
+				files[one.file] = replaced
+			}
+
+			result, _, stderr := exporting(t, exitCheck, files, offsetFlags()...)
+
+			assert.False(t, result.Derived)
+			assert.Empty(t, result.Files, "an artefact is all or nothing, and nothing was produced")
+			assert.Contains(t, stderr, testCase.expected)
+			assert.Contains(t, stderr, "claim:SILL-R", "the refusal names the claim it is about")
+			assert.Contains(t, stderr, "the sill of site:R", "and the predicate and the node it was claimed of")
+		})
+	}
+}
+
+// TestRunExportRefusesTwoEquallyCurrentOffsets is its own function because
+// what it exercises is the resolution rule rather than a value: a window with
+// two sills is not a window this command may stand at either of them.
+func TestRunExportRefusesTwoEquallyCurrentOffsets(t *testing.T) {
+	files := offsetModel()
+	files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"],
+		`  (sill (value 4.0 usft)`,
+		`  (sill (value 3.5 usft) (source "Window schedule") (method method:take-off) (date "2026-09-25"))
+  (sill (value 4.0 usft)`, 1)
+
+	result, _, stderr := exporting(t, exitCheck, files, offsetFlags()...)
+
+	assert.False(t, result.Derived)
+	assert.Contains(t, stderr, "equally current offsets")
+	assert.Contains(t, stderr, "site:N")
+}
+
+// TestRunExportRefusesAnOffsetWithNothingToMove is its own function because it
+// is a usage error rather than a model's: an offset moves a body, and a run
+// which sweeps none has nothing for it to move.
+func TestRunExportRefusesAnOffsetWithNothingToMove(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{
+			name: "an offset with no height to sweep a body through",
+			args: []string{
+				"--position", "position", "--tolerance", "corner", "--chord", "facet", "--offset", "sill",
+			},
+			expected: "--height",
+		},
+		{
+			name:     "an offset with no boundary to sweep",
+			args:     []string{"--offset", "sill"},
+			expected: "--offset",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, offsetModel())
+
+			stdout, stderr := invoke(t, exitUsage, root, append([]string{"export"}, testCase.args...)...)
+
+			assert.Empty(t, stdout)
+			assert.Contains(t, stderr, testCase.expected)
+		})
+	}
+}
+
+func TestOffsetVocabularyOf(t *testing.T) {
+	testCases := []struct {
+		name     string
+		drawn    shapes
+		expected string
+	}{
+		{
+			name:  "accepts a run naming no offset",
+			drawn: shapes{height: "height"},
+		},
+		{
+			name:  "accepts an offset beside the height it moves",
+			drawn: shapes{height: "height", offset: "sill"},
+		},
+		{
+			name:     "refuses an offset with no height, naming it",
+			drawn:    shapes{offset: "sill"},
+			expected: "sill",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := offsetVocabularyOf(testCase.drawn)
+
+			if testCase.expected == "" {
+				require.NoError(t, err)
+				return
+			}
+
+			var got UnsweptOffsetError
+			require.ErrorAs(t, err, &got)
+			assert.Equal(t, testCase.expected, got.Offset)
+		})
+	}
+}
+
+// TestRunExportOfOffsetsIsAFunctionOfTheModel is the determinism property over
+// an offset export
+// ([0021](docs/decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)).
+func TestRunExportOfOffsetsIsAFunctionOfTheModel(t *testing.T) {
+	first := exportOffset(t, offsetModel(), offsetFlags()...)
+
+	for range 4 {
+		assert.Equal(t, first, exportOffset(t, offsetModel(), offsetFlags()...))
+	}
+}
+
+// bodyOf is the z range one product's body occupies above the file's datum,
+// read back through the whole chain of placements it hangs off.
+func bodyOf(t *testing.T, source, id string) span {
+	t.Helper()
+
+	for _, held := range parsed(t, source) {
+		if strings.HasPrefix(held.keyword, "IFCREL") || len(held.attributes) < 7 ||
+			held.attributes[2] != "'"+id+"'" {
+			continue
+		}
+
+		low := elevationOf(t, source, held.attributes[5])
+
+		var out span
+		first := true
+
+		for _, solid := range solids(t, source, held.attributes[6]) {
+			bottom := low + elevationOf(t, source, solid.attributes[1])
+			top := bottom + real(t, solid.attributes[3])
+
+			if first {
+				out, first = span{low: bottom, high: top}, false
+				continue
+			}
+			out.low = min(out.low, bottom)
+			out.high = max(out.high, top)
+		}
+
+		require.False(t, first, "%s carries a body", id)
+
+		return out
+	}
+
+	t.Fatalf("the file holds a product named %s", id)
+
+	return span{}
+}
