@@ -361,7 +361,12 @@
 // nesting [Topology.RegionOf] orients its rings by, which is what stops a plan
 // and a measurement of one node disagreeing about its area. Two rings which
 // cross are neither nested nor beside one another, so the rule has nothing to
-// say about them and the pair is named rather than summed.
+// say about them and the pair is named rather than summed — and that holds
+// whether or not they share a corner or part of a side. Two rings are beside one
+// another only where they have no area in common, and one is inside another only
+// where it has none outside it, which is judged over the areas themselves and
+// not only at the corners: an L-shaped counter drawn as two runs overlapping in
+// its inside corner is refused, not measured with that corner counted twice.
 //
 // # Arcs and tessellation
 //

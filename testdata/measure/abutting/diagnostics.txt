@@ -16,3 +16,21 @@ testdata/measure/abutting/model.dfc:251:1: error: expected every loop bounding s
 258 |   (boundary geom:L-14))
     | ^^^^^^^^^^^^^^^^^^^^^^^
     = hint: a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where the whole of it is inside that one; two loops drawn along one another are one boundary written twice, which bounds the region once
+testdata/measure/abutting/model.dfc:357:1: error: expected every loop bounding site:S-13 to be inside another or beside it, found that geom:L-121 and geom:L-122 cross: each holds part of the other and neither holds the whole of it
+357 | (node site:S-13
+    | ^^^^^^^^^^^^^^^
+358 |   (label "A counter drawn as two runs which overlap")
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ... 5 lines omitted
+364 |   (boundary geom:L-122))
+    | ^^^^^^^^^^^^^^^^^^^^^^^^
+    = hint: a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where the whole of it is inside that one; two rings which overlap in part are two regions, or one boundary drawn through the other by mistake
+testdata/measure/abutting/model.dfc:450:1: error: expected every loop bounding site:S-14 to be inside another or beside it, found that geom:L-131 and geom:L-132 cross: each holds part of the other and neither holds the whole of it
+450 | (node site:S-14
+    | ^^^^^^^^^^^^^^^
+451 |   (label "Two plates which overlap from a shared corner")
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ... 5 lines omitted
+457 |   (boundary geom:L-132))
+    | ^^^^^^^^^^^^^^^^^^^^^^^^
+    = hint: a region bounded by more than one ring is measured by nesting, and a ring is a hole in another only where the whole of it is inside that one; two rings which overlap in part are two regions, or one boundary drawn through the other by mistake

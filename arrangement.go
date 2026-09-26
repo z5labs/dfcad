@@ -202,6 +202,19 @@ const (
 // is the two rings being one boundary as far as this can tell. Both come back
 // as a refusal rather than as a number, because the number would be an area no
 // shape has.
+//
+// Agreement is not the end of it, because the probes are points of the inner
+// ring's boundary and an overlap need not reach any of them. Two rectangles
+// which overlap from a shared corner — an L-shaped counter drawn as its two
+// runs — put every corner and every midpoint of each on the other's boundary or
+// outside it, so the probes agree on beside and the pair used to be summed with
+// the overlap counted twice. So a consensus is confirmed against the areas
+// themselves ([overlapping], [spilling]): a ring called within must cover no
+// area outside the other, and rings called beside may share area only where the
+// other is wholly inside this one — a courtyard is beside the plate from the
+// plate's side, and it is the question asked from the courtyard's side which
+// makes it a hole. Either failing is the same crossing the probes would have
+// found had one of them fallen in the overlap.
 func nestedIn(inner, outer contour, tolerance float64) nesting {
 	var inside, answered bool
 
@@ -225,11 +238,62 @@ func nestedIn(inner, outer contour, tolerance float64) nesting {
 	switch {
 	case !answered:
 		return ringsIndistinct
+	case inside && spilling(inner, outer, tolerance):
+		return ringsCrossing
 	case inside:
 		return ringWithin
+	case overlapping(inner, outer, tolerance) && spilling(outer, inner, tolerance):
+		return ringsCrossing
 	default:
 		return ringBeside
 	}
+}
+
+// overlapping reports whether two rings cover some area in common, read as the
+// regions they enclose whichever way round each was written.
+//
+// It is the arrangement's intersection and nothing else, so a boundary the two
+// share — a wall they abut along, a corner they meet at — covers nothing in
+// common, and neither does a sliver narrower than the tolerance two boundaries
+// are one boundary within. Rings whose extents do not meet are answered without
+// building the arrangement, which is every pair of rings in a region of parts
+// set apart from one another.
+func overlapping(one, other contour, tolerance float64) bool {
+	if !one.extent().meets(other.extent(), tolerance) {
+		return false
+	}
+
+	return len(overlay([]contour{oriented(one, true)}, []contour{oriented(other, true)}, tolerance, coveredByBoth)) > 0
+}
+
+// spilling reports whether a ring covers some area the other ring does not,
+// which is what a ring that is a hole in the other must never do.
+func spilling(inner, outer contour, tolerance float64) bool {
+	return len(overlay([]contour{oriented(inner, true)}, []contour{oriented(outer, true)}, tolerance, coveredByFirstAlone)) > 0
+}
+
+// box is the smallest axis-aligned rectangle holding a ring.
+type box struct{ min, max vec }
+
+// extent is the box a ring lies in.
+func (c contour) extent() box {
+	var out box
+	for i, point := range c {
+		if i == 0 {
+			out = box{min: point, max: point}
+			continue
+		}
+		out.min = vec{math.Min(out.min.X, point.X), math.Min(out.min.Y, point.Y)}
+		out.max = vec{math.Max(out.max.X, point.X), math.Max(out.max.Y, point.Y)}
+	}
+	return out
+}
+
+// meets reports whether two boxes overlap by more than the tolerance on both
+// axes, which two rings covering some area in common have to.
+func (b box) meets(other box, tolerance float64) bool {
+	return math.Min(b.max.X, other.max.X)-math.Max(b.min.X, other.min.X) > tolerance &&
+		math.Min(b.max.Y, other.max.Y)-math.Max(b.min.Y, other.min.Y) > tolerance
 }
 
 // probesOf is the points a ring is tested against another ring by: every corner
