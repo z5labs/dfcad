@@ -84,8 +84,27 @@ var (
 	// one, and a proxy standing in for any of them is one a receiving system
 	// cannot tell from a proxy standing in for a door.
 	//
+	// IfcOpeningElement is the one entry which is a feature element: a void
+	// rather than a thing built. Neither IfcFeatureElement nor
+	// IfcFeatureElementSubtraction adds an attribute to IfcElement in IFC4,
+	// and IfcOpeningElement adds a PredefinedType,
+	// IfcOpeningElementTypeEnum, and nothing else, so its list ends `...,
+	// Tag, PredefinedType` exactly as a wall's does and a tail of one is the
+	// truth rather than an approximation. It is here because a cased opening
+	// — a doorway with no door — is classified as one, and a proxy standing in
+	// for it is one a receiving system cannot tell from a proxy standing in
+	// for the door it has none of.
+	//
+	// It is also the one entry IFC4 restricts where it may stand. An opening
+	// is never voided and never fills anything, so a product written as one
+	// is refused as either end of an [Opening] ([MisplacedOpeningError]); and
+	// the one element it voids, where it voids one, is joined to it by a
+	// [Void] rather than by an [Opening], which would cut a second void for
+	// it to stand in. This table is not what an [Opening] is written from:
+	// that one's attributes are its own, and its PredefinedType is stated.
+	//
 	// IfcAirTerminal is the one entry which is a distribution element rather
-	// than a building, a furnishing, a civil or a geographic one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
+	// than a building, a furnishing, a civil, a geographic or a feature one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
 	// IfcDistributionElement adds an attribute to IfcElement in IFC4, so its
 	// list ends `..., Tag, PredefinedType` exactly as a wall's does and a tail
 	// of one is the truth rather than an approximation. It is here because a
@@ -161,17 +180,18 @@ var (
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
 	// IfcCableSegment's, IfcCommunicationsAppliance's,
 	// IfcDistributionChamberElement's, IfcDuctSegment's,
-	// IfcElectricAppliance's, IfcElectricDistributionBoard's and
-	// IfcGeographicElement's among them. Which member of the entity's
+	// IfcElectricAppliance's, IfcElectricDistributionBoard's,
+	// IfcGeographicElement's and IfcOpeningElement's among them. Which member of the entity's
 	// enumeration applies — a diffuser or a grille for an air terminal, a
 	// cable segment or a conductor segment for a cable, a router, a modem or a
 	// network hub for a communications appliance, a manhole, an inspection
 	// chamber or a sump for a distribution chamber, a rigid or a flexible
 	// segment for a duct, a dishwasher, a washing machine or a refrigerator
 	// for an electric appliance, a distribution board, a consumer unit, a
-	// switchboard or a motor control centre for a distribution board, and
-	// whether a geographic element is terrain — is a statement about the
-	// thing, and a [Product] carries no field saying it;
+	// switchboard or a motor control centre for a distribution board,
+	// whether a geographic element is terrain, and whether an opening goes
+	// right through what it is in or is a recess part of the way into it — is
+	// a statement about the thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
 	// does not know, and IFC4's rule on the attribute — USERDEFINED needs an
@@ -211,13 +231,15 @@ var (
 		// PredefinedType; see above.
 		"IFCGEOGRAPHICELEMENT": 1,
 		"IFCMEMBER":            1,
-		"IFCPLATE":             1,
-		"IFCRAILING":           1,
-		"IFCRAMP":              1,
-		"IFCROOF":              1,
-		"IFCSLAB":              1,
-		"IFCSTAIR":             1,
-		"IFCWALL":              1,
+		// PredefinedType; see above.
+		"IFCOPENINGELEMENT": 1,
+		"IFCPLATE":          1,
+		"IFCRAILING":        1,
+		"IFCRAMP":           1,
+		"IFCROOF":           1,
+		"IFCSLAB":           1,
+		"IFCSTAIR":          1,
+		"IFCWALL":           1,
 		// OverallHeight, OverallWidth, PredefinedType, PartitioningType,
 		// UserDefinedPartitioningType.
 		"IFCWINDOW": 5,
@@ -421,6 +443,11 @@ type writer struct {
 type placedProduct struct {
 	at        reference
 	placement value
+
+	// entity is what the product was written as, which is what says whether
+	// it is an opening: IFC4 voids and fills elements with openings and never
+	// an opening with anything.
+	entity Entity
 }
 
 // pending is one space boundary and the space which stated it, waiting for the
@@ -444,8 +471,9 @@ type pending struct {
 // project, then the spatial decomposition depth first in the order the caller
 // wrote it, then the products nothing contains, then the groups, which may
 // assign anything above them, then the
-// space boundaries, which may name any element the walk wrote, and last the
-// openings, which name two of them each.
+// space boundaries, which may name any element the walk wrote, then the
+// openings, which name two of them each, and last the voids, which join an
+// element to a product written as an opening.
 func (w *writer) model(model Model) error {
 	units, err := w.units(model.Units)
 	if err != nil {
@@ -504,7 +532,11 @@ func (w *writer) model(model Model) error {
 		return err
 	}
 
-	return w.openings(project.Openings)
+	if err := w.openings(project.Openings); err != nil {
+		return err
+	}
+
+	return w.voids(project.Voids)
 }
 
 // units writes the unit assignment and returns the reference to it.
@@ -917,7 +949,7 @@ func (w *writer) product(product Product, under reference) (reference, error) {
 	}
 
 	if element {
-		w.elements[product.GlobalID] = placedProduct{at: at, placement: placement}
+		w.elements[product.GlobalID] = placedProduct{at: at, placement: placement, entity: product.Entity}
 	}
 
 	if err := w.properties(product.Properties, at); err != nil {
@@ -1083,6 +1115,15 @@ func (w *writer) openings(openings []Opening) error {
 			}
 		}
 
+		if host.entity == entityOpening {
+			return MisplacedOpeningError{
+				Opening:   opening.GlobalID,
+				Attribute: "RelatingBuildingElement",
+				Element:   opening.Host,
+				Entity:    host.entity,
+			}
+		}
+
 		if opening.Voids == "" {
 			return MissingGlobalIDError{Entity: entityVoids, Of: opening.GlobalID}
 		}
@@ -1095,6 +1136,15 @@ func (w *writer) openings(openings []Opening) error {
 					Opening:   opening.GlobalID,
 					Attribute: "RelatedBuildingElement",
 					Element:   opening.Filling,
+				}
+			}
+
+			if filling.entity == entityOpening {
+				return MisplacedOpeningError{
+					Opening:   opening.GlobalID,
+					Attribute: "RelatedBuildingElement",
+					Element:   opening.Filling,
+					Entity:    filling.entity,
 				}
 			}
 
@@ -1158,6 +1208,84 @@ func (w *writer) openings(openings []Opening) error {
 			absent{}, // Description
 			at,
 			filling.at,
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// voids writes the relationship joining each element to a product written as
+// the opening which voids it.
+//
+// They come after the openings for the reason those come last: a void names
+// two products by identifier, and either may stand anywhere in the
+// decomposition. Nothing else is written for one — the opening is a product,
+// with its own placement, shape and containment, already in the file.
+func (w *writer) voids(voids []Void) error {
+	voided := make(map[GlobalID]GlobalID, len(voids))
+
+	for _, void := range voids {
+		if void.Host == "" {
+			return MissingOpeningHostError{Opening: void.Opening}
+		}
+
+		host, known := w.elements[void.Host]
+		if !known {
+			return UnknownOpeningElementError{
+				Opening:   void.Opening,
+				Attribute: "RelatingBuildingElement",
+				Element:   void.Host,
+			}
+		}
+
+		if host.entity == entityOpening {
+			return MisplacedOpeningError{
+				Opening:   void.Opening,
+				Attribute: "RelatingBuildingElement",
+				Element:   void.Host,
+				Entity:    host.entity,
+			}
+		}
+
+		opening, known := w.elements[void.Opening]
+		if !known {
+			return UnknownOpeningElementError{
+				Opening:   void.Opening,
+				Attribute: "RelatedOpeningElement",
+				Element:   void.Opening,
+			}
+		}
+
+		if opening.entity != entityOpening {
+			return MisplacedOpeningError{
+				Opening:   void.Opening,
+				Attribute: "RelatedOpeningElement",
+				Element:   void.Opening,
+				Entity:    opening.entity,
+			}
+		}
+
+		// IFC4 gives an opening exactly one IfcRelVoidsElement: it is a void
+		// of one element, and a second relationship would say one hole is in
+		// two walls.
+		if first, again := voided[void.Opening]; again {
+			return OpeningVoidsTwiceError{Opening: void.Opening, First: first, Second: void.Host}
+		}
+		voided[void.Opening] = void.Host
+
+		if void.GlobalID == "" {
+			return MissingGlobalIDError{Entity: entityVoids, Of: void.Opening}
+		}
+
+		if _, err := w.rooted(entityVoids, void.GlobalID, []value{
+			text(void.GlobalID),
+			absent{}, // OwnerHistory
+			absent{}, // Name
+			absent{}, // Description
+			host.at,
+			opening.at,
 		}); err != nil {
 			return err
 		}

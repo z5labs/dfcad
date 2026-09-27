@@ -262,7 +262,7 @@ func TestRunExportOfAGeographicElementIsAFunctionOfTheModel(t *testing.T) {
 // decision, and a decision nobody can read is one a receiving system has to
 // infer.
 func TestExportUsageStatesWhatPredefinedTypeAGeographicElementIsWrittenWith(t *testing.T) {
-	assert.Contains(t, exportUsage, " IfcGeographicElement\n")
+	assert.Contains(t, exportUsage, " IfcGeographicElement ")
 	assert.Contains(t, exportUsage, "IfcGeographicElement is written the same way.")
 	assert.Contains(t, exportUsage, "for a geographic element whether it is terrain")
 	assert.Contains(t, exportUsage, `"control-point"`)

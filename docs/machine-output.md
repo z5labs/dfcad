@@ -2911,15 +2911,15 @@ somebody else's vocabulary rather than naming an entity in this file's.
 
 ```
 IfcAirTerminal              IfcDistributionChamberElement  IfcMember
-IfcAnnotation               IfcDistributionElement         IfcPlate
-IfcBeam                     IfcDistributionFlowElement     IfcRailing
-IfcBuildingElementProxy     IfcDoor                        IfcRamp
-IfcCableSegment             IfcDuctSegment                 IfcRoof
-IfcCivilElement             IfcElectricAppliance           IfcSlab
-IfcColumn                   IfcElectricDistributionBoard   IfcStair
-IfcCommunicationsAppliance  IfcFooting                     IfcWall
-IfcCovering                 IfcFurnishingElement           IfcWindow
-IfcCurtainWall              IfcGeographicElement
+IfcAnnotation               IfcDistributionElement         IfcOpeningElement
+IfcBeam                     IfcDistributionFlowElement     IfcPlate
+IfcBuildingElementProxy     IfcDoor                        IfcRailing
+IfcCableSegment             IfcDuctSegment                 IfcRamp
+IfcCivilElement             IfcElectricAppliance           IfcRoof
+IfcColumn                   IfcElectricDistributionBoard   IfcSlab
+IfcCommunicationsAppliance  IfcFooting                     IfcStair
+IfcCovering                 IfcFurnishingElement           IfcWall
+IfcCurtainWall              IfcGeographicElement           IfcWindow
 ```
 
 A registry is authored against that list rather than against the writer's source. The set is
@@ -2942,18 +2942,19 @@ one is refused rather than written with a reference no reader accepts.
 **An entity carrying a `PredefinedType` is written with it absent (`$`), never as `.NOTDEFINED.`.**
 That holds of `IfcAirTerminal`, `IfcCableSegment`, `IfcCommunicationsAppliance`,
 `IfcDistributionChamberElement`, `IfcDuctSegment`, `IfcElectricAppliance`,
-`IfcElectricDistributionBoard` and `IfcGeographicElement` as much as of a wall or a door. Which member of the entity's
+`IfcElectricDistributionBoard`, `IfcGeographicElement` and `IfcOpeningElement` as much as of a wall or a door. Which member of the entity's
 enumeration applies — for an air terminal, a diffuser, a grille, a register or a louvre; for a
 cable segment, a cable, a conductor, a core or a busbar; for a communications appliance, a
 router, a modem, a network hub or a gateway; for a distribution chamber, a manhole, an
 inspection chamber, a sump or a valve chamber; for a duct segment, a rigid segment or a
 flexible one; for an electric appliance, a dishwasher, a washing machine or a refrigerator; for
 an electric distribution board, a distribution board, a consumer unit, a switchboard or a motor
-control centre; for a geographic element, whether it is terrain — is a statement about the thing, and the model holds no predicate making it.
+control centre; for a geographic element, whether it is terrain; for an opening, whether it goes
+right through what it is in or is a recess part of the way into it — is a statement about the thing, and the model holds no predicate making it.
 `.NOTDEFINED.` is a value, and writing it would say somebody looked and found no member fits,
 which nobody did; absent says only that the file does not know. A type's name is not read for
 it: a type called `register`, `lv-run`, `media-panel`, `septic-dbox`, `duct`, `appliance`,
-`panel` or `control-point` is a name its author chose, not a claim about the enumeration, and it reaches the file
+`panel`, `control-point` or `opening` is a name its author chose, not a claim about the enumeration, and it reaches the file
 in `ObjectType`, as it does for every product. An entity IFC4 gives no
 `PredefinedType` is written without one, its attribute list ending at `Tag`: `IfcCivilElement`
 — a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`,
@@ -2962,6 +2963,22 @@ either, and `IfcDistributionFlowElement` — an air handler, a condenser, a damp
 — as much as any of them. The first three are declared directly under `IfcElement` in IFC4 and
 add nothing to it, and `IfcDistributionFlowElement` is declared under `IfcDistributionElement`
 and adds nothing to that; the `PredefinedType` their subtypes carry belongs to those subtypes.
+
+The openings the export cuts for a filling are the one exception, and are written `.OPENING.`:
+each is cut through the whole thickness of the element it voids by construction, so which
+member applies is known rather than claimed. A node classified `IfcOpeningElement` is the
+model's own statement about an opening, drawn to whatever depth its author drew it, and nothing
+says whether that goes right through.
+
+**A filling classified `IfcOpeningElement` is the opening itself.** A cased opening — a doorway
+with no door — whose type declares `(fills-opening #t)` is written as an `IFCOPENINGELEMENT`
+contained in its storey like any product, with its own `GlobalId`, text, placement and shapes,
+and one `IFCRELVOIDSELEMENT` joining the element it is within to it. Nothing is cut for it to
+stand in and nothing fills it, because IFC4 fills no opening with another; the relationship's
+identifier is derived from `ifc/voids/<id>`, the name a filling's would be, and no
+`ifc/opening/<id>` or `ifc/fills/<id>` is derived for it. For the same reason a filling within
+an element classified `IfcOpeningElement` is refused naming both. One within no element is
+written contained, voiding nothing, which is all the model says of it.
 
 **A classification the writer cannot carry is reported, not silently proxied.** Every node
 whose type declared a code outside that set is named in `classifications[]`, with the code it
