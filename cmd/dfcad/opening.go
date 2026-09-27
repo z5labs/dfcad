@@ -104,8 +104,10 @@ func (e *exporter) opening(node *dfcad.SemanticNode) bool {
 	return classified && ifc.Entity(strings.ToUpper(code)) == openingEntity
 }
 
-// openingEntity is the entity IFC4 writes a void as, which is the one entity
-// nothing is cut through and nothing fills.
+// openingEntity is the product entity a node is written as when it is an
+// opening element itself — the cased opening, not the IfcRelVoidsElement
+// relating it to its host — and the one entity nothing is cut through and
+// nothing fills.
 const openingEntity ifc.Entity = "IFCOPENINGELEMENT"
 
 // refuseOpeningHost refuses a filling set in an element written as an
