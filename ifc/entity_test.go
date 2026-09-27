@@ -90,6 +90,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes an outlet as the entity the classification names",
+			entity:   "IFCOUTLET",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes an opening element as the entity the classification names",
 			entity:   "IFCOPENINGELEMENT",
 			expected: SupportWritable,
@@ -131,7 +136,7 @@ func TestSupports(t *testing.T) {
 		},
 		{
 			name:     "names a service a house model is full of as a product",
-			entity:   "IFCOUTLET",
+			entity:   "IFCLIGHTFIXTURE",
 			expected: SupportProduct,
 		},
 		{
