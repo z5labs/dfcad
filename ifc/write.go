@@ -75,8 +75,17 @@ var (
 	// and a proxy standing in for any of them is one a receiving system cannot
 	// tell from a proxy standing in for a door.
 	//
+	// IfcGeographicElement is an entry which is neither a building element nor
+	// a distribution one. IFC4 declares it directly under IfcElement and gives
+	// it a PredefinedType, IfcGeographicElementTypeEnum, and nothing else, so
+	// its list ends `..., Tag, PredefinedType` exactly as a wall's does and a
+	// tail of one is the truth rather than an approximation. It is here
+	// because a survey monument, a check shot or a benchmark is classified as
+	// one, and a proxy standing in for any of them is one a receiving system
+	// cannot tell from a proxy standing in for a door.
+	//
 	// IfcAirTerminal is the one entry which is a distribution element rather
-	// than a building, a furnishing or a civil one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
+	// than a building, a furnishing, a civil or a geographic one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
 	// IfcDistributionElement adds an attribute to IfcElement in IFC4, so its
 	// list ends `..., Tag, PredefinedType` exactly as a wall's does and a tail
 	// of one is the truth rather than an approximation. It is here because a
@@ -152,16 +161,17 @@ var (
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
 	// IfcCableSegment's, IfcCommunicationsAppliance's,
 	// IfcDistributionChamberElement's, IfcDuctSegment's,
-	// IfcElectricAppliance's and IfcElectricDistributionBoard's among them.
-	// Which member of the entity's enumeration applies — a diffuser or a
-	// grille for an air terminal, a cable segment or a conductor segment for a
-	// cable, a router, a modem or a network hub for a communications
-	// appliance, a manhole, an inspection chamber or a sump for a distribution
-	// chamber, a rigid or a flexible segment for a duct, a dishwasher, a
-	// washing machine or a refrigerator for an electric appliance, a
-	// distribution board, a consumer unit, a switchboard or a motor control
-	// centre for a distribution board — is a statement about the thing, and a
-	// [Product] carries no field saying it;
+	// IfcElectricAppliance's, IfcElectricDistributionBoard's and
+	// IfcGeographicElement's among them. Which member of the entity's
+	// enumeration applies — a diffuser or a grille for an air terminal, a
+	// cable segment or a conductor segment for a cable, a router, a modem or a
+	// network hub for a communications appliance, a manhole, an inspection
+	// chamber or a sump for a distribution chamber, a rigid or a flexible
+	// segment for a duct, a dishwasher, a washing machine or a refrigerator
+	// for an electric appliance, a distribution board, a consumer unit, a
+	// switchboard or a motor control centre for a distribution board, and
+	// whether a geographic element is terrain — is a statement about the
+	// thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
 	// does not know, and IFC4's rule on the attribute — USERDEFINED needs an
@@ -198,6 +208,8 @@ var (
 		"IFCFOOTING":                   1,
 		// IfcFurnishingElement's attribute list ends at Tag; see above.
 		"IFCFURNISHINGELEMENT": 0,
+		// PredefinedType; see above.
+		"IFCGEOGRAPHICELEMENT": 1,
 		"IFCMEMBER":            1,
 		"IFCPLATE":             1,
 		"IFCRAILING":           1,
