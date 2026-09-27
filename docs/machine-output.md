@@ -2910,14 +2910,14 @@ somebody else's vocabulary rather than naming an entity in this file's.
 **The set of entities a classification may name is closed, and it is this:**
 
 ```
-IfcAirTerminal              IfcCovering                    IfcRailing
-IfcAnnotation               IfcCurtainWall                 IfcRamp
-IfcBeam                     IfcDistributionChamberElement  IfcRoof
-IfcBuildingElementProxy     IfcDoor                        IfcSlab
-IfcCableSegment             IfcFooting                     IfcStair
-IfcCivilElement             IfcFurnishingElement           IfcWall
-IfcColumn                   IfcMember                      IfcWindow
-IfcCommunicationsAppliance  IfcPlate
+IfcAirTerminal              IfcCovering                    IfcPlate
+IfcAnnotation               IfcCurtainWall                 IfcRailing
+IfcBeam                     IfcDistributionChamberElement  IfcRamp
+IfcBuildingElementProxy     IfcDistributionElement         IfcRoof
+IfcCableSegment             IfcDoor                        IfcSlab
+IfcCivilElement             IfcFooting                     IfcStair
+IfcColumn                   IfcFurnishingElement           IfcWall
+IfcCommunicationsAppliance  IfcMember                      IfcWindow
 ```
 
 A registry is authored against that list rather than against the writer's source. The set is
@@ -2949,8 +2949,10 @@ looked and found no member fits, which nobody did; absent says only that the fil
 know. A type's name is not read for it: a type called `register`, `lv-run`, `media-panel` or
 `septic-dbox` is a name its author chose, not a claim about the enumeration, and it reaches the file in `ObjectType`, as it does for every product. An entity IFC4 gives no
 `PredefinedType` is written without one, its attribute list ending at `Tag`: `IfcCivilElement`
-— a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`. Both
-are declared directly under `IfcElement` in IFC4 and add nothing to it.
+— a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`, and
+`IfcDistributionElement` — a receptacle, a switch, a smoke detector, a thermostat — as much as
+either. All three are declared directly under `IfcElement` in IFC4 and add nothing to it; the
+`PredefinedType` an `IfcDistributionElement`'s subtypes carry is theirs, not its.
 
 **A classification the writer cannot carry is reported, not silently proxied.** Every node
 whose type declared a code outside that set is named in `classifications[]`, with the code it

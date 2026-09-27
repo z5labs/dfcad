@@ -106,6 +106,16 @@ var (
 	// classified as one, and a proxy standing in for it is one a receiving
 	// system cannot tell from a proxy standing in for a door.
 	//
+	// IfcDistributionElement is the supertype of all four, and the third entry
+	// whose tail is nought. IFC4 declares it directly under IfcElement, adds no
+	// attribute of its own — no PredefinedType, which only its subtypes carry —
+	// and does not make it abstract, so an instance of it is an element and
+	// nothing more, and its list ends at Tag. It is here because a receptacle,
+	// a switch, a junction box, a smoke detector or a thermostat is classified
+	// as one where no subtype is claimed for it, and a proxy standing in for
+	// any of them is one a receiving system cannot tell from a proxy standing
+	// in for a door.
+	//
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
 	// IfcCableSegment's, IfcCommunicationsAppliance's and
 	// IfcDistributionChamberElement's among them. Which member of the entity's
@@ -134,6 +144,8 @@ var (
 		"IFCCURTAINWALL":             1,
 		// PredefinedType; see above.
 		"IFCDISTRIBUTIONCHAMBERELEMENT": 1,
+		// IfcDistributionElement's attribute list ends at Tag; see above.
+		"IFCDISTRIBUTIONELEMENT": 0,
 		// OverallHeight, OverallWidth, PredefinedType, OperationType,
 		// UserDefinedOperationType.
 		"IFCDOOR":    5,

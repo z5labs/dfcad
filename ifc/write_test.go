@@ -1666,6 +1666,8 @@ func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
 		"a septic distribution box is a distribution chamber rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCCIVILELEMENT"),
 		"a driveway is a civil element rather than a proxy")
+	assert.Contains(t, Products(), Entity("IFCDISTRIBUTIONELEMENT"),
+		"a receptacle is a distribution element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCANNOTATION"),
 		"a north arrow is an annotation rather than a proxy")
 	assert.True(t, slices.IsSorted(Products()), "the table is answered in name order")
@@ -1800,6 +1802,40 @@ func TestWriteGivesADistributionChamberElementTheAttributeListIFC4Gives(t *testi
 
 		require.Len(t, held.attributes, 9, "#%d=%s", number, held.keyword)
 		assert.Equal(t, itemAbsent, held.attributes[8].form, "PredefinedType is written absent")
+	}
+
+	assert.Equal(t, 1, found)
+}
+
+// TestWriteGivesADistributionElementTheAttributeListIFC4Gives is its own
+// function because it is about one entry of the table rather than about a
+// file: an IfcDistributionElement is an IfcElement and nothing more in IFC4 —
+// the PredefinedType its subtypes carry is theirs, not its — so it is written
+// with eight attributes, ending at Tag.
+func TestWriteGivesADistributionElementTheAttributeListIFC4Gives(t *testing.T) {
+	model := bodied()
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products = append(space.Products, Product{
+		Entity:     "IFCDISTRIBUTIONELEMENT",
+		GlobalID:   "1kT4Fp9QW2nC8vybDRlPQf",
+		Name:       "site:RCPT-01",
+		ObjectType: "device",
+		Placement:  origin(),
+	})
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	found := 0
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCDISTRIBUTIONELEMENT" {
+			continue
+		}
+		found++
+
+		require.Len(t, held.attributes, 8, "#%d=%s", number, held.keyword)
+		assert.Equal(t, itemAbsent, held.attributes[7].form, "Tag is written absent")
 	}
 
 	assert.Equal(t, 1, found)
