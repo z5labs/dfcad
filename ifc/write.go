@@ -59,7 +59,7 @@ var (
 	// something as one gets a proxy and is told so, which is the whole of
 	// [Supports].
 	//
-	// IfcFurnishingElement is the one entry whose tail is nought. IFC4 adds no
+	// IfcFurnishingElement is the first entry whose tail is nought. IFC4 adds no
 	// attribute of its own to IfcElement for it, so it ends at Tag, and a
 	// number here pretending otherwise would write an instance with an
 	// attribute the schema has no name for. It is in the table because a
@@ -67,8 +67,16 @@ var (
 	// without an entry each of those degrades to an IfcBuildingElementProxy —
 	// which a receiving system cannot tell from a duct.
 	//
+	// IfcCivilElement is the second entry whose tail is nought, for the same
+	// reason: IFC4 declares it directly under IfcElement and adds no attribute
+	// of its own — no PredefinedType, which a later schema's civil entities
+	// carry and IFC4's does not — so it too ends at Tag. It is here because a
+	// driveway, a walk, a patio or a retaining wall run is classified as one,
+	// and a proxy standing in for any of them is one a receiving system cannot
+	// tell from a proxy standing in for a door.
+	//
 	// IfcAirTerminal is the one entry which is a distribution element rather
-	// than a building or a furnishing one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
+	// than a building, a furnishing or a civil one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
 	// IfcDistributionElement adds an attribute to IfcElement in IFC4, so its
 	// list ends `..., Tag, PredefinedType` exactly as a wall's does and a tail
 	// of one is the truth rather than an approximation. It is here because a
@@ -100,6 +108,8 @@ var (
 		"IFCBEAM":        1,
 		// PredefinedType; see above.
 		"IFCCABLESEGMENT": 1,
+		// IfcCivilElement's attribute list ends at Tag; see above.
+		"IFCCIVILELEMENT": 0,
 		"IFCCOLUMN":       1,
 		"IFCCOVERING":     1,
 		"IFCCURTAINWALL":  1,
