@@ -95,6 +95,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes a pipe fitting as the entity the classification names",
+			entity:   "IFCPIPEFITTING",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes an opening element as the entity the classification names",
 			entity:   "IFCOPENINGELEMENT",
 			expected: SupportWritable,

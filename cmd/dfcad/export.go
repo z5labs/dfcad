@@ -54,15 +54,15 @@ The entities a classification may name are:
 
 	IfcAirTerminal              IfcDistributionChamberElement  IfcOpeningElement
 	IfcAnnotation               IfcDistributionElement         IfcOutlet
-	IfcBeam                     IfcDistributionFlowElement     IfcPlate
-	IfcBuildingElementProxy     IfcDoor                        IfcRailing
-	IfcCableSegment             IfcDuctSegment                 IfcRamp
-	IfcCivilElement             IfcElectricAppliance           IfcRoof
-	IfcColumn                   IfcElectricDistributionBoard   IfcSlab
-	IfcCommunicationsAppliance  IfcFooting                     IfcStair
-	IfcCovering                 IfcFurnishingElement           IfcWall
-	IfcCurtainWall              IfcGeographicElement           IfcWindow
-	                            IfcMember
+	IfcBeam                     IfcDistributionFlowElement     IfcPipeFitting
+	IfcBuildingElementProxy     IfcDoor                        IfcPlate
+	IfcCableSegment             IfcDuctSegment                 IfcRailing
+	IfcCivilElement             IfcElectricAppliance           IfcRamp
+	IfcColumn                   IfcElectricDistributionBoard   IfcRoof
+	IfcCommunicationsAppliance  IfcFooting                     IfcSlab
+	IfcCovering                 IfcFurnishingElement           IfcStair
+	IfcCurtainWall              IfcGeographicElement           IfcWall
+	                            IfcMember                      IfcWindow
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -91,7 +91,8 @@ IfcDistributionChamberElement as much as any of them. An IfcDuctSegment is
 written the same way. An IfcElectricAppliance is written the same way.
 An IfcElectricDistributionBoard is written the same way. An
 IfcGeographicElement is written the same way. An IfcOpeningElement is
-written the same way. An IfcOutlet is written the same way.
+written the same way. An IfcOutlet is written the same way. An
+IfcPipeFitting is written the same way.
 Which member of the entity's enumeration applies —
 for an air terminal a diffuser, a grille, a register, a louvre;
 for a communications appliance a router, a modem, a network hub, a gateway;
@@ -104,13 +105,15 @@ switchboard, a motor control centre;
 for a geographic element whether it is terrain;
 for an opening whether it goes right through what it is in or is a recess
 part of the way into it;
-for an outlet a power, a data, a telephone or an audio-visual outlet —
+for an outlet a power, a data, a telephone or an audio-visual outlet;
+for a pipe fitting a bend, a junction, a transition, an entry, an exit,
+an obstruction or a connector —
 is a statement about the thing, and the model holds no predicate making it.
 .NOTDEFINED. is a value, and writing it would say that somebody looked and
 found no member fits, which nobody did; absent says only that the file does
 not know. A type's name is not read for it either — a type called
 "register", "lv-run", "media-panel", "septic-dbox", "duct", "appliance",
-"panel", "control-point", "opening" or "jack" is a name its author chose, not a claim about the enumeration — and it
+"panel", "control-point", "opening", "jack" or "cleanout" is a name its author chose, not a claim about the enumeration — and it
 reaches the file in ObjectType, as it does for every product. An entity IFC4
 gives no PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as

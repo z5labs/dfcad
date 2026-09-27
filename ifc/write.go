@@ -164,7 +164,13 @@ var (
 	// jack is classified as one, and a proxy standing in for it is one a
 	// receiving system cannot tell from a proxy standing in for a door.
 	//
-	// IfcDistributionElement is the supertype of all eight, and the third entry
+	// IfcPipeFitting is the ninth. It is an IfcFlowFitting, which adds nothing
+	// to IfcDistributionFlowElement in IFC4, so its list too ends `..., Tag,
+	// PredefinedType`. It is here because a drain or sewer cleanout is
+	// classified as one, and a proxy standing in for it is one a receiving
+	// system cannot tell from a proxy standing in for a door.
+	//
+	// IfcDistributionElement is the supertype of all nine, and the third entry
 	// whose tail is nought. IFC4 declares it directly under IfcElement, adds no
 	// attribute of its own — no PredefinedType, which only its subtypes carry —
 	// and does not make it abstract, so an instance of it is an element and
@@ -188,7 +194,8 @@ var (
 	// IfcCableSegment's, IfcCommunicationsAppliance's,
 	// IfcDistributionChamberElement's, IfcDuctSegment's,
 	// IfcElectricAppliance's, IfcElectricDistributionBoard's,
-	// IfcGeographicElement's, IfcOpeningElement's and IfcOutlet's among them.
+	// IfcGeographicElement's, IfcOpeningElement's, IfcOutlet's and
+	// IfcPipeFitting's among them.
 	// Which member of the entity's
 	// enumeration applies — a diffuser or a grille for an air terminal, a
 	// cable segment or a conductor segment for a cable, a router, a modem or a
@@ -199,7 +206,9 @@ var (
 	// switchboard or a motor control centre for a distribution board,
 	// whether a geographic element is terrain, and whether an opening goes
 	// right through what it is in or is a recess part of the way into it, and
-	// a power, a data, a telephone or an audio-visual outlet for an outlet —
+	// a power, a data, a telephone or an audio-visual outlet for an outlet, and
+	// a bend, a junction, a transition, an entry, an exit, an obstruction or a
+	// connector for a pipe fitting —
 	// is a statement about the thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
@@ -243,14 +252,16 @@ var (
 		// PredefinedType; see above.
 		"IFCOPENINGELEMENT": 1,
 		// PredefinedType; see above.
-		"IFCOUTLET":  1,
-		"IFCPLATE":   1,
-		"IFCRAILING": 1,
-		"IFCRAMP":    1,
-		"IFCROOF":    1,
-		"IFCSLAB":    1,
-		"IFCSTAIR":   1,
-		"IFCWALL":    1,
+		"IFCOUTLET": 1,
+		// PredefinedType; see above.
+		"IFCPIPEFITTING": 1,
+		"IFCPLATE":       1,
+		"IFCRAILING":     1,
+		"IFCRAMP":        1,
+		"IFCROOF":        1,
+		"IFCSLAB":        1,
+		"IFCSTAIR":       1,
+		"IFCWALL":        1,
 		// OverallHeight, OverallWidth, PredefinedType, PartitioningType,
 		// UserDefinedPartitioningType.
 		"IFCWINDOW": 5,
