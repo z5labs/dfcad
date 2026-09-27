@@ -2910,16 +2910,16 @@ somebody else's vocabulary rather than naming an entity in this file's.
 **The set of entities a classification may name is closed, and it is this:**
 
 ```
-IfcAirTerminal              IfcDistributionChamberElement  IfcPlate
-IfcAnnotation               IfcDistributionElement         IfcRailing
-IfcBeam                     IfcDistributionFlowElement     IfcRamp
-IfcBuildingElementProxy     IfcDoor                        IfcRoof
-IfcCableSegment             IfcDuctSegment                 IfcSlab
-IfcCivilElement             IfcElectricAppliance           IfcStair
-IfcColumn                   IfcElectricDistributionBoard   IfcWall
-IfcCommunicationsAppliance  IfcFooting                     IfcWindow
-IfcCovering                 IfcFurnishingElement
-IfcCurtainWall              IfcMember
+IfcAirTerminal              IfcDistributionChamberElement  IfcMember
+IfcAnnotation               IfcDistributionElement         IfcPlate
+IfcBeam                     IfcDistributionFlowElement     IfcRailing
+IfcBuildingElementProxy     IfcDoor                        IfcRamp
+IfcCableSegment             IfcDuctSegment                 IfcRoof
+IfcCivilElement             IfcElectricAppliance           IfcSlab
+IfcColumn                   IfcElectricDistributionBoard   IfcStair
+IfcCommunicationsAppliance  IfcFooting                     IfcWall
+IfcCovering                 IfcFurnishingElement           IfcWindow
+IfcCurtainWall              IfcGeographicElement
 ```
 
 A registry is authored against that list rather than against the writer's source. The set is
@@ -2941,19 +2941,19 @@ one is refused rather than written with a reference no reader accepts.
 
 **An entity carrying a `PredefinedType` is written with it absent (`$`), never as `.NOTDEFINED.`.**
 That holds of `IfcAirTerminal`, `IfcCableSegment`, `IfcCommunicationsAppliance`,
-`IfcDistributionChamberElement`, `IfcDuctSegment`, `IfcElectricAppliance` and
-`IfcElectricDistributionBoard` as much as of a wall or a door. Which member of the entity's
+`IfcDistributionChamberElement`, `IfcDuctSegment`, `IfcElectricAppliance`,
+`IfcElectricDistributionBoard` and `IfcGeographicElement` as much as of a wall or a door. Which member of the entity's
 enumeration applies — for an air terminal, a diffuser, a grille, a register or a louvre; for a
 cable segment, a cable, a conductor, a core or a busbar; for a communications appliance, a
 router, a modem, a network hub or a gateway; for a distribution chamber, a manhole, an
 inspection chamber, a sump or a valve chamber; for a duct segment, a rigid segment or a
 flexible one; for an electric appliance, a dishwasher, a washing machine or a refrigerator; for
 an electric distribution board, a distribution board, a consumer unit, a switchboard or a motor
-control centre — is a statement about the thing, and the model holds no predicate making it.
+control centre; for a geographic element, whether it is terrain — is a statement about the thing, and the model holds no predicate making it.
 `.NOTDEFINED.` is a value, and writing it would say somebody looked and found no member fits,
 which nobody did; absent says only that the file does not know. A type's name is not read for
-it: a type called `register`, `lv-run`, `media-panel`, `septic-dbox`, `duct`, `appliance` or
-`panel` is a name its author chose, not a claim about the enumeration, and it reaches the file
+it: a type called `register`, `lv-run`, `media-panel`, `septic-dbox`, `duct`, `appliance`,
+`panel` or `control-point` is a name its author chose, not a claim about the enumeration, and it reaches the file
 in `ObjectType`, as it does for every product. An entity IFC4 gives no
 `PredefinedType` is written without one, its attribute list ending at `Tag`: `IfcCivilElement`
 — a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`,

@@ -90,6 +90,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes a geographic element as the entity the classification names",
+			entity:   "IFCGEOGRAPHICELEMENT",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes a civil element as the entity the classification names",
 			entity:   "IFCCIVILELEMENT",
 			expected: SupportWritable,
