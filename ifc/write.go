@@ -99,12 +99,21 @@ var (
 	// start — is classified as one, and a proxy standing in for it is one a
 	// receiving system cannot tell from a proxy standing in for a door.
 	//
+	// IfcDistributionChamberElement is the fourth. It is declared directly
+	// under IfcDistributionFlowElement, which adds nothing to IfcElement in
+	// IFC4, so its list too ends `..., Tag, PredefinedType`. It is here
+	// because a septic distribution box, or a tank's access lid or riser, is
+	// classified as one, and a proxy standing in for it is one a receiving
+	// system cannot tell from a proxy standing in for a door.
+	//
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
-	// IfcCableSegment's and IfcCommunicationsAppliance's among them. Which
-	// member of the entity's enumeration applies — a diffuser or a grille for
-	// an air terminal, a cable segment or a conductor segment for a cable, a
-	// router, a modem or a network hub for a communications appliance — is a
-	// statement about the thing, and a [Product] carries no field saying it;
+	// IfcCableSegment's, IfcCommunicationsAppliance's and
+	// IfcDistributionChamberElement's among them. Which member of the entity's
+	// enumeration applies — a diffuser or a grille for an air terminal, a cable
+	// segment or a conductor segment for a cable, a router, a modem or a
+	// network hub for a communications appliance, a manhole, an inspection
+	// chamber or a sump for a distribution chamber — is a statement about the
+	// thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
 	// does not know, and IFC4's rule on the attribute — USERDEFINED needs an
@@ -123,6 +132,8 @@ var (
 		"IFCCOMMUNICATIONSAPPLIANCE": 1,
 		"IFCCOVERING":                1,
 		"IFCCURTAINWALL":             1,
+		// PredefinedType; see above.
+		"IFCDISTRIBUTIONCHAMBERELEMENT": 1,
 		// OverallHeight, OverallWidth, PredefinedType, OperationType,
 		// UserDefinedOperationType.
 		"IFCDOOR":    5,
