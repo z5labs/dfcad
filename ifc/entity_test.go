@@ -45,6 +45,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportProduct,
 		},
 		{
+			name:     "writes an annotation, which is a product and not an element",
+			entity:   "IFCANNOTATION",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes the proxy it falls back to",
 			entity:   EntityProxy,
 			expected: SupportWritable,

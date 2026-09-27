@@ -1658,6 +1658,8 @@ func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
 		"a countertop is a furnishing element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCAIRTERMINAL"),
 		"a supply register is an air terminal rather than a proxy")
+	assert.Contains(t, Products(), Entity("IFCANNOTATION"),
+		"a north arrow is an annotation rather than a proxy")
 	assert.True(t, slices.IsSorted(Products()), "the table is answered in name order")
 }
 
@@ -1692,6 +1694,79 @@ func TestWriteGivesAnAirTerminalTheAttributeListIFC4Gives(t *testing.T) {
 	}
 
 	assert.Equal(t, 1, found)
+}
+
+// annotated is model with an annotation standing in its one space, which is
+// the product that is not an element: it is written with no Tag, and nothing
+// which names an element may name it.
+func annotated(model *Model) GlobalID {
+	const id GlobalID = "PIg1S2wRr2WQeQMwAKN3aq"
+
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products = append(space.Products, Product{
+		Entity:      "IFCANNOTATION",
+		GlobalID:    id,
+		Name:        "site:N-01",
+		Description: "North arrow",
+		ObjectType:  "annotation",
+		Placement:   origin(),
+	})
+
+	return id
+}
+
+// TestWriteGivesAnAnnotationTheAttributeListIFC4Gives is its own function
+// because it is about one entry of the tables rather than about a file: an
+// IfcAnnotation is an IfcProduct and not an IfcElement, and IFC4 adds nothing
+// to IfcProduct for it, so it is written with seven attributes and no Tag.
+func TestWriteGivesAnAnnotationTheAttributeListIFC4Gives(t *testing.T) {
+	model := bodied()
+	id := annotated(&model)
+
+	// The wall's body, drawn on the annotation too, so that the one attribute
+	// the proxy's head carried and a bare product's could have dropped is
+	// seen to survive.
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products[len(space.Products)-1].Representation = space.Products[0].Representation
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	var found []int
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCANNOTATION" {
+			continue
+		}
+		found = append(found, number)
+
+		require.Len(t, held.attributes, 7, "#%d=%s", number, held.keyword)
+		assert.Equal(t, string(id), held.attributes[0].text, "GlobalId")
+		assert.Equal(t, itemAbsent, held.attributes[1].form, "OwnerHistory")
+		assert.Equal(t, "site:N-01", held.attributes[2].text, "Name")
+		assert.Equal(t, "North arrow", held.attributes[3].text, "Description")
+		assert.Equal(t, "annotation", held.attributes[4].text, "ObjectType")
+		assert.Equal(t, itemReference, held.attributes[5].form, "ObjectPlacement")
+		assert.Equal(t, itemReference, held.attributes[6].form, "Representation")
+	}
+
+	require.Len(t, found, 1)
+
+	t.Run("contains it in the space it stands in", func(t *testing.T) {
+		contained := false
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
+				continue
+			}
+			for _, member := range held.attributes[4].items {
+				if member.at == found[0] {
+					contained = true
+				}
+			}
+		}
+		assert.True(t, contained, "#%d is contained in a spatial element", found[0])
+	})
 }
 
 func TestWriteRefusesGeometryItCannotWrite(t *testing.T) {
@@ -2114,6 +2189,20 @@ func TestWriteRefusesASpaceBoundaryItCannotWrite(t *testing.T) {
 			name: "a boundary naming an element the model does not write",
 			model: func(model *Model) {
 				space(model).Boundaries[0].Element = "ZZg1S2wRr2WQeQMwAKN3aq"
+			},
+			expected: UnknownBoundaryElementError{},
+		},
+		{
+			name: "a boundary naming a space, which is not an element",
+			model: func(model *Model) {
+				space(model).Boundaries[0].Element = space(model).GlobalID
+			},
+			expected: UnknownBoundaryElementError{},
+		},
+		{
+			name: "a boundary naming an annotation, which is not an element",
+			model: func(model *Model) {
+				space(model).Boundaries[0].Element = annotated(model)
 			},
 			expected: UnknownBoundaryElementError{},
 		},

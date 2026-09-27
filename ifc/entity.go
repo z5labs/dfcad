@@ -71,6 +71,9 @@ func Supports(entity Entity) Support {
 	if _, writable := products[entity]; writable {
 		return SupportWritable
 	}
+	if _, writable := annotations[entity]; writable {
+		return SupportWritable
+	}
 	if _, defined := productEntities[entity]; defined {
 		return SupportProduct
 	}

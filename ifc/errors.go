@@ -413,12 +413,14 @@ func (e MissingBoundaryElementError) Error() string {
 		"mandatory and a boundary with nothing between the two sides is not writable", e.Boundary, e.Space)
 }
 
-// UnknownBoundaryElementError reports a [SpaceBoundary] naming an element no
-// object in the model carries.
+// UnknownBoundaryElementError reports a [SpaceBoundary] naming something which
+// is not an element this model writes.
 //
 // It is [UnknownMemberError] one relationship over, and it is caught here for
 // the same reason: a reference to an object which is not in the file is one
-// some readers follow to nothing and others refuse outright.
+// some readers follow to nothing and others refuse outright. A name resolving
+// to a storey, a zone or an annotation is refused as well, because IFC4 types
+// the element bounding a space as an IfcElement and none of those is one.
 type UnknownBoundaryElementError struct {
 	// Space is the identifier of the space which stated it.
 	Space GlobalID
@@ -432,7 +434,7 @@ type UnknownBoundaryElementError struct {
 
 // Error implements the [error] interface.
 func (e UnknownBoundaryElementError) Error() string {
-	return fmt.Sprintf("expected the boundary %s of space %s to name an object this model writes, found %s, which it "+
+	return fmt.Sprintf("expected the boundary %s of space %s to name an element this model writes, found %s, which it "+
 		"does not", e.Boundary, e.Space, e.Element)
 }
 
@@ -477,12 +479,12 @@ func (e MissingOpeningHostError) Error() string {
 }
 
 // UnknownOpeningElementError reports an [Opening] naming, as its host or its
-// filling, something which is not a product this model writes.
+// filling, something which is not an element this model writes.
 //
 // It is [UnknownBoundaryElementError] for the two relationships an opening is
 // written with, and it is caught here for the same reason. A name resolving to
-// a storey or a zone is refused as well: only an element is voided, and only an
-// element fills a void.
+// a storey, a zone or an annotation is refused as well: only an element is
+// voided, and only an element fills a void.
 type UnknownOpeningElementError struct {
 	// Opening is the identifier of the opening.
 	Opening GlobalID
@@ -492,13 +494,13 @@ type UnknownOpeningElementError struct {
 	// RelatedBuildingElement for the filling.
 	Attribute string
 
-	// Element is the identifier which named nothing written as a product.
+	// Element is the identifier which named nothing written as an element.
 	Element GlobalID
 }
 
 // Error implements the [error] interface.
 func (e UnknownOpeningElementError) Error() string {
-	return fmt.Sprintf("expected the %s of the opening %s to name a product this model writes, found %s, which it "+
+	return fmt.Sprintf("expected the %s of the opening %s to name an element this model writes, found %s, which it "+
 		"does not", e.Attribute, e.Opening, e.Element)
 }
 
