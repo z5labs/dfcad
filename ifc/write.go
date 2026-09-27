@@ -170,7 +170,16 @@ var (
 	// classified as one, and a proxy standing in for it is one a receiving
 	// system cannot tell from a proxy standing in for a door.
 	//
-	// IfcDistributionElement is the supertype of all nine, and the third entry
+	// IfcPipeSegment is the tenth, and has the same tail for the same reason
+	// as IfcCableSegment and IfcDuctSegment, whose supertype it shares: it is
+	// an IfcFlowSegment, which adds nothing to IfcDistributionFlowElement in
+	// IFC4, so its list too ends `..., Tag, PredefinedType`. It is here
+	// because a supply, drain-waste-vent or water service run, or a septic
+	// nitrification trench drawn as its centreline, is classified as one, and
+	// a proxy standing in for it is one a receiving system cannot tell from a
+	// proxy standing in for a door.
+	//
+	// IfcDistributionElement is the supertype of all ten, and the third entry
 	// whose tail is nought. IFC4 declares it directly under IfcElement, adds no
 	// attribute of its own — no PredefinedType, which only its subtypes carry —
 	// and does not make it abstract, so an instance of it is an element and
@@ -194,8 +203,8 @@ var (
 	// IfcCableSegment's, IfcCommunicationsAppliance's,
 	// IfcDistributionChamberElement's, IfcDuctSegment's,
 	// IfcElectricAppliance's, IfcElectricDistributionBoard's,
-	// IfcGeographicElement's, IfcOpeningElement's, IfcOutlet's and
-	// IfcPipeFitting's among them.
+	// IfcGeographicElement's, IfcOpeningElement's, IfcOutlet's,
+	// IfcPipeFitting's and IfcPipeSegment's among them.
 	// Which member of the entity's
 	// enumeration applies — a diffuser or a grille for an air terminal, a
 	// cable segment or a conductor segment for a cable, a router, a modem or a
@@ -208,7 +217,8 @@ var (
 	// right through what it is in or is a recess part of the way into it, and
 	// a power, a data, a telephone or an audio-visual outlet for an outlet, and
 	// a bend, a junction, a transition, an entry, an exit, an obstruction or a
-	// connector for a pipe fitting —
+	// connector for a pipe fitting, and a rigid segment, a flexible segment, a
+	// culvert, a gutter or a spool for a pipe segment —
 	// is a statement about the thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
@@ -255,6 +265,8 @@ var (
 		"IFCOUTLET": 1,
 		// PredefinedType; see above.
 		"IFCPIPEFITTING": 1,
+		// PredefinedType; see above.
+		"IFCPIPESEGMENT": 1,
 		"IFCPLATE":       1,
 		"IFCRAILING":     1,
 		"IFCRAMP":        1,
