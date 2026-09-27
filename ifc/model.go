@@ -178,6 +178,12 @@ type Project struct {
 	// spatial structure nor decomposed out of anything, and it names the two
 	// products it joins by identifier rather than by where they stand.
 	Openings []Opening
+
+	// Voids join an element to a product written as the opening which voids
+	// it, where the opening is an object of the caller's model rather than
+	// the void behind something filling it. They are written beneath the
+	// project for the reason Openings are.
+	Voids []Void
 }
 
 // Spatial is one element of the spatial decomposition: a site, a building, a
@@ -388,6 +394,37 @@ type Opening struct {
 	// Fills is the identifier of the IfcRelFillsElement joining the opening
 	// to Filling, and is required when there is a filling.
 	Fills GlobalID
+}
+
+// Void is IfcRelVoidsElement between an element and a [Product] written as
+// IfcOpeningElement: an opening which is a thing of the caller's model in its
+// own right — a cased opening, a doorway with no door — rather than the void
+// cut behind something standing in it.
+//
+// It is not an [Opening] with no filling. An [Opening] is an object this
+// package writes for the caller, with an identity, a shape and a
+// PredefinedType of its own; here the opening is already in the file as a
+// product, with its own placement, shape and containment, and all that is
+// missing is the one relationship which says what it is cut out of. Writing an
+// [Opening] for it instead would cut a second void for the first to stand in,
+// which IFC4 forbids: an opening fills nothing.
+type Void struct {
+	// GlobalID is the identifier of the relationship itself, and is required.
+	GlobalID GlobalID
+
+	// Host is the identifier of the element the opening voids, and is
+	// required: [MissingOpeningHostError] otherwise. It names a [Product]
+	// written elsewhere in the same model under the rule [Opening.Host] does,
+	// and one written as an IfcOpeningElement is [MisplacedOpeningError]: an
+	// opening is never voided.
+	Host GlobalID
+
+	// Opening is the identifier of the [Product] written as IfcOpeningElement
+	// which voids Host. A name resolving to no element is
+	// [UnknownOpeningElementError], one resolving to an element written as
+	// anything else is [MisplacedOpeningError], and one named by two voids is
+	// [OpeningVoidsTwiceError].
+	Opening GlobalID
 }
 
 // SpaceBoundary is IfcRelSpaceBoundary: the relationship between a space and

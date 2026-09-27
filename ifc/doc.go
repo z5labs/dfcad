@@ -52,7 +52,9 @@
 // spatial one and a product's parts alike, IfcRelContainedInSpatialStructure
 // for the products, IfcRelAssignsToGroup for the zones, and
 // IfcRelVoidsElement and IfcRelFillsElement for the element an [Opening] is
-// cut through and the one standing in it.
+// cut through and the one standing in it, and IfcRelVoidsElement alone for a
+// [Void], where the opening is a product of the caller's model in its own
+// right.
 //
 // Which entities a product may be written as is a closed set — [Products] —
 // because IFC4 fixes an attribute list per entity and this package writes

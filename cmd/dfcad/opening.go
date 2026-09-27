@@ -8,6 +8,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/z5labs/dfcad"
 	"github.com/z5labs/dfcad/ifc"
@@ -80,6 +81,51 @@ func (e *exporter) fillsOpening(node *dfcad.SemanticNode) bool {
 	return held && declared.FillsOpening
 }
 
+// opening reports whether node is written as an IfcOpeningElement: whether the
+// classification its type declares names the entity this export writes an
+// opening as.
+//
+// It does not decide whether node fills an opening — `(fills-opening #t)`
+// does that, and nothing else
+// ([0027](docs/decisions/0027-an-element-fills-an-opening-because-its-type-says-so.md)).
+// It decides how IFC4 states one which does. IFC4 fills no opening with
+// another, so a filling written as one is the opening in its host rather than
+// something standing in an opening cut for it, and no element is cut through
+// or filled by one. That is the schema's rule about the entity written, not a
+// reading of what the type is called.
+func (e *exporter) opening(node *dfcad.SemanticNode) bool {
+	declared, held := e.registry.Type(node.Type())
+	if !held {
+		return false
+	}
+
+	code, classified := declared.ClassifiedAs(classificationSystem)
+
+	return classified && ifc.Entity(strings.ToUpper(code)) == openingEntity
+}
+
+// openingEntity is the entity IFC4 writes a void as, which is the one entity
+// nothing is cut through and nothing fills.
+const openingEntity ifc.Entity = "IFCOPENINGELEMENT"
+
+// refuseOpeningHost refuses a filling set in an element written as an
+// IfcOpeningElement.
+//
+// IFC4 voids no opening and fills none: a door set in a cased opening is a door
+// set in the wall the opening is in, and a file which cut a second opening
+// through the first is one no reader can subtract.
+func (e *exporter) refuseOpeningHost(node, host *dfcad.SemanticNode) {
+	e.refuse(node, fmt.Sprintf(
+		"expected %s, whose type says it fills an opening, to be within an element an opening can be cut through, "+
+			"found %s, whose type is classified IfcOpeningElement: IFC4 cuts no opening through an opening and "+
+			"fills none", node.ID(), host.ID()),
+		"put the filling within the element the opening is in, or take (fills-opening #t) off its type")
+	e.diags[len(e.diags)-1].Related = []dfcad.RelatedLocation{{
+		Span:    host.Span(),
+		Message: "the opening it is within",
+	}}
+}
+
 // swept reports whether a representation holds a body.
 func swept(representation *ifc.Representation) bool {
 	if representation == nil {
@@ -131,6 +177,35 @@ func (e *exporter) openings() []ifc.Opening {
 		}
 
 		out = append(out, opening)
+	}
+
+	return out
+}
+
+// voids are the relationships joining each element written as an
+// IfcOpeningElement which fills an opening to the element it is within, in id
+// order of the opening.
+//
+// The opening is already in the file as a product, contained in its storey
+// with its own placement and its own shapes like any drawn element; this is
+// the one relationship that says what it is cut out of. Its identifier is
+// derived under the name the relationship voiding its host would have if it
+// were a filling rather than an opening, which no node id can carry, and a
+// node is one or the other.
+func (e *exporter) voids() []ifc.Void {
+	out := make([]ifc.Void, 0, len(e.voiding))
+
+	for _, held := range e.voiding {
+		host, opening := held.host.ID(), held.node.ID()
+		if !e.written[host] || !e.written[opening] {
+			continue
+		}
+
+		out = append(out, ifc.Void{
+			GlobalID: e.identify(dfcad.ID("ifc/voids/" + opening)),
+			Host:     e.identify(host),
+			Opening:  e.identify(opening),
+		})
 	}
 
 	return out

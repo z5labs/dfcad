@@ -53,15 +53,15 @@ ObjectType where the type declares none, which is what that entity is for.
 The entities a classification may name are:
 
 	IfcAirTerminal              IfcDistributionChamberElement  IfcMember
-	IfcAnnotation               IfcDistributionElement         IfcPlate
-	IfcBeam                     IfcDistributionFlowElement     IfcRailing
-	IfcBuildingElementProxy     IfcDoor                        IfcRamp
-	IfcCableSegment             IfcDuctSegment                 IfcRoof
-	IfcCivilElement             IfcElectricAppliance           IfcSlab
-	IfcColumn                   IfcElectricDistributionBoard   IfcStair
-	IfcCommunicationsAppliance  IfcFooting                     IfcWall
-	IfcCovering                 IfcFurnishingElement           IfcWindow
-	IfcCurtainWall              IfcGeographicElement
+	IfcAnnotation               IfcDistributionElement         IfcOpeningElement
+	IfcBeam                     IfcDistributionFlowElement     IfcPlate
+	IfcBuildingElementProxy     IfcDoor                        IfcRailing
+	IfcCableSegment             IfcDuctSegment                 IfcRamp
+	IfcCivilElement             IfcElectricAppliance           IfcRoof
+	IfcColumn                   IfcElectricDistributionBoard   IfcSlab
+	IfcCommunicationsAppliance  IfcFooting                     IfcStair
+	IfcCovering                 IfcFurnishingElement           IfcWall
+	IfcCurtainWall              IfcGeographicElement           IfcWindow
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -89,7 +89,8 @@ IfcCableSegment as much as a wall or a door, and an
 IfcDistributionChamberElement as much as any of them. An IfcDuctSegment is
 written the same way. An IfcElectricAppliance is written the same way.
 An IfcElectricDistributionBoard is written the same way. An
-IfcGeographicElement is written the same way.
+IfcGeographicElement is written the same way. An IfcOpeningElement is
+written the same way.
 Which member of the entity's enumeration applies —
 for an air terminal a diffuser, a grille, a register, a louvre;
 for a communications appliance a router, a modem, a network hub, a gateway;
@@ -99,13 +100,15 @@ for a duct segment a rigid segment or a flexible one;
 for an electric appliance a dishwasher, a washing machine, a refrigerator;
 for an electric distribution board a distribution board, a consumer unit, a
 switchboard, a motor control centre;
-for a geographic element whether it is terrain —
+for a geographic element whether it is terrain;
+for an opening whether it goes right through what it is in or is a recess
+part of the way into it —
 is a statement about the thing, and the model holds no predicate making it.
 .NOTDEFINED. is a value, and writing it would say that somebody looked and
 found no member fits, which nobody did; absent says only that the file does
 not know. A type's name is not read for it either — a type called
 "register", "lv-run", "media-panel", "septic-dbox", "duct", "appliance",
-"panel" or "control-point" is a name its author chose, not a claim about the enumeration — and it
+"panel", "control-point" or "opening" is a name its author chose, not a claim about the enumeration — and it
 reaches the file in ObjectType, as it does for every product. An entity IFC4
 gives no PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as
@@ -113,6 +116,13 @@ much as an IfcFurnishingElement, an IfcDistributionElement — a receptacle,
 a switch, a smoke detector, a thermostat — as much as either, and an
 IfcDistributionFlowElement — an air handler, a condenser, a damper, a water
 heater — as much as any of them.
+
+The openings this export cuts for a filling are not written from that set, and
+are the one exception: each is written .OPENING., because each is cut through
+the whole thickness of the element it voids by construction, so which member
+applies is known rather than claimed. A node classified IfcOpeningElement is
+the model's own statement about an opening, drawn to whatever depth its author
+drew it, and nothing says whether that goes right through.
 
 A storey declaring a frame is written at the elevation that frame's chain to the
 root puts it at, and everything in it is placed relative to that. It is what
@@ -327,6 +337,16 @@ IfcOpeningElement voiding the element it is within, by an IfcRelVoidsElement,
 which it fills, by an IfcRelFillsElement. Nothing else marks one — not the
 type's name and not its classification — so a door nobody said fills an opening
 is written as a part of its wall.
+
+A filling whose type is classified IfcOpeningElement — a cased opening, a
+doorway with no door — is the opening itself rather than something standing in
+one. It is written as an IfcOpeningElement contained in its storey like any
+product, with its own identity and its own shapes, and it voids the element it
+is within by an IfcRelVoidsElement; nothing is cut for it to stand in and
+nothing fills it, because IFC4 fills no opening with another. For the same
+reason a filling within an element classified IfcOpeningElement is refused
+naming both. One within no element is written contained, voiding nothing,
+which is all the model says of it.
 
 Where both are drawn as runs and the one it is within has a body, the opening
 is cut to the filling's run, widened by the thickness of what it is cut out of
@@ -875,6 +895,7 @@ func exported(
 	// the walk made — the host's and the filling's — and either may be reached
 	// first.
 	openings := out.openings()
+	voids := out.voids()
 
 	model := ifc.Model{
 		Header: ifc.Header{
@@ -910,6 +931,7 @@ func exported(
 			Products:   uncontained,
 			Groups:     groups,
 			Openings:   openings,
+			Voids:      voids,
 		},
 	}
 
@@ -979,6 +1001,12 @@ type exporter struct {
 	// filled is every element standing in an opening of the element it is
 	// within, in id order, with that element.
 	filled []filling
+
+	// voiding is every element written as an IfcOpeningElement which fills
+	// an opening of the element it is within, in id order, with that
+	// element: the opening itself, which voids its host and is filled by
+	// nothing.
+	voiding []filling
 
 	// lines is what drawing each node drawn as a line established about it, by
 	// the id of the node, which is what an opening is cut from. It is recorded
@@ -1071,12 +1099,25 @@ func (e *exporter) collect() {
 			// through it, so it is not contained here as well. A filling
 			// stands in its storey like any product and is related to its
 			// host through the opening it fills.
+			//
+			// A filling written as an IfcOpeningElement is the opening
+			// itself rather than something standing in one: it voids its
+			// host, and nothing is cut for it to stand in, because IFC4 fills
+			// no opening with another.
 			if host, nested := e.nested(node); nested {
 				if !e.fillsOpening(node) {
 					e.parts[host.ID()] = append(e.parts[host.ID()], node)
 					continue
 				}
-				e.filled = append(e.filled, filling{node: node, host: host})
+
+				switch {
+				case e.opening(host):
+					e.refuseOpeningHost(node, host)
+				case e.opening(node):
+					e.voiding = append(e.voiding, filling{node: node, host: host})
+				default:
+					e.filled = append(e.filled, filling{node: node, host: host})
+				}
 			}
 
 			// An element or an interface is a thing standing in a spatial

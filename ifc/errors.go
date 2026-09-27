@@ -504,6 +504,65 @@ func (e UnknownOpeningElementError) Error() string {
 		"does not", e.Attribute, e.Opening, e.Element)
 }
 
+// MisplacedOpeningError reports an IfcOpeningElement named where IFC4 does not
+// allow one, or something else named where IFC4 requires one.
+//
+// IFC4 voids an element with an opening and fills an opening with an element,
+// and never the other way round: an IfcFeatureElementSubtraction has no
+// openings and fills none. So an opening named as the host of an [Opening] or
+// a [Void], or as the filling of an [Opening], is a file whose relationships no
+// receiving system can subtract; and a [Void] naming, as its opening, an element
+// written as anything but IfcOpeningElement would make a wall a hole in
+// another wall.
+type MisplacedOpeningError struct {
+	// Opening is the identifier of the opening the relationship belongs to.
+	Opening GlobalID
+
+	// Attribute is the relationship attribute the name was for, spelled as the
+	// schema spells it: RelatingBuildingElement for the host,
+	// RelatedBuildingElement for the filling, RelatedOpeningElement for the
+	// opening a [Void] names.
+	Attribute string
+
+	// Element is the identifier which was named, and Entity is what the
+	// product it names was written as.
+	Element GlobalID
+	Entity  Entity
+}
+
+// Error implements the [error] interface.
+func (e MisplacedOpeningError) Error() string {
+	if e.Attribute == "RelatedOpeningElement" {
+		return fmt.Sprintf("expected the %s of %s to name a product written as IFCOPENINGELEMENT, found %s, written "+
+			"as %s: only an opening voids an element", e.Attribute, e.Opening, e.Element, e.Entity)
+	}
+	return fmt.Sprintf("expected the %s of the opening %s to name an element which is not itself an opening, found %s, "+
+		"written as %s: IFC4 neither voids an opening nor fills one with another", e.Attribute, e.Opening, e.Element,
+		e.Entity)
+}
+
+// OpeningVoidsTwiceError reports a product written as IfcOpeningElement named
+// by two [Void]s.
+//
+// IFC4 gives an opening exactly one IfcRelVoidsElement. A hole is in one
+// element, and a second relationship would have a receiving system subtract
+// the one body from two.
+type OpeningVoidsTwiceError struct {
+	// Opening is the identifier of the opening.
+	Opening GlobalID
+
+	// First and Second are the two elements it was said to void, in the order
+	// they were given.
+	First  GlobalID
+	Second GlobalID
+}
+
+// Error implements the [error] interface.
+func (e OpeningVoidsTwiceError) Error() string {
+	return fmt.Sprintf("expected the opening %s to void one element, found it voiding %s and %s", e.Opening, e.First,
+		e.Second)
+}
+
 // spelled lists entities the way a message wants them.
 func spelled(entities []Entity) string {
 	written := make([]string, 0, len(entities))
