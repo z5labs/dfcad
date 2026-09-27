@@ -100,7 +100,7 @@ func ProductEntities() []Entity {
 //
 // It is the schema's own closed set and not a judgement about a model, exactly
 // as the attribute-list tables in write.go are. The abstract supertypes are in
-// it — IfcElement, IfcBuildingElement, IfcDistributionFlowElement — because
+// it — IfcElement, IfcBuildingElement, IfcFlowTerminal — because
 // what this set answers is whether a name is one IFC4 defines, and an author
 // who classified something as an IfcBuildingElement made a different mistake
 // from one who misspelled a wall.

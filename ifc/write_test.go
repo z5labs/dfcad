@@ -1668,6 +1668,8 @@ func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
 		"a driveway is a civil element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCDISTRIBUTIONELEMENT"),
 		"a receptacle is a distribution element rather than a proxy")
+	assert.Contains(t, Products(), Entity("IFCDISTRIBUTIONFLOWELEMENT"),
+		"an air handler is a distribution flow element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCANNOTATION"),
 		"a north arrow is an annotation rather than a proxy")
 	assert.True(t, slices.IsSorted(Products()), "the table is answered in name order")
@@ -1830,6 +1832,41 @@ func TestWriteGivesADistributionElementTheAttributeListIFC4Gives(t *testing.T) {
 	for _, number := range parsed.order {
 		held, _ := parsed.instance(number)
 		if held.keyword != "IFCDISTRIBUTIONELEMENT" {
+			continue
+		}
+		found++
+
+		require.Len(t, held.attributes, 8, "#%d=%s", number, held.keyword)
+		assert.Equal(t, itemAbsent, held.attributes[7].form, "Tag is written absent")
+	}
+
+	assert.Equal(t, 1, found)
+}
+
+// TestWriteGivesADistributionFlowElementTheAttributeListIFC4Gives is its own
+// function because it is about one entry of the table rather than about a
+// file: an IfcDistributionFlowElement adds nothing to IfcDistributionElement
+// in IFC4, which adds nothing to IfcElement — the PredefinedType its subtypes
+// carry is theirs, not its — so it is written with eight attributes, ending at
+// Tag.
+func TestWriteGivesADistributionFlowElementTheAttributeListIFC4Gives(t *testing.T) {
+	model := bodied()
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products = append(space.Products, Product{
+		Entity:     "IFCDISTRIBUTIONFLOWELEMENT",
+		GlobalID:   "2mQ7Hd3XV8pL5rTbN0wYcE",
+		Name:       "site:AHU-01",
+		ObjectType: "equipment",
+		Placement:  origin(),
+	})
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	found := 0
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCDISTRIBUTIONFLOWELEMENT" {
 			continue
 		}
 		found++
