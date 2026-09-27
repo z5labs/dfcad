@@ -155,6 +155,18 @@ type Project struct {
 	// Sites are the spatial structure beneath the project.
 	Sites []Spatial
 
+	// Products are the products the spatial structure does not contain: an
+	// annotation, a survey mark, a meter nobody has put in a room.
+	//
+	// IFC4 does not require a product to stand in a spatial element, and these
+	// are written in no relationship at all — not contained, because there is
+	// no spatial element to contain them, and not aggregated into the project,
+	// which decomposes into spatial elements and nothing else. Each is placed
+	// relative to the world coordinate system, so its Placement is where it
+	// stands in the coordinates the whole file is written in. A product's own
+	// Parts come with it exactly as they do beneath a spatial element.
+	Products []Product
+
 	// Groups are the zones the file declares. They are written beneath the
 	// project because a group is not part of the spatial decomposition and
 	// has nowhere else to hang.
@@ -280,7 +292,8 @@ type Product struct {
 	ObjectType  string
 
 	// Placement is where the product sits inside the spatial element which
-	// contains it.
+	// contains it, or in the world coordinate system for one of
+	// [Project.Products], which nothing contains.
 	Placement *Placement
 
 	// Representation is the product's shape, expressed in the coordinate system

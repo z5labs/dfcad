@@ -106,8 +106,8 @@ func swept(representation *ifc.Representation) bool {
 // ([0004](docs/decisions/0004-globalid-derives-from-a-pinned-namespace.md)):
 // an opening is not a node of the model, and there is one per filling.
 //
-// A filling or a host the file does not hold — one nothing spatial contains —
-// is left out rather than referenced, for the reason a zone's members are.
+// A filling or a host the file does not hold — a retired one — is left out
+// rather than referenced, for the reason a zone's members are.
 func (e *exporter) openings() []ifc.Opening {
 	out := make([]ifc.Opening, 0, len(e.filled))
 
