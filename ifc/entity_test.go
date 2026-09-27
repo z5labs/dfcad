@@ -80,6 +80,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes an electric appliance as the entity the classification names",
+			entity:   "IFCELECTRICAPPLIANCE",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes a civil element as the entity the classification names",
 			entity:   "IFCCIVILELEMENT",
 			expected: SupportWritable,
