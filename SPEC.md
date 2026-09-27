@@ -1600,6 +1600,19 @@ Named so that their absence reads as a decision rather than an oversight.
   ([0007](./docs/decisions/0007-rank-is-closed.md)).
 - **An expression language for assertions.** Excluded, not deferred
   ([0011](./docs/decisions/0011-assertions-are-named-parameterised-checks.md)).
+- **A measurement between two ends, and a face as one of them.** Decided and not yet
+  specified: a measurement is a geometric form of its own whose two ends are each a vertex, an
+  edge read as its whole line, or the face of an element drawn as a line — its run offset by
+  half its thickness to one side. The face is the only derived anchor, and it is a reference
+  written where it is used, never a node with a position
+  ([0028](./docs/decisions/0028-a-measurement-may-run-to-an-elements-face-and-the-face-is-the-only-derived-anchor.md)).
+  The forms land here with the change that implements them.
+- **Any other derived anchor.** A point at a parameter along an edge is a measured location,
+  which is a vertex; the station where a measurement crosses a line is layout. Both are
+  excluded, not deferred. The intersection of two lines, the foot of a perpendicular and the
+  centre of an opening are not admitted on the evidence so far, and admitting one amends
+  [0028](./docs/decisions/0028-a-measurement-may-run-to-an-elements-face-and-the-face-is-the-only-derived-anchor.md).
+  There is no flag marking an end integral or derived: which it is, is which end it is.
 
 ## 12. Reviewed against the decision records
 
@@ -1629,6 +1642,7 @@ below.
 | 0020   | [1](#1-scope): export is out of this document's scope and has its own specification, and the closed `kind` set fixed there is the whole of what an exporter reads for meaning. [7.1](#71-project): the pinned URL is the other half of the export contract, and there is still no `GlobalId` field. |
 | 0021   | [1](#1-scope): an exported representation is a build output rather than one of this document's two layers, which is why no form here writes one. [11](#11-not-in-this-version): an export is a derived value, so it is not a field, a comment or a sidecar in the source tree either — it is written under `.dfcad`, keyed by the tree digest this document's files produce. |
 | 0027   | [7.3](#73-type): `fills-opening` is the one structural declaration beside `kind` an exporter reads, and it is declared on the type rather than inferred from its name or its classification. [6.9.1](#691-the-containment-hierarchy) is unchanged: `within` stays physical enclosure, and the child says what kind of enclosure one element's is. |
+| 0028   | [11](#11-not-in-this-version): a measurement between two ends, and the face as the one derived anchor, are decided and named as not yet in this version; every other derived anchor is named there as excluded or not admitted. No form here changes. |
 
 **One open reading, resolved here.** Record 0008 says the remedy for not knowing a claim's
 provenance is to state it "using the vocabulary the registry provides for it", while record
