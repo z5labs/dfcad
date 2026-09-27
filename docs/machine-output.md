@@ -2910,13 +2910,13 @@ somebody else's vocabulary rather than naming an entity in this file's.
 **The set of entities a classification may name is closed, and it is this:**
 
 ```
-IfcAirTerminal           IfcCurtainWall        IfcRamp
-IfcAnnotation            IfcDoor               IfcRoof
-IfcBeam                  IfcFooting            IfcSlab
-IfcBuildingElementProxy  IfcFurnishingElement  IfcStair
-IfcCableSegment          IfcMember             IfcWall
+IfcAirTerminal           IfcCovering           IfcRailing
+IfcAnnotation            IfcCurtainWall        IfcRamp
+IfcBeam                  IfcDoor               IfcRoof
+IfcBuildingElementProxy  IfcFooting            IfcSlab
+IfcCableSegment          IfcFurnishingElement  IfcStair
+IfcCivilElement          IfcMember             IfcWall
 IfcColumn                IfcPlate              IfcWindow
-IfcCovering              IfcRailing
 ```
 
 A registry is authored against that list rather than against the writer's source. The set is
@@ -2944,7 +2944,10 @@ statement about the thing, and the model holds no predicate making it. `.NOTDEFI
 value, and writing it would say somebody looked and found no member fits, which nobody did;
 absent says only that the file does not know. A type's name is not read for it: a type called
 `register` or `lv-run` is a name its author chose, not a claim about the enumeration, and it
-reaches the file in `ObjectType`, as it does for every product.
+reaches the file in `ObjectType`, as it does for every product. An entity IFC4 gives no
+`PredefinedType` is written without one, its attribute list ending at `Tag`: `IfcCivilElement`
+— a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`. Both
+are declared directly under `IfcElement` in IFC4 and add nothing to it.
 
 **A classification the writer cannot carry is reported, not silently proxied.** Every node
 whose type declared a code outside that set is named in `classifications[]`, with the code it

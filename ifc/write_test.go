@@ -1660,6 +1660,8 @@ func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
 		"a supply register is an air terminal rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCCABLESEGMENT"),
 		"a low-voltage run is a cable segment rather than a proxy")
+	assert.Contains(t, Products(), Entity("IFCCIVILELEMENT"),
+		"a driveway is a civil element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCANNOTATION"),
 		"a north arrow is an annotation rather than a proxy")
 	assert.True(t, slices.IsSorted(Products()), "the table is answered in name order")
@@ -1726,6 +1728,39 @@ func TestWriteGivesACableSegmentTheAttributeListIFC4Gives(t *testing.T) {
 
 		require.Len(t, held.attributes, 9, "#%d=%s", number, held.keyword)
 		assert.Equal(t, itemAbsent, held.attributes[8].form, "PredefinedType is written absent")
+	}
+
+	assert.Equal(t, 1, found)
+}
+
+// TestWriteGivesACivilElementTheAttributeListIFC4Gives is its own function
+// because it is about one entry of the table rather than about a file: an
+// IfcCivilElement is an IfcElement and nothing more in IFC4, so it is written
+// with eight attributes, ending at Tag, and with no PredefinedType after it.
+func TestWriteGivesACivilElementTheAttributeListIFC4Gives(t *testing.T) {
+	model := bodied()
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products = append(space.Products, Product{
+		Entity:     "IFCCIVILELEMENT",
+		GlobalID:   "2vJ6Hn0SX4mB4xqcAQkPQe",
+		Name:       "site:HS-01",
+		ObjectType: "hardscape",
+		Placement:  origin(),
+	})
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	found := 0
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCCIVILELEMENT" {
+			continue
+		}
+		found++
+
+		require.Len(t, held.attributes, 8, "#%d=%s", number, held.keyword)
+		assert.Equal(t, itemAbsent, held.attributes[7].form, "Tag is written absent")
 	}
 
 	assert.Equal(t, 1, found)

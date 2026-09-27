@@ -55,6 +55,16 @@ func TestSupports(t *testing.T) {
 			expected: SupportProduct,
 		},
 		{
+			name:     "writes a civil element as the entity the classification names",
+			entity:   "IFCCIVILELEMENT",
+			expected: SupportWritable,
+		},
+		{
+			name:     "names the civil element's abstract supertype as a product it does not write",
+			entity:   "IFCELEMENT",
+			expected: SupportProduct,
+		},
+		{
 			name:     "writes an annotation, which is a product and not an element",
 			entity:   "IFCANNOTATION",
 			expected: SupportWritable,
