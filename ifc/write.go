@@ -109,6 +109,28 @@ var (
 		// UserDefinedPartitioningType.
 		"IFCWINDOW": 5,
 	}
+
+	// annotations are the IfcProduct subtypes which are not IfcElements, whose
+	// shared head ends at Representation: there is no Tag, because Tag is
+	// IfcElement's, and a tail is whatever the entity adds after that.
+	//
+	// IfcAnnotation is the one entry, and its tail is nought. IFC4 adds no
+	// attribute of its own to IfcProduct for it — the PredefinedType a later
+	// schema gives it is not IFC4's — so it is written with seven attributes,
+	// and writing it from the element head would give it a Tag the schema has
+	// no name for. It is here because a dimension, a label, a survey tie or a
+	// north arrow is classified as one, and a proxy standing in for any of
+	// them is a building element a receiving system has no way to tell from
+	// one standing in for a door.
+	//
+	// It is a table of its own rather than a flag on the one above because
+	// not being an element is more than a shorter head. An IfcAnnotation cannot
+	// be voided, fill a void or bound a space — each of those relationships
+	// names an IfcElement — so a product written from this table is not one an
+	// opening or a boundary can name. See [writer.elements].
+	annotations = map[Entity]int{
+		"IFCANNOTATION": 0,
+	}
 )
 
 // Products is every entity this package can write a [Product] as, in name
@@ -124,7 +146,7 @@ var (
 // list of what a `(classification "IFC4" ...)` may usefully name, so a caller
 // wanting to know why something reached the file as a proxy asks [Supports]
 // rather than reading this package's source.
-func Products() []Entity { return keys(products) }
+func Products() []Entity { return keys(products, annotations) }
 
 // SpatialElements is every entity this package can write a [Spatial] as, in
 // name order.
@@ -253,10 +275,12 @@ type writer struct {
 	// identifier written on two objects.
 	objects map[GlobalID]reference
 
-	// elements maps a product's identifier to the instance which holds it and
-	// the placement it was placed by. It is what resolves the two ends of an
-	// opening: only a product can be voided or fill a void, so a name which
-	// resolves to a storey or a zone here is one which resolves to nothing.
+	// elements maps an element's identifier to the instance which holds it
+	// and the placement it was placed by. It is what resolves the two ends of
+	// an opening and the element bounding a space: IFC4 types each of those
+	// as an IfcElement, so a name which resolves to a storey, a zone or an
+	// annotation here is one which resolves to nothing. A product written from
+	// the annotations table is in objects and not in here.
 	elements map[GlobalID]placedProduct
 
 	// contexts maps a representation context's identifier to the instance
@@ -736,12 +760,15 @@ func (w *writer) products(element Spatial, in reference, under reference) error 
 // property sets, depth first, so a product with no parts is written exactly as
 // it was before a product could have any.
 func (w *writer) product(product Product, under reference) (reference, error) {
-	tail, known := products[product.Entity]
-	if !known {
-		return 0, UnknownEntityError{
-			Entity:   product.Entity,
-			Position: "a product",
-			Known:    keys(products),
+	tail, element := products[product.Entity]
+	if !element {
+		var known bool
+		if tail, known = annotations[product.Entity]; !known {
+			return 0, UnknownEntityError{
+				Entity:   product.Entity,
+				Position: "a product",
+				Known:    Products(),
+			}
 		}
 	}
 
@@ -765,7 +792,9 @@ func (w *writer) product(product Product, under reference) (reference, error) {
 		optionalText(product.ObjectType),
 		placement,
 		representation,
-		absent{}, // Tag
+	}
+	if element {
+		attributes = append(attributes, absent{}) // Tag
 	}
 	attributes = append(attributes, absents(tail)...)
 
@@ -774,7 +803,9 @@ func (w *writer) product(product Product, under reference) (reference, error) {
 		return 0, err
 	}
 
-	w.elements[product.GlobalID] = placedProduct{at: at, placement: placement}
+	if element {
+		w.elements[product.GlobalID] = placedProduct{at: at, placement: placement}
+	}
 
 	if err := w.properties(product.Properties, at); err != nil {
 		return 0, err
@@ -864,7 +895,7 @@ func (w *writer) spaceBoundaries() error {
 			return MissingBoundaryElementError{Space: held.of, Boundary: boundary.GlobalID}
 		}
 
-		element, known := w.objects[boundary.Element]
+		element, known := w.elements[boundary.Element]
 		if !known {
 			return UnknownBoundaryElementError{
 				Space:    held.of,
@@ -901,7 +932,7 @@ func (w *writer) spaceBoundaries() error {
 			optionalText(boundary.Name),
 			optionalText(boundary.Description),
 			held.space,
-			element,
+			element.at,
 			connection,
 			enumeration(string(boundary.Physical)),
 			enumeration(string(boundary.Internal)),
@@ -1575,12 +1606,14 @@ func absents(count int) []value {
 	return out
 }
 
-// keys is a table's entities in name order, for a message which lists what
-// could have been written instead.
-func keys(table map[Entity]int) []Entity {
-	out := make([]Entity, 0, len(table))
-	for entity := range table {
-		out = append(out, entity)
+// keys is the entities of one or more tables in name order, for a message
+// which lists what could have been written instead.
+func keys(tables ...map[Entity]int) []Entity {
+	var out []Entity
+	for _, table := range tables {
+		for entity := range table {
+			out = append(out, entity)
+		}
 	}
 	slices.Sort(out)
 	return out

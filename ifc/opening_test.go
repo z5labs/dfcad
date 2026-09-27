@@ -301,6 +301,16 @@ func TestWriteRefusesAnOpeningItCannotWrite(t *testing.T) {
 			expected: UnknownOpeningElementError{},
 		},
 		{
+			name:     "an opening voiding an annotation, which is not an element",
+			model:    func(model *Model) { model.Project.Openings[0].Host = annotated(model) },
+			expected: UnknownOpeningElementError{},
+		},
+		{
+			name:     "an opening filled by an annotation, which is not an element",
+			model:    func(model *Model) { model.Project.Openings[0].Filling = annotated(model) },
+			expected: UnknownOpeningElementError{},
+		},
+		{
 			name:     "an opening filled by an element the model does not write",
 			model:    func(model *Model) { model.Project.Openings[0].Filling = "ZZg1S2wRr2WQeQMwAKN3aq" },
 			expected: UnknownOpeningElementError{},

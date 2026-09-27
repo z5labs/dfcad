@@ -268,8 +268,9 @@ type Spatial struct {
 	//
 	// Each names a [Product] written elsewhere in the same model, by the
 	// identifier that product carries, exactly as a [Group]'s members do. One
-	// which names an object this model does not hold is
-	// [UnknownBoundaryElementError].
+	// which names nothing this model holds as an element — nothing at all, a
+	// spatial element, or a product which is not an element, such as an
+	// IfcAnnotation — is [UnknownBoundaryElementError].
 	Boundaries []SpaceBoundary
 }
 
@@ -278,6 +279,11 @@ type Spatial struct {
 // It is written under whichever entity the caller names, out of the set this
 // package knows the attribute list of. A caller with nothing better to say
 // writes [EntityProxy] and names what the thing is in ObjectType.
+//
+// Nearly every entity in that set is an IfcElement, and is written with a Tag
+// after its Representation. IfcAnnotation is not: it is an IfcProduct and no
+// more, so it is written without one, and it is not something an [Opening]
+// may void or be filled by or a [SpaceBoundary] may name.
 type Product struct {
 	// Entity is what the product is written as.
 	Entity Entity
@@ -355,7 +361,8 @@ type Opening struct {
 	// Host is the identifier of the element the opening voids, and is
 	// required: [MissingOpeningHostError] otherwise. It names a [Product]
 	// written elsewhere in the same model, exactly as a [SpaceBoundary]'s
-	// element does, and one which names an object this model does not hold is
+	// element does, and one which names an object this model does not hold as
+	// an element — an IfcAnnotation is a product and not an element — is
 	// [UnknownOpeningElementError].
 	Host GlobalID
 

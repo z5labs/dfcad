@@ -52,12 +52,13 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
-	IfcAirTerminal           IfcDoor               IfcRamp
-	IfcBeam                  IfcFooting            IfcRoof
-	IfcBuildingElementProxy  IfcFurnishingElement  IfcSlab
-	IfcColumn                IfcMember             IfcStair
-	IfcCovering              IfcPlate              IfcWall
-	IfcCurtainWall           IfcRailing            IfcWindow
+	IfcAirTerminal           IfcDoor               IfcRoof
+	IfcAnnotation            IfcFooting            IfcSlab
+	IfcBeam                  IfcFurnishingElement  IfcStair
+	IfcBuildingElementProxy  IfcMember             IfcWall
+	IfcColumn                IfcPlate              IfcWindow
+	IfcCovering              IfcRailing
+	IfcCurtainWall           IfcRamp
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -69,6 +70,15 @@ IFC4 defines as a product and this export has no attribute list for is
 "unwritten", and the proxy stands in faithfully until the entity is added; a
 code IFC4 defines no product for — a misspelling, a relationship, a type
 object — is "unknown", and the proxy is standing in for nothing anybody meant.
+
+IfcAnnotation is the one entity in that set which is not an element: a
+dimension, a label, a survey tie or a north arrow is drawn to be read rather
+than built. IFC4 gives it the attribute list of any product, so it is written
+with no Tag and no PredefinedType, and with everything else a proxy of its type
+would carry — its identity, its placement, its containment and its shapes. It
+cannot be voided, fill an opening or bound a space, because IFC4 names an
+element in each of those, and an export which would need it to is refused
+rather than written.
 
 An entity carrying a PredefinedType is written with it absent, "$", and never
 as .NOTDEFINED.: an IfcAirTerminal as much as a wall or a door. Which member of
