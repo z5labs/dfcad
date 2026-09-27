@@ -52,15 +52,16 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
-	IfcAirTerminal              IfcCurtainWall                 IfcMember
-	IfcAnnotation               IfcDistributionChamberElement  IfcPlate
-	IfcBeam                     IfcDistributionElement         IfcRailing
-	IfcBuildingElementProxy     IfcDistributionFlowElement     IfcRamp
-	IfcCableSegment             IfcDoor                        IfcRoof
-	IfcCivilElement             IfcDuctSegment                 IfcSlab
-	IfcColumn                   IfcElectricAppliance           IfcStair
-	IfcCommunicationsAppliance  IfcFooting                     IfcWall
-	IfcCovering                 IfcFurnishingElement           IfcWindow
+	IfcAirTerminal              IfcDistributionChamberElement  IfcPlate
+	IfcAnnotation               IfcDistributionElement         IfcRailing
+	IfcBeam                     IfcDistributionFlowElement     IfcRamp
+	IfcBuildingElementProxy     IfcDoor                        IfcRoof
+	IfcCableSegment             IfcDuctSegment                 IfcSlab
+	IfcCivilElement             IfcElectricAppliance           IfcStair
+	IfcColumn                   IfcElectricDistributionBoard   IfcWall
+	IfcCommunicationsAppliance  IfcFooting                     IfcWindow
+	IfcCovering                 IfcFurnishingElement
+	IfcCurtainWall              IfcMember
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -87,21 +88,24 @@ as .NOTDEFINED.: an IfcAirTerminal, an IfcCommunicationsAppliance or an
 IfcCableSegment as much as a wall or a door, and an
 IfcDistributionChamberElement as much as any of them. An IfcDuctSegment is
 written the same way. An IfcElectricAppliance is written the same way.
+An IfcElectricDistributionBoard is written the same way.
 Which member of the entity's enumeration applies —
 for an air terminal a diffuser, a grille, a register, a louvre;
 for a communications appliance a router, a modem, a network hub, a gateway;
 for a distribution chamber a manhole, an inspection chamber, a sump, a valve
 chamber; for a cable segment a cable, a conductor, a core, a busbar;
 for a duct segment a rigid segment or a flexible one;
-for an electric appliance a dishwasher, a washing machine, a refrigerator —
+for an electric appliance a dishwasher, a washing machine, a refrigerator;
+for an electric distribution board a distribution board, a consumer unit, a
+switchboard, a motor control centre —
 is a statement about the thing, and the model holds no predicate making it.
 .NOTDEFINED. is a value, and writing it would say that somebody looked and
 found no member fits, which nobody did; absent says only that the file does
 not know. A type's name is not read for it either — a type called
-"register", "lv-run", "media-panel", "septic-dbox", "duct" or "appliance" is
-a name its author chose, not a claim about the enumeration — and it reaches
-the file in ObjectType, as it does for every product. An entity IFC4 gives no PredefinedType is written
-without one, ending at Tag:
+"register", "lv-run", "media-panel", "septic-dbox", "duct", "appliance" or
+"panel" is a name its author chose, not a claim about the enumeration — and it
+reaches the file in ObjectType, as it does for every product. An entity IFC4
+gives no PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as
 much as an IfcFurnishingElement, an IfcDistributionElement — a receptacle,
 a switch, a smoke detector, a thermostat — as much as either, and an
