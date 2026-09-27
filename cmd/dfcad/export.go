@@ -64,6 +64,7 @@ The entities a classification may name are:
 	IfcCurtainWall              IfcGeographicElement           IfcSlab
 	                            IfcMember                      IfcStair
 	                                                           IfcTank
+	                                                           IfcValve
 	                                                           IfcWall
 	                                                           IfcWindow
 
@@ -97,7 +98,7 @@ IfcGeographicElement is written the same way. An IfcOpeningElement is
 written the same way. An IfcOutlet is written the same way. An
 IfcPipeFitting is written the same way. An IfcPipeSegment is written the
 same way. An IfcSanitaryTerminal is written the same way. An IfcTank is
-written the same way.
+written the same way. An IfcValve is written the same way.
 Which member of the entity's enumeration applies —
 for an air terminal a diffuser, a grille, a register, a louvre;
 for a communications appliance a router, a modem, a network hub, a gateway;
@@ -118,13 +119,15 @@ or a spool;
 for a sanitary terminal a toilet pan, a wash-hand basin, a sink, a bath, a
 shower, a urinal or a bidet;
 for a tank a basin, a break-pressure tank, an expansion vessel, a
-feed-and-expansion tank, a pressure vessel, a storage tank or a vessel —
+feed-and-expansion tank, a pressure vessel, a storage tank or a vessel;
+for a valve an isolating valve, a stopcock, a check valve, a faucet, a
+draw-off cock, a pressure-reducing or a pressure-relief valve —
 is a statement about the thing, and the model holds no predicate making it.
 .NOTDEFINED. is a value, and writing it would say that somebody looked and
 found no member fits, which nobody did; absent says only that the file does
 not know. A type's name is not read for it either — a type called
 "register", "lv-run", "media-panel", "septic-dbox", "duct", "appliance",
-"panel", "control-point", "opening", "jack", "cleanout", "septic-trench", "plumbing-fixture" or "septic-tank" is a name its author chose, not a claim about the enumeration — and it
+"panel", "control-point", "opening", "jack", "cleanout", "septic-trench", "plumbing-fixture", "septic-tank" or "valve" is a name its author chose, not a claim about the enumeration — and it
 reaches the file in ObjectType, as it does for every product. An entity IFC4
 gives no PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as
