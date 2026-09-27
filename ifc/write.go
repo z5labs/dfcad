@@ -179,7 +179,15 @@ var (
 	// a proxy standing in for it is one a receiving system cannot tell from a
 	// proxy standing in for a door.
 	//
-	// IfcDistributionElement is the supertype of all ten, and the third entry
+	// IfcSanitaryTerminal is the eleventh, and has the same tail for the same
+	// reason as IfcAirTerminal, IfcCommunicationsAppliance,
+	// IfcElectricAppliance and IfcOutlet, whose supertype it shares: it is an
+	// IfcFlowTerminal, so its list too ends `..., Tag, PredefinedType`. It is
+	// here because a toilet, a lavatory, a sink, a tub or a shower is
+	// classified as one, and a proxy standing in for it is one a receiving
+	// system cannot tell from a proxy standing in for a door.
+	//
+	// IfcDistributionElement is the supertype of all eleven, and the third entry
 	// whose tail is nought. IFC4 declares it directly under IfcElement, adds no
 	// attribute of its own — no PredefinedType, which only its subtypes carry —
 	// and does not make it abstract, so an instance of it is an element and
@@ -204,7 +212,7 @@ var (
 	// IfcDistributionChamberElement's, IfcDuctSegment's,
 	// IfcElectricAppliance's, IfcElectricDistributionBoard's,
 	// IfcGeographicElement's, IfcOpeningElement's, IfcOutlet's,
-	// IfcPipeFitting's and IfcPipeSegment's among them.
+	// IfcPipeFitting's, IfcPipeSegment's and IfcSanitaryTerminal's among them.
 	// Which member of the entity's
 	// enumeration applies — a diffuser or a grille for an air terminal, a
 	// cable segment or a conductor segment for a cable, a router, a modem or a
@@ -218,7 +226,9 @@ var (
 	// a power, a data, a telephone or an audio-visual outlet for an outlet, and
 	// a bend, a junction, a transition, an entry, an exit, an obstruction or a
 	// connector for a pipe fitting, and a rigid segment, a flexible segment, a
-	// culvert, a gutter or a spool for a pipe segment —
+	// culvert, a gutter or a spool for a pipe segment, and a toilet pan, a
+	// wash-hand basin, a sink, a bath, a shower, a urinal or a bidet for a
+	// sanitary terminal —
 	// is a statement about the thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
@@ -271,9 +281,11 @@ var (
 		"IFCRAILING":     1,
 		"IFCRAMP":        1,
 		"IFCROOF":        1,
-		"IFCSLAB":        1,
-		"IFCSTAIR":       1,
-		"IFCWALL":        1,
+		// PredefinedType; see above.
+		"IFCSANITARYTERMINAL": 1,
+		"IFCSLAB":             1,
+		"IFCSTAIR":            1,
+		"IFCWALL":             1,
 		// OverallHeight, OverallWidth, PredefinedType, PartitioningType,
 		// UserDefinedPartitioningType.
 		"IFCWINDOW": 5,
