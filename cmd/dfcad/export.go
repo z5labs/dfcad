@@ -52,14 +52,14 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
-	IfcAirTerminal              IfcCovering                    IfcRailing
-	IfcAnnotation               IfcCurtainWall                 IfcRamp
-	IfcBeam                     IfcDistributionChamberElement  IfcRoof
-	IfcBuildingElementProxy     IfcDoor                        IfcSlab
-	IfcCableSegment             IfcFooting                     IfcStair
-	IfcCivilElement             IfcFurnishingElement           IfcWall
-	IfcColumn                   IfcMember                      IfcWindow
-	IfcCommunicationsAppliance  IfcPlate
+	IfcAirTerminal              IfcCovering                    IfcPlate
+	IfcAnnotation               IfcCurtainWall                 IfcRailing
+	IfcBeam                     IfcDistributionChamberElement  IfcRamp
+	IfcBuildingElementProxy     IfcDistributionElement         IfcRoof
+	IfcCableSegment             IfcDoor                        IfcSlab
+	IfcCivilElement             IfcFooting                     IfcStair
+	IfcColumn                   IfcFurnishingElement           IfcWall
+	IfcCommunicationsAppliance  IfcMember                      IfcWindow
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -98,7 +98,8 @@ chose, not a claim about the enumeration — and it reaches the file in
 ObjectType, as it does for every product. An entity IFC4 gives no
 PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as
-much as an IfcFurnishingElement.
+much as an IfcFurnishingElement, and an IfcDistributionElement — a receptacle,
+a switch, a smoke detector, a thermostat — as much as either.
 
 A storey declaring a frame is written at the elevation that frame's chain to the
 root puts it at, and everything in it is placed relative to that. It is what
