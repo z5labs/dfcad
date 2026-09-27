@@ -45,6 +45,16 @@ func TestSupports(t *testing.T) {
 			expected: SupportProduct,
 		},
 		{
+			name:     "writes a cable segment as the entity the classification names",
+			entity:   "IFCCABLESEGMENT",
+			expected: SupportWritable,
+		},
+		{
+			name:     "names the cable segment's abstract supertype as a product it does not write",
+			entity:   "IFCFLOWSEGMENT",
+			expected: SupportProduct,
+		},
+		{
 			name:     "writes an annotation, which is a product and not an element",
 			entity:   "IFCANNOTATION",
 			expected: SupportWritable,

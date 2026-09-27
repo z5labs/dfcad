@@ -52,13 +52,13 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
-	IfcAirTerminal           IfcDoor               IfcRoof
-	IfcAnnotation            IfcFooting            IfcSlab
-	IfcBeam                  IfcFurnishingElement  IfcStair
-	IfcBuildingElementProxy  IfcMember             IfcWall
+	IfcAirTerminal           IfcCurtainWall        IfcRamp
+	IfcAnnotation            IfcDoor               IfcRoof
+	IfcBeam                  IfcFooting            IfcSlab
+	IfcBuildingElementProxy  IfcFurnishingElement  IfcStair
+	IfcCableSegment          IfcMember             IfcWall
 	IfcColumn                IfcPlate              IfcWindow
 	IfcCovering              IfcRailing
-	IfcCurtainWall           IfcRamp
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -81,14 +81,16 @@ element in each of those, and an export which would need it to is refused
 rather than written.
 
 An entity carrying a PredefinedType is written with it absent, "$", and never
-as .NOTDEFINED.: an IfcAirTerminal as much as a wall or a door. Which member of
-IfcAirTerminalTypeEnum applies — a diffuser, a grille, a register, a louvre — is
-a statement about the thing, and the model holds no predicate making it.
-.NOTDEFINED. is a value, and writing it would say that somebody looked and
-found no member fits, which nobody did; absent says only that the file does
-not know. A type's name is not read for it either — a type called "register"
-is a name its author chose, not a claim about the enumeration — and it reaches
-the file in ObjectType, as it does for every product.
+as .NOTDEFINED.: an IfcAirTerminal or an IfcCableSegment as much as a wall or a
+door. Which member of the entity's enumeration applies — for an air terminal a
+diffuser, a grille, a register, a louvre; for a cable segment a cable, a
+conductor, a core, a busbar — is a statement about the thing, and the model
+holds no predicate making it. .NOTDEFINED. is a value, and writing it would say
+that somebody looked and found no member fits, which nobody did; absent says
+only that the file does not know. A type's name is not read for it either — a
+type called "register" or "lv-run" is a name its author chose, not a claim
+about the enumeration — and it reaches the file in ObjectType, as it does for
+every product.
 
 A storey declaring a frame is written at the elevation that frame's chain to the
 root puts it at, and everything in it is placed relative to that. It is what
