@@ -122,7 +122,14 @@ var (
 	// is one a receiving system cannot tell from a proxy standing in for a
 	// door.
 	//
-	// IfcDistributionElement is the supertype of all six, and the third entry
+	// IfcElectricDistributionBoard is the seventh. It is an IfcFlowController,
+	// which adds nothing to IfcDistributionFlowElement in IFC4, so its list
+	// too ends `..., Tag, PredefinedType`. It is here because a panel or a
+	// load centre, where the branch circuits start, is classified as one, and
+	// a proxy standing in for it is one a receiving system cannot tell from a
+	// proxy standing in for a door.
+	//
+	// IfcDistributionElement is the supertype of all seven, and the third entry
 	// whose tail is nought. IFC4 declares it directly under IfcElement, adds no
 	// attribute of its own — no PredefinedType, which only its subtypes carry —
 	// and does not make it abstract, so an instance of it is an element and
@@ -144,14 +151,16 @@ var (
 	//
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
 	// IfcCableSegment's, IfcCommunicationsAppliance's,
-	// IfcDistributionChamberElement's, IfcDuctSegment's and
-	// IfcElectricAppliance's among them. Which member of the entity's
-	// enumeration applies — a diffuser or a grille for an air terminal, a
-	// cable segment or a conductor segment for a cable, a router, a modem or a
-	// network hub for a communications appliance, a manhole, an inspection
-	// chamber or a sump for a distribution chamber, a rigid or a flexible
-	// segment for a duct, a dishwasher, a washing machine or a refrigerator
-	// for an electric appliance — is a statement about the thing, and a
+	// IfcDistributionChamberElement's, IfcDuctSegment's,
+	// IfcElectricAppliance's and IfcElectricDistributionBoard's among them.
+	// Which member of the entity's enumeration applies — a diffuser or a
+	// grille for an air terminal, a cable segment or a conductor segment for a
+	// cable, a router, a modem or a network hub for a communications
+	// appliance, a manhole, an inspection chamber or a sump for a distribution
+	// chamber, a rigid or a flexible segment for a duct, a dishwasher, a
+	// washing machine or a refrigerator for an electric appliance, a
+	// distribution board, a consumer unit, a switchboard or a motor control
+	// centre for a distribution board — is a statement about the thing, and a
 	// [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
@@ -184,7 +193,9 @@ var (
 		"IFCDUCTSEGMENT": 1,
 		// PredefinedType; see above.
 		"IFCELECTRICAPPLIANCE": 1,
-		"IFCFOOTING":           1,
+		// PredefinedType; see above.
+		"IFCELECTRICDISTRIBUTIONBOARD": 1,
+		"IFCFOOTING":                   1,
 		// IfcFurnishingElement's attribute list ends at Tag; see above.
 		"IFCFURNISHINGELEMENT": 0,
 		"IFCMEMBER":            1,
