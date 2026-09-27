@@ -116,6 +116,16 @@ var (
 	// any of them is one a receiving system cannot tell from a proxy standing
 	// in for a door.
 	//
+	// IfcDistributionFlowElement is the fourth entry whose tail is nought, and
+	// the supertype of every distribution entry above but IfcDistributionElement
+	// itself. IFC4 declares it directly under IfcDistributionElement and adds
+	// no attribute of its own — no PredefinedType, which only its subtypes
+	// carry — so its list is IfcDistributionElement's and ends at Tag. It is
+	// here because an air handler, a condenser, a damper or a water heater is
+	// classified as one where no subtype is claimed for it, and a proxy
+	// standing in for any of them is one a receiving system cannot tell from a
+	// proxy standing in for a door.
+	//
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
 	// IfcCableSegment's, IfcCommunicationsAppliance's and
 	// IfcDistributionChamberElement's among them. Which member of the entity's
@@ -146,6 +156,8 @@ var (
 		"IFCDISTRIBUTIONCHAMBERELEMENT": 1,
 		// IfcDistributionElement's attribute list ends at Tag; see above.
 		"IFCDISTRIBUTIONELEMENT": 0,
+		// IfcDistributionFlowElement's attribute list ends at Tag; see above.
+		"IFCDISTRIBUTIONFLOWELEMENT": 0,
 		// OverallHeight, OverallWidth, PredefinedType, OperationType,
 		// UserDefinedOperationType.
 		"IFCDOOR":    5,

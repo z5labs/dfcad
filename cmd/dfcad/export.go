@@ -52,14 +52,15 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
-	IfcAirTerminal              IfcCovering                    IfcPlate
-	IfcAnnotation               IfcCurtainWall                 IfcRailing
-	IfcBeam                     IfcDistributionChamberElement  IfcRamp
-	IfcBuildingElementProxy     IfcDistributionElement         IfcRoof
-	IfcCableSegment             IfcDoor                        IfcSlab
-	IfcCivilElement             IfcFooting                     IfcStair
-	IfcColumn                   IfcFurnishingElement           IfcWall
-	IfcCommunicationsAppliance  IfcMember                      IfcWindow
+	IfcAirTerminal              IfcCurtainWall                 IfcRailing
+	IfcAnnotation               IfcDistributionChamberElement  IfcRamp
+	IfcBeam                     IfcDistributionElement         IfcRoof
+	IfcBuildingElementProxy     IfcDistributionFlowElement     IfcSlab
+	IfcCableSegment             IfcDoor                        IfcStair
+	IfcCivilElement             IfcFooting                     IfcWall
+	IfcColumn                   IfcFurnishingElement           IfcWindow
+	IfcCommunicationsAppliance  IfcMember
+	IfcCovering                 IfcPlate
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -98,8 +99,10 @@ chose, not a claim about the enumeration — and it reaches the file in
 ObjectType, as it does for every product. An entity IFC4 gives no
 PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as
-much as an IfcFurnishingElement, and an IfcDistributionElement — a receptacle,
-a switch, a smoke detector, a thermostat — as much as either.
+much as an IfcFurnishingElement, an IfcDistributionElement — a receptacle,
+a switch, a smoke detector, a thermostat — as much as either, and an
+IfcDistributionFlowElement — an air handler, a condenser, a damper, a water
+heater — as much as any of them.
 
 A storey declaring a frame is written at the elevation that frame's chain to the
 root puts it at, and everything in it is placed relative to that. It is what

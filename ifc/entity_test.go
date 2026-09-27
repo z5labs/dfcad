@@ -70,9 +70,9 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
-			name:     "names the distribution chamber's abstract supertype as a product it does not write",
+			name:     "writes a distribution flow element as the entity the classification names",
 			entity:   "IFCDISTRIBUTIONFLOWELEMENT",
-			expected: SupportProduct,
+			expected: SupportWritable,
 		},
 		{
 			name:     "writes a civil element as the entity the classification names",
