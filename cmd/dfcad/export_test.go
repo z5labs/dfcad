@@ -1510,8 +1510,8 @@ const exportClassifiedRegistry = `(project
 (type LegacyWall (kind Element) (geometry absent) (description "A wall classified the old way.")
   (classification "IFC4" "IfcWallStandardCase"))
 
-(type Receptacle (kind Element) (geometry absent) (description "A socket outlet.")
-  (classification "IFC4" "IfcOutlet"))
+(type Luminaire (kind Element) (geometry absent) (description "A light fitting.")
+  (classification "IFC4" "IfcLightFixture"))
 
 (type Typo (kind Element) (geometry absent) (description "A wall somebody misspelled.")
   (classification "IFC4" "IfcWahl"))
@@ -1537,7 +1537,7 @@ const exportClassifiedEntities = `(node site:P-01 (label "Plot one") (kind Site)
 
 (node site:LW-01 (label "Legacy-classified partition") (kind Element) (type LegacyWall) (within site:S-101))
 
-(node site:O-01 (label "Double socket") (kind Element) (type Receptacle) (within site:S-101))
+(node site:O-01 (label "Pendant light") (kind Element) (type Luminaire) (within site:S-101))
 
 (node site:TY-01 (label "Misspelled-classification thing") (kind Element) (type Typo) (within site:S-101))
 
@@ -1581,8 +1581,8 @@ func TestRunExportReportsAClassificationItCannotCarry(t *testing.T) {
 			name: "names a service IFC4 defines and this writer does not write as unwritten",
 			expected: exportedClassification{
 				ID:     "site:O-01",
-				Type:   "Receptacle",
-				Code:   "IfcOutlet",
+				Type:   "Luminaire",
+				Code:   "IfcLightFixture",
 				Entity: "IFCBUILDINGELEMENTPROXY",
 				Reason: classificationUnwritten,
 			},
@@ -1705,7 +1705,7 @@ func TestRunExportReportsNoClassificationsForAModelWithinTheWritableSet(t *testi
 	files := exportClassifiedModel()
 	files["registry.dfc"] = strings.NewReplacer(
 		`"IfcWallStandardCase"`, `"IfcWall"`,
-		`"IfcOutlet"`, `"IfcFurnishingElement"`,
+		`"IfcLightFixture"`, `"IfcFurnishingElement"`,
 		`"IfcWahl"`, `"IfcWall"`,
 		`"IfcRelSpaceBoundary"`, `"IfcCovering"`,
 	).Replace(exportClassifiedRegistry)
@@ -1729,7 +1729,7 @@ func TestExportUsageNamesEveryEntityTheWriterHoldsAnAttributeListFor(t *testing.
 	}
 
 	t.Run("names nothing the writer does not hold one for", func(t *testing.T) {
-		for _, entity := range []ifc.Entity{"IFCPILE", "IFCOUTLET", "IFCWALLSTANDARDCASE"} {
+		for _, entity := range []ifc.Entity{"IFCPILE", "IFCLIGHTFIXTURE", "IFCWALLSTANDARDCASE"} {
 			assert.NotContains(t, documented, string(entity))
 		}
 	})
