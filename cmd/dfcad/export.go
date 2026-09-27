@@ -151,6 +151,16 @@ dimensions nobody measured. A node drawn as a point which nothing places is
 refused naming it, rather than written at its container's origin — a device at
 the corner of its storey looks exactly like a device somebody placed.
 
+A node within nothing — an element or an interface no site, building, storey or
+space contains, at any remove — is written all the same, and is contained in no
+spatial element. IFC4 does not require a product to stand in the spatial
+structure, and an annotation, a survey mark or a meter nobody has put in a room
+commonly does not; putting one in a site or a storey the model does not say it
+is in would be this command authoring the model. Its placement is the root
+frame's origin, which is where the file's own coordinates sit, and it is drawn,
+placed as a point or widened as a line exactly as any node of its geometry is
+wherever it stands. So every node the model has not retired is in the file.
+
 --height is what adds a body. Where it names a predicate and a node's height
 resolves under it, the node additionally carries a SweptSolid representation —
 the footprint extruded upwards, holes carried through as the profile's inner
@@ -289,19 +299,20 @@ of a room's outline which names the element realising it is written as an
 IfcRelSpaceBoundary between the two, classified physical because something
 backs it and internal or external from the containment the model already
 states: an element in the same building as the room is between it and another
-room, and one anywhere else is between it and the outside. Where the run drew
-the room, each relationship also carries the run of the outline that edge
-produced as its connection geometry — the same drawing the footprint holds,
-curves included — and where it drew nothing, the relationship is written
-without one, which the schema allows and a topological model should prefer.
+room, and one anywhere else — within nothing included — is between it and the
+outside. Where the run drew the room, each relationship also carries the run of
+the outline that edge produced as its connection geometry — the same drawing
+the footprint holds, curves included — and where it drew nothing, the
+relationship is written without one, which the schema allows and a topological
+model should prefer.
 
 Two rooms with nothing built between them are reported rather than written.
 The relationship's element is mandatory, IFC's answer to a boundary with no
 element is one which is not there, and inventing it would put a thing into the
 artefact which the model does not hold. The same is said of an edge backed by
-an element outside the spatial structure, which is written nowhere for a
-relationship to point at. Both are warnings: the file is still produced, and a
-gap somebody is told about is one they can close.
+an element the file does not hold, which is one the model has retired. Both are
+warnings: the file is still produced, and a gap somebody is told about is one
+they can close.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -806,6 +817,11 @@ func exported(
 	// the one above, so what the walk carries down is how far the placements so
 	// far have already moved a shape.
 	sites := out.decompose(out.roots, 0)
+
+	// A node within nothing is placed at the root frame's origin, which is
+	// where the world coordinate system it is placed relative to sits, so it
+	// is drawn against a datum of nought exactly as a site is.
+	uncontained := out.contained(out.uncontained, 0)
 	groups := out.zones()
 
 	// The openings come after the walk because each is cut from two drawings
@@ -844,6 +860,7 @@ func exported(
 			LongName:   project.Description,
 			Aggregates: out.identify(dfcad.ID("ifc/aggregates/project")),
 			Sites:      sites,
+			Products:   uncontained,
 			Groups:     groups,
 			Openings:   openings,
 		},
@@ -896,6 +913,11 @@ type exporter struct {
 	// the elements contained in each, both by the id of what holds them.
 	children map[dfcad.ID][]*dfcad.SemanticNode
 	products map[dfcad.ID][]*dfcad.SemanticNode
+
+	// uncontained are the elements and interfaces within nothing — nothing
+	// spatial contains them at any remove — in id order. They hang off the
+	// project in no relationship, placed at the root frame's origin.
+	uncontained []*dfcad.SemanticNode
 
 	// zoned are the zone nodes, and members the nodes assigned to each.
 	zoned   []*dfcad.SemanticNode
@@ -1013,12 +1035,17 @@ func (e *exporter) collect() {
 			// An element or an interface is a thing standing in a spatial
 			// element rather than a part of one, so it is contained by the
 			// nearest spatial ancestor it has. One with none is written
-			// nowhere: IFC has no place for a product outside the spatial
+			// contained in nothing, which IFC4 allows of any product: an
+			// annotation or a survey mark commonly stands outside the spatial
 			// structure, and inventing a storey to hold it would be this
-			// command authoring a model.
+			// command authoring a model. Leaving it out is the one answer
+			// which is never right — a node the model holds, missing from the
+			// file with no word said.
 			if parent, ok := e.spatialParent(node); ok {
 				e.products[parent] = append(e.products[parent], node)
+				continue
 			}
+			e.uncontained = append(e.uncontained, node)
 		}
 	}
 
@@ -1033,6 +1060,9 @@ func (e *exporter) collect() {
 	// something, a boundary naming the wall which realises it — has to be
 	// answerable before the thing it names has been reached.
 	e.hold(e.roots)
+	for _, node := range e.uncontained {
+		e.holdProduct(node)
+	}
 	for _, node := range e.zoned {
 		e.written[node.ID()] = true
 	}
@@ -1042,9 +1072,8 @@ func (e *exporter) collect() {
 // in each, as things the file will hold.
 //
 // It walks exactly what [exporter.decompose] walks, so the answer is the set
-// which will actually be written and not a superset of it: a node nothing
-// reachable contains is written nowhere, and saying otherwise would leave a
-// reference to it in the file.
+// which will actually be written and not a superset of it. The products
+// nothing contains are held beside it, by [exporter.collect].
 func (e *exporter) hold(nodes []*dfcad.SemanticNode) {
 	for _, node := range nodes {
 		id := node.ID()
@@ -1384,8 +1413,8 @@ func (e *exporter) zones() []ifc.Group {
 		}
 
 		for _, member := range e.members[id] {
-			// A member which was not written — a node nothing spatial
-			// contains, a retired one — is left out rather than referenced.
+			// A member which was not written — a retired one — is left out
+			// rather than referenced.
 			// The assignment is over what this file holds, and a reference to
 			// an object it does not is a file readers disagree about.
 			if !e.written[member.ID()] {

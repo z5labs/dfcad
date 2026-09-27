@@ -2890,6 +2890,15 @@ kind is `Zone` is written as an `IfcZone` with its `member-of` members assigned 
 `IfcRelAssignsToGroup`. A node whose kind is `Element` or `Interface` is contained in the
 nearest spatial ancestor it has, through `IfcRelContainedInSpatialStructure`.
 
+**A node within nothing is written all the same, contained in nothing.** An element or an
+interface no site, building, storey or space contains, at any remove, is written in no
+relationship at all — IFC4 does not require a product to stand in the spatial structure, and
+an annotation, a survey mark or a meter nobody has put in a room commonly does not. Its local
+placement is relative to nothing, which is the root frame the whole file is written in, and it
+is drawn, placed as a point or widened as a line exactly as any node of its geometry is. It is
+not put in a site or a storey the model does not say it is in, and it is not left out: every
+node the model has not retired is in the file.
+
 **What an element is written as comes from its type's classification, and the fallback is a
 proxy.** A type declaring `(classification "IFC4" "IfcWall")` puts its instances in the file as
 `IFCWALL`. A type declaring nothing under that system — or naming an entity this writer has no
@@ -3056,8 +3065,9 @@ without any geometry at all, which the schema allows and a topological model sho
 succeeds.** `RelatedBuildingElement` is mandatory, so two rooms with nothing built between
 them have no relationship to be written as; IFC's own answer is an `IfcVirtualElement`, and
 writing one would be this command putting a thing into the artefact which the model does not
-hold. The same goes for an edge backed by an element outside the spatial structure, which is
-written nowhere for a relationship to point at. Both are warnings on stderr naming the space
+hold. The same goes for an edge backed by an element the model has retired, which is written
+nowhere for a relationship to point at. An element within nothing is not one of those: it is in
+the file, and bounds the room from outside. Both are warnings on stderr naming the space
 and the edge, because a gap somebody is told about is one they can close and a silently
 missing boundary is not. An edge which bounds one room and nothing else is not reported: the
 model has said nothing about what runs along it, so there is no boundary between two things to

@@ -286,7 +286,8 @@ type pending struct {
 // first because the project references them, then the context for the same
 // reason, then the georeference, which converts out of that context, then the
 // project, then the spatial decomposition depth first in the order the caller
-// wrote it, then the groups, which may assign anything above them, then the
+// wrote it, then the products nothing contains, then the groups, which may
+// assign anything above them, then the
 // space boundaries, which may name any element the walk wrote, and last the
 // openings, which name two of them each.
 func (w *writer) model(model Model) error {
@@ -328,6 +329,15 @@ func (w *writer) model(model Model) error {
 
 	if err := w.aggregates(project.Aggregates, root, sites); err != nil {
 		return err
+	}
+
+	// The products nothing contains are written beneath no placement, which
+	// is the world coordinate system, and in no relationship: there is no
+	// spatial element for one to be contained in.
+	for _, product := range project.Products {
+		if _, err := w.product(product, 0); err != nil {
+			return err
+		}
 	}
 
 	if err := w.groups(project.Groups); err != nil {

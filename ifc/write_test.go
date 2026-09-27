@@ -2361,3 +2361,113 @@ func TestWriteStatesAMapConversionTheCallerMeasured(t *testing.T) {
 
 	t.Fatal("the model carries a map conversion")
 }
+
+// uncontained is the fixture with a product nothing contains beside the spatial
+// structure, a part decomposed out of it, and the zone assigning it too.
+func uncontained() Model {
+	model := fixture()
+
+	model.Project.Products = []Product{{
+		Entity:      EntityProxy,
+		GlobalID:    "GIg1S2wRr2WQeQMwAKN3aq",
+		Name:        "site:M-01",
+		Description: "Electrical meter",
+		ObjectType:  "Meter",
+		Placement:   &Placement{Location: Point{X: 12, Y: 7, Z: 0}},
+		Aggregates:  "HIg1S2wRr2WQeQMwAKN3aq",
+		Parts: []Product{{
+			Entity:     EntityProxy,
+			GlobalID:   "IIg1S2wRr2WQeQMwAKN3aq",
+			Name:       "site:M-01-seal",
+			ObjectType: "Seal",
+			Placement:  &Placement{Location: Point{X: 12, Y: 7, Z: 1}},
+		}},
+	}}
+
+	model.Project.Groups[0].Members = append(model.Project.Groups[0].Members, "GIg1S2wRr2WQeQMwAKN3aq")
+
+	return model
+}
+
+// named is the instance of the given entity whose Name attribute is name.
+func named(t *testing.T, parsed *file, keyword, name string) simple {
+	t.Helper()
+
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword == keyword && len(held.attributes) > 2 && held.attributes[2].text == name {
+			return held
+		}
+	}
+
+	require.Failf(t, "no such instance", "expected a %s named %s", keyword, name)
+	return simple{}
+}
+
+func TestWriteProductsNothingContains(t *testing.T) {
+	source := written(t, uncontained())
+
+	parsed, err := read(source)
+	require.NoError(t, err)
+
+	meter := named(t, parsed, string(EntityProxy), "site:M-01")
+	seal := named(t, parsed, string(EntityProxy), "site:M-01-seal")
+
+	t.Run("writes each product and its parts", func(t *testing.T) {
+		assert.Equal(t, "Meter", meter.attributes[4].text)
+		assert.Equal(t, "Seal", seal.attributes[4].text)
+	})
+
+	t.Run("places each relative to the world coordinate system", func(t *testing.T) {
+		for _, product := range []simple{meter, seal} {
+			require.Equal(t, itemReference, product.attributes[5].form)
+
+			placement, held := parsed.instance(product.attributes[5].at)
+			require.True(t, held)
+			require.Equal(t, "IFCLOCALPLACEMENT", placement.keyword)
+
+			assert.Equal(t, itemAbsent, placement.attributes[0].form,
+				"a product nothing contains is placed relative to nothing")
+		}
+	})
+
+	t.Run("contains neither in any spatial element", func(t *testing.T) {
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
+				continue
+			}
+			for _, related := range held.attributes[4].items {
+				assert.NotEqual(t, meter.number, related.at)
+				assert.NotEqual(t, seal.number, related.at)
+			}
+		}
+	})
+
+	t.Run("aggregates the part out of its whole", func(t *testing.T) {
+		assert.Contains(t, source, "IFCRELAGGREGATES('HIg1S2wRr2WQeQMwAKN3aq',$,$,$,#"+strconv.Itoa(meter.number)+
+			",(#"+strconv.Itoa(seal.number)+"));")
+	})
+
+	t.Run("lets a group assign it", func(t *testing.T) {
+		var assigned []int
+		for _, number := range parsed.order {
+			held, _ := parsed.instance(number)
+			if held.keyword != "IFCRELASSIGNSTOGROUP" {
+				continue
+			}
+			for _, related := range held.attributes[4].items {
+				assigned = append(assigned, related.at)
+			}
+		}
+
+		assert.Contains(t, assigned, meter.number)
+	})
+}
+
+func TestWriteWritesNothingMoreWhereEverythingIsContained(t *testing.T) {
+	model := fixture()
+	model.Project.Products = []Product{}
+
+	assert.Equal(t, written(t, fixture()), written(t, model))
+}

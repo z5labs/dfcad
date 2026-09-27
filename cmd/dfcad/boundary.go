@@ -100,10 +100,12 @@ func (e *exporter) boundary(
 	element *dfcad.SemanticNode,
 	drawn dfcad.RegionTessellation,
 ) (ifc.SpaceBoundary, bool) {
-	// An element nothing spatial contains is written nowhere: IFC has no place
-	// for a product outside the spatial structure. A boundary naming it would
-	// be a reference to an object the file does not hold, so it is left out
-	// and said, exactly as an unbacked edge is.
+	// An element the file does not hold — one the model has retired — is not
+	// something a boundary can name. A boundary naming it would be a reference
+	// to an object the file does not hold, so it is left out and said, exactly
+	// as an unbacked edge is. An element within nothing is not one of these:
+	// it is written, contained in no spatial element, and bounds the room from
+	// outside.
 	if !e.written[element.ID()] {
 		e.unheld(node, edge, element)
 		return ifc.SpaceBoundary{}, false
@@ -283,15 +285,15 @@ func (e *exporter) inexpressible(node *dfcad.SemanticNode, edge *dfcad.Edge) {
 // unheld reports a boundary whose backing element is not in the file.
 //
 // It is the same gap as an unbacked edge seen from the other side: the model
-// says what separates the two rooms, and the file cannot say it, because an
-// element outside the spatial structure is written nowhere for a relationship
-// to point at.
+// says what separates the two rooms, and the file cannot say it, because the
+// element is one the model retired and a retired node is written nowhere for a
+// relationship to point at.
 func (e *exporter) unheld(node *dfcad.SemanticNode, edge *dfcad.Edge, element *dfcad.SemanticNode) {
 	e.warn(node, edge, fmt.Sprintf(
-		"expected the element backing %s of %s to be one this file holds, found %s, which nothing spatial contains",
+		"expected the element backing %s of %s to be one this file holds, found %s, which the model has retired",
 		edge.ID(), node.ID(), element.ID()),
-		"contain the element in the space, storey or building it stands in, written (within <node-id>); IFC has no "+
-			"place for a product outside the spatial structure and so none for a boundary naming one")
+		"name what realises the edge now, written (backed-by <element-id>) on it; a retired element is not written, "+
+			"and so there is nothing for a boundary naming it to point at")
 }
 
 // warn records something this format cannot carry about one space's boundary,

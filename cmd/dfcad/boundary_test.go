@@ -258,8 +258,17 @@ func TestRunExportWritesEveryBoundaryAnElementBacks(t *testing.T) {
 	t.Run("writes one relationship per space and element which back an edge of it", func(t *testing.T) {
 		// The party wall is reached from both rooms it separates, which is two
 		// relationships and not one: a boundary is stated of a space, and each
-		// of the two is bounded by that wall.
-		assert.Equal(t, 3, strings.Count(source, "=IFCRELSPACEBOUNDARY("))
+		// of the two is bounded by that wall. The hoarding on the plot and the
+		// screen within nothing bound one room each.
+		assert.Equal(t, 4, strings.Count(source, "=IFCRELSPACEBOUNDARY("))
+	})
+
+	t.Run("bounds a room from outside by an element within nothing", func(t *testing.T) {
+		// The screen is contained in no spatial element, and it is in the file
+		// all the same, so the edge it backs is a relationship like any other
+		// — and nothing puts the screen in the room's building, so it is
+		// between the room and the outside.
+		assert.Regexp(t, `IFCRELSPACEBOUNDARY\('[^']+',\$,'geom:E-DA',\$,#\d+,#\d+,#\d+,\.PHYSICAL\.,\.EXTERNAL\.\);`, source)
 	})
 
 	t.Run("holds the golden the review of this format reads", func(t *testing.T) {
@@ -300,15 +309,12 @@ func TestRunExportReportsABoundaryTheSchemaCannotExpress(t *testing.T) {
 		assert.Contains(t, stderr, "which nothing backs")
 	})
 
-	t.Run("names the space and the edge where the element is not in the file", func(t *testing.T) {
-		assert.Contains(t, stderr, "geom:E-DA")
-		assert.Contains(t, stderr, "site:W-loose")
-		assert.Contains(t, stderr, "nothing spatial contains")
+	t.Run("says nothing about an edge backed by an element within nothing, which the file holds", func(t *testing.T) {
+		assert.NotContains(t, stderr, "geom:E-DA")
 	})
 
-	t.Run("writes nothing for either of them", func(t *testing.T) {
+	t.Run("writes nothing for it", func(t *testing.T) {
 		assert.NotContains(t, source, "'geom:E-EF'")
-		assert.NotContains(t, source, "'geom:E-DA'")
 	})
 
 	t.Run("says nothing about an edge which bounds one room and nothing else", func(t *testing.T) {
@@ -320,6 +326,38 @@ func TestRunExportReportsABoundaryTheSchemaCannotExpress(t *testing.T) {
 
 	t.Run("still produces the artefact, because a stated gap is not a refusal", func(t *testing.T) {
 		assert.Contains(t, source, "IFCRELSPACEBOUNDARY('")
+	})
+}
+
+// TestRunExportReportsABoundaryBackedByARetiredElement is its own function
+// because its fixture differs from the one above by a retirement: the screen
+// backing an edge of room A has stopped existing, so the file does not hold it
+// and the boundary naming it has nothing to point at.
+func TestRunExportReportsABoundaryBackedByARetiredElement(t *testing.T) {
+	files := boundaryModel()
+	files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"], `(node site:W-loose
+  (label "Screen nobody has placed")
+  (kind Element)
+  (type Hoarding))`, `(node site:W-loose
+  (label "Screen nobody has placed")
+  (kind Element)
+  (type Hoarding)
+  (retired
+    (date "2026-04-02")
+    (reason "Taken down.")))`, 1)
+	require.Contains(t, files["entities/site.dfc"], "Taken down.")
+
+	result, _, stderr := exporting(t, exitSuccess, files, boundaryFlags()...)
+	source := artefact(t, result)
+
+	t.Run("names the space, the edge and the element the file does not hold", func(t *testing.T) {
+		assert.Contains(t, stderr, "geom:E-DA")
+		assert.Contains(t, stderr, "site:W-loose")
+	})
+
+	t.Run("writes neither the element nor a boundary naming it", func(t *testing.T) {
+		assert.NotContains(t, source, "'site:W-loose'")
+		assert.NotContains(t, source, "'geom:E-DA'")
 	})
 }
 
@@ -352,7 +390,7 @@ func TestRunExportDrawsAConnectionCurveFromTheSegmentsTheEdgeProduced(t *testing
 	assert.Contains(t, source, "IFCCARTESIANPOINT((4.,0.))")
 	assert.Contains(t, source, "IFCCARTESIANPOINT((4.,3.))")
 
-	assert.Equal(t, 3, strings.Count(source, "=IFCCONNECTIONCURVEGEOMETRY("),
+	assert.Equal(t, 4, strings.Count(source, "=IFCCONNECTIONCURVEGEOMETRY("),
 		"a curve is written for each boundary the drawing attributed a run to")
 
 	// The two rooms traverse the shared edge in opposite directions, and each
