@@ -2922,6 +2922,7 @@ IfcCovering                 IfcFurnishingElement           IfcSanitaryTerminal
 IfcCurtainWall              IfcGeographicElement           IfcSlab
                             IfcMember                      IfcStair
                                                            IfcTank
+                                                           IfcValve
                                                            IfcWall
                                                            IfcWindow
 ```
@@ -2947,7 +2948,7 @@ one is refused rather than written with a reference no reader accepts.
 That holds of `IfcAirTerminal`, `IfcCableSegment`, `IfcCommunicationsAppliance`,
 `IfcDistributionChamberElement`, `IfcDuctSegment`, `IfcElectricAppliance`,
 `IfcElectricDistributionBoard`, `IfcGeographicElement`, `IfcOpeningElement`, `IfcOutlet`,
-`IfcPipeFitting`, `IfcPipeSegment`, `IfcSanitaryTerminal` and `IfcTank` as much as of a wall or a door. Which member of the entity's
+`IfcPipeFitting`, `IfcPipeSegment`, `IfcSanitaryTerminal`, `IfcTank` and `IfcValve` as much as of a wall or a door. Which member of the entity's
 enumeration applies — for an air terminal, a diffuser, a grille, a register or a louvre; for a
 cable segment, a cable, a conductor, a core or a busbar; for a communications appliance, a
 router, a modem, a network hub or a gateway; for a distribution chamber, a manhole, an
@@ -2960,11 +2961,13 @@ data, a telephone or an audio-visual outlet; for a pipe fitting, a bend, a junct
 an entry, an exit, an obstruction or a connector; for a pipe segment, a rigid segment, a flexible
 segment, a culvert, a gutter or a spool; for a sanitary terminal, a toilet pan, a wash-hand basin, a
 sink, a bath, a shower, a urinal or a bidet; for a tank, a basin, a break-pressure tank, an
-expansion vessel, a feed-and-expansion tank, a pressure vessel, a storage tank or a vessel — is a statement about the thing, and the model holds no predicate making it.
+expansion vessel, a feed-and-expansion tank, a pressure vessel, a storage tank or a vessel; for a valve, an isolating valve, a
+stopcock, a check valve, a faucet, a draw-off cock, a pressure-reducing or a pressure-relief
+valve — is a statement about the thing, and the model holds no predicate making it.
 `.NOTDEFINED.` is a value, and writing it would say somebody looked and found no member fits,
 which nobody did; absent says only that the file does not know. A type's name is not read for
 it: a type called `register`, `lv-run`, `media-panel`, `septic-dbox`, `duct`, `appliance`,
-`panel`, `control-point`, `opening`, `jack`, `cleanout`, `septic-trench`, `plumbing-fixture` or `septic-tank` is a name its author chose, not a claim about the enumeration, and it reaches the file
+`panel`, `control-point`, `opening`, `jack`, `cleanout`, `septic-trench`, `plumbing-fixture`, `septic-tank` or `valve` is a name its author chose, not a claim about the enumeration, and it reaches the file
 in `ObjectType`, as it does for every product. An entity IFC4 gives no
 `PredefinedType` is written without one, its attribute list ending at `Tag`: `IfcCivilElement`
 — a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`,

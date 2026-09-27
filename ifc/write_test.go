@@ -1680,6 +1680,8 @@ func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
 		"a plumbing fixture is a sanitary terminal rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCTANK"),
 		"a septic tank is a tank rather than a proxy")
+	assert.Contains(t, Products(), Entity("IFCVALVE"),
+		"a shutoff or a hose bibb is a valve rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCOPENINGELEMENT"),
 		"a cased opening is an opening element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCGEOGRAPHICELEMENT"),
@@ -2222,6 +2224,39 @@ func TestWriteGivesATankTheAttributeListIFC4Gives(t *testing.T) {
 	for _, number := range parsed.order {
 		held, _ := parsed.instance(number)
 		if held.keyword != "IFCTANK" {
+			continue
+		}
+		found++
+
+		require.Len(t, held.attributes, 9, "#%d=%s", number, held.keyword)
+		assert.Equal(t, itemAbsent, held.attributes[8].form, "PredefinedType is written absent")
+	}
+
+	assert.Equal(t, 1, found)
+}
+
+// TestWriteGivesAValveTheAttributeListIFC4Gives is its own function because
+// it is about one entry of the table rather than about a file: an IfcValve is
+// an IfcElement with PredefinedType after Tag, and nothing else, so it is
+// written with nine attributes and the last of them absent.
+func TestWriteGivesAValveTheAttributeListIFC4Gives(t *testing.T) {
+	model := bodied()
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products = append(space.Products, Product{
+		Entity:     "IFCVALVE",
+		GlobalID:   "2mV8xR3cW8eQ2sT5uW9yZh",
+		Name:       "site:HB-01",
+		ObjectType: "valve",
+		Placement:  origin(),
+	})
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	found := 0
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCVALVE" {
 			continue
 		}
 		found++
