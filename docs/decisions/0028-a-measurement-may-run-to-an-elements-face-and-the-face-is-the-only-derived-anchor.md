@@ -34,7 +34,7 @@ claim carrying its source, method and accuracy, and report what could not be aut
 way. `Zaba505/mi-casa` did that for both levels of a real house (mi-casa#87, measured
 against dfcad `af78277`). Its 62 dimension strings have 124 ends. The result:
 
-| | Ends |
+| What the end is | Ends |
 |---|--:|
 | An authored corner | 46 |
 | The intersection of two lines — edges extended, or faces | 43 |
