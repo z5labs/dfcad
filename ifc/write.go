@@ -106,7 +106,15 @@ var (
 	// classified as one, and a proxy standing in for it is one a receiving
 	// system cannot tell from a proxy standing in for a door.
 	//
-	// IfcDistributionElement is the supertype of all four, and the third entry
+	// IfcDuctSegment is the fifth, and has the same tail for the same reason
+	// as IfcCableSegment, whose supertype it shares: it is an IfcFlowSegment,
+	// which adds nothing to IfcDistributionFlowElement in IFC4, so its list
+	// too ends `..., Tag, PredefinedType`. It is here because a duct run,
+	// drawn as its centreline, is classified as one, and a proxy standing in
+	// for it is one a receiving system cannot tell from a proxy standing in
+	// for a door.
+	//
+	// IfcDistributionElement is the supertype of all five, and the third entry
 	// whose tail is nought. IFC4 declares it directly under IfcElement, adds no
 	// attribute of its own — no PredefinedType, which only its subtypes carry —
 	// and does not make it abstract, so an instance of it is an element and
@@ -127,12 +135,13 @@ var (
 	// proxy standing in for a door.
 	//
 	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
-	// IfcCableSegment's, IfcCommunicationsAppliance's and
-	// IfcDistributionChamberElement's among them. Which member of the entity's
-	// enumeration applies — a diffuser or a grille for an air terminal, a cable
-	// segment or a conductor segment for a cable, a router, a modem or a
-	// network hub for a communications appliance, a manhole, an inspection
-	// chamber or a sump for a distribution chamber — is a statement about the
+	// IfcCableSegment's, IfcCommunicationsAppliance's,
+	// IfcDistributionChamberElement's and IfcDuctSegment's among them. Which
+	// member of the entity's enumeration applies — a diffuser or a grille for
+	// an air terminal, a cable segment or a conductor segment for a cable, a
+	// router, a modem or a network hub for a communications appliance, a
+	// manhole, an inspection chamber or a sump for a distribution chamber, a
+	// rigid or a flexible segment for a duct — is a statement about the
 	// thing, and a [Product] carries no field saying it;
 	// NOTDEFINED is a value, and writing it would say that somebody looked and
 	// found no member fits, which nobody did. Absent says only that the file
@@ -160,8 +169,10 @@ var (
 		"IFCDISTRIBUTIONFLOWELEMENT": 0,
 		// OverallHeight, OverallWidth, PredefinedType, OperationType,
 		// UserDefinedOperationType.
-		"IFCDOOR":    5,
-		"IFCFOOTING": 1,
+		"IFCDOOR": 5,
+		// PredefinedType; see above.
+		"IFCDUCTSEGMENT": 1,
+		"IFCFOOTING":     1,
 		// IfcFurnishingElement's attribute list ends at Tag; see above.
 		"IFCFURNISHINGELEMENT": 0,
 		"IFCMEMBER":            1,

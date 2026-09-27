@@ -2910,15 +2910,15 @@ somebody else's vocabulary rather than naming an entity in this file's.
 **The set of entities a classification may name is closed, and it is this:**
 
 ```
-IfcAirTerminal              IfcCurtainWall                 IfcRailing
-IfcAnnotation               IfcDistributionChamberElement  IfcRamp
-IfcBeam                     IfcDistributionElement         IfcRoof
-IfcBuildingElementProxy     IfcDistributionFlowElement     IfcSlab
-IfcCableSegment             IfcDoor                        IfcStair
-IfcCivilElement             IfcFooting                     IfcWall
-IfcColumn                   IfcFurnishingElement           IfcWindow
-IfcCommunicationsAppliance  IfcMember
-IfcCovering                 IfcPlate
+IfcAirTerminal              IfcCurtainWall                 IfcPlate
+IfcAnnotation               IfcDistributionChamberElement  IfcRailing
+IfcBeam                     IfcDistributionElement         IfcRamp
+IfcBuildingElementProxy     IfcDistributionFlowElement     IfcRoof
+IfcCableSegment             IfcDoor                        IfcSlab
+IfcCivilElement             IfcDuctSegment                 IfcStair
+IfcColumn                   IfcFooting                     IfcWall
+IfcCommunicationsAppliance  IfcFurnishingElement           IfcWindow
+IfcCovering                 IfcMember
 ```
 
 A registry is authored against that list rather than against the writer's source. The set is
@@ -2939,16 +2939,18 @@ IFC4 types each of those relationships as naming an `IfcElement`; an export whic
 one is refused rather than written with a reference no reader accepts.
 
 **An entity carrying a `PredefinedType` is written with it absent (`$`), never as `.NOTDEFINED.`.**
-That holds of `IfcAirTerminal`, `IfcCableSegment`, `IfcCommunicationsAppliance` and
-`IfcDistributionChamberElement` as much as of a wall or a door. Which member of the entity's
-enumeration applies — for an air terminal, a diffuser, a grille, a register or a louvre; for a
-cable segment, a cable, a conductor, a core or a busbar; for a communications appliance, a
-router, a modem, a network hub or a gateway; for a distribution chamber, a manhole, an
-inspection chamber, a sump or a valve chamber — is a statement about the thing, and the model
-holds no predicate making it. `.NOTDEFINED.` is a value, and writing it would say somebody
-looked and found no member fits, which nobody did; absent says only that the file does not
-know. A type's name is not read for it: a type called `register`, `lv-run`, `media-panel` or
-`septic-dbox` is a name its author chose, not a claim about the enumeration, and it reaches the file in `ObjectType`, as it does for every product. An entity IFC4 gives no
+That holds of `IfcAirTerminal`, `IfcCableSegment`, `IfcCommunicationsAppliance`,
+`IfcDistributionChamberElement` and `IfcDuctSegment` as much as of a wall or a door. Which
+member of the entity's enumeration applies — for an air terminal, a diffuser, a grille, a
+register or a louvre; for a cable segment, a cable, a conductor, a core or a busbar; for a
+communications appliance, a router, a modem, a network hub or a gateway; for a distribution
+chamber, a manhole, an inspection chamber, a sump or a valve chamber; for a duct segment, a
+rigid segment or a flexible one — is a statement about the thing, and the model holds no
+predicate making it. `.NOTDEFINED.` is a value, and writing it would say somebody looked and
+found no member fits, which nobody did; absent says only that the file does not know. A type's
+name is not read for it: a type called `register`, `lv-run`, `media-panel`, `septic-dbox` or
+`duct` is a name its author chose, not a claim about the enumeration, and it reaches the file
+in `ObjectType`, as it does for every product. An entity IFC4 gives no
 `PredefinedType` is written without one, its attribute list ending at `Tag`: `IfcCivilElement`
 — a driveway, a walk, a patio, a retaining wall run — as much as `IfcFurnishingElement`,
 `IfcDistributionElement` — a receptacle, a switch, a smoke detector, a thermostat — as much as
