@@ -60,9 +60,10 @@ The entities a classification may name are:
 	IfcCivilElement             IfcElectricAppliance           IfcRailing
 	IfcColumn                   IfcElectricDistributionBoard   IfcRamp
 	IfcCommunicationsAppliance  IfcFooting                     IfcRoof
-	IfcCovering                 IfcFurnishingElement           IfcSlab
-	IfcCurtainWall              IfcGeographicElement           IfcStair
-	                            IfcMember                      IfcWall
+	IfcCovering                 IfcFurnishingElement           IfcSanitaryTerminal
+	IfcCurtainWall              IfcGeographicElement           IfcSlab
+	                            IfcMember                      IfcStair
+	                                                           IfcWall
 	                                                           IfcWindow
 
 That set is what a registry is authored against. A classification naming
@@ -94,7 +95,7 @@ An IfcElectricDistributionBoard is written the same way. An
 IfcGeographicElement is written the same way. An IfcOpeningElement is
 written the same way. An IfcOutlet is written the same way. An
 IfcPipeFitting is written the same way. An IfcPipeSegment is written the
-same way.
+same way. An IfcSanitaryTerminal is written the same way.
 Which member of the entity's enumeration applies —
 for an air terminal a diffuser, a grille, a register, a louvre;
 for a communications appliance a router, a modem, a network hub, a gateway;
@@ -111,13 +112,15 @@ for an outlet a power, a data, a telephone or an audio-visual outlet;
 for a pipe fitting a bend, a junction, a transition, an entry, an exit,
 an obstruction or a connector;
 for a pipe segment a rigid segment, a flexible segment, a culvert, a gutter
-or a spool —
+or a spool;
+for a sanitary terminal a toilet pan, a wash-hand basin, a sink, a bath, a
+shower, a urinal or a bidet —
 is a statement about the thing, and the model holds no predicate making it.
 .NOTDEFINED. is a value, and writing it would say that somebody looked and
 found no member fits, which nobody did; absent says only that the file does
 not know. A type's name is not read for it either — a type called
 "register", "lv-run", "media-panel", "septic-dbox", "duct", "appliance",
-"panel", "control-point", "opening", "jack", "cleanout" or "septic-trench" is a name its author chose, not a claim about the enumeration — and it
+"panel", "control-point", "opening", "jack", "cleanout", "septic-trench" or "plumbing-fixture" is a name its author chose, not a claim about the enumeration — and it
 reaches the file in ObjectType, as it does for every product. An entity IFC4
 gives no PredefinedType is written without one, ending at Tag:
 an IfcCivilElement — a driveway, a walk, a patio, a retaining wall run — as

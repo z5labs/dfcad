@@ -105,6 +105,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes a sanitary terminal as the entity the classification names",
+			entity:   "IFCSANITARYTERMINAL",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes an opening element as the entity the classification names",
 			entity:   "IFCOPENINGELEMENT",
 			expected: SupportWritable,
