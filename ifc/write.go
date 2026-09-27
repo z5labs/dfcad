@@ -92,14 +92,22 @@ var (
 	// standing in for it is one a receiving system cannot tell from a proxy
 	// standing in for a duct.
 	//
-	// Every PredefinedType this package writes is absent, IfcAirTerminal's
-	// and IfcCableSegment's among them. Which member of the entity's
-	// enumeration applies — a diffuser or a grille for an air terminal, a
-	// cable segment or a conductor segment for a cable — is a statement about
-	// the thing, and a [Product] carries no field saying it; NOTDEFINED is a
-	// value, and writing it would say that somebody looked and found no
-	// member fits, which nobody did. Absent says only that the file does not
-	// know, and IFC4's rule on the attribute — USERDEFINED needs an
+	// IfcCommunicationsAppliance is the third, and has the same tail for the
+	// same reason as IfcAirTerminal, whose supertype it shares: it is an
+	// IfcFlowTerminal, so its list too ends `..., Tag, PredefinedType`. It is
+	// here because a structured-media panel — where the data, coax and AV runs
+	// start — is classified as one, and a proxy standing in for it is one a
+	// receiving system cannot tell from a proxy standing in for a door.
+	//
+	// Every PredefinedType this package writes is absent, IfcAirTerminal's,
+	// IfcCableSegment's and IfcCommunicationsAppliance's among them. Which
+	// member of the entity's enumeration applies — a diffuser or a grille for
+	// an air terminal, a cable segment or a conductor segment for a cable, a
+	// router, a modem or a network hub for a communications appliance — is a
+	// statement about the thing, and a [Product] carries no field saying it;
+	// NOTDEFINED is a value, and writing it would say that somebody looked and
+	// found no member fits, which nobody did. Absent says only that the file
+	// does not know, and IFC4's rule on the attribute — USERDEFINED needs an
 	// ObjectType — holds of it vacuously.
 	products = map[Entity]int{
 		EntityProxy: 1,
@@ -111,8 +119,10 @@ var (
 		// IfcCivilElement's attribute list ends at Tag; see above.
 		"IFCCIVILELEMENT": 0,
 		"IFCCOLUMN":       1,
-		"IFCCOVERING":     1,
-		"IFCCURTAINWALL":  1,
+		// PredefinedType; see above.
+		"IFCCOMMUNICATIONSAPPLIANCE": 1,
+		"IFCCOVERING":                1,
+		"IFCCURTAINWALL":             1,
 		// OverallHeight, OverallWidth, PredefinedType, OperationType,
 		// UserDefinedOperationType.
 		"IFCDOOR":    5,

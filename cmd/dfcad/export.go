@@ -52,13 +52,14 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
-	IfcAirTerminal           IfcCovering           IfcRailing
-	IfcAnnotation            IfcCurtainWall        IfcRamp
-	IfcBeam                  IfcDoor               IfcRoof
-	IfcBuildingElementProxy  IfcFooting            IfcSlab
-	IfcCableSegment          IfcFurnishingElement  IfcStair
-	IfcCivilElement          IfcMember             IfcWall
-	IfcColumn                IfcPlate              IfcWindow
+	IfcAirTerminal              IfcCovering           IfcRamp
+	IfcAnnotation               IfcCurtainWall        IfcRoof
+	IfcBeam                     IfcDoor               IfcSlab
+	IfcBuildingElementProxy     IfcFooting            IfcStair
+	IfcCableSegment             IfcFurnishingElement  IfcWall
+	IfcCivilElement             IfcMember             IfcWindow
+	IfcColumn                   IfcPlate
+	IfcCommunicationsAppliance  IfcRailing
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -81,16 +82,18 @@ element in each of those, and an export which would need it to is refused
 rather than written.
 
 An entity carrying a PredefinedType is written with it absent, "$", and never
-as .NOTDEFINED.: an IfcAirTerminal or an IfcCableSegment as much as a wall or a
-door. Which member of the entity's enumeration applies — for an air terminal a
-diffuser, a grille, a register, a louvre; for a cable segment a cable, a
-conductor, a core, a busbar — is a statement about the thing, and the model
-holds no predicate making it. .NOTDEFINED. is a value, and writing it would say
-that somebody looked and found no member fits, which nobody did; absent says
-only that the file does not know. A type's name is not read for it either — a
-type called "register" or "lv-run" is a name its author chose, not a claim
-about the enumeration — and it reaches the file in ObjectType, as it does for
-every product. An entity IFC4 gives no PredefinedType is written without one,
+as .NOTDEFINED.: an IfcAirTerminal, an IfcCommunicationsAppliance or an
+IfcCableSegment as much as a wall or a door. Which member of the entity's
+enumeration applies — for an air terminal a diffuser, a grille, a register, a
+louvre; for a communications appliance a router, a modem, a network hub, a
+gateway; for a cable segment a cable, a conductor, a core, a busbar —
+is a statement about the thing, and the model holds no predicate making it.
+.NOTDEFINED. is a value, and writing it would say that somebody looked and
+found no member fits, which nobody did; absent says only that the file does
+not know. A type's name is not read for it either — a type called "register",
+"lv-run" or "media-panel" is a name its author chose, not a claim about the
+enumeration — and it reaches the file in ObjectType, as it does for every
+product. An entity IFC4 gives no PredefinedType is written without one,
 ending at Tag: an IfcCivilElement — a driveway, a walk, a patio, a retaining
 wall run — as much as an IfcFurnishingElement.
 

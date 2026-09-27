@@ -1660,6 +1660,8 @@ func TestProductsHoldsEveryEntityAProductIsWrittenAs(t *testing.T) {
 		"a supply register is an air terminal rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCCABLESEGMENT"),
 		"a low-voltage run is a cable segment rather than a proxy")
+	assert.Contains(t, Products(), Entity("IFCCOMMUNICATIONSAPPLIANCE"),
+		"a structured-media panel is a communications appliance rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCCIVILELEMENT"),
 		"a driveway is a civil element rather than a proxy")
 	assert.Contains(t, Products(), Entity("IFCANNOTATION"),
@@ -1722,6 +1724,40 @@ func TestWriteGivesACableSegmentTheAttributeListIFC4Gives(t *testing.T) {
 	for _, number := range parsed.order {
 		held, _ := parsed.instance(number)
 		if held.keyword != "IFCCABLESEGMENT" {
+			continue
+		}
+		found++
+
+		require.Len(t, held.attributes, 9, "#%d=%s", number, held.keyword)
+		assert.Equal(t, itemAbsent, held.attributes[8].form, "PredefinedType is written absent")
+	}
+
+	assert.Equal(t, 1, found)
+}
+
+// TestWriteGivesACommunicationsApplianceTheAttributeListIFC4Gives is its own
+// function because it is about one entry of the table rather than about a
+// file: an IfcCommunicationsAppliance is an IfcElement with PredefinedType
+// after Tag, and nothing else, so it is written with nine attributes and the
+// last of them absent.
+func TestWriteGivesACommunicationsApplianceTheAttributeListIFC4Gives(t *testing.T) {
+	model := bodied()
+	space := &model.Project.Sites[0].Children[0].Children[0].Children[0]
+	space.Products = append(space.Products, Product{
+		Entity:     "IFCCOMMUNICATIONSAPPLIANCE",
+		GlobalID:   "2kQ7Fm1RT3nC5yrdBRlQRf",
+		Name:       "site:MP-01",
+		ObjectType: "media-panel",
+		Placement:  origin(),
+	})
+
+	parsed, err := read(written(t, model))
+	require.NoError(t, err, "the emitted file parses as an exchange file")
+
+	found := 0
+	for _, number := range parsed.order {
+		held, _ := parsed.instance(number)
+		if held.keyword != "IFCCOMMUNICATIONSAPPLIANCE" {
 			continue
 		}
 		found++

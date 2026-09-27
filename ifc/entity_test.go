@@ -55,6 +55,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportProduct,
 		},
 		{
+			name:     "writes a communications appliance as the entity the classification names",
+			entity:   "IFCCOMMUNICATIONSAPPLIANCE",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes a civil element as the entity the classification names",
 			entity:   "IFCCIVILELEMENT",
 			expected: SupportWritable,
