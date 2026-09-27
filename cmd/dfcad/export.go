@@ -156,10 +156,13 @@ space contains, at any remove — is written all the same, and is contained in n
 spatial element. IFC4 does not require a product to stand in the spatial
 structure, and an annotation, a survey mark or a meter nobody has put in a room
 commonly does not; putting one in a site or a storey the model does not say it
-is in would be this command authoring the model. Its placement is the root
-frame's origin, which is where the file's own coordinates sit, and it is drawn,
-placed as a point or widened as a line exactly as any node of its geometry is
-wherever it stands. So every node the model has not retired is in the file.
+is in would be this command authoring the model. Its placement is relative to
+nothing, which is the world coordinate system and so the root frame every
+coordinate in the file is written in: a node drawn as a point still stands at
+the position claimed of it, and one drawn as an area or a line keeps the
+coordinates its boundary states, drawn and widened exactly as any node of its
+geometry is wherever it stands. So every node the model has not retired is in
+the file.
 
 --height is what adds a body. Where it names a predicate and a node's height
 resolves under it, the node additionally carries a SweptSolid representation —
