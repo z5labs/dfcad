@@ -110,6 +110,11 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes a tank as the entity the classification names",
+			entity:   "IFCTANK",
+			expected: SupportWritable,
+		},
+		{
 			name:     "writes an opening element as the entity the classification names",
 			entity:   "IFCOPENINGELEMENT",
 			expected: SupportWritable,
