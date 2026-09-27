@@ -2910,12 +2910,12 @@ somebody else's vocabulary rather than naming an entity in this file's.
 **The set of entities a classification may name is closed, and it is this:**
 
 ```
+IfcAirTerminal           IfcDoor               IfcRamp
 IfcBeam                  IfcFooting            IfcRoof
 IfcBuildingElementProxy  IfcFurnishingElement  IfcSlab
 IfcColumn                IfcMember             IfcStair
 IfcCovering              IfcPlate              IfcWall
 IfcCurtainWall           IfcRailing            IfcWindow
-IfcDoor                  IfcRamp
 ```
 
 A registry is authored against that list rather than against the writer's source. The set is
@@ -2923,6 +2923,15 @@ what the writer holds a transcribed IFC4 attribute list for, and an entity outsi
 absent because IFC4 gives it a different attribute list — an instance written with the wrong
 number of attributes is a file no reader loads, so the answer is a proxy and a report rather
 than a guess.
+
+**An entity carrying a `PredefinedType` is written with it absent (`$`), never as `.NOTDEFINED.`.**
+That holds of `IfcAirTerminal` as much as of a wall or a door. Which member of the entity's
+enumeration applies — for an air terminal, a diffuser, a grille, a register or a louvre — is a
+statement about the thing, and the model holds no predicate making it. `.NOTDEFINED.` is a
+value, and writing it would say somebody looked and found no member fits, which nobody did;
+absent says only that the file does not know. A type's name is not read for it: a type called
+`register` is a name its author chose, not a claim about the enumeration, and it reaches the
+file in `ObjectType`, as it does for every product.
 
 **A classification the writer cannot carry is reported, not silently proxied.** Every node
 whose type declared a code outside that set is named in `classifications[]`, with the code it

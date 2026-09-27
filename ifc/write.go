@@ -66,8 +66,27 @@ var (
 	// countertop, an island or a fitted wardrobe is classified as one, and
 	// without an entry each of those degrades to an IfcBuildingElementProxy —
 	// which a receiving system cannot tell from a duct.
+	//
+	// IfcAirTerminal is the one entry which is a distribution element rather
+	// than a building or a furnishing one. It is an IfcFlowTerminal, and neither that nor IfcDistributionFlowElement nor
+	// IfcDistributionElement adds an attribute to IfcElement in IFC4, so its
+	// list ends `..., Tag, PredefinedType` exactly as a wall's does and a tail
+	// of one is the truth rather than an approximation. It is here because a
+	// supply register and a return-air grille are classified as one, and a
+	// proxy standing in for either is one a receiving system cannot tell from
+	// a proxy standing in for a door.
+	//
+	// Every PredefinedType this package writes is absent, IfcAirTerminal's
+	// among them. Which IfcAirTerminalTypeEnum member applies — a diffuser, a
+	// grille, a register, a louvre — is a statement about the thing, and a
+	// [Product] carries no field saying it; NOTDEFINED is a value, and writing
+	// it would say that somebody looked and found no member fits, which nobody
+	// did. Absent says only that the file does not know, and IFC4's rule on
+	// the attribute — USERDEFINED needs an ObjectType — holds of it vacuously.
 	products = map[Entity]int{
-		EntityProxy:      1,
+		EntityProxy: 1,
+		// PredefinedType; see above.
+		"IFCAIRTERMINAL": 1,
 		"IFCBEAM":        1,
 		"IFCCOLUMN":      1,
 		"IFCCOVERING":    1,

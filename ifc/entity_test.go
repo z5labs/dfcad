@@ -35,6 +35,16 @@ func TestSupports(t *testing.T) {
 			expected: SupportWritable,
 		},
 		{
+			name:     "writes an air terminal as the entity the classification names",
+			entity:   "IFCAIRTERMINAL",
+			expected: SupportWritable,
+		},
+		{
+			name:     "names the air terminal's abstract supertype as a product it does not write",
+			entity:   "IFCFLOWTERMINAL",
+			expected: SupportProduct,
+		},
+		{
 			name:     "writes the proxy it falls back to",
 			entity:   EntityProxy,
 			expected: SupportWritable,

@@ -52,12 +52,12 @@ ObjectType where the type declares none, which is what that entity is for.
 
 The entities a classification may name are:
 
+	IfcAirTerminal           IfcDoor               IfcRamp
 	IfcBeam                  IfcFooting            IfcRoof
 	IfcBuildingElementProxy  IfcFurnishingElement  IfcSlab
 	IfcColumn                IfcMember             IfcStair
 	IfcCovering              IfcPlate              IfcWall
 	IfcCurtainWall           IfcRailing            IfcWindow
-	IfcDoor                  IfcRamp
 
 That set is what a registry is authored against. A classification naming
 anything else still exports — the node reaches the file as an
@@ -69,6 +69,16 @@ IFC4 defines as a product and this export has no attribute list for is
 "unwritten", and the proxy stands in faithfully until the entity is added; a
 code IFC4 defines no product for — a misspelling, a relationship, a type
 object — is "unknown", and the proxy is standing in for nothing anybody meant.
+
+An entity carrying a PredefinedType is written with it absent, "$", and never
+as .NOTDEFINED.: an IfcAirTerminal as much as a wall or a door. Which member of
+IfcAirTerminalTypeEnum applies — a diffuser, a grille, a register, a louvre — is
+a statement about the thing, and the model holds no predicate making it.
+.NOTDEFINED. is a value, and writing it would say that somebody looked and
+found no member fits, which nobody did; absent says only that the file does
+not know. A type's name is not read for it either — a type called "register"
+is a name its author chose, not a claim about the enumeration — and it reaches
+the file in ObjectType, as it does for every product.
 
 A storey declaring a frame is written at the elevation that frame's chain to the
 root puts it at, and everything in it is placed relative to that. It is what
