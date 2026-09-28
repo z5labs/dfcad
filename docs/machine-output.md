@@ -614,7 +614,8 @@ Each of these is a **usage error** — exit `3`, with nothing on stdout:
 ### `get`
 
 One thing, by its id, with the claims and the assertions written on it. It takes one id argument and three
-flags.
+flags. Given `-` in place of the id it reads many ids from standard input instead — see
+[Many ids at once](#many-ids-at-once).
 
 | Flag | Meaning |
 |------|---------|
@@ -783,6 +784,59 @@ was meant. It is not an empty answer: a thing that is not there and a thing with
 said about it are different answers. An argument that is not a well-formed id is the same
 exit code, reporting the rule it broke rather than a lookup that was never going to find
 anything.
+
+#### Many ids at once
+
+`dfcad get [flags] -` reads ids from standard input, separated by whitespace — one per line
+is what `jq -r` writes — and answers them all against one load of the model:
+
+```sh
+dfcad list-instances Device | jq -r '.instances[].id' | dfcad get --claims resolved -
+```
+
+```json
+{
+  "version": 2,
+  "command": "get",
+  "refused": false,
+  "entities": [
+    {"id": "site:S-101", "family": "node", "label": "Meeting Room A", "...": "..."},
+    {"id": "site:S-102", "family": "node", "label": "Meeting Room B", "...": "..."}
+  ]
+}
+```
+
+The elements are cut short above, where `"..."` stands for the rest of the object `entity`
+is documented as.
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `refused` | boolean | As for one id. |
+| `entities` | array | One element per distinct id read, each **exactly** the object `get <id>` writes under `entity` for that id, under the same `--claims`, `--deprecated` and `--observations`. |
+
+- **Order.** `entities` is in id order, and an id written more than once is answered once.
+  The order of standard input changes nothing on stdout.
+- **Empty.** Standard input holding no id answers `"entities": []` with exit `0`. Nothing
+  was named, so nothing is unknown.
+- **Every bad id, not the first.** Each id that is malformed or that nothing in the model
+  holds is reported on stderr, one line each, in the words `get` of that id alone would
+  use, and the run exits `3` with **nothing on stdout** — no partial answer, which a caller
+  would read as the whole. The error is one `BatchIDsError` whose elements are each that
+  id's `MalformedIDError` or `UnknownIDError`, with its nearest id.
+- **Observations.** Under `--observations` each file is read once per run however many of
+  the entities link to it, and a problem in a shared file is rendered once on stderr.
+- **Human format.** `--format human` summarises each entity on stderr as `get <id>` does,
+  and adds one line counting them. Stdout is unchanged by it.
+
+The ids come from standard input rather than from further arguments so that the shape of the
+answer never depends on how many there are. `get <id>` writes `entity`, byte for byte as it
+always has; a caller substituting a computed listing into argv would otherwise get `entity`
+when the listing held one id and a usage error when it held none. So more than one id
+argument, or `-` beside one, is a **usage error** — exit `3`, `SeveralIDsError` — whose
+message names `-` as the way to retrieve several.
+
+`entities` is a field written only under a new invocation and `entity` is untouched, so the
+contract stays at version `2` ([The versioning rule](#the-versioning-rule)).
 
 ### `resolve`
 

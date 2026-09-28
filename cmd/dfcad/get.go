@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,11 +19,12 @@ import (
 	"github.com/z5labs/dfcad"
 )
 
-const getUsage = `dfcad get — retrieve one thing by its id, with what is claimed about it.
+const getUsage = `dfcad get — retrieve things by their ids, with what is claimed about them.
 
 Usage:
 
 	dfcad get [flags] <id>
+	dfcad get [flags] -
 
 The thing the id names, with its axes, its label, its frame, the references it
 wrote and the claims written on it. Retrieving the subject gets the evidence
@@ -65,12 +67,31 @@ not an empty answer: a thing which is not there and a thing with nothing said
 about it are different answers, and a caller which cannot tell them apart
 retries a misspelling forever.
 
+Several things are retrieved in one call by writing - in place of the id and
+the ids on standard input, separated by whitespace; one per line is what
+jq -r writes:
+
+	dfcad list-instances Device | jq -r '.instances[].id' | dfcad get -
+
+The model is loaded once however many ids there are, and each observation file
+is read once however many of them link to it. Standard input holding no id is
+an empty answer rather than an error: nothing was named, so nothing is unknown.
+Every id which is malformed or which nothing holds is reported, each on a line
+of its own, and nothing is written to stdout: a partial answer would read as
+the whole of one. More than one id argument is refused rather than read as a
+batch, because the shape of the answer must not depend on how many ids a
+computed listing happened to hold; write - and pipe them instead.
+
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object get writes carries "entity": the thing found, its axes, the ids it
 references, where it was written, its claims in predicate order, and the
 assertions written on it. The claims are what is known about the thing; the
 assertions are what has to hold of it.
+
+Given -, it carries "entities" in place of "entity": one element per distinct id
+read, in id order, each exactly the object "entity" would be for that id. The
+order the ids were written in, and how often each was, changes nothing.
 `
 
 // The ways get reports the claims written on the thing it found.
@@ -118,6 +139,56 @@ const (
 
 // ErrMissingID is a get with no id to get.
 var ErrMissingID = errors.New("expected the id of the thing to get, found no argument")
+
+// SeveralIDsError is a get given more than one id argument, or - beside one.
+//
+// It is refused rather than answered as a batch because the shape of the answer
+// would then depend on how many ids there were: a caller substituting a
+// computed listing into the command line would get "entity" when it held one
+// id, "entities" when it held two and a usage error when it held none. Several
+// ids are read from standard input instead, which answers every count in one
+// shape, and the message says so.
+type SeveralIDsError struct {
+	// IDs are the arguments given where one was expected, in the order they
+	// were written.
+	IDs []string
+}
+
+// Error implements [error].
+func (e SeveralIDsError) Error() string {
+	return fmt.Sprintf(
+		"expected one id, found %d arguments: %s; to retrieve several, write %s in place of the id and "+
+			"the ids on standard input",
+		len(e.IDs), strings.Join(e.IDs, " "), stdinPath,
+	)
+}
+
+// BatchIDsError is every id read from standard input which could not be
+// retrieved: each one malformed or naming nothing the model holds.
+//
+// Every one is reported rather than the first, because a batch fixed one id at
+// a time is a guessing loop. Each element is exactly the error a get of that id
+// alone returns — a [dfcad.MalformedIDError] or an [UnknownIDError] with its
+// nearest id — in the order of the ids as written, sorted.
+type BatchIDsError struct {
+	// Errs are the errors, one per id which could not be retrieved.
+	Errs []error
+}
+
+// Error implements [error].
+func (e BatchIDsError) Error() string {
+	messages := make([]string, 0, len(e.Errs))
+	for _, err := range e.Errs {
+		messages = append(messages, err.Error())
+	}
+	return fmt.Sprintf("%s could not be retrieved: %s",
+		pluralOf(len(e.Errs), "id", "ids"), strings.Join(messages, "; "))
+}
+
+// Unwrap returns every error, so that [errors.As] reaches each one.
+func (e BatchIDsError) Unwrap() []error {
+	return e.Errs
+}
 
 // ErrDeprecatedNotResolvable is --deprecated asked for beside --claims
 // resolved.
@@ -179,6 +250,19 @@ type getResult struct {
 
 	// Entity is the thing the id named.
 	Entity getEntity `json:"entity"`
+}
+
+// getBatchResult is the object get writes to stdout given -.
+//
+// It is its own shape rather than getResult with a list in it, so that a
+// retrieval of one id by argument writes exactly what it always has.
+type getBatchResult struct {
+	envelope
+	loadState
+
+	// Entities are the things the ids named, in id order and each once. Empty
+	// rather than null when no id was read.
+	Entities []getEntity `json:"entities"`
 }
 
 // getEntity is one thing the model holds, as get reports it.
@@ -519,7 +603,7 @@ type accuracyTerm struct {
 }
 
 // runGet is the get command.
-func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runGet(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -536,11 +620,17 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 		return usageError(cmd, ErrMissingID, stderr, true)
 	}
 	if len(arguments) > 1 {
-		return usageError(cmd, UnexpectedArgumentsError{Extra: arguments[1:]}, stderr, true)
+		return usageError(cmd, SeveralIDsError{IDs: arguments}, stderr, true)
 	}
 
 	if err := checkClaims(*selection, *deprecated); err != nil {
 		return usageError(cmd, err, stderr, false)
+	}
+
+	asked := retrieval{selection: *selection, deprecated: *deprecated, observations: *observations}
+
+	if arguments[0] == stdinPath {
+		return getMany(cmd, globals, asked, stdin, stdout, stderr)
 	}
 
 	// An argument which is not an id is a different mistake from an id nothing
@@ -560,19 +650,13 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 		return usageError(cmd, UnknownIDError{ID: string(id), Nearest: string(nearest)}, stderr, false)
 	}
 
+	described, diags := asked.describe(graph, entity)
+	render(diags, stderr)
+
 	result := getResult{
 		envelope:  newEnvelope(cmd.name),
 		loadState: loaded,
-		Entity:    describe(graph, entity, *selection, *deprecated),
-	}
-
-	// The files are opened here and nowhere else in this command: everything
-	// above answered from what the load read. A run without the flag reads no
-	// observation file at all, whatever the thing it retrieved links to.
-	if *observations {
-		records, diags := observationsOf(graph, entity)
-		result.Entity.Records = &records
-		render(diags, stderr)
+		Entity:    described,
 	}
 
 	reportEntity(result.Entity, globals, stderr)
@@ -583,6 +667,154 @@ func runGet(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) i
 	}
 
 	return exitSuccess
+}
+
+// retrieval is what a get was asked to report about each thing it retrieves,
+// which is the same whether it retrieves one thing or many.
+type retrieval struct {
+	selection    string
+	deprecated   bool
+	observations bool
+}
+
+// describe is one entity as the answer reports it, with the records behind it
+// where they were asked for, and whatever is wrong with the files they came
+// from.
+//
+// The files are opened here and nowhere else in this command: everything else
+// answers from what the load read. A run without the flag reads no observation
+// file at all, whatever the thing it retrieved links to.
+func (r retrieval) describe(graph *dfcad.Graph, entity dfcad.Entity) (getEntity, []dfcad.Diagnostic) {
+	out := describe(graph, entity, r.selection, r.deprecated)
+	if !r.observations {
+		return out, nil
+	}
+
+	records, diags := observationsOf(graph, entity)
+	out.Records = &records
+
+	return out, diags
+}
+
+// getMany is get given -: every id on standard input, retrieved against one
+// load of the model and answered in one object.
+func getMany(cmd command, globals *globals, asked retrieval, stdin io.Reader, stdout, stderr io.Writer) int {
+	written, err := io.ReadAll(stdin)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: reading ids from standard input: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	graph, loaded := loadModel(cmd, globals, stderr)
+
+	entities, err := retrieveAll(graph, strings.Fields(string(written)))
+	if err != nil {
+		// Each on a line of its own, in the words a get of that id alone would
+		// have used, so that fixing a batch reads the same as fixing one id.
+		var batch BatchIDsError
+		if errors.As(err, &batch) {
+			for _, each := range batch.Errs {
+				_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, each)
+			}
+			return exitUsage
+		}
+		return usageError(cmd, err, stderr, false)
+	}
+
+	result := getBatchResult{
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+		Entities:  make([]getEntity, 0, len(entities)),
+	}
+
+	// A file several of the entities link to is read once, because the graph's
+	// store holds what it read; what is wrong with it is rendered once too,
+	// rather than once per entity which happens to link to it.
+	var diags []dfcad.Diagnostic
+	for _, entity := range entities {
+		described, found := asked.describe(graph, entity)
+		result.Entities = append(result.Entities, described)
+		diags = appendUnseen(diags, found...)
+	}
+	render(diags, stderr)
+
+	for _, entity := range result.Entities {
+		reportEntity(entity, globals, stderr)
+	}
+	if globals.human() {
+		_, _ = fmt.Fprintf(stderr, "%s\n", pluralOf(len(result.Entities), "entity", "entities"))
+	}
+
+	if err := emit(stdout, result); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	return exitSuccess
+}
+
+// retrieveAll is every entity the written ids name, in id order and each once.
+//
+// Where any of them cannot be retrieved the answer is a [BatchIDsError] naming
+// every one which cannot, and no entity at all: a partial answer is one a
+// caller would read as the whole.
+func retrieveAll(graph *dfcad.Graph, written []string) ([]dfcad.Entity, error) {
+	written = slices.Clone(written)
+	slices.Sort(written)
+	written = slices.Compact(written)
+
+	var (
+		found []dfcad.Entity
+		errs  []error
+	)
+
+	for _, each := range written {
+		id, err := dfcad.ParseID(each)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		entity, ok := graph.Entity(id)
+		if !ok {
+			nearest, _ := graph.Nearest(id)
+			errs = append(errs, UnknownIDError{ID: string(id), Nearest: string(nearest)})
+			continue
+		}
+
+		found = append(found, entity)
+	}
+
+	if len(errs) > 0 {
+		return nil, BatchIDsError{Errs: errs}
+	}
+
+	// The entities are put in the order of the ids they are held under, and a
+	// repeat is dropped there, rather than trusting the order of the spellings
+	// they were asked for by.
+	slices.SortFunc(found, func(a, b dfcad.Entity) int {
+		return strings.Compare(string(a.ID()), string(b.ID()))
+	})
+	found = slices.CompactFunc(found, func(a, b dfcad.Entity) bool {
+		return a.ID() == b.ID()
+	})
+
+	return found, nil
+}
+
+// appendUnseen appends each diagnostic which is not already in diags, which is
+// what renders a problem in a file several entities share once rather than once
+// per entity.
+func appendUnseen(diags []dfcad.Diagnostic, found ...dfcad.Diagnostic) []dfcad.Diagnostic {
+	for _, diagnostic := range found {
+		seen := slices.ContainsFunc(diags, func(already dfcad.Diagnostic) bool {
+			return reflect.DeepEqual(already, diagnostic)
+		})
+		if !seen {
+			diags = append(diags, diagnostic)
+		}
+	}
+	return diags
 }
 
 // checkClaims reports a --claims which names no way of reporting them, and a

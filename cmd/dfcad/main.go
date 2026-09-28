@@ -88,7 +88,7 @@ var commands = []command{
 	},
 	{
 		name:    "get",
-		summary: "retrieve one thing by its id, with its claims",
+		summary: "retrieve one thing by its id, or many from stdin, with their claims",
 		usage:   getUsage,
 		run:     runGet,
 	},
