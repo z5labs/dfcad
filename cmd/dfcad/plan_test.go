@@ -1255,3 +1255,306 @@ func undrawnReasons(t testing.TB) []dfcad.UndrawnReason {
 
 	return reasons
 }
+
+// carriedPlanRegistry is the vocabulary of a model written on three frames:
+// the site grid it is rooted at, a building grid the survey fitted onto it at a
+// translation of (5, 4, 0), and a works grid written in millimetres, which a
+// plan whose tolerance is in metres cannot carry a room into.
+const carriedPlanRegistry = `(project
+  (label "Carried plan fixture")
+  (globalid-namespace "https://example.org/models/carried"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace plan (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by the surveyor."))
+
+(predicate position (unit m) (shape coordinate) (dimension 3)
+  (description "The location of a vertex in its frame."))
+(predicate wall-length (unit m) (shape scalar) (description "How far a run of wall reaches."))
+(predicate frame-transform (shape transform) (description "The rigid transform from a frame to its parent."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 5.0 4.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m) (systematic 0.005 m control:CP-2))
+    (date "2026-02-11")))
+
+(frame frame:works
+  (label "Works setting-out grid")
+  (unit mm)
+  (parent frame:site)
+  (transform survey:C-0002)
+  (frame-transform
+    (id survey:C-0002)
+    (value
+      (transform
+        (translation 0.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out sketch SK-2026-044")
+    (method method:gnss-static)
+    (accuracy (independent 0.02 m))
+    (date "2026-04-30")))
+
+(type Level (kind Storey) (geometry solid) (description "One floor plate."))
+(type Room (kind Space) (geometry area) (description "An enclosed room."))
+(type Panel (kind Element) (geometry point) (description "A distribution panel."))
+(type Fence (kind Element) (geometry line) (description "A run of fencing."))
+
+(tolerance coincident (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))
+`
+
+// carriedPlanGeometry is a rectangle, a one-edge run over its first side and a
+// second rectangle, every one of them written on the building grid. The first
+// rectangle is traversed against the order its first edge was written, so a
+// carry which lost the direction of a run is caught.
+const carriedPlanGeometry = `(vertex geom:V-11 (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+(vertex geom:V-12 (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+(vertex geom:V-13 (frame frame:building)
+  (position (value (10.0 8.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+(vertex geom:V-14 (frame frame:building)
+  (position (value (0.0 8.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+
+(edge geom:E-11 (frame frame:building) (vertices geom:V-11 geom:V-12)
+  (wall-length (value 10.0 m) (source "Set-out drawing SD-2026-001") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-01")))
+(edge geom:E-12 (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (frame frame:building) (vertices geom:V-13 geom:V-14))
+(edge geom:E-14 (frame frame:building) (vertices geom:V-14 geom:V-11))
+
+(loop geom:L-11 (frame frame:building) (edges geom:E-14 geom:E-13 geom:E-12 geom:E-11))
+(loop geom:L-12 (frame frame:building) (edges geom:E-11))
+
+(vertex geom:V-21 (frame frame:building)
+  (position (value (0.0 20.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-22 (frame frame:building)
+  (position (value (3.0 20.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-23 (frame frame:building)
+  (position (value (3.0 23.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-21 (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (frame frame:building) (vertices geom:V-23 geom:V-21))
+
+(loop geom:L-21 (frame frame:building) (edges geom:E-21 geom:E-22 geom:E-23))
+`
+
+// carriedPlanEntities is two subjects. The first is on the site grid, the root,
+// and holds a room, a panel and a fence written on the building grid; the
+// second is on the works grid, in millimetres, and holds a room written on the
+// building grid in metres.
+const carriedPlanEntities = `(node plan:P-01
+  (label "Ground floor")
+  (kind Storey)
+  (type Level)
+  (geometry solid)
+  (frame frame:site))
+
+(node plan:S-01
+  (label "Block A")
+  (kind Space)
+  (type Room)
+  (geometry area)
+  (frame frame:building)
+  (within plan:P-01)
+  (boundary geom:L-11))
+
+(node plan:M-01
+  (label "Meter panel")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within plan:P-01)
+  (position
+    (value (1.0 1.0 0.0) m)
+    (source "Services set-out SS-2026-007")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+
+(node plan:F-01
+  (label "Boundary fence")
+  (kind Element)
+  (type Fence)
+  (geometry line)
+  (frame frame:building)
+  (within plan:P-01)
+  (boundary geom:L-12))
+
+(node plan:P-02
+  (label "Works level")
+  (kind Storey)
+  (type Level)
+  (geometry solid)
+  (frame frame:works))
+
+(node plan:S-02
+  (label "Site office")
+  (kind Space)
+  (type Room)
+  (geometry area)
+  (frame frame:building)
+  (within plan:P-02)
+  (boundary geom:L-21))
+`
+
+// carriedPlanFixture is the tree the runs below are made against.
+func carriedPlanFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          carriedPlanRegistry,
+		"entities/model.dfc":    carriedPlanEntities,
+		"entities/geometry.dfc": carriedPlanGeometry,
+	}
+}
+
+// carriedInvocation is plan over one subject of that fixture.
+func carriedInvocation(id string) []string {
+	return []string{
+		"--annotate", "wall-length",
+		"--annotate", "position",
+		"--position", "position",
+		"--tolerance", "coincident",
+		id,
+	}
+}
+
+// runIn runs the command line given in the current directory, requiring the
+// exit code asked for, and returns stdout and stderr.
+func runIn(t *testing.T, expectedExit int, args ...string) (string, string) {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, expectedExit, run(args, &stdout, &stderr), stderr.String())
+
+	return stdout.String(), stderr.String()
+}
+
+// TestRunPlanAgreesWithResolveAcrossFrames is the property which keeps plan
+// honest about the frame it names: every corner it writes is where resolve
+// says that corner is, in that frame. It is the one assertion ADR 0024 keeps
+// between the two exporters, kept here between plan and resolve.
+func TestRunPlanAgreesWithResolveAcrossFrames(t *testing.T) {
+	root := tree(t, carriedPlanFixture())
+	t.Chdir(root)
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, carriedInvocation("plan:P-01")...)...)
+	result := listed[planResult](t, stdout)
+
+	require.True(t, result.Planned)
+	require.Equal(t, "frame:site", result.Frame)
+	require.Empty(t, result.Undrawn)
+	require.Len(t, result.Outlines, 3, "the room, the panel and the fence are all carried")
+
+	graph, diags := dfcad.LoadGraph(root)
+	require.Empty(t, diags)
+
+	// resolved is where resolve puts one id's position in the plan's frame.
+	resolved := func(t *testing.T, id string) []float64 {
+		t.Helper()
+
+		stdout, _ := runIn(t, exitSuccess, "resolve", id, "position", "--frame", result.Frame)
+		answer := listed[resolveResult](t, stdout)
+		require.NotNil(t, answer.Value)
+		require.Equal(t, result.Frame, answer.Frame)
+		return answer.Value.Coordinate
+	}
+
+	var runs, points int
+	for _, outline := range result.Outlines {
+		assert.Equal(t, "frame:building", outline.DeclaredIn, "%s names the frame it was read in", outline.Node)
+
+		for _, segment := range outline.Region.Boundary {
+			edge, ok := graph.Topology().Edge(dfcad.ID(segment.Edge))
+			require.True(t, ok, "the run names an edge the model holds")
+
+			leaves, arrives := edge.Vertices()
+			if segment.Reversed {
+				leaves, arrives = arrives, leaves
+			}
+
+			assert.InDeltaSlice(t, resolved(t, string(leaves)), segment.From, 1e-9, "%s's run over %s", outline.Node, segment.Edge)
+			assert.InDeltaSlice(t, resolved(t, string(arrives)), segment.To, 1e-9, "%s's run over %s", outline.Node, segment.Edge)
+			runs++
+		}
+
+		if outline.Region.At != nil {
+			assert.InDeltaSlice(t, resolved(t, outline.Node), outline.Region.At, 1e-9, "%s is where resolve puts it", outline.Node)
+			points++
+		}
+	}
+
+	assert.Equal(t, 5, runs, "four runs of the room and one of the fence")
+	assert.Equal(t, 1, points)
+}
+
+func TestRunPlanCarriesTheTransformIntoTheBudget(t *testing.T) {
+	t.Chdir(tree(t, carriedPlanFixture()))
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, carriedInvocation("plan:P-01")...)...)
+	result := listed[planResult](t, stdout)
+
+	require.NotNil(t, result.Budget)
+
+	var names []string
+	for _, term := range result.Budget.Terms {
+		names = append(names, term.Name)
+	}
+
+	assert.Contains(t, names, "survey:C-0001", "the georeference the outlines were carried through")
+	assert.Contains(t, names, "control:CP-2", "the control behind that georeference")
+}
+
+func TestRunPlanNamesANodeItCannotCarry(t *testing.T) {
+	t.Chdir(tree(t, carriedPlanFixture()))
+
+	stdout, stderr := runIn(t, exitCheck, append([]string{"plan"}, carriedInvocation("plan:P-02")...)...)
+	result := listed[planResult](t, stdout)
+
+	assert.False(t, result.Planned)
+	assert.Equal(t, "frame:works", result.Frame)
+	assert.Equal(t, "mm", result.Unit)
+	assert.Empty(t, result.Outlines)
+
+	require.Len(t, result.Undrawn, 1)
+	assert.Equal(t, "plan:S-02", result.Undrawn[0].Node)
+	assert.Equal(t, string(dfcad.UndrawnUncarried), result.Undrawn[0].Reason)
+	assert.Equal(t, "frame:building", result.Undrawn[0].DeclaredIn)
+	assert.NotNil(t, result.Undrawn[0].Annotations)
+
+	assert.NotEmpty(t, stderr, "the diagnostic saying why goes to stderr")
+}
+
+func TestRunPlanWritesNoDeclaredInForOneFrame(t *testing.T) {
+	t.Chdir(tree(t, planFixture()))
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, wholeStorey("site:L-01")...)...)
+
+	assert.NotContains(t, stdout, `"declared-in"`, "a model authored in one frame carries nothing")
+}

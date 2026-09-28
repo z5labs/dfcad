@@ -177,8 +177,12 @@ type Outline struct {
 	// node is the contained node this was read from.
 	node *SemanticNode
 
-	// region is the area it covers, as [Topology.RegionOf] reads it.
+	// region is the area it covers, as [Topology.RegionOf] reads it, carried
+	// into the plan's frame where it was read in another.
 	region Region
+
+	// declaredIn is the frame the shape was read in, before it was carried.
+	declaredIn ID
 
 	// annotations are the claims reported on it, in anchor order: the node
 	// first, then each edge of its boundary in the order its loops traverse
@@ -189,6 +193,16 @@ type Outline struct {
 // Node returns the contained node the rings were read from.
 func (o Outline) Node() *SemanticNode { return o.node }
 
+// DeclaredIn returns the frame the node's shape was read in, which is the frame
+// every claim written on it and on its edges is in.
+//
+// It is [Plan.Frame] for a node declared where its plan is, and another frame
+// for one the plan carried: the region comes back in the plan's frame, and the
+// claims come back whole, as they were written. A coordinate-valued annotation
+// is a coordinate in this frame and not in the plan's, and this is what says
+// so.
+func (o Outline) DeclaredIn() ID { return o.declaredIn }
+
 // Subject returns the id of that node, which is what names the rings.
 func (o Outline) Subject() ID {
 	if o.node == nil {
@@ -198,7 +212,7 @@ func (o Outline) Subject() ID {
 }
 
 // Region returns the area the node covers, with the rings bounding it and the
-// edge behind each straight run of them.
+// edge behind each straight run of them, in [Plan.Frame].
 func (o Outline) Region() Region { return o.region }
 
 // Annotations returns the claims reported on it, in anchor order.
@@ -265,6 +279,18 @@ const (
 	// one and it is missing, and a sheet drawn without it is a sheet with a
 	// device left off.
 	UndrawnNoPosition UndrawnReason = "no-position"
+
+	// UndrawnUncarried is a node whose shape was read, in a frame other than
+	// the plan's, and could not be carried into the plan's frame: the two
+	// frames are not related by any chain of measured transforms, a transform
+	// on the way could not be applied, or the plan's frame is in a unit other
+	// than the tolerance's. [Region.In] says which, on a diagnostic.
+	//
+	// It is a defect of the same urgency as an unreadable boundary. The shape is
+	// there and is somewhere the plan cannot say where, and a sheet which drew
+	// it at its own coordinates would draw it somewhere the model does not put
+	// it.
+	UndrawnUncarried UndrawnReason = "uncarried"
 )
 
 // Description is the reason as a person reads it.
@@ -283,6 +309,8 @@ func (r UndrawnReason) Description() string {
 		return "its boundary could not be read"
 	case UndrawnNoPosition:
 		return "has no position stated"
+	case UndrawnUncarried:
+		return "could not be carried into the plan's frame"
 	}
 	return "it was not drawn"
 }
@@ -311,6 +339,10 @@ type Undrawn struct {
 	// reason is why it was not.
 	reason UndrawnReason
 
+	// declaredIn is the frame its shape was read in, or the frame the node
+	// declares where it has no shape to read.
+	declaredIn ID
+
 	// annotations are the claims reported on it, in the same anchor order an
 	// outline's are.
 	annotations []Annotation
@@ -329,6 +361,11 @@ func (u Undrawn) Subject() ID {
 
 // Reason returns why it was not drawn.
 func (u Undrawn) Reason() UndrawnReason { return u.reason }
+
+// DeclaredIn returns the frame the node's shape was read in, which is the frame
+// the claims written on it are in. Where the node references no loop there was
+// no shape to read, and it is the frame the node declares, if any.
+func (u Undrawn) DeclaredIn() ID { return u.declaredIn }
 
 // Annotations returns the claims reported on it, in anchor order.
 func (u Undrawn) Annotations() []Annotation { return slices.Clone(u.annotations) }
@@ -376,8 +413,10 @@ type Plan struct {
 	// subject is the id of the node whose contents were drawn.
 	subject ID
 
-	// frame is the coordinate frame that node is declared in, and unit its
-	// linear unit.
+	// frame is the coordinate frame every coordinate of the plan is in, and
+	// unit its linear unit. It is the frame the subject declares, or the frame
+	// of its first loop where it declares none, or the root frame where it has
+	// neither.
 	frame ID
 	unit  Unit
 
@@ -413,7 +452,13 @@ type Plan struct {
 // Subject returns the id of the node whose contents were drawn.
 func (p Plan) Subject() ID { return p.subject }
 
-// Frame returns the coordinate frame the subject is declared in.
+// Frame returns the coordinate frame every coordinate of the plan is in.
+//
+// It is the frame the subject declares. Where the subject declares none it is
+// the frame of the subject's first boundary loop, which is how
+// [Topology.RegionOf] reads a node's frame, and where it has neither it is the
+// root frame ([Frames.Root]). An outline read in any other frame is carried
+// into this one, and [Outline.DeclaredIn] names the frame it came from.
 func (p Plan) Frame() ID { return p.frame }
 
 // Unit returns the linear unit of that frame, which every coordinate in the
@@ -612,7 +657,7 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 		return Plan{}, nil
 	}
 
-	frame, _ := node.Frame()
+	frame := g.planFrame(node)
 
 	plan := Plan{subject: node.ID(), frame: frame, unit: frameUnit(survey.Registry, frame)}
 	plan.tolerance, _ = survey.Registry.Tolerance(survey.Tolerance)
@@ -636,9 +681,12 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 		placed := drawnAsPoint(contained)
 
 		if !placed && !g.outlined(contained) {
+			declared, _ := contained.Frame()
+
 			plan.undrawn = append(plan.undrawn, Undrawn{
 				node:        contained,
 				reason:      UndrawnNoBoundary,
+				declaredIn:  declared,
 				annotations: g.annotated(contained, predicates),
 			})
 			continue
@@ -661,6 +709,31 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 			plan.undrawn = append(plan.undrawn, Undrawn{
 				node:        contained,
 				reason:      reason,
+				declaredIn:  region.Frame(),
+				annotations: g.annotated(contained, predicates),
+			})
+			continue
+		}
+
+		// Judged where the curve was drawn, and before the carry, which is where
+		// the drawing was made: a chord is as far from its arc in one frame as
+		// in another, and a node which then could not be carried was still
+		// drawn to it.
+		if tolerance, drawn := region.ChordTolerance(); drawn {
+			plan.chord = tolerance
+			plan.deviation = math.Max(plan.deviation, region.Deviation())
+		}
+
+		declared := region.Frame()
+
+		carried, refusedCarry := g.carried(region, frame)
+		if len(refusedCarry) > 0 {
+			diags = append(diags, refusedCarry...)
+
+			plan.undrawn = append(plan.undrawn, Undrawn{
+				node:        contained,
+				reason:      UndrawnUncarried,
+				declaredIn:  declared,
 				annotations: g.annotated(contained, predicates),
 			})
 			continue
@@ -668,23 +741,125 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 
 		plan.outlines = append(plan.outlines, Outline{
 			node:        contained,
-			region:      region,
+			region:      carried,
+			declaredIn:  declared,
 			annotations: g.annotated(contained, predicates),
 		})
 
 		// Over the rings which were drawn, because the budget is the accuracy of
 		// the lines a sheet carries. A ring which was refused put no corner
 		// anywhere, and its position claims accumulated into the figure would be
-		// an accuracy for geometry nobody is drawing.
-		plan.budget.Merge(region.Budget())
-
-		if tolerance, drawn := region.ChordTolerance(); drawn {
-			plan.chord = tolerance
-			plan.deviation = math.Max(plan.deviation, region.Deviation())
-		}
+		// an accuracy for geometry nobody is drawing. A ring carried into the
+		// plan's frame carries the transform which brought it there, because a
+		// line drawn through a georeference is known no better than the fit.
+		plan.budget.Merge(carried.Budget())
 	}
 
 	return plan, diags
+}
+
+// planFrame is the frame a plan of node is expressed in: the frame the node
+// declares, or where it declares none the frame of its first boundary loop,
+// which is how [Topology.RegionOf] reads a node's frame, or where it has
+// neither the root frame.
+//
+// A storey is usually declared on the grid its rooms are set out on, and then
+// this is that grid and nothing is carried. It is the node which declares
+// nothing that the fallbacks are for, and the root is the last of them
+// because it is the one frame every other frame in a model reaches.
+func (g *Graph) planFrame(node *SemanticNode) ID {
+	if frame, declared := node.Frame(); declared && frame != "" {
+		return frame
+	}
+
+	for loop := range g.Boundaries().Loops(node) {
+		if frame := loop.Frame(); frame != "" {
+			return frame
+		}
+		break
+	}
+
+	if root, ok := g.Frames().Root(); ok {
+		return root.ID
+	}
+
+	return ""
+}
+
+// carried is a region read in one frame expressed in the plan's, with the edge
+// behind each run of its boundary kept.
+//
+// It is [Region.In], as `site` and `export-map` carry a region, and it is taken
+// only where the two frames differ: a region already in the plan's frame comes
+// back exactly as it was read, which is what keeps a model authored in one frame
+// writing the plan it always did. Where there is no plan frame, or the region
+// was read in no frame at all, there is nothing to carry between and the region
+// comes back as read.
+//
+// It departs from [Region.In] in one respect, and deliberately. A region carried
+// by [Region.In] attributes no run of its boundary to an edge, because in
+// general a carried boundary is a pair of coordinates in one frame and an edge
+// whose coordinates are in another. A plan's boundary is what pairs an
+// annotation written on an edge with the run it is about, and dropping it would
+// lose exactly the edges a sheet's dimensions hang on. A transform between two
+// frames is a similarity, so it maps each authored run onto exactly one carried
+// run: the pairing is carried rather than re-derived, with each run keeping its
+// ring, its edge, its origin and its direction, and only its two corners moved.
+func (g *Graph) carried(region Region, frame ID) (Region, []Diagnostic) {
+	if frame == "" || region.frame == "" || region.frame == frame {
+		return region, nil
+	}
+
+	frames := g.Frames()
+
+	carried, refused := region.In(frame, frames)
+	if len(refused) > 0 {
+		return Region{}, refused
+	}
+
+	if len(region.segments) == 0 {
+		return carried, nil
+	}
+
+	segments := make([]BoundarySegment, 0, len(region.segments))
+	for _, segment := range region.segments {
+		from, err := frames.TransformPoint(segment.from, region.frame, frame)
+		if err != nil {
+			return Region{}, uncarriedRun(region, frame, segment.from, err)
+		}
+
+		to, err := frames.TransformPoint(segment.to, region.frame, frame)
+		if err != nil {
+			return Region{}, uncarriedRun(region, frame, segment.to, err)
+		}
+
+		segment.from, segment.to = from, to
+		segments = append(segments, segment)
+	}
+
+	carried.segments = segments
+
+	return carried, nil
+}
+
+// uncarriedRun is the diagnostic for a corner of a boundary which could not be
+// carried into a plan's frame, in the words [Region.In] uses for one.
+//
+// It is not expected to be reached — [Region.In] has already carried every
+// corner of the same region along the same route — and it is here so that if it
+// ever is, the node is named as uncarried rather than drawn with a run left in
+// the frame it came from.
+func uncarriedRun(region Region, frame ID, point Point, err error) []Diagnostic {
+	return []Diagnostic{{
+		Severity: SeverityError,
+		Span:     region.span,
+		Message: fmt.Sprintf(
+			"expected to express %s in the frame %s, found that %s could not be carried across: %s",
+			region.name(), frame, pointText(point, region.printed()), err,
+		),
+		Hint: "a transform which cannot be applied to one corner of a boundary cannot be applied to the boundary; " +
+			"nothing here carries the corners it could and leaves the rest",
+	}}
 }
 
 // contained is everything node contains, in id order.

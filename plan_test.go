@@ -7,6 +7,7 @@ package dfcad
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 
@@ -715,4 +716,400 @@ func TestDeriveOverAModelHoldingAnOpenRun(t *testing.T) {
 	area, hasArea := room.Area()
 	require.True(t, hasArea)
 	assert.InDelta(t, 12.0, area, 1e-9)
+}
+
+// carriedRegistry is the vocabulary of a model written on three frames: the
+// site grid it is rooted at, a building grid the survey fitted onto it at a
+// translation of (5, 4, 0), and a works grid written in millimetres.
+//
+// The works grid is there to be a frame a plan cannot carry a room into. The
+// tolerance is declared in metres, and nothing converts between the two.
+const carriedRegistry = `(project
+  (label "Carried plan fixture")
+  (globalid-namespace "https://example.org/models/carried"))
+
+(namespace control (description "Survey control the measurements are tied to."))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace plan (description "Semantic nodes minted by this model."))
+(namespace survey (description "Claim ids issued by the surveyor."))
+
+(predicate position (unit m) (shape coordinate) (dimension 3)
+  (description "The location of a vertex in its frame."))
+(predicate wall-length (unit m) (shape scalar) (description "How far a run of wall reaches."))
+(predicate frame-transform (shape transform) (description "The rigid transform from a frame to its parent."))
+
+(frame frame:site (label "Site survey grid") (unit m))
+
+(frame frame:building
+  (label "Building local grid")
+  (unit m)
+  (parent frame:site)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 5.0 4.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m) (systematic 0.005 m control:CP-2))
+    (date "2026-02-11")))
+
+(frame frame:works
+  (label "Works setting-out grid")
+  (unit mm)
+  (parent frame:site)
+  (transform survey:C-0002)
+  (frame-transform
+    (id survey:C-0002)
+    (value
+      (transform
+        (translation 0.0 0.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out sketch SK-2026-044")
+    (method method:gnss-static)
+    (accuracy (independent 0.02 m))
+    (date "2026-04-30")))
+
+(type Level (kind Storey) (geometry solid) (description "One floor plate."))
+(type Room (kind Space) (geometry area) (description "An enclosed room."))
+(type Panel (kind Element) (geometry point) (description "A distribution panel."))
+(type Fence (kind Element) (geometry line) (description "A run of fencing."))
+
+(tolerance coincident (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))
+`
+
+// carriedGeometry is a rectangle, a one-edge run and a second rectangle, every
+// one of them written on the building grid.
+const carriedGeometry = `(vertex geom:V-11 (frame frame:building)
+  (position (value (0.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+(vertex geom:V-12 (frame frame:building)
+  (position (value (10.0 0.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+(vertex geom:V-13 (frame frame:building)
+  (position (value (10.0 8.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+(vertex geom:V-14 (frame frame:building)
+  (position (value (0.0 8.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m) (systematic 0.003 m control:CP-1)) (date "2026-02-18")))
+
+(edge geom:E-11 (frame frame:building) (vertices geom:V-11 geom:V-12)
+  (wall-length (value 10.0 m) (source "Set-out drawing SD-2026-001") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-01")))
+(edge geom:E-12 (frame frame:building) (vertices geom:V-12 geom:V-13))
+(edge geom:E-13 (frame frame:building) (vertices geom:V-13 geom:V-14))
+(edge geom:E-14 (frame frame:building) (vertices geom:V-14 geom:V-11))
+
+; Traversed against the order its first edge was written, so that a carry which
+; lost the direction of a run would be caught.
+(loop geom:L-11 (frame frame:building) (edges geom:E-14 geom:E-13 geom:E-12 geom:E-11))
+(loop geom:L-12 (frame frame:building) (edges geom:E-11))
+
+(vertex geom:V-21 (frame frame:building)
+  (position (value (0.0 20.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-22 (frame frame:building)
+  (position (value (3.0 20.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-23 (frame frame:building)
+  (position (value (3.0 23.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-21 (frame frame:building) (vertices geom:V-21 geom:V-22))
+(edge geom:E-22 (frame frame:building) (vertices geom:V-22 geom:V-23))
+(edge geom:E-23 (frame frame:building) (vertices geom:V-23 geom:V-21))
+
+(loop geom:L-21 (frame frame:building) (edges geom:E-21 geom:E-22 geom:E-23))
+`
+
+// carriedEntities is two subjects. The first is on the site grid and holds a
+// room, a panel and a fence written on the building grid; the second is on the
+// works grid, in millimetres, and holds a room written on the building grid in
+// metres.
+const carriedEntities = `(node plan:P-01
+  (label "Ground floor")
+  (kind Storey)
+  (type Level)
+  (geometry solid)
+  (frame frame:site))
+
+(node plan:S-01
+  (label "Block A")
+  (kind Space)
+  (type Room)
+  (geometry area)
+  (frame frame:building)
+  (within plan:P-01)
+  (boundary geom:L-11))
+
+(node plan:M-01
+  (label "Meter panel")
+  (kind Element)
+  (type Panel)
+  (geometry point)
+  (frame frame:building)
+  (within plan:P-01)
+  (position
+    (value (1.0 1.0 0.0) m)
+    (source "Services set-out SS-2026-007")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+
+(node plan:F-01
+  (label "Boundary fence")
+  (kind Element)
+  (type Fence)
+  (geometry line)
+  (frame frame:building)
+  (within plan:P-01)
+  (boundary geom:L-12))
+
+(node plan:P-02
+  (label "Works level")
+  (kind Storey)
+  (type Level)
+  (geometry solid)
+  (frame frame:works))
+
+(node plan:S-02
+  (label "Site office")
+  (kind Space)
+  (type Room)
+  (geometry area)
+  (frame frame:building)
+  (within plan:P-02)
+  (boundary geom:L-21))
+`
+
+// carried loads the fixture above.
+func carried(t *testing.T) planFixture {
+	t.Helper()
+
+	return planModel(t, tree(t, map[string]string{
+		"registry.dfc":          carriedRegistry,
+		"entities/model.dfc":    carriedEntities,
+		"entities/geometry.dfc": carriedGeometry,
+	}))
+}
+
+// outlineOf is the outline of one node of a plan, failing the test where the
+// plan did not draw it.
+func outlineOf(t *testing.T, plan Plan, node ID) Outline {
+	t.Helper()
+
+	for _, outline := range plan.Outlines() {
+		if outline.Subject() == node {
+			return outline
+		}
+	}
+
+	require.Failf(t, "the plan draws the node", "%s is not among %v", node, drawnIDs(plan))
+	return Outline{}
+}
+
+func TestPlanOfCarriesEveryOutlineIntoItsFrame(t *testing.T) {
+	fixture := carried(t)
+
+	plan, diags := fixture.plan(t, "plan:P-01", "wall-length", "position")
+	require.Empty(t, diagnosticMessages(diags), "every node the level holds can be carried onto the site grid")
+
+	assert.Equal(t, ID("frame:site"), plan.Frame())
+	assert.Equal(t, Unit("m"), plan.Unit())
+	assert.Equal(t, []string{"plan:F-01", "plan:M-01", "plan:S-01"}, drawnIDs(plan))
+
+	frames := fixture.graph.Frames()
+
+	// on is where the model puts a corner of the building grid on the site
+	// grid, which is the answer every carried coordinate has to agree with.
+	on := func(t *testing.T, point Point) Point {
+		t.Helper()
+
+		at, err := frames.TransformPoint(point, "frame:building", "frame:site")
+		require.NoError(t, err)
+		return at
+	}
+
+	// authored is where each vertex of the fixture was written, on the
+	// building grid.
+	authored := func(t *testing.T, vertex ID) Point {
+		t.Helper()
+
+		resolution, err := fixture.graph.Claims().Resolve(vertex, planPosition, fixture.graph.Registry())
+		require.NoError(t, err)
+
+		value, ok := resolution.Value()
+		require.True(t, ok)
+
+		components, ok := value.Coordinate()
+		require.True(t, ok)
+
+		var point Point
+		copy(point[:], components)
+		return point
+	}
+
+	testCases := []struct {
+		name string
+		node ID
+	}{
+		{name: "carries a room's rings and the runs of its boundary", node: "plan:S-01"},
+		{name: "carries an open run", node: "plan:F-01"},
+		{name: "carries a point", node: "plan:M-01"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			outline := outlineOf(t, plan, testCase.node)
+			region := outline.Region()
+
+			assert.Equal(t, ID("frame:site"), region.Frame())
+			assert.Equal(t, ID("frame:building"), outline.DeclaredIn())
+
+			for _, piece := range region.Pieces() {
+				for _, corner := range piece.Outer() {
+					// A carried corner is one of the authored corners, carried.
+					var matched bool
+					for _, vertex := range []ID{"geom:V-11", "geom:V-12", "geom:V-13", "geom:V-14"} {
+						if pointsNear(corner, on(t, authored(t, vertex))) {
+							matched = true
+						}
+					}
+					assert.True(t, matched, "%v is the carry of an authored corner", corner)
+				}
+			}
+
+			for _, segment := range region.Segments() {
+				require.NotNil(t, segment.Edge(), "a carried run keeps the edge it was written as")
+				assert.Equal(t, SegmentOriginEdge, segment.Origin())
+
+				start, end := segment.Edge().Vertices()
+				if segment.Reversed() {
+					start, end = end, start
+				}
+
+				assert.True(t, pointsNear(on(t, authored(t, start)), segment.From()),
+					"%s leaves %v, found %v", segment.Edge().ID(), on(t, authored(t, start)), segment.From())
+				assert.True(t, pointsNear(on(t, authored(t, end)), segment.To()),
+					"%s arrives at %v, found %v", segment.Edge().ID(), on(t, authored(t, end)), segment.To())
+			}
+
+			if at, located := region.Location(); located {
+				assert.True(t, pointsNear(on(t, Point{1, 1, 0}), at), "the panel is at %v", at)
+			}
+		})
+	}
+
+	t.Run("keeps every run's edge, ring and direction as it was read", func(t *testing.T) {
+		for _, node := range []ID{"plan:S-01", "plan:F-01"} {
+			contained, ok := fixture.graph.Node(node)
+			require.True(t, ok)
+
+			read, found := fixture.graph.Topology().RegionOf(contained, fixture.graph.Boundaries(), fixture.survey)
+			require.Empty(t, diagnosticMessages(found))
+
+			authoredRuns := read.Segments()
+			carriedRuns := outlineOf(t, plan, node).Region().Segments()
+			require.Len(t, carriedRuns, len(authoredRuns))
+
+			for i := range authoredRuns {
+				assert.Equal(t, authoredRuns[i].Edge().ID(), carriedRuns[i].Edge().ID())
+				assert.Equal(t, authoredRuns[i].Reversed(), carriedRuns[i].Reversed())
+				assert.Equal(t, authoredRuns[i].Ring(), carriedRuns[i].Ring())
+				assert.Equal(t, authoredRuns[i].Origin(), carriedRuns[i].Origin())
+			}
+		}
+
+		// The room is traversed against the order geom:E-11 was written, which
+		// is the case a carry that re-derived the direction would get wrong.
+		var reversed bool
+		for _, segment := range outlineOf(t, plan, "plan:S-01").Region().Segments() {
+			if segment.Edge().ID() == "geom:E-11" {
+				reversed = segment.Reversed()
+			}
+		}
+		assert.True(t, reversed)
+	})
+
+	t.Run("carries the area without changing it", func(t *testing.T) {
+		assert.InDelta(t, 80.0, outlineOf(t, plan, "plan:S-01").Region().Area(), 1e-9)
+	})
+
+	t.Run("reports the claims as they were written, in the frame they were written in", func(t *testing.T) {
+		panel := outlineOf(t, plan, "plan:M-01")
+
+		annotations := panel.Annotations()
+		require.Len(t, annotations, 1)
+
+		components, ok := annotations[0].Claim().Value().Coordinate()
+		require.True(t, ok)
+		assert.Equal(t, []float64{1, 1, 0}, components)
+		assert.Equal(t, ID("frame:building"), panel.DeclaredIn())
+	})
+
+	t.Run("budgets the transform it carried through", func(t *testing.T) {
+		for _, term := range []string{"survey:C-0001", "control:CP-2", "control:CP-1"} {
+			_, found := termNamed(plan.Budget(), term)
+			assert.True(t, found, "the budget holds %s", term)
+		}
+	})
+}
+
+func TestPlanOfNamesANodeItCannotCarry(t *testing.T) {
+	plan, diags := carried(t).plan(t, "plan:P-02", "wall-length")
+
+	assert.Equal(t, ID("frame:works"), plan.Frame())
+	assert.Equal(t, Unit("mm"), plan.Unit())
+	assert.Empty(t, drawnIDs(plan))
+
+	require.Len(t, plan.Undrawn(), 1)
+	undrawn := plan.Undrawn()[0]
+
+	assert.Equal(t, ID("plan:S-02"), undrawn.Subject())
+	assert.Equal(t, UndrawnUncarried, undrawn.Reason())
+	assert.Equal(t, "could not be carried into the plan's frame", undrawn.Reason().Description())
+	assert.Equal(t, ID("frame:building"), undrawn.DeclaredIn())
+
+	require.NotEmpty(t, diags)
+
+	var failures int
+	for _, diag := range diags {
+		if diag.Severity == SeverityError {
+			failures++
+		}
+	}
+	assert.Equal(t, 1, failures, "one error, saying why the room could not be carried")
+
+	// The refusal is the unit one, and it points at the tolerance whose unit the
+	// plan's frame is not in.
+	var pointed bool
+	for _, diag := range diags {
+		for _, related := range diag.Related {
+			if related.Span == plan.Tolerance().Span {
+				pointed = true
+			}
+		}
+	}
+	assert.True(t, pointed, "the diagnostic points at the tolerance declared in another unit")
+	assert.True(t, refused(diags), "a node which could not be carried refuses the run as an unreadable one does")
+
+	assert.Empty(t, plan.Budget().Terms(), "nothing was drawn, so nothing is budgeted")
+}
+
+// pointsNear is whether two points are one point, to well inside anything a
+// transform's arithmetic could round by.
+func pointsNear(a, b Point) bool {
+	for i := range a {
+		if math.Abs(a[i]-b[i]) > 1e-9 {
+			return false
+		}
+	}
+	return true
 }

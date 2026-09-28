@@ -1569,7 +1569,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `subject` | string | The id the plan was asked about. |
 | `planned` | bool | Whether every ring below could be read. Written whatever the outcome, so a storey nobody has outlined yet (`planned` true, `outlines` empty) reads differently from one a room of which could not be read (`planned` false). |
 | `digest` | string, optional | The digest of the source tree the rings and the claims were read from, lower-case hex, so a consumer can say which model a sheet was drawn from. Written on a refusal too. Absent for a model that was not read from disk. |
-| `frame` | string, optional | The coordinate frame the subject is declared in. |
+| `frame` | string, optional | The frame every coordinate here is in. It is the frame the subject declares; where the subject declares none, the frame of its first boundary loop, which is how a node's frame is read everywhere else; and where it has neither, the root frame. |
 | `unit` | string, optional | That frame's linear unit. Every coordinate here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
 | `annotating` | array | The predicates the run asked for, in the order it named them and with a repeat written once. |
@@ -1585,6 +1585,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `outlines[].kind` | string, optional | The kind it declares. |
 | `outlines[].type` | string, optional | The type it declares. |
 | `outlines[].region` | object | The area it covers, with `area`, `empty`, `pieces`, `at` and `boundary` exactly as [`buildable`](#buildable) writes them. A node drawn as a point — a panel, a receptacle, a survey monument — is an outline whose region carries `at`, the coordinate a sheet places a symbol at, and no pieces: it covers nothing and has no boundary to attribute. |
+| `outlines[].declared-in` | string, optional | The frame the node's shape was read in, written only where it is not `frame`: the region was carried out of it, and the claims were not. A claim is reported as it was written, so a coordinate-valued annotation on this node is a coordinate in this frame. |
 | `outlines[].annotations` | array | The claims reported on it, the node's own first and then those of each edge of its boundary. Empty rather than null for a room nobody has written anything on. |
 | `outlines[].annotations[].anchor.kind` | string | Which family the claim is written on: `edge` for one written on an edge of a ring, `node` for one written on the node that ring bounds. |
 | `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
@@ -1595,9 +1596,10 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `undrawn[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `undrawn[].kind` | string, optional | The kind it declares. |
 | `undrawn[].type` | string, optional | The type it declares. |
-| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read, `no-position` for a node drawn as a point which nothing claims a position of under `--position`. A closed set. |
+| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read, `no-position` for a node drawn as a point which nothing claims a position of under `--position`, `uncarried` for one whose shape was read in another frame and could not be carried into `frame` — the two frames are not related, a transform on the way could not be applied, or `frame` is in a unit other than the tolerance's. A closed set. |
+| `undrawn[].declared-in` | string, optional | The frame the node's shape was read in — or, for a node with no shape, the frame it declares — written only where it is not `frame`, so that its claims can be read in the frame they were written in. |
 | `undrawn[].annotations` | array | The claims reported on it, in the same order and the same shape as an outline's. Empty rather than null. A node that references no loop has no edges, so what it carries is exactly its own claims and no edge anchors. |
-| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
+| `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and the transform claims of every frame an outline was carried through, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
 
 Beside `anchor`, every annotation carries the claim object `get` writes — `id`, `predicate`,
 `value`, `source`, `method`, `accuracy`, `combined` or `units`, `date`, `rank` and `span` — so a claim on a plan
@@ -1634,6 +1636,22 @@ sheet has to carry — how well is the line I am drawing known — and each clai
 its own accuracy, because each is a separate statement about a separate quantity and combining
 a room's area with a wall's fire rating would produce a figure of nothing at all
 ([0006](decisions/0006-accuracy-is-one-sigma.md)).
+
+**Every outline is carried into `frame`, the way [`site`](#site) and `export-map` carry a
+region.** A room declared on a grid other than the plan's is read in its own frame and then
+expressed in the plan's, so a porch set out on the main floor's grid is drawn beside the house
+rather than at the origin of the survey grid. The transform is a measurement, so its accuracy
+is merged into `budget` — a carried outline is known no better than the fit that carried it.
+Unlike a region carried anywhere else, a carried outline **keeps its edge attribution**: a
+transform between two frames maps each authored run onto exactly one carried run, so every run
+of `region.boundary` keeps its `ring`, `edge`, `origin` and `reversed`, and only `from` and `to`
+move. The claims do not move — a claim is reported as it was written — which is what
+`declared-in` is for. A curve is judged against `--chord` where it was drawn, before the
+carry. A node that cannot be carried is named under `undrawn` as `uncarried`, its claims still
+reported, and the diagnostic saying why goes to stderr; planning across a unit boundary stays
+impossible, because one `--position` and one `--tolerance` each carry one unit. A model whose
+subject and every contained node are declared in one frame carries nothing and writes the
+bytes it always did.
 
 Which nodes are drawn is every descendant of the subject that references at least one loop
 this run could read, however deep: a room inside a storey and an alcove inside that room are
@@ -1688,7 +1706,8 @@ about one would be a diagnostic about a model in which nothing is wrong.
 **Exit `1`** is a plan a ring of which could not be read — a boundary that does not close, one
 that crosses itself, corners that are not in one plane, a tolerance the registry does not
 declare in the frame's unit, a curve met with no `--chord` named — or a node drawn as a point
-that nothing places, which declares that its shape is where it is and then does not say where.
+that nothing places, which declares that its shape is where it is and then does not say where,
+or a node whose shape could not be carried into `frame`.
 The other rooms are still drawn and the object still comes back
 with `planned` false and the room named under `undrawn`, because a sheet with one room missing
 is more use than no sheet and the diagnostics on stderr say which room to fix.
