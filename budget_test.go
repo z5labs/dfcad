@@ -128,13 +128,20 @@ func TestBudgetCombined(t *testing.T) {
 // because it is the one assertion the arithmetic exists for, and it is worth
 // reading as arithmetic rather than as a row of a table.
 //
-// Two systematic terms of 0.03 m and 0.04 m are the same two numbers whichever
-// rule combines them. In quadrature they come to 0.05 m; added linearly they
-// come to 0.07 m. Forty percent is not a rounding difference — it is the
-// difference between a clearance which passes and one which does not — and the
-// linear answer is the one a shared error actually produces, because two facts
-// located from the same control point share that control point's error entirely
-// rather than partly cancelling it.
+// Two systematic terms of 0.03 m and 0.04 m, under two distinct term ids —
+// survey:CP-3 and survey:CP-7 — are the same two numbers whichever rule
+// combines them. In quadrature they come to 0.05 m; added linearly they come to
+// 0.07 m. Forty percent is not a rounding difference — it is the difference
+// between a clearance which passes and one which does not.
+//
+// Nothing here is shared: each term id is carried by one claim, and a term
+// shared by two claims being counted once is the case "counts a systematic term
+// shared by two claims once" in TestBudgetCombined. The linear sum is asserted
+// because it is the bound. Two distinct sources may correlate — two control
+// points of one network share its adjustment — by an amount the format cannot
+// state, and the standard deviation of their sum is at most the sum of their
+// standard deviations, reached when they are fully correlated. Quadrature would
+// assume they are uncorrelated, which nothing in the model says.
 func TestSystematicTermsAddLinearlyRatherThanInQuadrature(t *testing.T) {
 	budget := budgetOf(
 		measured("survey:C-01", systematic(0.03, "survey:CP-3")),

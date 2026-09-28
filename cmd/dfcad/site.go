@@ -29,13 +29,15 @@ is already in it.
 
 The error budget is the point of the command. The georeference is one transform
 applied to every fact declared indoors, so its residual does not cancel between
-two indoor points and does not average away against an outdoor one. Systematic
-terms are added linearly and each is counted once however many inputs
-contributed it — which matters most in exactly this query, because a control
-point behind the interior corners is routinely behind the boundary survey and
-the georeference as well. Combining everything in quadrature would report a
-narrower answer than the evidence supports, which is the direction nobody
-investigates.
+two indoor points and does not average away against an outdoor one. Each
+systematic term is counted once however many inputs contributed it — which
+matters most in exactly this query, because a control point behind the
+interior corners is routinely behind the boundary survey and the georeference
+as well. Systematic terms of distinct ids add linearly, independent terms
+combine in quadrature, and the two totals combine in quadrature:
+u = √( Σ uᵢ² + ( Σ |sⱼ| )² ), as specification section 6.6.5 states.
+Combining everything in quadrature would report a narrower answer than the
+evidence supports, which is the direction nobody investigates.
 
 Flags:
 

@@ -200,7 +200,10 @@ func (u Uncertainty) String() string {
 // of it, and it came from this claim" says what to re-measure.
 type BudgetTerm struct {
 	// Kind is which of the two kinds of error this term is, and so how it
-	// combines: independent terms in quadrature, systematic terms linearly.
+	// combines: independent terms in quadrature; systematic terms linearly, one
+	// term per term id, because distinct sources may correlate by an amount the
+	// format cannot state; and the two totals in quadrature. See
+	// [Budget.Combined].
 	Kind TermKind
 
 	// Name is what to call the term in a report.
@@ -294,7 +297,11 @@ func (t BudgetTerm) clone() BudgetTerm {
 //
 //   - Combining everything in quadrature is right only for terms which are
 //     independent. A term shared between the inputs does not partially cancel
-//     and does not average away, so it adds linearly.
+//     and does not average away, so it is counted once rather than once per
+//     input. Systematic terms of distinct term ids add linearly, because two
+//     sources may correlate — two control points of one network share its
+//     adjustment — by an amount the format cannot state, and full correlation
+//     is the bound.
 //   - A shared term counted once per input inflates the budget instead, and the
 //     usual response to that is to widen a tolerance rather than to fix the
 //     arithmetic.
@@ -506,8 +513,10 @@ func (b Budget) Combined() (Uncertainty, error) {
 	unit := b.terms[0].Unit
 
 	// squares is the independent terms in quadrature; shared is the systematic
-	// ones, which add linearly because they are the same error appearing twice
-	// rather than two errors which might cancel.
+	// ones, one per term id, which add linearly because distinct sources may
+	// correlate by an amount nothing states and full correlation is the bound.
+	// The two totals join in quadrature, because an independent error
+	// correlates with nothing.
 	var squares, shared float64
 
 	for _, term := range b.terms {

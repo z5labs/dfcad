@@ -100,10 +100,12 @@ not lie in one plane, a ring which crosses itself and one whose corners are
 collinear each encloses no area, and each is its own diagnostic naming which
 mistake it is.
 
-The accuracy is of the corners rather than of the area. Independent terms
-combine in quadrature and systematic ones linearly, and a term shared by
+The accuracy is of the corners rather than of the area. A term shared by
 several corners — a georeference behind every indoor fact alike — is counted
-once however many of them carried it. What is not reported is one figure
+once however many of them carried it. Independent terms combine in quadrature,
+systematic terms of distinct ids add linearly, and the two totals combine in
+quadrature: u = √( Σ uᵢ² + ( Σ |sⱼ| )² ), as specification section 6.6.5
+states. What is not reported is one figure
 standing in for the sensitivity of an area to each of its corners, because
 that is a per-corner quantity and a single number for it would be exactly the
 plausible answer the rest of this refuses to give.

@@ -294,7 +294,9 @@ type budgetReport struct {
 // budgetTerm is one term of an accumulated budget.
 type budgetTerm struct {
 	// Kind is which of the two kinds of error it is, and so how it combines:
-	// independent terms in quadrature, systematic terms linearly.
+	// independent terms in quadrature, systematic terms of distinct ids
+	// linearly, and the two totals in quadrature (specification section
+	// 6.6.5).
 	Kind string `json:"kind"`
 
 	// Name is what the term is called: the id a systematic error is shared

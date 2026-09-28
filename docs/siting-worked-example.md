@@ -178,8 +178,10 @@ and all nine are still named beside it.
 
 ### How the terms combine
 
-Independent terms go in quadrature; systematic terms add linearly; the two combine in
-quadrature ([0006](decisions/0006-accuracy-is-one-sigma.md)):
+The rule is [SPEC §6.6.5](../SPEC.md#665-accuracy-terms)'s, and
+[0006](decisions/0006-accuracy-is-one-sigma.md) records why: independent terms go in
+quadrature; systematic terms of distinct term ids add linearly; the two totals combine in
+quadrature:
 
 ```
 u = √( Σ uᵢ² + ( Σ |sⱼ| )² )
@@ -190,8 +192,8 @@ u = √( Σ uᵢ² + ( Σ |sⱼ| )² )
 u = √( 0.000244 + 0.013² ) = √0.000413 = 0.020322 m
 ```
 
-The naive answer — everything in quadrature, which is what you get by treating the shared
-terms as though they were noise — is:
+The naive answer — everything in quadrature, which is what you get by treating the two
+systematic terms as though they were noise, independent of each other — is:
 
 ```
 √( 0.000244 + 0.008² + 0.005² ) = √0.000333 = 0.018248 m
@@ -208,13 +210,23 @@ wrong.
 The georeference is *one* transform applied to every fact declared indoors. If the fit is
 eight millimetres north of the truth, every interior corner is eight millimetres north of the
 truth — together, in the same direction. Two interior points do not cancel that error against
-each other, and an interior point compared with an exterior one does not average it away.
-Combining it in quadrature assumes exactly the cancellation that cannot happen, and it
-assumes it worst in the case that motivates asking the question in the first place.
+each other, and an interior point compared with an exterior one does not average it away. So
+`control:CP-1` is one error, however many corners carried it, and it enters the arithmetic
+once: nine claims, one term.
 
 Counting it once matters as much in the other direction. Nine copies of 0.008 m added
 linearly would give a combined figure of 0.075 m — nearly four times the truth — and the usual
 response to a budget that wide is to widen a tolerance rather than to fix the arithmetic.
+
+Sharing is therefore not why the budget is wider than the naive answer: both figures above
+count `control:CP-1` once. The whole of the ten per cent is `control:CP-1` and `control:CP-2`
+adding linearly rather than in quadrature, and the reason for that is a different one. They
+are two distinct sources, and two control points of one network share its adjustment by an
+amount nothing in the model states. Full correlation is the bound —
+`σ(CP-1 + CP-2) ≤ σ(CP-1) + σ(CP-2)` — so adding them is the conservative figure, and still a
+standard uncertainty. Putting them in quadrature would assume they are uncorrelated, which is
+exactly the assumption the evidence cannot support, and it would assume it in the direction
+nobody investigates.
 
 ## The verdict, and why it is not the clearance
 
