@@ -994,13 +994,15 @@ without the flag answers.
 ### `traverse`
 
 A walk of the model: what contains what, what belongs to what, and what borders what. It
-takes a query, an id, and three flags.
+takes a query, an id, and five flags.
 
 | Flag | Meaning |
 |------|---------|
 | `--depth <n>` | How many steps of the relation to follow: a count of one or more, or `all` to follow it as far as the model goes. Default `1`. |
 | `--kind <kind>` | Only results that declare this kind. [Repeatable](#filters). |
 | `--type <name>` | Only results that declare this type. [Repeatable](#filters). |
+| `--cross-virtual` | `adjacent-to` only. An edge nothing backs may be crossed. |
+| `--cross-type <name>` | `adjacent-to` only. An edge may be crossed when at least one element backing it declares this type. Repeatable, and any of its values allows a crossing. Unlike a [filter](#filters), it decides what is walked and not only what is reported. |
 
 | Query | Answers | Relation |
 |-------|---------|----------|
@@ -1054,8 +1056,8 @@ takes a query, an id, and three flags.
 | `results[].classification` | string, optional | What an edge of a boundary separates the region by: `physical`, `virtual`, or `unresolved` where it names a backing element the model does not hold. Absent for a result that is not an edge. |
 | `results[].backing` | array, optional | The ids of the elements that physically realise an edge, in the order the edge named them. Absent for a virtual edge, which names none. |
 | `results[].backing-types` | array, optional | The type each element in `backing` declares, at the same position, so that `backing-types[i]` is the type of `backing[i]` and a wall is told from a door without a second call and a join on id. Absent exactly where `backing` is: for a virtual edge and for an unresolved one. Over a model the load refused, an element which declares no type — one whose `(type …)` could not be read — contributes `""`, so the two arrays stay aligned. There is no `backing-kinds`: an edge is backed only by a node of kind `Element`, so the kind of every backing element is `Element` and a field carrying it would be a constant. |
-| `results[].from` | string, optional | The id of the thing an adjacent thing was reached from, which is the thing `via` names the shared edges with. At depth 1 that is the subject, and it is written there too, so a result's shape does not depend on its depth. Past it, it is a result one step nearer: where more than one thing a step nearer shares an edge with it, the one with the smallest id. The walk is breadth first, so following `from` from any result reaches the subject in exactly `depth` steps, and that chain is a shortest path. Written under `adjacent-to` and absent otherwise. |
-| `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. At depth 1 that is the subject. Past it, where more than one thing a step nearer shares an edge with it, it was reached from the one with the smallest id, so `via` does not move when a node moves between files and can be checked against `boundary-of`. Written under `adjacent-to` and absent otherwise. |
+| `results[].from` | string, optional | The id of the thing an adjacent thing was reached from, which is the thing `via` names the shared edges with. At depth 1 that is the subject, and it is written there too, so a result's shape does not depend on its depth. Past it, it is a result one step nearer: where more than one thing a step nearer shares an edge with it — a crossable edge, under `--cross-virtual` or `--cross-type` — the one with the smallest id. The walk is breadth first, so following `from` from any result reaches the subject in exactly `depth` steps, and that chain is a shortest path. Written under `adjacent-to` and absent otherwise. |
+| `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. At depth 1 that is the subject. Past it, where more than one thing a step nearer shares an edge with it, it was reached from the one with the smallest id, so `via` does not move when a node moves between files and can be checked against `boundary-of`. Under `--cross-virtual` or `--cross-type` it names only the edges that may be crossed, so it says how to get between the two rather than what separates them. Written under `adjacent-to` and absent otherwise. |
 | `results[].span` | span | Where it was written. |
 
 Every result says which relation produced it, and containment is never reported as
@@ -1074,6 +1076,52 @@ Each adjacent result names the thing it was reached from as `from`, and its `via
 edges it shares with that one. The walk is breadth first and reports each thing at the
 fewest steps it can be reached in, so the chain of `from` is a shortest path back to the
 subject: a path can be rebuilt from one walk, without walking again from each room on it.
+
+What `adjacent-to` may cross is every shared edge unless it is told otherwise. With
+neither `--cross-virtual` nor `--cross-type` written, every shared edge may be crossed and
+the answer is the one above. With either written, an edge may be crossed in exactly two
+cases:
+
+- it is virtual — its `classification` under `boundary-of` is `virtual` — and
+  `--cross-virtual` was written, or
+- at least one element in its `backing` declares a type named by a `--cross-type`. At least
+  one rather than all, because a doorway is cut into a wall and the model says so by backing
+  one edge with both.
+
+An `unresolved` edge is never crossed under either flag: nothing is known about what realises
+it. A thing that shares only edges which may not be crossed is not reached across them,
+though it may be reached another way. Which types are ways through is the caller's to say —
+the names are compared with the types the backing elements declare and carry no meaning
+of their own, so a `Doorway` is a passage because the caller named it and a window, which
+fills an opening and is not a way through, is not one unless the caller names it too.
+
+Under a crossing filter `via` names **only the edges crossed**: the crossable edges the
+result shares with `from`. So it answers "how do you get between them" rather than "what
+separates them", and `boundary-of` is still where the wall beside the door is found. `from`
+is the thing one step nearer with the smallest id among those sharing a crossable edge with
+the result, so the chain of `from` is a shortest path through the edges that may be crossed.
+
+Unlike `--kind` and `--type`, which narrow only what is reported, these two decide what is
+walked. They combine with the narrowing filters as before: `--cross-type Doorway --kind Space`
+walks through doors and reports the spaces it reaches.
+
+A `--cross-type` the registry does not declare is a usage error, exactly as it is for
+`--type`. So is one whose type does not permit kind `Element`: only an `Element` backs an
+edge, so nothing of that type can back one and the walk could never cross anything by it.
+Either flag written beside any query but `adjacent-to` is a usage error, because only an
+adjacency walk crosses edges.
+
+The reachability question — which rooms can be reached from the entrance through a door or
+an open floor — is one call:
+
+```sh
+dfcad traverse adjacent-to --depth all --cross-virtual --cross-type Doorway site:S-113 \
+  | jq -r '.results[].id'
+```
+
+A space in the model that is missing from that list is one nothing reaches through a door or
+across an open line, which is a closet drawn with no opening or a room sealed off when it was
+redrawn.
 
 Depth is bounded by default, because a traversal of a model nobody has read should not be
 able to return the whole of it by accident; `--depth all` is how a caller asks for that on

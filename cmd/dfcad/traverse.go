@@ -48,6 +48,12 @@ Flags:
 	--kind <kind>  only results which declare this kind; repeat for more
 	--type <name>  only results which declare this type; repeat for more
 
+	--cross-virtual
+	               adjacent-to only: an edge nothing backs may be crossed
+	--cross-type <name>
+	               adjacent-to only: an edge may be crossed when an element
+	               backing it declares this type; repeat for more
+
 Every result says which relation produced it — containment, membership,
 boundary or adjacency — and how many steps away it was found. Containment and
 membership are never reported as each other: a wall inside a storey and grouped
@@ -75,6 +81,21 @@ the storey between them are not reported. Filters combine: a result is reported
 when it satisfies every filter given, and a filter written more than once is
 satisfied by any of its values.
 
+What adjacent-to may cross is every shared edge, unless it is told otherwise.
+With --cross-virtual or --cross-type written, an edge may be crossed only when
+it is virtual and --cross-virtual was written, or when at least one element
+backing it declares a type named by a --cross-type — at least one, because a
+doorway is cut into a wall and the model backs one edge with both. An edge whose
+backing does not resolve is never crossed under either flag. A thing which shares
+only edges that may not be crossed is not reached across them, so a walk with
+--cross-type Doorway answers what can be reached through a door rather than what
+is next to what. Which types are ways through is the caller's to say: the names
+are compared with what the backing elements declare and mean nothing more. Unlike
+--kind and --type, these two decide what is walked and not only what is
+reported. A --cross-type the registry does not declare is a usage error, and so
+is one whose type does not permit kind Element, since nothing of it can back an
+edge. Either flag beside any other query is a usage error.
+
 Results come back in depth order and then in id order, so two runs over one
 model diff against each other and moving a node between files changes nothing.
 The edges of a boundary are the exception: they come back in the order the
@@ -86,7 +107,9 @@ The walk is breadth first, so the chain of from leads back to the subject in as
 many steps as the result's depth, and is a shortest path to it. Past the first
 step, where several things a step nearer share an edge with a result, it was
 reached from the one with the smallest id, so neither from nor via moves when a
-node moves between files.
+node moves between files. Under --cross-virtual or --cross-type, via names only
+the edges crossed and from is the nearer thing sharing a crossable edge, so via
+says how to get between the two rather than what separates them.
 
 An id nothing in the model holds is a usage error naming it, and naming the
 nearest id there is, exactly as ` + "`dfcad get`" + ` reports one. Every query but
@@ -128,9 +151,11 @@ const (
 // The flags whose meaning depends on the query, named here because the errors
 // which refuse them name them.
 const (
-	flagDepth = "depth"
-	flagKind  = "kind"
-	flagType  = "type"
+	flagDepth        = "depth"
+	flagKind         = "kind"
+	flagType         = "type"
+	flagCrossVirtual = "cross-virtual"
+	flagCrossType    = "cross-type"
 )
 
 // depthAll is the --depth which follows a relation as far as the model goes.
@@ -157,6 +182,11 @@ type query struct {
 	// results are edges.
 	grouped bool
 
+	// crosses says whether it walks across edges, which is what --cross-virtual
+	// and --cross-type decide. It is true for adjacency alone: every other
+	// relation is written as a reference and followed whatever backs an edge.
+	crosses bool
+
 	// takes are the families of the subject it walks from, spelled the way
 	// [familyOf] spells them. Every query but bounds takes a semantic node, and
 	// bounds takes the two shapes a boundary is assembled from.
@@ -164,7 +194,17 @@ type query struct {
 
 	// walk is the traversal itself, already bounded. It is only ever handed a
 	// subject of a family in takes.
-	walk func(graph *dfcad.Graph, subject dfcad.Entity, depth int) []traversed
+	walk func(graph *dfcad.Graph, subject dfcad.Entity, how walking) []traversed
+}
+
+// walking is how far a walk goes and what it may cross on the way there.
+type walking struct {
+	// depth is how many steps of the relation to follow, or [dfcad.Unbounded].
+	depth int
+
+	// crossing is which shared edges an adjacency walk may cross. It is empty,
+	// crossing everything, for every query which does not cross edges.
+	crossing dfcad.AdjacencyFilter
 }
 
 // takesNode is what every query which walks from a semantic node takes.
@@ -174,9 +214,9 @@ var takesNode = []string{familyNode}
 //
 // The assertion cannot fail: [walkable] hands a query only a subject of a family
 // it takes, and every query built with this takes a node alone.
-func fromNode(walk func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed) func(*dfcad.Graph, dfcad.Entity, int) []traversed {
-	return func(graph *dfcad.Graph, subject dfcad.Entity, depth int) []traversed {
-		return walk(graph, subject.(*dfcad.SemanticNode), depth)
+func fromNode(walk func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed) func(*dfcad.Graph, dfcad.Entity, walking) []traversed {
+	return func(graph *dfcad.Graph, subject dfcad.Entity, how walking) []traversed {
+		return walk(graph, subject.(*dfcad.SemanticNode), how)
 	}
 }
 
@@ -187,8 +227,8 @@ var queries = []query{
 		deep:    true,
 		grouped: true,
 		takes:   takesNode,
-		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
-			return related(graph.DescendantsTo(subject, depth))
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed {
+			return related(graph.DescendantsTo(subject, how.depth))
 		}),
 	},
 	{
@@ -196,8 +236,8 @@ var queries = []query{
 		deep:    true,
 		grouped: true,
 		takes:   takesNode,
-		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
-			return related(graph.AncestorsTo(subject, depth))
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed {
+			return related(graph.AncestorsTo(subject, how.depth))
 		}),
 	},
 	{
@@ -205,8 +245,8 @@ var queries = []query{
 		deep:    true,
 		grouped: true,
 		takes:   takesNode,
-		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
-			return related(graph.ZonesTo(subject, depth))
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed {
+			return related(graph.ZonesTo(subject, how.depth))
 		}),
 	},
 	{
@@ -214,8 +254,8 @@ var queries = []query{
 		deep:    true,
 		grouped: true,
 		takes:   takesNode,
-		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
-			return related(graph.MembersTo(subject, depth))
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed {
+			return related(graph.MembersTo(subject, how.depth))
 		}),
 	},
 	{
@@ -223,7 +263,7 @@ var queries = []query{
 		deep:    false,
 		grouped: false,
 		takes:   takesNode,
-		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, _ int) []traversed {
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, _ walking) []traversed {
 			var out []traversed
 			for boundary := range graph.Classify(subject) {
 				out = append(out, boundaryResult(boundary))
@@ -236,7 +276,7 @@ var queries = []query{
 		deep:    false,
 		grouped: true,
 		takes:   []string{familyLoop, familyEdge},
-		walk: func(graph *dfcad.Graph, subject dfcad.Entity, _ int) []traversed {
+		walk: func(graph *dfcad.Graph, subject dfcad.Entity, _ walking) []traversed {
 			var bounded iter.Seq[*dfcad.SemanticNode]
 			switch shape := subject.(type) {
 			case *dfcad.Loop:
@@ -261,10 +301,11 @@ var queries = []query{
 		name:    queryAdjacentTo,
 		deep:    true,
 		grouped: true,
+		crosses: true,
 		takes:   takesNode,
-		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed {
 			var out []traversed
-			for neighbour := range graph.AdjacentTo(subject, depth) {
+			for neighbour := range graph.AdjacentWalk(subject, how.depth, how.crossing) {
 				entry := nodeResult(neighbour.Node(), neighbour.Relation(), neighbour.Depth())
 				entry.From = string(neighbour.From().ID())
 				for _, edge := range neighbour.Via() {
@@ -362,7 +403,40 @@ const (
 
 	filterNotApplicable = "the results are edges, which declare neither a kind nor a type; " +
 		"what an edge is realised by is reported as its backing"
+
+	crossingNotApplicable = "only an adjacency walk crosses edges; every other query follows a relation " +
+		"the model writes as a reference, whatever backs the edges around it"
 )
+
+// NotABackingTypeError is a --cross-type naming a type which does not permit
+// kind Element.
+//
+// Only an Element backs an edge, so nothing of such a type can back one and the
+// filter could never match. It is refused rather than answered with a walk which
+// crosses nothing, for the reason an unknown type is: a caller who wrote a room
+// type where a door type was meant would otherwise read "nothing is reachable"
+// as a fact about the model.
+type NotABackingTypeError struct {
+	// Type is the type named.
+	Type string
+
+	// Kinds are the kinds the type permits, none of which is Element, in
+	// specification order.
+	Kinds []dfcad.Kind
+}
+
+// Error implements [error].
+func (e NotABackingTypeError) Error() string {
+	kinds := make([]string, 0, len(e.Kinds))
+	for _, kind := range e.Kinds {
+		kinds = append(kinds, string(kind))
+	}
+
+	return fmt.Sprintf(
+		"type %s cannot back an edge: it permits kind %s, and only a node of kind %s backs an edge",
+		e.Type, strings.Join(kinds, " or "), dfcad.KindElement,
+	)
+}
 
 // NotTraversableError is an id which names something of a family the query
 // asked of it does not walk from.
@@ -576,6 +650,10 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	flags.Var(kindFlag, flagKind, "")
 	flags.Var(typeFlag, flagType, "")
 
+	crossVirtual := flags.Bool(flagCrossVirtual, false, "")
+	crossTypeFlag := &repeated{}
+	flags.Var(crossTypeFlag, flagCrossType, "")
+
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
 		return exit
@@ -612,6 +690,14 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		return usageError(cmd, err, stderr, false)
 	}
 
+	// Every value as written rather than filtered, because a crossing filter
+	// decides what is walked: an empty name dropped here would leave a walk told
+	// to cross only some edges crossing all of them.
+	crossTypes := []string(*crossTypeFlag)
+	if err := checkCrossTypes(graph.Registry(), crossTypes); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	subject, err := walkable(graph, id, asked)
 	if err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -623,7 +709,10 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		Subject:   string(id),
 		Query:     asked.name,
 		Depth:     int(depth),
-		Results:   narrow(asked.walk(graph, subject, int(depth)), kinds, types),
+		Results: narrow(asked.walk(graph, subject, walking{
+			depth:    int(depth),
+			crossing: dfcad.AdjacencyFilter{CrossVirtual: *crossVirtual, CrossTypes: crossTypes},
+		}), kinds, types),
 	}
 
 	// Depth first and then id, so that two runs over one model diff against each
@@ -671,6 +760,37 @@ func checkFlags(asked query, given map[string]bool) error {
 		if given[filter] && !asked.grouped {
 			return FlagNotApplicableError{Flag: filter, Query: asked.name, Reason: filterNotApplicable}
 		}
+	}
+
+	for _, crossing := range []string{flagCrossVirtual, flagCrossType} {
+		if given[crossing] && !asked.crosses {
+			return FlagNotApplicableError{Flag: crossing, Query: asked.name, Reason: crossingNotApplicable}
+		}
+	}
+
+	return nil
+}
+
+// checkCrossTypes reports a --cross-type the registry does not declare, and one
+// whose type does not permit kind Element and so can back no edge.
+func checkCrossTypes(registry *dfcad.Registry, names []string) error {
+	if err := checkFilters(registry, names, nil, nil); err != nil {
+		return err
+	}
+
+	for _, name := range names {
+		declared, _ := registry.Type(name)
+		if declared.PermitsKind(dfcad.KindElement) {
+			continue
+		}
+
+		var kinds []dfcad.Kind
+		for _, kind := range dfcad.Kinds() {
+			if declared.PermitsKind(kind) {
+				kinds = append(kinds, kind)
+			}
+		}
+		return NotABackingTypeError{Type: name, Kinds: kinds}
 	}
 
 	return nil

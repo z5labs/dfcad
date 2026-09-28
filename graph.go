@@ -593,6 +593,12 @@ func (g *Graph) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjacent] {
 	return g.Boundaries().AdjacentTo(region, depth)
 }
 
+// AdjacentWalk iterates the regions reachable from region across the shared
+// edges filter allows to be crossed, to at most depth steps.
+func (g *Graph) AdjacentWalk(region *SemanticNode, depth int, filter AdjacencyFilter) iter.Seq[Adjacent] {
+	return g.Boundaries().AdjacentWalk(region, depth, filter)
+}
+
 // Classify iterates the edges of region's boundary, each classified physical or
 // virtual.
 func (g *Graph) Classify(region *SemanticNode) iter.Seq[BoundaryEdge] {

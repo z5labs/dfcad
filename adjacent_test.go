@@ -174,6 +174,194 @@ func TestBoundariesAdjacentTo(t *testing.T) {
 	}
 }
 
+// TestBoundariesAdjacentWalk walks adjacency across only the edges a filter
+// allows, one filter per case.
+//
+// Room A and the corridor share a partition and the doorway through it, which is
+// drawn as an edge nothing backs; the corridor and room C share only a
+// partition. So the doorway is a way through when virtual edges may be crossed,
+// and the partitions are when that type may be.
+func TestBoundariesAdjacentWalk(t *testing.T) {
+	testCases := []struct {
+		name     string
+		region   ID
+		filter   AdjacencyFilter
+		expected []neighbour
+	}{
+		{
+			name:   "crosses every shared edge when the filter is empty",
+			region: "site:S-A",
+			filter: AdjacencyFilter{},
+			expected: []neighbour{
+				{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02", "geom:E-03"}},
+				{node: "site:S-C", depth: 2, from: "site:S-B", via: []ID{"geom:E-07"}},
+			},
+		},
+		{
+			name:     "crosses the doorway and not the partitions when only virtual edges may be crossed",
+			region:   "site:S-A",
+			filter:   AdjacencyFilter{CrossVirtual: true},
+			expected: []neighbour{{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-03"}}},
+		},
+		{
+			name:   "crosses the partitions and not the doorway when only partitions may be crossed",
+			region: "site:S-A",
+			filter: AdjacencyFilter{CrossTypes: []string{"Partition"}},
+			expected: []neighbour{
+				{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02"}},
+				{node: "site:S-C", depth: 2, from: "site:S-B", via: []ID{"geom:E-07"}},
+			},
+		},
+		{
+			name:   "crosses what either field allows when both are given",
+			region: "site:S-A",
+			filter: AdjacencyFilter{CrossVirtual: true, CrossTypes: []string{"Partition"}},
+			expected: []neighbour{
+				{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02", "geom:E-03"}},
+				{node: "site:S-C", depth: 2, from: "site:S-B", via: []ID{"geom:E-07"}},
+			},
+		},
+		{
+			name:   "crosses what any of several types allows",
+			region: "site:S-C",
+			filter: AdjacencyFilter{CrossTypes: []string{"Doorway", "Partition"}},
+			expected: []neighbour{
+				{node: "site:S-B", depth: 1, from: "site:S-C", via: []ID{"geom:E-07"}},
+				{node: "site:S-A", depth: 2, from: "site:S-B", via: []ID{"geom:E-02"}},
+			},
+		},
+		{
+			name:   "reaches nothing when no shared edge is backed by a type it names",
+			region: "site:S-A",
+			filter: AdjacencyFilter{CrossTypes: []string{"Doorway"}},
+		},
+		{
+			// Room C shares only a partition with the corridor, so a walk which
+			// may cross only virtual edges is walled in.
+			name:   "does not reach a region which shares only edges it may not cross",
+			region: "site:S-C",
+			filter: AdjacencyFilter{CrossVirtual: true},
+		},
+	}
+
+	model, boundaries := joinBoundaries(t, "adjacent")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			region, ok := model.nodes.Node(testCase.region)
+			require.True(t, ok)
+
+			got := bordering(t, boundaries.AdjacentWalk(region, Unbounded, testCase.filter))
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestAdjacentToIsAnUnfilteredWalk is the other half of the table above: with
+// nothing given, a walk crosses every shared edge and answers exactly what
+// AdjacentTo always has, from every region and at every depth.
+func TestAdjacentToIsAnUnfilteredWalk(t *testing.T) {
+	model, boundaries := joinBoundaries(t, "adjacent")
+
+	for _, id := range []ID{"site:S-A", "site:S-B", "site:S-C", "site:W-01"} {
+		region, ok := model.nodes.Node(id)
+		require.True(t, ok)
+
+		for _, depth := range []int{0, 1, 2, Unbounded} {
+			assert.Equal(t,
+				bordering(t, boundaries.AdjacentTo(region, depth)),
+				bordering(t, boundaries.AdjacentWalk(region, depth, AdjacencyFilter{})),
+				"%s at %d", id, depth,
+			)
+		}
+	}
+}
+
+// TestAdjacencyFilterMatches decides one edge at a time, which is where the
+// unresolved edge is reachable: no fixture which joins clean holds one.
+func TestAdjacencyFilterMatches(t *testing.T) {
+	partition := &SemanticNode{id: "site:W-01", kind: KindElement, declaredType: "Partition"}
+	doorway := &SemanticNode{id: "site:D-01", kind: KindElement, declaredType: "Doorway"}
+
+	virtual := BoundaryEdge{edge: &Edge{}}
+	wall := BoundaryEdge{edge: &Edge{backing: []ID{"site:W-01"}}, backing: []*SemanticNode{partition}}
+	opening := BoundaryEdge{
+		edge:    &Edge{backing: []ID{"site:D-01", "site:W-01"}},
+		backing: []*SemanticNode{doorway, partition},
+	}
+	unresolved := BoundaryEdge{edge: &Edge{backing: []ID{"site:W-99"}}}
+
+	require.Equal(t, ClassificationVirtual, virtual.Classification())
+	require.Equal(t, ClassificationPhysical, wall.Classification())
+	require.Equal(t, ClassificationPhysical, opening.Classification())
+	require.Equal(t, ClassificationUnresolved, unresolved.Classification())
+
+	testCases := []struct {
+		name     string
+		filter   AdjacencyFilter
+		edge     BoundaryEdge
+		expected bool
+	}{
+		{name: "an empty filter crosses a virtual edge", filter: AdjacencyFilter{}, edge: virtual, expected: true},
+		{name: "an empty filter crosses a physical edge", filter: AdjacencyFilter{}, edge: wall, expected: true},
+		{name: "an empty filter crosses an unresolved edge", filter: AdjacencyFilter{}, edge: unresolved, expected: true},
+		{name: "crosses a virtual edge where virtual edges may be crossed", filter: AdjacencyFilter{CrossVirtual: true}, edge: virtual, expected: true},
+		{name: "does not cross a physical edge where only virtual edges may be", filter: AdjacencyFilter{CrossVirtual: true}, edge: wall, expected: false},
+		{name: "does not cross a virtual edge where only types may be", filter: AdjacencyFilter{CrossTypes: []string{"Doorway"}}, edge: virtual, expected: false},
+		{name: "crosses an edge one of whose backing elements declares a named type", filter: AdjacencyFilter{CrossTypes: []string{"Doorway"}}, edge: opening, expected: true},
+		{name: "does not cross an edge none of whose backing elements declares a named type", filter: AdjacencyFilter{CrossTypes: []string{"Doorway"}}, edge: wall, expected: false},
+		{name: "crosses an edge backed by any of several named types", filter: AdjacencyFilter{CrossTypes: []string{"Window", "Partition"}}, edge: wall, expected: true},
+		{name: "never crosses an unresolved edge under a type filter", filter: AdjacencyFilter{CrossTypes: []string{"Partition"}}, edge: unresolved, expected: false},
+		{name: "never crosses an unresolved edge under a virtual filter", filter: AdjacencyFilter{CrossVirtual: true}, edge: unresolved, expected: false},
+		{name: "never crosses an unresolved edge under both", filter: AdjacencyFilter{CrossVirtual: true, CrossTypes: []string{"Partition"}}, edge: unresolved, expected: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, testCase.filter.Matches(testCase.edge))
+		})
+	}
+}
+
+// TestAdjacentWalkCrossesOnlyWhatItWasTold is the property the filter promises,
+// over every region of the fixture and every filter the table uses: each edge a
+// result was reached through is one the filter allows, and under a type filter
+// that means one backed by an element declaring a named type.
+func TestAdjacentWalkCrossesOnlyWhatItWasTold(t *testing.T) {
+	model, boundaries := joinBoundaries(t, "adjacent")
+
+	filters := []AdjacencyFilter{
+		{CrossVirtual: true},
+		{CrossTypes: []string{"Partition"}},
+		{CrossTypes: []string{"Doorway"}},
+		{CrossVirtual: true, CrossTypes: []string{"Partition"}},
+	}
+
+	walked := 0
+	for region := range model.nodes.All() {
+		for _, filter := range filters {
+			for result := range boundaries.AdjacentWalk(region, Unbounded, filter) {
+				walked++
+				require.NotEmpty(t, result.Via(), "%s was reached across something", result.Node().ID())
+
+				for _, edge := range result.Via() {
+					classified := boundaries.Classified(edge)
+					assert.True(t, filter.Matches(classified), "%s may be crossed under %+v", edge.ID(), filter)
+
+					if !filter.CrossVirtual {
+						assert.True(t, slices.ContainsFunc(classified.Backing(), func(element *SemanticNode) bool {
+							return slices.Contains(filter.CrossTypes, element.Type())
+						}), "%s is backed by one of %v", edge.ID(), filter.CrossTypes)
+					}
+				}
+			}
+		}
+	}
+
+	require.NotZero(t, walked, "the filters reach something")
+}
+
 // TestAdjacencyIsTheSharedEdge is its own function because it asserts on the
 // wall rather than on either room: the edge two rooms share is one node reached
 // from both sides, which is what makes the relation a fact about the model
