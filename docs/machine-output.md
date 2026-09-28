@@ -379,8 +379,8 @@ asks once. A model which declares none pays nothing for the flag either way.
 
 The claim predicates the registry declares, with the shape and the spelling each takes.
 These are the names `list-geometry --predicate`, `claims` and `resolve` accept — exactly
-`Registry.Names(dfcad.SortPredicate)` — and the ones every flag naming a predicate is spelled
-with. It takes no arguments and one flag.
+`Registry.Names(dfcad.SortPredicate)` — and the only spellings a flag which names a predicate
+takes. It takes no arguments and one flag.
 
 | Flag | Meaning |
 |------|---------|

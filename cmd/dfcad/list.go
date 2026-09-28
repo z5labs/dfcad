@@ -68,8 +68,8 @@ Usage:
 Every predicate the registry declares, with the shape its values take, the unit
 they are written in, and whether a value under it is a claim. These are the
 names "dfcad list-geometry --predicate", "dfcad claims" and "dfcad resolve"
-accept, and the ones a flag naming a predicate is spelled with. It takes no
-arguments: the answer is the whole of that sort of the registry.
+accept, and the only spellings a flag which names a predicate takes. It takes
+no arguments: the answer is the whole of that sort of the registry.
 
 The listing reports what was declared and singles nothing out. Which predicate
 carries a position, a coordinate reference system or a setback is something the
