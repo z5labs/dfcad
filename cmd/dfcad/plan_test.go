@@ -1167,7 +1167,7 @@ func TestTheContractNamesEveryReasonAPlanLeavesANodeUndrawn(t *testing.T) {
 }
 
 // contractRow is the row of a command's field table in docs/machine-output.md
-// which documents field.
+// which documents the named field.
 //
 // It is looked up inside that command's section and no other, because the same
 // field name is documented under more than one command — `export-map` writes an
