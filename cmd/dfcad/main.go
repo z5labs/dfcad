@@ -298,6 +298,10 @@ const globalFlagsHelp = `Global flags, taken by every command:
 	-v, --verbose    say more on stderr about what the run is doing and about
 	                 what it found; repeat for more
 	-h, --help       print this message and exit
+
+A flag which takes one value is written once: written twice, whether or not
+the values agree, it is a usage error naming both. Filters, and the flags which
+build a list, are repeatable and say so.
 `
 
 // writeFlagsHelp describes the flags every command which changes the model

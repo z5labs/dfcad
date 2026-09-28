@@ -233,6 +233,11 @@ func (r *repeated) Set(value string) error {
 	return nil
 }
 
+// repeatable implements [repeatable]. A flag which is written once and is held
+// in one of these — list-geometry's --predicate — refuses a second value itself,
+// with [once], where it can say what the flag names.
+func (r *repeated) repeatable() {}
+
 // claimResult is the object the commands which write a claim produce.
 //
 // It is the write result with what the change did to the claims beside it,
