@@ -799,22 +799,16 @@ func TestLoadClaimsChecksAPlainValueAsAValueChild(t *testing.T) {
 				`(width (value `+testCase.value+`) (source "Plan A-101") (method method:scaled) (date "2026-01-09"))`,
 			))
 
+			// Everything about the claim but its value is well formed, so the
+			// value's is the one diagnostic either spelling produces.
 			require.Len(t, plain, 1)
-			require.NotEmpty(t, asClaim)
-
-			// The claim form also names its method, whose namespace this
-			// registry leaves unregistered on purpose; only the value's
-			// diagnostic is the one being compared.
-			var fromValue Diagnostic
-			for _, diag := range asClaim {
-				if diag.Message == plain[0].Message {
-					fromValue = diag
-				}
-			}
-			require.NotZero(t, fromValue.Message, "the value child is refused in the same words: %v", asClaim)
+			require.Len(t, asClaim, 1)
+			fromValue := asClaim[0]
 
 			assert.Zero(t, plainClaims.Len(), "a plain value becomes no claim, refused or not")
 			assert.Equal(t, SeverityError, plain[0].Severity)
+			assert.Equal(t, fromValue.Severity, plain[0].Severity)
+			assert.Equal(t, fromValue.Message, plain[0].Message, "the value child is refused in the same words")
 			assert.Equal(t, fromValue.Hint, plain[0].Hint)
 
 			// The two models live in two directories, so the declaration is
