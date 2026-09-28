@@ -1240,6 +1240,37 @@ func TestRunListGeometry(t *testing.T) {
 			args:        []string{"--predicate", "area"},
 			expectedIDs: []string{},
 		},
+		{
+			name: "narrows to the nodes expressed in the building frame",
+			args: []string{"--predicate", "position", "--frame", "frame:building"},
+			expectedIDs: []string{
+				"geom:V-01", "geom:V-02", "geom:V-03", "geom:V-04",
+				"geom:V-11", "geom:V-12", "geom:V-13", "geom:V-14",
+			},
+		},
+		{
+			// The site grid is the building frame's parent. The match is exact,
+			// as it is for list-instances, so the building's corners are not
+			// listed for it: they are expressed in the child.
+			name:        "narrows to the nodes expressed in the site grid and not those in its child frame",
+			args:        []string{"--predicate", "position", "--frame", "frame:site-grid"},
+			expectedIDs: []string{"geom:V-21", "geom:V-22", "geom:V-23", "geom:V-24"},
+		},
+		{
+			name:        "combines a frame with a family",
+			args:        []string{"--predicate", "setback", "--family", "edge", "--frame", "frame:building"},
+			expectedIDs: []string{"geom:E-11", "geom:E-12", "geom:E-13", "geom:E-14"},
+		},
+		{
+			name:        "lists a node only when it satisfies the frame and the family",
+			args:        []string{"--predicate", "setback", "--family", "edge", "--frame", "frame:site-grid"},
+			expectedIDs: []string{},
+		},
+		{
+			name:        "lists nothing when the frame holds no node of the family",
+			args:        []string{"--predicate", "position", "--family", "loop", "--frame", "frame:building"},
+			expectedIDs: []string{},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1273,6 +1304,152 @@ func TestRunListGeometryOnAPredicateNothingCarries(t *testing.T) {
 		stderr.String())
 
 	assert.Contains(t, stdout.String(), `"nodes":[]`)
+}
+
+// TestRunListGeometryOnAFrameNothingIsExpressedIn is its own function because it
+// needs a frame the listing fixture does not declare: each of the fixture's two
+// frames holds nodes. A declared frame which holds none is an ordinary frame —
+// one set out ahead of the survey drawn on it — so the answer is an empty list
+// and exit zero rather than the usage error an undeclared frame is.
+func TestRunListGeometryOnAFrameNothingIsExpressedIn(t *testing.T) {
+	files := model()
+	files["registry.dfc"] += `
+(frame frame:annex
+  (label "Annex local grid")
+  (unit m)
+  (parent frame:site-grid)
+  (transform site:C-0002)
+  (frame-transform
+    (id site:C-0002)
+    (value
+      (transform
+        (translation 150.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-015, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-02")))
+`
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(t, exitSuccess,
+		run([]string{"list-geometry", "--predicate", "position", "--frame", "frame:annex"}, &stdout, &stderr),
+		stderr.String())
+
+	assert.Contains(t, stdout.String(), `"nodes":[]`)
+
+	result := listed[listGeometryResult](t, stdout.String())
+	assert.Empty(t, result.Nodes)
+	assert.Equal(t, "position", result.Predicate)
+	assert.False(t, result.Refused, "the frame added is one the load accepts: %s", stderr.String())
+}
+
+// TestRunListGeometryRefusesAFrameTheRegistryDoesNotDeclare is its own function
+// because it asserts on the error's structure rather than on a run's streams:
+// list-geometry refuses a frame through the check list-instances refuses one
+// through, so what that check returns for the second value of a repeated
+// --frame is what the run reports.
+func TestRunListGeometryRefusesAFrameTheRegistryDoesNotDeclare(t *testing.T) {
+	root := tree(t, model())
+
+	graph, _ := dfcad.LoadGraph(root)
+
+	err := checkFilters(graph.Registry(), nil, nil, []string{"frame:building", "frame:annex"})
+
+	var unknown UnknownFrameError
+	require.ErrorAs(t, err, &unknown)
+	assert.Equal(t, "frame:annex", unknown.Frame)
+	assert.Equal(t, []string{"frame:building", "frame:site-grid"}, unknown.Declared)
+
+	var stdout, stderr bytes.Buffer
+
+	require.Equal(t, exitUsage, run([]string{
+		"list-geometry", "--root", root,
+		"--predicate", "position", "--frame", "frame:building", "--frame", "frame:annex",
+	}, &stdout, &stderr))
+
+	assert.Empty(t, stdout.String())
+	assert.Equal(t, "dfcad list-geometry: "+unknown.Error()+"\n", stderr.String())
+}
+
+// TestRunListGeometryPartitionsByFrame is the property --frame promises: a
+// geometric node is expressed in exactly one frame, so the listings of the
+// frames the registry declares, taken together, are the unfiltered listing —
+// every node in one of them and none in two. It is checked against every
+// declared frame rather than a written-down pair, so a frame added to the
+// fixture is covered without an edit here.
+//
+// It also asserts the other half of the story's promise: a run which writes no
+// --frame is byte-for-byte the run it was before the flag existed, which is the
+// run naming every frame at once when every node declares one.
+func TestRunListGeometryPartitionsByFrame(t *testing.T) {
+	testCases := []struct {
+		name      string
+		files     func() map[string]string
+		predicate string
+	}{
+		{
+			name:      "partitions the corners across the two frames",
+			files:     model,
+			predicate: "position",
+		},
+		{
+			name:      "partitions the edges a predicate only one frame carries",
+			files:     model,
+			predicate: "setback",
+		},
+		{
+			name:      "partitions a predicate every family carries",
+			files:     geometryFamilies,
+			predicate: "datum",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, testCase.files())
+
+			graph, _ := dfcad.LoadGraph(root)
+			frames := graph.Registry().Names(dfcad.SortFrame)
+			require.NotEmpty(t, frames)
+
+			output := func(args ...string) string {
+				t.Helper()
+
+				var stdout, stderr bytes.Buffer
+				invocation := append([]string{"list-geometry", "--root", root, "--predicate", testCase.predicate}, args...)
+				require.Equal(t, exitSuccess, run(invocation, &stdout, &stderr), stderr.String())
+
+				return stdout.String()
+			}
+
+			unfiltered := output()
+			whole := listed[listGeometryResult](t, unfiltered)
+			require.NotEmpty(t, whole.Nodes, "the predicate selects nothing, so the property says nothing")
+
+			var union []listedGeometry
+			every := make([]string, 0, 2*len(frames))
+			for _, frame := range frames {
+				one := listed[listGeometryResult](t, output("--frame", frame))
+				for _, node := range one.Nodes {
+					assert.Equal(t, frame, node.Frame, "%s listed for a frame it is not expressed in", node.ID)
+				}
+
+				union = append(union, one.Nodes...)
+				every = append(every, "--frame", frame)
+			}
+
+			slices.SortStableFunc(union, func(a, b listedGeometry) int {
+				return strings.Compare(a.ID, b.ID)
+			})
+
+			assert.Equal(t, whole.Nodes, union)
+			assert.Equal(t, unfiltered, output(every...), "every declared frame at once")
+		})
+	}
 }
 
 // TestRunListGeometryNamesTheEndsOfAnEdgeInTheAuthoredOrder is its own function
@@ -1470,6 +1647,12 @@ func TestRunListGeometryRejectsWhatItCannotAskAbout(t *testing.T) {
 			args: []string{"list-geometry", "--predicate", "position", "--family", "vertices"},
 			expectedStderr: "dfcad list-geometry: " +
 				UnknownFamilyError{Family: "vertices", Known: families}.Error() + "\n",
+		},
+		{
+			name: "names a frame the registry does not declare",
+			args: []string{"list-geometry", "--predicate", "position", "--frame", "frame:annex"},
+			expectedStderr: "dfcad list-geometry: " +
+				UnknownFrameError{Frame: "frame:annex", Declared: []string{"frame:building", "frame:site-grid"}}.Error() + "\n",
 		},
 		{
 			name: "rejects an argument, which it takes none of",
@@ -1715,6 +1898,15 @@ func TestListFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
 			flag:   "family",
 			first:  "vertex",
 			second: "loop",
+			field:  "nodes",
+		},
+		{
+			name:   "lists the nodes in either frame",
+			root:   func(t *testing.T) string { return tree(t, model()) },
+			args:   []string{"list-geometry", "--predicate", "position"},
+			flag:   "frame",
+			first:  "frame:building",
+			second: "frame:site-grid",
 			field:  "nodes",
 		},
 	}
