@@ -1007,6 +1007,7 @@ takes a query, an id, and three flags.
 | `contains` | What the thing holds, level by level inward. | `containment` |
 | `contained-by` | What holds the thing, outward towards the root. | `containment` |
 | `members-of` | The zones the thing is a member of, and the zones those are members of where membership nests. | `membership` |
+| `members` | What a zone groups — every node which wrote `(member-of <id>)`, whatever its type — and what those group where they are zones themselves. | `membership` |
 | `boundary-of` | The edges the thing's outline is assembled from, each classified by what physically realises it. | `boundary` |
 | `adjacent-to` | The things that share a boundary edge with it. | `adjacency` |
 

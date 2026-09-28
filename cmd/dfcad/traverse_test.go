@@ -10,6 +10,8 @@ import (
 	"cmp"
 	"errors"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -209,7 +211,15 @@ func traversableModel() map[string]string {
 func walk(t *testing.T, args ...string) traverseResult {
 	t.Helper()
 
-	t.Chdir(tree(t, traversableModel()))
+	return walkIn(t, tree(t, traversableModel()), args...)
+}
+
+// walkIn runs one traversal against the model rooted at dir and decodes what it
+// wrote.
+func walkIn(t *testing.T, dir string, args ...string) traverseResult {
+	t.Helper()
+
+	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
 	require.Equal(t, exitSuccess, run(append([]string{"traverse"}, args...), &stdout, &stderr), stderr.String())
@@ -302,6 +312,40 @@ func TestRunTraverse(t *testing.T) {
 			name:     "gives the zone a zone is itself a member of",
 			args:     []string{queryMembersOf, "site:Z-maint"},
 			expected: []string{"site:Z-therm membership +"},
+		},
+		{
+			name:     "gives every node which named a zone",
+			args:     []string{queryMembers, "site:Z-fire"},
+			expected: []string{"site:W-01 membership +"},
+		},
+		{
+			// The maintenance round is a zone written into the thermal zone, so it
+			// is one of the thermal zone's members, whatever else it groups.
+			name:     "gives a zone grouped into a zone as one of its members",
+			args:     []string{queryMembers, "site:Z-therm"},
+			expected: []string{"site:W-01 membership +", "site:Z-maint membership +"},
+		},
+		{
+			// The wall is a member of the thermal zone and again of the
+			// maintenance round inside it. That is one member, at the fewer steps.
+			name:     "gives a member reachable two ways once",
+			args:     []string{queryMembers, "--depth", depthAll, "site:Z-therm"},
+			expected: []string{"site:W-01 membership +", "site:Z-maint membership +"},
+		},
+		{
+			name:     "gives nothing for a node nothing names in a member-of",
+			args:     []string{queryMembers, "--depth", depthAll, "site:W-01"},
+			expected: []string{},
+		},
+		{
+			name:     "narrows the members to one kind without narrowing the walk",
+			args:     []string{queryMembers, "--depth", depthAll, "--kind", "Zone", "site:Z-therm"},
+			expected: []string{"site:Z-maint membership +"},
+		},
+		{
+			name:     "narrows the members to one type without narrowing the walk",
+			args:     []string{queryMembers, "--depth", depthAll, "--type", "Partition", "site:Z-therm"},
+			expected: []string{"site:W-01 membership +"},
 		},
 		{
 			// In the order the loop traverses them rather than in id order: that
@@ -454,6 +498,176 @@ func TestTraverseNeverConflatesTheTwoRelations(t *testing.T) {
 	// And the zones hold nothing, however many members they have: a member is
 	// not a thing inside.
 	assert.Empty(t, walk(t, queryContains, "--depth", depthAll, "site:Z-fire").Results)
+
+	// The other direction of membership keeps to it as well. The storey holds
+	// the wall, and the zones group it: the storey groups nothing, and what the
+	// zones group is not what they hold.
+	members := walk(t, queryMembers, "--depth", depthAll, "site:Z-therm")
+	for _, entry := range members.Results {
+		assert.Equal(t, string(dfcad.RelationMembership), entry.Relation)
+	}
+	assert.Equal(t, []string{"site:W-01", "site:Z-maint"}, reachedIDs(members))
+	assert.Empty(t, walk(t, queryMembers, "--depth", depthAll, "site:L-01").Results)
+}
+
+// nestedZones is a model whose membership nests two deep, with a room inside a
+// member which is a member of nothing itself.
+//
+// It is its own model rather than more of the one above because that one's
+// nested zone groups nothing its parent does not group directly, so no member of
+// it is ever further than one step away.
+const nestedZones = `(node site:Z-A
+  (label "Fire compartment")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building))
+
+(node site:Z-B
+  (label "Smoke zone inside the compartment")
+  (kind Zone)
+  (type Compartment)
+  (geometry area)
+  (frame frame:building)
+  (member-of site:Z-A))
+
+(node site:S-201
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (member-of site:Z-B))
+
+(node site:S-201a
+  (label "Alcove off Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (within site:S-201))
+`
+
+// TestTraverseMembersFollowsNestedMembership is its own function because it is
+// asked of its own model: the members of a zone, then the members of those
+// which are zones, and never what sits inside a member.
+func TestTraverseMembersFollowsNestedMembership(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "gives only the zone's own members at one step",
+			args:     []string{queryMembers, "site:Z-A"},
+			expected: []string{"site:Z-B membership +"},
+		},
+		{
+			name:     "gives the members of a member which is a zone at the next step",
+			args:     []string{queryMembers, "--depth", "2", "site:Z-A"},
+			expected: []string{"site:Z-B membership +", "site:S-201 membership ++"},
+		},
+		{
+			// The alcove is inside a member and wrote no member-of of its own, so
+			// no depth reaches it.
+			name:     "never reaches what sits inside a member",
+			args:     []string{queryMembers, "--depth", depthAll, "site:Z-A"},
+			expected: []string{"site:Z-B membership +", "site:S-201 membership ++"},
+		},
+		{
+			name:     "narrows what is reported without narrowing what is walked",
+			args:     []string{queryMembers, "--depth", depthAll, "--kind", "Space", "site:Z-A"},
+			expected: []string{"site:S-201 membership ++"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			dir := tree(t, map[string]string{"registry.dfc": traverseRegistry, "entities/site.dfc": nestedZones})
+
+			result := walkIn(t, dir, testCase.args...)
+
+			assert.Equal(t, testCase.expected, reachedBy(result))
+		})
+	}
+}
+
+// TestTraverseMembersOverTheBudgetModel is its own function because it is asked
+// of the representative model rather than of the traversal fixture: every space
+// of level 1 names its zone, whatever its type, and every one of them is a
+// member — the service riser and the corridor as much as the offices.
+func TestTraverseMembersOverTheBudgetModel(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	result := walkIn(t, root, queryMembers, "site:Z-01")
+
+	expected := make([]string, 0, 13)
+	for n := 101; n <= 113; n++ {
+		expected = append(expected, "site:S-"+strconv.Itoa(n)+" membership +")
+	}
+
+	assert.Equal(t, expected, reachedBy(result))
+
+	types := make(map[string]string, len(result.Results))
+	for _, entry := range result.Results {
+		types[entry.ID] = entry.Type
+	}
+	assert.Equal(t, "ServiceRiser", types["site:S-101"])
+	assert.Equal(t, "Corridor", types["site:S-113"])
+}
+
+// TestTraverseMembershipReadsTheSameBothWays holds the two directions of
+// membership to each other over every node and every zone of both models: a zone
+// is among what members-of gives for a node at one step exactly when that node
+// is among what members gives for the zone. A table of expected literals would
+// check the pairs somebody thought of; this checks all of them.
+func TestTraverseMembershipReadsTheSameBothWays(t *testing.T) {
+	budget, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	models := []struct {
+		name string
+		root func(t *testing.T) string
+	}{
+		{name: "the traversal fixture", root: func(t *testing.T) string { return tree(t, traversableModel()) }},
+		{name: "the budget model", root: func(*testing.T) string { return budget }},
+	}
+
+	for _, model := range models {
+		t.Run("over "+model.name+" a zone of a node has that node as a member", func(t *testing.T) {
+			root := model.root(t)
+
+			graph, _ := dfcad.LoadGraph(root)
+			require.NotNil(t, graph)
+
+			var nodes, zones []string
+			for node := range graph.Nodes().All() {
+				nodes = append(nodes, string(node.ID()))
+				if node.Kind() == dfcad.KindZone {
+					zones = append(zones, string(node.ID()))
+				}
+			}
+			require.NotEmpty(t, zones)
+
+			membersOf := make(map[string][]string, len(nodes))
+			for _, node := range nodes {
+				membersOf[node] = reachedIDs(walkIn(t, root, queryMembersOf, node))
+			}
+
+			for _, zone := range zones {
+				members := reachedIDs(walkIn(t, root, queryMembers, zone))
+
+				for _, node := range nodes {
+					assert.Equal(t,
+						slices.Contains(membersOf[node], zone),
+						slices.Contains(members, node),
+						"%s among the zones of %s, and %s among the members of %s", zone, node, node, zone,
+					)
+				}
+			}
+		})
+	}
 }
 
 // reachedIDs is the id of each result, in the order the answer reports them.
@@ -623,7 +837,7 @@ func TestUnknownQueryNamesWhatItWanted(t *testing.T) {
 
 	assert.Equal(t, queryNames(), err.Known)
 	assert.Equal(t, []string{
-		queryContains, queryContainedBy, queryMembersOf, queryBoundaryOf, queryAdjacentTo,
+		queryContains, queryContainedBy, queryMembersOf, queryMembers, queryBoundaryOf, queryAdjacentTo,
 	}, err.Known)
 
 	for _, name := range queryNames() {
@@ -646,10 +860,10 @@ func TestEveryResultSaysWhichRelationReachedIt(t *testing.T) {
 		string(dfcad.RelationAdjacency),
 	}
 
-	// Two subjects, because no one thing is in every relation: the room has an
-	// outline and a neighbour, and the wall which separates it is what the zones
-	// are written on.
-	for _, subject := range []string{"site:S-101", "site:W-01"} {
+	// Three subjects, because no one thing is in every relation: the room has an
+	// outline and a neighbour, the wall which separates it is what the zones are
+	// written on, and the zone is what the wall is a member of.
+	for _, subject := range []string{"site:S-101", "site:W-01", "site:Z-therm"} {
 		for _, asked := range queries {
 			t.Run(asked.name+" of "+subject+" says which relation reached each result", func(t *testing.T) {
 				args := []string{asked.name, subject}

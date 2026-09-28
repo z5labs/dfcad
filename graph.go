@@ -549,6 +549,12 @@ func (g *Graph) Members(zone *SemanticNode) iter.Seq[Related] {
 	return g.Nodes().Members(zone)
 }
 
+// MembersTo iterates the nodes which are members of zone and the members of
+// those which are themselves zones, to at most depth steps.
+func (g *Graph) MembersTo(zone *SemanticNode, depth int) iter.Seq[Related] {
+	return g.Nodes().MembersTo(zone, depth)
+}
+
 // Loops iterates the loops region is bounded by, in the order it wrote them.
 func (g *Graph) Loops(region *SemanticNode) iter.Seq[*Loop] {
 	return g.Boundaries().Loops(region)

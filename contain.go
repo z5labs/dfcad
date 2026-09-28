@@ -417,6 +417,26 @@ func (n *Nodes) ZonesTo(node *SemanticNode, depth int) iter.Seq[Related] {
 	return bounded(node, depth, n.Zones)
 }
 
+// MembersTo iterates the nodes which are members of zone, and the members of
+// those which are themselves zones, stopping after depth steps.
+//
+// It is [Nodes.Members] followed as far as membership nests, and the reverse of
+// [Nodes.ZonesTo]: where that walks from a thing out to the groups it is in,
+// this walks from a group in to what it groups. A depth of one is the nodes
+// which wrote `(member-of <zone>)`, whatever their type — which is the answer a
+// caller inverting membership by hand over a list of types can only ever
+// approximate.
+//
+// Each node comes back once, at the fewest steps it can be reached in, so a
+// member reached directly and again through a nested zone is one member.
+//
+// Nothing here reads containment, at any depth. A node inside a member is not a
+// member unless it wrote its own `member-of`: being inside something grouped is
+// not being grouped.
+func (n *Nodes) MembersTo(zone *SemanticNode, depth int) iter.Seq[Related] {
+	return bounded(zone, depth, n.Members)
+}
+
 // bounded is the walk every traversal with a depth is: level by level from
 // start, following step, to at most depth levels.
 //
