@@ -1181,6 +1181,34 @@ not among them at any time: a deprecated claim is retracted rather than out-rank
 never a candidate, so listing it would say the rule weighed something it never saw. `dfcad
 claims` is the view that reports a retraction.
 
+The subject may be a **frame** the registry declares, as well as a node, a vertex, an edge or
+a loop — the one id space `get` answers ([A frame](#a-frame)). A claim written on a frame, such
+as its ground-to-grid factor or the transform placing it in its parent, is resolved exactly
+as a claim written on anything else: the same object, the same outcomes and the same exit
+codes. A plain value written on a frame — its `crs`, say — is not a claim, so `resolve`
+answers `unclaimed`, exit `1`, as it does for a plain value on a node; `get`'s `values` is
+where it is reported. `--frame` beside a frame subject is a usage error, the one given for a
+subject that declares no frame: a frame is not expressed in a frame, and its relation to one
+is its transform.
+
+```sh
+dfcad resolve frame:survey-grid ground-to-grid
+```
+
+```json
+{
+  "version": 2,
+  "command": "resolve",
+  "subject": "frame:survey-grid",
+  "predicate": "ground-to-grid",
+  "outcome": "unranked",
+  "reason": "unranked",
+  "strict": false,
+  "value": {"shape": "scalar", "scalar": 1},
+  "claim-id": "survey:C-0010"
+}
+```
+
 An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
 naming it and the nearest id there is. That is a different answer from `unclaimed`, which
 is the model answering that nobody has measured the thing; a caller that cannot tell them
@@ -1425,7 +1453,11 @@ A walk that reaches nothing is not an error — it is an empty `results` and exi
 ### `claims`
 
 Every claim written on one thing, live and retracted alike — or, with no id, on every thing.
-It takes an optional id, a predicate after the id, and five filters.
+It takes an optional id, a predicate after the id, and five filters. The id may name a node,
+a vertex, an edge or a loop, or a **frame** the registry declares, as it may for
+[`get`](#a-frame): a frame carries claims — the transform placing it in its parent among
+them — and they are answered exactly as any other subject's are, each row carrying
+`"family": "frame"`.
 
 | Flag | Meaning |
 |------|---------|
@@ -1523,8 +1555,8 @@ replaced them, so a retraction is followable forward without a second call.
 | `subject` | string, optional | The id the claims below are written on, which is the id that was asked for. Absent when no id was, and the claims are every subject's. |
 | `claims` | array | Every claim written on it, in predicate order and then by where each was written — or, with no id, every claim on every subject, in subject id order first. Empty rather than null when nothing is claimed. Each entry is the claim object `get` writes, documented above, with the four fields below beside it. |
 | `claims[].subject` | string | The id of the thing the claim is written on. Written whether or not an id was asked about, so that an entry has one shape whatever narrowed the listing. |
-| `claims[].family` | string | Which family holds that thing: `node`, `vertex`, `edge` or `loop`. |
-| `claims[].type` | string, optional | The type the thing declares, where it is a node. Absent for a vertex, an edge or a loop, which declare none. |
+| `claims[].family` | string | Which family holds that thing: `node`, `vertex`, `edge` or `loop`, or `frame` where the id asked about is a frame. |
+| `claims[].type` | string, optional | The type the thing declares, where it is a node. Absent for a vertex, an edge, a loop or a frame, which declare none. |
 | `claims[].retired` | boolean, optional | `true` where the thing is a node which has been retired. Absent otherwise: a retired node's claims are still claims the model holds, and the audit view lists them. |
 
 With no id, `claims` is the audit view of the whole model: exactly what `claims <id>` answers
@@ -1575,10 +1607,41 @@ dfcad claims --predicate position --family vertex
 }
 ```
 
-A claim written on something `claims <id>` cannot be asked about by id is not listed. Today
-that is a claim written on a frame — the transform placing a frame in its parent — since
-`claims frame:building` is refused as an unknown id. Were frames to become answerable by id,
-their claims would join this listing as an addition.
+A claim written on a frame is not in this listing, which is of the four families `--family`
+names: it is answered by the frame's id, `claims frame:building`. A frame is the one subject
+the listing leaves out, and bringing its claims in beside the rest would be an addition of
+its own — a fifth family for `--family` to accept — rather than something the listing does
+now.
+
+```sh
+dfcad claims frame:site
+```
+
+```json
+{
+  "version": 2,
+  "command": "claims",
+  "refused": false,
+  "subject": "frame:site",
+  "claims": [
+    {
+      "subject": "frame:site",
+      "family": "frame",
+      "id": "survey:C-0001",
+      "predicate": "frame-transform",
+      "value": {"shape": "transform", "transform": {"translation": [100, 200, 0], "rotation": [1, 0, 0, 0, 1, 0, 0, 0, 1], "scale": 1}},
+      "source": "Georeferencing report GR-2026-002, Acme Surveys",
+      "method": "method:gnss-static",
+      "accuracy": [{"kind": "independent", "magnitude": 0.012, "unit": "m"}],
+      "combined": {"magnitude": 0.012, "unit": "m", "coverage-factor": 1},
+      "date": "2026-02-11",
+      "rank": "normal",
+      "resolution": "current",
+      "span": "registry.dfc:70:3-80:25"
+    }
+  ]
+}
+```
 
 `resolution` is written on **every** claim here, rather than only under a flag as it is in
 `get`, and it takes two values `get` never writes, because this view reports every claim

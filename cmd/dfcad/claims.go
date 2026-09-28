@@ -93,9 +93,11 @@ subject it is written on, that subject's family, its type for a node, and
 "retired" where the node has been retired, so the listing reads without a "get"
 per subject.
 
-A claim written on something "dfcad claims <id>" cannot be asked about by id is
-not listed. Today that is a claim written on a frame, such as the transform
-which places one frame in its parent.
+The id may be a frame the registry declares as well as a node, a vertex, an
+edge or a loop: a frame carries claims — the transform which places it in its
+parent among them — and they are answered as any other subject's are, with
+"frame" as the family. The listing with no id is of the four families above,
+so a claim written on a frame is asked about by the frame's id.
 
 A disagreement is a finding rather than a failure, so this exits zero whatever
 it finds. Whether a disagreement is allowed is what "dfcad check" answers.
@@ -264,11 +266,12 @@ type claimRow struct {
 	// Subject is the id of the thing the claim is written on.
 	Subject string `json:"subject"`
 
-	// Family is which family holds the subject: node, vertex, edge or loop.
+	// Family is which family holds the subject: node, vertex, edge or loop, or
+	// frame where the subject asked about is a frame the registry declares.
 	Family string `json:"family"`
 
 	// Type is the type the subject declares, for a node. Absent for a vertex, an
-	// edge or a loop, which declare none.
+	// edge, a loop or a frame, which declare none.
 	Type string `json:"type,omitempty"`
 
 	// Retired reports that the subject is a node which has been retired. Absent
@@ -386,8 +389,11 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	graph, loaded := loadModel(cmd, globals, stderr)
 	registry := graph.Registry()
 
+	// The id is looked up as get looks one up, so that a frame — which the
+	// graph does not hold, and which carries claims all the same — is a subject
+	// here exactly as it is there.
 	if subject != "" {
-		if _, ok := graph.Entity(subject); !ok {
+		if _, ok := retrieve(graph, subject); !ok {
 			nearest, _ := graph.Nearest(subject)
 			return usageError(cmd, UnknownIDError{ID: string(subject), Nearest: string(nearest)}, stderr, false)
 		}
@@ -428,8 +434,8 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	for _, each := range subjects {
-		entity, _ := graph.Entity(each)
-		row := subjectOf(entity)
+		found, _ := retrieve(graph, each)
+		row := subjectOf(found)
 
 		if !admits(wanted, row.Family) || !admits(types, row.Type) {
 			continue
@@ -582,14 +588,14 @@ func checkClaimFamilies(types, families []string) error {
 	return nil
 }
 
-// claimedSubjects is every subject a claim is written on which claims can answer
-// for by id, each once and in id order.
+// claimedSubjects is every node, vertex, edge and loop a claim is written on,
+// each once and in id order.
 //
 // A subject [dfcad.Graph.Entity] does not hold is left out. Today that is a
-// frame, which carries the claim placing it in its parent: "dfcad claims
-// frame:building" is refused as an unknown id, and a listing of every subject's
-// claims which held rows no single-subject call could return would be two
-// answers to one question.
+// frame, which carries the claim placing it in its parent. "dfcad claims
+// frame:building" answers it by id, as get does; the whole-model listing is of
+// the four families --family names, and a frame joining it would be an addition
+// to that listing of its own, with a family the filter would have to learn.
 func claimedSubjects(graph *dfcad.Graph) []dfcad.ID {
 	seen := make(map[dfcad.ID]struct{})
 	var out []dfcad.ID
@@ -612,10 +618,18 @@ func claimedSubjects(graph *dfcad.Graph) []dfcad.ID {
 }
 
 // subjectOf is what a claim row says about the thing it is written on.
-func subjectOf(entity dfcad.Entity) claimRow {
-	row := claimRow{Subject: string(entity.ID())}
+//
+// A frame is a family of its own here, as it is in get's answer: it is not a
+// node, and a row reading "node" would send whoever filters on it to a thing
+// with a type it does not have.
+func subjectOf(subject held) claimRow {
+	row := claimRow{Subject: string(subject.id())}
+	if subject.frame != nil {
+		row.Family = familyFrame
+		return row
+	}
 
-	switch found := entity.(type) {
+	switch found := subject.entity.(type) {
 	case *dfcad.SemanticNode:
 		row.Family = familyNode
 		row.Type = found.Type()

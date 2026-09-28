@@ -1228,3 +1228,144 @@ func TestRunResolvePrintsTheFigureItRanksBy(t *testing.T) {
 		})
 	}
 }
+
+func TestRunResolveAnswersAFrameID(t *testing.T) {
+	testCases := []struct {
+		name               string
+		args               []string
+		expectedCode       int
+		expectedOutcome    string
+		expectedReason     string
+		expectedStrict     bool
+		expectedClaim      string
+		expectedCandidates []string
+	}{
+		{
+			name:            "answers the one claim written on a frame",
+			args:            []string{"frame:site", "frame-transform"},
+			expectedCode:    exitSuccess,
+			expectedOutcome: outcomeResolved,
+			expectedReason:  "only",
+			expectedClaim:   "survey:C-0001",
+		},
+		{
+			name:               "returns both tied claims on a frame rather than picking one",
+			args:               []string{"frame:survey-grid", "ground-to-grid"},
+			expectedCode:       exitAmbiguous,
+			expectedOutcome:    outcomeAmbiguous,
+			expectedReason:     "ambiguous",
+			expectedCandidates: []string{"survey:C-0010 tied", "survey:C-0011 tied"},
+		},
+		{
+			name:               "fails where the tied predicate on a frame is declared strict",
+			args:               []string{"frame:survey-grid", "grid-convergence"},
+			expectedCode:       exitStrict,
+			expectedOutcome:    outcomeAmbiguous,
+			expectedReason:     "ambiguous",
+			expectedStrict:     true,
+			expectedCandidates: []string{"survey:G-0001 tied", "survey:G-0002 tied"},
+		},
+		{
+			name:            "reports a plain value on a frame as unclaimed, since it is not a claim",
+			args:            []string{"frame:survey-grid", "crs"},
+			expectedCode:    exitCheck,
+			expectedOutcome: outcomeUnclaimed,
+			expectedReason:  "unclaimed",
+		},
+		{
+			name:            "reports a frame nothing is claimed about under the predicate",
+			args:            []string{"frame:site", "ground-to-grid"},
+			expectedCode:    exitCheck,
+			expectedOutcome: outcomeUnclaimed,
+			expectedReason:  "unclaimed",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := invoke(t, testCase.expectedCode, tree(t, claimedFrames()), append([]string{"resolve"}, testCase.args...)...)
+			assert.Empty(t, stderr)
+
+			result := listed[resolveResult](t, stdout)
+			assert.Equal(t, outputVersion, result.Version)
+			assert.Equal(t, testCase.args[0], result.Subject)
+			assert.Equal(t, testCase.args[1], result.Predicate)
+			assert.Equal(t, testCase.expectedOutcome, result.Outcome)
+			assert.Equal(t, testCase.expectedReason, result.Reason)
+			assert.Equal(t, testCase.expectedStrict, result.Strict)
+			assert.Equal(t, testCase.expectedClaim, result.ClaimID)
+			assert.Equal(t, testCase.expectedCandidates, considered(result.Candidates))
+
+			// A frame is not written in a frame, so no answer about one says
+			// which frame its value is in.
+			assert.Empty(t, result.Frame)
+		})
+	}
+}
+
+// TestRunResolveAnswersAFrameOfTheGridFixture checks the answer the issue
+// quotes, against the fixture it was quoted from: the one live ground-to-grid
+// factor on the survey grid, which states no accuracy.
+func TestRunResolveAnswersAFrameOfTheGridFixture(t *testing.T) {
+	stdout, stderr := invoke(t, exitSuccess, "../../testdata/checks/grid/affirmed",
+		"resolve", "frame:survey-grid", "ground-to-grid")
+	assert.Empty(t, stderr)
+
+	result := listed[resolveResult](t, stdout)
+	assert.Equal(t, outcomeUnranked, result.Outcome)
+	assert.Equal(t, "unranked", result.Reason)
+	assert.Equal(t, "survey:C-0010", result.ClaimID)
+	require.NotNil(t, result.Value)
+	assert.Equal(t, "1", spellClaimValue(*result.Value))
+}
+
+// TestRunResolveRefusesToExpressAFrameInAFrame checks --frame beside a frame
+// subject: a frame is not expressed in a frame, and its relation to one is its
+// transform, so it is the refusal a subject which declares no frame gets —
+// whatever the predicate, and before anything is resolved.
+func TestRunResolveRefusesToExpressAFrameInAFrame(t *testing.T) {
+	testCases := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "refuses the frame flag beside a frame and a claim written on it",
+			args: []string{"--frame", "frame:site", "frame:survey-grid", "ground-to-grid"},
+		},
+		{
+			name: "refuses the frame flag beside a frame and the claim which places it",
+			args: []string{"--frame", "frame:survey-grid", "frame:site", "frame-transform"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := invoke(t, exitUsage, tree(t, claimedFrames()), append([]string{"resolve"}, testCase.args...)...)
+
+			assert.Empty(t, stdout)
+			assert.Equal(t, "dfcad resolve: "+UnframedSubjectError{Subject: testCase.args[2], Frame: testCase.args[1]}.Error()+"\n", stderr)
+		})
+	}
+}
+
+// TestClaimsAndResolveLeaveTheOtherLookupsAlone checks that answering a frame id
+// in claims and resolve reached no command which walks the graph: traverse and
+// check --subject refuse one exactly as they did.
+func TestClaimsAndResolveLeaveTheOtherLookupsAlone(t *testing.T) {
+	testCases := []struct {
+		name string
+		args []string
+	}{
+		{name: "traverse still refuses a frame id", args: []string{"traverse", "contains", "frame:site"}},
+		{name: "check still refuses a frame id as a subject", args: []string{"check", "--subject", "frame:site"}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := invoke(t, exitUsage, tree(t, claimedFrames()), testCase.args...)
+
+			assert.Empty(t, stdout)
+			assert.Contains(t, stderr, "frame:site")
+		})
+	}
+}
