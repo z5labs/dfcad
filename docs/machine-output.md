@@ -32,6 +32,18 @@ A run that *ran* and found something wrong did produce a result. A file that doe
 and a file that is not in canonical form are both reported in the object on stdout, with a
 non-zero exit code beside it.
 
+**Every diagnostic a run renders on stderr is in its object on stdout as well**, as decided
+in [0029. Every diagnostic a run renders is written in its answer on stdout](./decisions/0029-every-diagnostic-a-run-renders-is-written-in-its-answer-on-stdout.md):
+a top-level `diagnostics` array, written after every other field, one entry per diagnostic
+in the order rendered, each in the shape `fmt` writes under `files[].diagnostics` and
+carrying `ids` and `nodes` naming what it is about; `diagnostics-suppressed` where the limit
+held some back; and both absent where the run rendered none. `fmt`, whose `files[].diagnostics` already is
+this form, gains no top-level copy. A run that read the model and
+was refused — a derivation, an export, `review`, or a change — writes the envelope,
+`"refused": true` and `diagnostics`, and nothing else, with its exit code unchanged. Help, a
+usage error and a load failure that read no model still write nothing. The record is the
+rule; the sections below come to state it command by command as each is brought into line.
+
 Output is deterministic: the same input produces byte-identical stdout. Keys come out in a
 fixed order, collections in a documented order, and nothing timing-dependent appears at
 all.
