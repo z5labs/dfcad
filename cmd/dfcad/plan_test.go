@@ -8,12 +8,20 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"math"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // planRegistry is the vocabulary the storey below is read and annotated with.
@@ -1119,4 +1127,131 @@ func TestRunPlanCarriesEachClaimsAccuracyCombined(t *testing.T) {
 
 		assert.Equal(t, 6, assertCombined(t, claims), "how many of the claims were checked")
 	})
+}
+
+// machineOutput is the contract page the plan section is read out of.
+const machineOutput = "../../docs/machine-output.md"
+
+// TestTheContractNamesEveryReasonAPlanLeavesANodeUndrawn checks that the `plan`
+// section of docs/machine-output.md names every reason `plan` can write.
+//
+// The reasons are read out of the engine's source rather than listed here, so
+// that the next one added fails this test instead of leaving the contract page
+// describing a closed set the command has already outgrown — which is how the
+// row came to say "a closed set of two" while the command wrote three.
+func TestTheContractNamesEveryReasonAPlanLeavesANodeUndrawn(t *testing.T) {
+	row := contractRow(t, "plan", "undrawn[].reason")
+
+	reasons := undrawnReasons(t)
+	require.Subset(t, reasons,
+		[]dfcad.UndrawnReason{dfcad.UndrawnNoBoundary, dfcad.UndrawnUnreadableBoundary, dfcad.UndrawnNoPosition},
+		"the reasons are read out of the package source")
+
+	testCases := make([]struct {
+		name   string
+		reason dfcad.UndrawnReason
+	}, 0, len(reasons))
+	for _, reason := range reasons {
+		testCases = append(testCases, struct {
+			name   string
+			reason dfcad.UndrawnReason
+		}{name: "names " + string(reason), reason: reason})
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Contains(t, row, "`"+string(testCase.reason)+"`",
+				"docs/machine-output.md does not name the reason %q under plan's undrawn[].reason", testCase.reason)
+		})
+	}
+}
+
+// contractRow is the row of a command's field table in docs/machine-output.md
+// which documents the named field.
+//
+// It is looked up inside that command's section and no other, because the same
+// field name is documented under more than one command — `export-map` writes an
+// `undrawn[].reason` too, from a larger set.
+func contractRow(t testing.TB, command, field string) string {
+	t.Helper()
+
+	src, err := os.ReadFile(machineOutput)
+	require.NoError(t, err)
+
+	heading := "### `" + command + "`\n"
+	start := strings.Index(string(src), heading)
+	require.GreaterOrEqual(t, start, 0, "docs/machine-output.md has a section headed %q", strings.TrimSpace(heading))
+
+	section := string(src)[start+len(heading):]
+	if end := strings.Index(section, "\n### "); end >= 0 {
+		section = section[:end]
+	}
+
+	prefix := "| `" + field + "` |"
+	for line := range strings.SplitSeq(section, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+
+	require.Failf(t, "no row for the field", "the %s section of docs/machine-output.md has no row for %s", command, field)
+	return ""
+}
+
+// undrawnReasons is every constant of type dfcad.UndrawnReason the engine
+// declares, read out of its source in the order it declares them.
+//
+// Read from the source because the package exports no list of them, and a list
+// written out in this test would have to be remembered exactly when the
+// contract page would: the drift this test exists to catch would simply move
+// here.
+func undrawnReasons(t testing.TB) []dfcad.UndrawnReason {
+	t.Helper()
+
+	files, err := filepath.Glob("../../*.go")
+	require.NoError(t, err)
+
+	fset := token.NewFileSet()
+
+	var reasons []dfcad.UndrawnReason
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+
+		parsed, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
+		require.NoError(t, err)
+
+		for _, decl := range parsed.Decls {
+			gen, ok := decl.(*ast.GenDecl)
+			if !ok || gen.Tok != token.CONST {
+				continue
+			}
+
+			for _, spec := range gen.Specs {
+				value, ok := spec.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
+
+				typ, ok := value.Type.(*ast.Ident)
+				if !ok || typ.Name != "UndrawnReason" {
+					continue
+				}
+
+				for _, v := range value.Values {
+					lit, ok := v.(*ast.BasicLit)
+					require.True(t, ok && lit.Kind == token.STRING,
+						"an UndrawnReason in %s is declared as a string literal", file)
+
+					unquoted, err := strconv.Unquote(lit.Value)
+					require.NoError(t, err)
+
+					reasons = append(reasons, dfcad.UndrawnReason(unquoted))
+				}
+			}
+		}
+	}
+
+	return reasons
 }
