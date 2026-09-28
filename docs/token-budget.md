@@ -195,6 +195,17 @@ Answering: every meeting room in the model, whole, with every claim and assertio
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 1920 tokens. Claimed at 4 times cheaper than reading the model.
 
+## The cost of every area claimed of a meeting room
+
+Answering: every area anybody has claimed of a meeting room, with its evidence and what resolution made of it.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad claims --type MeetingRoom --predicate area` | 854 | 835 |
+| **the whole path** | **854** | **835** |
+
+No target: nothing asked this path to cost anything in particular. Regression ceiling 860 tokens. Claimed at 4 times cheaper than reading the model.
+
 ## Where the tokens go
 
 What each answer costs with one field removed. Both figures in a cell are of the
@@ -232,6 +243,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
 | reading a storey as an annotated plan | 2.5×, 2.5× | 0.4×, 0.4× |
 | retrieving every meeting room at once | 10.9×, 11.2× | 1.9×, 2.0× |
+| every area claimed of a meeting room | 24.3×, 25.0× | 4.3×, 4.4× |
 
 One figure per encoding, in the order of the table above.
 

@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"cmp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -80,7 +81,8 @@ const auditRegistry = `(project
 // nothing about them can be ranked and both are equally current. Room B holds a
 // retraction and a replacement, which is one live claim and therefore no
 // disagreement at all — the one way of silencing a conflict there is. Room C
-// holds a winning claim which wrote no id of its own.
+// holds a winning claim which wrote no id of its own. Room D has been retired, and
+// the area claimed of it before it was is still a claim the model holds.
 const auditModel = `(node site:Z-01
   (label "Riverside campus")
   (kind Zone)
@@ -204,10 +206,30 @@ const auditModel = `(node site:Z-01
     (method method:scaled-from-plan)
     (accuracy (independent 0.3 m2))
     (date "2026-06-01")))
+
+(node site:S-105
+  (label "Meeting Room D")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (area
+    (id survey:A-0008)
+    (value 12.5 m2)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.5 m2))
+    (date "2026-01-09"))
+  (retired
+    (date "2026-04-02")
+    (reason "Merged into Meeting Room A.")
+    (superseded-by site:S-101)))
 `
 
 // auditGeometry is a vertex two control sets disagree about, which is what says
-// that the register is about claims rather than about semantic nodes.
+// that the register is about claims rather than about semantic nodes, and an
+// edge and a loop which each carry one claim, so that every family a claim can
+// be written on is somewhere in the audit fixture.
 const auditGeometry = `(vertex geom:V-01
   (label "Room A, north-west corner")
   (frame frame:building)
@@ -225,6 +247,34 @@ const auditGeometry = `(vertex geom:V-01
     (method method:tape)
     (accuracy (independent 0.01 m))
     (date "2026-03-18")))
+
+(vertex geom:V-02 (frame frame:building))
+
+(vertex geom:V-03 (frame frame:building))
+
+(edge geom:E-01
+  (frame frame:building)
+  (vertices geom:V-01 geom:V-02)
+  (note
+    (id survey:N-0002)
+    (value "Runs along the glazing.")
+    (source "Site walk SW-01")
+    (method method:assumed)
+    (date "2026-02-01")))
+
+(edge geom:E-02 (frame frame:building) (vertices geom:V-02 geom:V-03))
+
+(edge geom:E-03 (frame frame:building) (vertices geom:V-03 geom:V-01))
+
+(loop geom:L-01
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03)
+  (note
+    (id survey:N-0003)
+    (value "The corner the fire strategy calls the east lobby.")
+    (source "Fire strategy FS-02")
+    (method method:assumed)
+    (date "2026-03-01")))
 `
 
 // auditable is the fixture tree the two audit commands are run against.
@@ -281,6 +331,26 @@ func resolutions(claims []claimEntry) []string {
 	out := make([]string, 0, len(claims))
 	for _, claim := range claims {
 		out = append(out, strings.TrimSpace(claim.Predicate+" "+claim.ID)+" "+claim.Resolution)
+	}
+	return out
+}
+
+// entries is the claim object of each row, which is what the assertions shared
+// with the other audit views are written against.
+func entries(rows []claimRow) []claimEntry {
+	out := make([]claimEntry, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, row.claimEntry)
+	}
+	return out
+}
+
+// rows is each row as "subject predicate id state", which is what says which
+// claims a listing of more than one subject returned, and in which order.
+func rows(claims []claimRow) []string {
+	out := make([]string, 0, len(claims))
+	for _, claim := range claims {
+		out = append(out, strings.Join(strings.Fields(claim.Subject+" "+claim.Predicate+" "+claim.ID+" "+claim.Resolution), " "))
 	}
 	return out
 }
@@ -355,7 +425,7 @@ func TestRunClaims(t *testing.T) {
 			result := claimed(t, testCase.args...)
 
 			assert.Equal(t, testCase.args[0], result.Subject)
-			assert.Equal(t, testCase.expected, resolutions(result.Claims))
+			assert.Equal(t, testCase.expected, resolutions(entries(result.Claims)))
 		})
 	}
 }
@@ -572,7 +642,7 @@ func TestRunConflictsLeavesRetractedClaimsOutOfTheRegister(t *testing.T) {
 	assert.Equal(t, []string{
 		"area survey:A-0005 " + resolutionRetracted,
 		"area survey:A-0006 " + resolutionCurrent,
-	}, resolutions(claimed(t, "site:S-103").Claims))
+	}, resolutions(entries(claimed(t, "site:S-103").Claims)))
 }
 
 // TestConflictsAreAFindingRatherThanAFailure is its own function because it is
@@ -625,11 +695,6 @@ func TestRunClaimsAndConflictsRejectWhatTheModelDoesNotHold(t *testing.T) {
 			args: []string{"claims", "site:S-101", "widht"},
 			expectedStderr: "dfcad claims: " +
 				UnknownPredicateError{Predicate: "widht", Declared: auditPredicates()}.Error() + "\n",
-		},
-		{
-			name:           "reports a claims with no id at all",
-			args:           []string{"claims"},
-			expectedStderr: "dfcad claims: " + ErrMissingID.Error() + "\n\n" + claimsUsage,
 		},
 		{
 			name: "rejects a third argument",
@@ -804,6 +869,19 @@ func TestRunClaimsAndConflictsHumanOutputNeverChangesStdout(t *testing.T) {
 	assert.Contains(t, loudReport, "area: 24.2 m2 by method:total-station on 2026-05-06, current")
 	assert.Contains(t, loudReport, "area: 23 m2 by method:scaled-from-plan on 2026-01-09, retracted, deprecated")
 
+	machine, machineReport = report(t, "claims")
+	human, humanReport = report(t, "claims", "--format", formatHuman)
+	loud, loudReport = report(t, "claims", "--format", formatHuman, "-v")
+
+	assert.Equal(t, machine, human)
+	assert.Equal(t, machine, loud)
+
+	assert.Empty(t, machineReport)
+	assert.Contains(t, humanReport, "18 claims of 8 subjects under 5 predicates, 2 retracted")
+	assert.NotContains(t, humanReport, "site:S-101 area:")
+	assert.Contains(t, loudReport, "site:S-101 area: 24.2 m2 by method:total-station on 2026-05-06, current")
+	assert.Contains(t, loudReport, "geom:E-01 note: ")
+
 	machine, machineReport = report(t, "conflicts")
 	human, humanReport = report(t, "conflicts", "--format", formatHuman)
 	loud, loudReport = report(t, "conflicts", "--format", formatHuman, "-v")
@@ -937,7 +1015,7 @@ func TestRunClaimsAndConflictsCarryEachClaimsAccuracyCombined(t *testing.T) {
 			name: "on every claim claims returns",
 			args: []string{"claims", "site:S-120"},
 			claims: func(t *testing.T, stdout string) []claimEntry {
-				return listed[claimsResult](t, stdout).Claims
+				return entries(listed[claimsResult](t, stdout).Claims)
 			},
 			expected: 6,
 		},
@@ -970,4 +1048,581 @@ func TestRunClaimsAndConflictsCarryEachClaimsAccuracyCombined(t *testing.T) {
 			assert.Equal(t, testCase.expected, assertCombined(t, claims), "how many of the claims were checked")
 		})
 	}
+}
+
+// everyClaim is the whole audit fixture as claims with no subject lists it: in
+// subject id order, then predicate order, then the order each was written.
+func everyClaim() []string {
+	return []string{
+		"geom:E-01 note survey:N-0002 " + resolutionUnranked,
+		"geom:L-01 note survey:N-0003 " + resolutionUnranked,
+		"geom:V-01 position survey:P-0001 " + resolutionCurrent,
+		"geom:V-01 position survey:P-0002 " + resolutionOutranked,
+		"site:S-101 area survey:A-0001 " + resolutionRetracted,
+		"site:S-101 area survey:A-0002 " + resolutionCurrent,
+		"site:S-101 area survey:A-0003 " + resolutionOutranked,
+		"site:S-101 height survey:H-0001 " + resolutionTied,
+		"site:S-101 height survey:H-0002 " + resolutionTied,
+		"site:S-101 note survey:N-0001 " + resolutionUnranked,
+		"site:S-102 area survey:A-0004 " + resolutionCurrent,
+		"site:S-102 occupancy survey:O-0001 " + resolutionTied,
+		"site:S-102 occupancy survey:O-0002 " + resolutionTied,
+		"site:S-103 area survey:A-0005 " + resolutionRetracted,
+		"site:S-103 area survey:A-0006 " + resolutionCurrent,
+		"site:S-104 area " + resolutionCurrent,
+		"site:S-104 area survey:A-0007 " + resolutionOutranked,
+		"site:S-105 area survey:A-0008 " + resolutionCurrent,
+	}
+}
+
+// only is the rows of [everyClaim] which satisfy keep, in the order they come.
+func only(keep func(row string) bool) []string {
+	out := make([]string, 0)
+	for _, row := range everyClaim() {
+		if keep(row) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// under keeps the rows written under one of the predicates.
+func under(predicates ...string) func(string) bool {
+	return func(row string) bool {
+		return slices.Contains(predicates, strings.Fields(row)[1])
+	}
+}
+
+// writtenOn keeps the rows written on one of the subjects.
+func writtenOn(subjects ...string) func(string) bool {
+	return func(row string) bool {
+		return slices.Contains(subjects, strings.Fields(row)[0])
+	}
+}
+
+func TestRunClaimsWithNoSubject(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "lists every claim on every subject, live and retracted",
+			args:     nil,
+			expected: everyClaim(),
+		},
+		{
+			name:     "narrows to one predicate",
+			args:     []string{"--predicate", "area"},
+			expected: only(under("area")),
+		},
+		{
+			name:     "lists the claims under either of two predicates",
+			args:     []string{"--predicate", "height", "--predicate", "area"},
+			expected: only(under("area", "height")),
+		},
+		{
+			name:     "narrows to the subjects of one type",
+			args:     []string{"--type", "MeetingRoom"},
+			expected: only(writtenOn("site:S-101", "site:S-103", "site:S-104", "site:S-105")),
+		},
+		{
+			name:     "lists the claims on subjects of either of two types",
+			args:     []string{"--type", "Corridor", "--type", "MeetingRoom"},
+			expected: only(writtenOn("site:S-101", "site:S-102", "site:S-103", "site:S-104", "site:S-105")),
+		},
+		{
+			name:     "narrows to one family",
+			args:     []string{"--family", "vertex"},
+			expected: only(writtenOn("geom:V-01")),
+		},
+		{
+			name:     "lists the claims on subjects of either of two families",
+			args:     []string{"--family", "loop", "--family", "edge"},
+			expected: only(writtenOn("geom:E-01", "geom:L-01")),
+		},
+		{
+			name:     "narrows to the semantic nodes",
+			args:     []string{"--family", "node", "--predicate", "note"},
+			expected: []string{"site:S-101 note survey:N-0001 " + resolutionUnranked},
+		},
+		{
+			name: "combines the filters",
+			args: []string{"--type", "MeetingRoom", "--predicate", "area", "--family", "node"},
+			expected: only(func(row string) bool {
+				return under("area")(row) && writtenOn("site:S-101", "site:S-103", "site:S-104", "site:S-105")(row)
+			}),
+		},
+		{
+			name:     "accepts a type beside a family list which holds node",
+			args:     []string{"--type", "Corridor", "--family", "vertex", "--family", "node"},
+			expected: only(writtenOn("site:S-102")),
+		},
+		{
+			name:     "answers nothing for a declared predicate nothing on the family is claimed under",
+			args:     []string{"--predicate", "position", "--family", "node"},
+			expected: []string{},
+		},
+		{
+			name:     "answers nothing for a declared type whose instances carry no claim",
+			args:     []string{"--type", "Campus"},
+			expected: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := claimed(t, testCase.args...)
+
+			assert.Empty(t, result.Subject)
+			assert.Equal(t, testCase.expected, rows(result.Claims))
+		})
+	}
+}
+
+// TestRunClaimsFiltersASubject is its own function because the filters narrow
+// one subject's claims as well as every subject's, and the positional predicate
+// is one more value of --predicate rather than a second filter beside it.
+func TestRunClaimsFiltersASubject(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "narrows one subject's claims to a predicate given by flag",
+			args:     []string{"site:S-101", "--predicate", "height"},
+			expected: only(func(row string) bool { return writtenOn("site:S-101")(row) && under("height")(row) }),
+		},
+		{
+			name:     "counts the positional predicate as one value of the flag",
+			args:     []string{"site:S-101", "note", "--predicate", "area"},
+			expected: only(func(row string) bool { return writtenOn("site:S-101")(row) && under("area", "note")(row) }),
+		},
+		{
+			name:     "answers nothing when the subject is not of the family asked for",
+			args:     []string{"site:S-101", "--family", "vertex"},
+			expected: []string{},
+		},
+		{
+			name:     "answers nothing when the subject does not declare the type asked for",
+			args:     []string{"site:S-101", "--type", "Corridor"},
+			expected: []string{},
+		},
+		{
+			name:     "answers a geometric subject's claims under its own family",
+			args:     []string{"geom:L-01", "--family", "loop"},
+			expected: only(writtenOn("geom:L-01")),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := claimed(t, testCase.args...)
+
+			assert.Equal(t, testCase.args[0], result.Subject)
+			assert.Equal(t, testCase.expected, rows(result.Claims))
+		})
+	}
+}
+
+// TestRunClaimsSaysWhatEachClaimIsWrittenOn is its own function because it
+// asserts about the subject's fields on each row rather than about which rows
+// came back: which fields are written, and which are absent.
+func TestRunClaimsSaysWhatEachClaimIsWrittenOn(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected map[string]any
+	}{
+		{
+			name:     "names a node's family and type",
+			args:     []string{"--predicate", "occupancy"},
+			expected: map[string]any{"subject": "site:S-102", "family": "node", "type": "Corridor"},
+		},
+		{
+			name:     "marks a claim on a retired node",
+			args:     []string{"site:S-105"},
+			expected: map[string]any{"subject": "site:S-105", "family": "node", "type": "MeetingRoom", "retired": true},
+		},
+		{
+			name:     "names a vertex's family and no type",
+			args:     []string{"geom:V-01"},
+			expected: map[string]any{"subject": "geom:V-01", "family": "vertex"},
+		},
+		{
+			name:     "names an edge's family and no type",
+			args:     []string{"--family", "edge"},
+			expected: map[string]any{"subject": "geom:E-01", "family": "edge"},
+		},
+		{
+			name:     "names a loop's family and no type",
+			args:     []string{"--family", "loop"},
+			expected: map[string]any{"subject": "geom:L-01", "family": "loop"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, auditable()))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(append([]string{"claims"}, testCase.args...), &stdout, &stderr), stderr.String())
+
+			claims := entriesOf(t, object(t, stdout.String()), "claims")
+			require.NotEmpty(t, claims)
+
+			for _, claim := range claims {
+				row := claim.(map[string]any)
+				for _, key := range []string{"subject", "family", "type", "retired"} {
+					expected, ok := testCase.expected[key]
+					if !ok {
+						assert.NotContains(t, row, key)
+						continue
+					}
+					assert.Equal(t, expected, row[key], key)
+				}
+			}
+		})
+	}
+}
+
+// TestRunClaimsListsARetiredNodeAndARetractedClaim is its own function because
+// both are things a listing of what the model currently holds leaves out, and
+// the audit view is the one which does not.
+func TestRunClaimsListsARetiredNodeAndARetractedClaim(t *testing.T) {
+	claims := claimed(t, "--predicate", "area").Claims
+
+	var retired, retracted []string
+	for _, claim := range claims {
+		if claim.Retired {
+			retired = append(retired, claim.Subject+" "+claim.ID)
+		}
+		if claim.Resolution == resolutionRetracted {
+			retracted = append(retracted, claim.Subject+" "+claim.ID)
+			assert.NotEmpty(t, claim.SupersededBy, "a retraction names what replaced it")
+		}
+	}
+
+	assert.Equal(t, []string{"site:S-105 survey:A-0008"}, retired)
+	assert.Equal(t, []string{"site:S-101 survey:A-0001", "site:S-103 survey:A-0005"}, retracted)
+}
+
+// TestRunClaimsOverEverySubjectIsEachSubjectInTurn is the property the listing
+// with no subject is defined by: for every thing the model holds, the rows
+// written on it are exactly the rows "claims <id>" returns, in the same order.
+//
+// It walks every node, vertex, edge and loop of the fixture rather than the
+// subjects the listing happens to name, so that a subject whose claims the
+// listing dropped altogether is caught as well as one it reordered.
+func TestRunClaimsOverEverySubjectIsEachSubjectInTurn(t *testing.T) {
+	graph, _ := dfcad.LoadGraph(tree(t, auditable()))
+
+	var subjects []string
+	for node := range graph.Nodes().All() {
+		subjects = append(subjects, string(node.ID()))
+	}
+	for vertex := range graph.Topology().Vertices() {
+		subjects = append(subjects, string(vertex.ID()))
+	}
+	for edge := range graph.Topology().Edges() {
+		subjects = append(subjects, string(edge.ID()))
+	}
+	for loop := range graph.Topology().Loops() {
+		subjects = append(subjects, string(loop.ID()))
+	}
+	require.Len(t, subjects, 13, "the fixture holds six nodes, three vertices, three edges and a loop")
+
+	every := claimed(t).Claims
+
+	for _, subject := range subjects {
+		t.Run(subject+" is listed as claims "+subject+" lists it", func(t *testing.T) {
+			var listed []claimRow
+			for _, row := range every {
+				if row.Subject == subject {
+					listed = append(listed, row)
+				}
+			}
+
+			alone := claimed(t, subject).Claims
+
+			assert.Equal(t, alone, append(make([]claimRow, 0), listed...))
+		})
+	}
+}
+
+// claimOrder is the documented order of a listing of every subject's claims:
+// by subject, then by predicate, then by where each was written. Where it was
+// written is compared by its place in the unfiltered listing, which is that
+// order already, because a span is not orderable as the string it is written as.
+func claimOrder(t *testing.T) func(a, b map[string]any) int {
+	t.Helper()
+
+	t.Chdir(tree(t, auditable()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"claims"}, &stdout, &stderr), stderr.String())
+
+	place := make(map[string]int)
+	for i, claim := range entriesOf(t, object(t, stdout.String()), "claims") {
+		place[claim.(map[string]any)["span"].(string)] = i
+	}
+
+	return func(a, b map[string]any) int {
+		return cmp.Or(
+			strings.Compare(a["subject"].(string), b["subject"].(string)),
+			strings.Compare(a["predicate"].(string), b["predicate"].(string)),
+			cmp.Compare(place[a["span"].(string)], place[b["span"].(string)]),
+		)
+	}
+}
+
+// TestClaimsFiltersWrittenTwiceAnswerTheUnion is the property each of claims'
+// filters promises: within one flag a claim is listed when it satisfies any of
+// the values.
+func TestClaimsFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
+	testCases := []struct {
+		name   string
+		args   []string
+		flag   string
+		first  string
+		second string
+	}{
+		{
+			name:   "lists the claims under either predicate",
+			args:   []string{"claims"},
+			flag:   "predicate",
+			first:  "height",
+			second: "area",
+		},
+		{
+			name:   "lists the claims on a subject declaring either type",
+			args:   []string{"claims"},
+			flag:   "type",
+			first:  "MeetingRoom",
+			second: "Corridor",
+		},
+		{
+			name:   "lists the claims on a subject of either family",
+			args:   []string{"claims"},
+			flag:   "family",
+			first:  "vertex",
+			second: "node",
+		},
+		{
+			name:   "lists one subject's claims under either predicate",
+			args:   []string{"claims", "site:S-101"},
+			flag:   "predicate",
+			first:  "note",
+			second: "area",
+		},
+		{
+			name:   "lists the claims under either predicate beside another filter",
+			args:   []string{"claims", "--family", "node"},
+			flag:   "predicate",
+			first:  "occupancy",
+			second: "height",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			order := claimOrder(t)
+
+			assertFilterIsAUnion(t, tree(t, auditable()), testCase.args,
+				testCase.flag, testCase.first, testCase.second, "claims", order)
+		})
+	}
+}
+
+// TestRunClaimsRefusesAFilterNamingNothing walks the ways a filter can name
+// something the model has no such thing of. Each is a usage error rather than an
+// empty answer, and stdout stays empty because the run produced no result.
+func TestRunClaimsRefusesAFilterNamingNothing(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected error
+	}{
+		{
+			name:     "rejects a predicate the registry does not declare",
+			args:     []string{"--predicate", "aera"},
+			expected: UnknownPredicateError{Predicate: "aera", Declared: auditPredicates()},
+		},
+		{
+			name:     "rejects a second predicate the registry does not declare",
+			args:     []string{"--predicate", "area", "--predicate", "hieght"},
+			expected: UnknownPredicateError{Predicate: "hieght", Declared: auditPredicates()},
+		},
+		{
+			name:     "rejects a flag's predicate beside a subject",
+			args:     []string{"site:S-101", "area", "--predicate", "aera"},
+			expected: UnknownPredicateError{Predicate: "aera", Declared: auditPredicates()},
+		},
+		{
+			name: "rejects a type the registry does not declare",
+			args: []string{"--type", "MeetingRom"},
+			expected: UnknownTypeError{
+				Type:     "MeetingRom",
+				Declared: []string{"Campus", "Corridor", "MeetingRoom"},
+			},
+		},
+		{
+			name:     "rejects a family which is none of the four",
+			args:     []string{"--family", "vertices"},
+			expected: UnknownFamilyError{Family: "vertices", Known: claimFamilies},
+		},
+		{
+			name:     "rejects a second family which is none of the four",
+			args:     []string{"--family", "node", "--family", "nodes"},
+			expected: UnknownFamilyError{Family: "nodes", Known: claimFamilies},
+		},
+		{
+			name:     "refuses a type beside families none of which is node",
+			args:     []string{"--type", "MeetingRoom", "--family", "vertex", "--family", "loop"},
+			expected: ErrTypeNeedsNodeFamily,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, auditable()))
+
+			var stdout, stderr bytes.Buffer
+
+			require.Equal(t, exitUsage, run(append([]string{"claims"}, testCase.args...), &stdout, &stderr))
+
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, "dfcad claims: "+testCase.expected.Error()+"\n", stderr.String())
+		})
+	}
+}
+
+// TestCheckClaimFamilies asserts the refusals which need no model on the error
+// values themselves, so that what a caller branches on is the type and its
+// fields rather than a message.
+func TestCheckClaimFamilies(t *testing.T) {
+	t.Run("reports the first family which is none of the four, with the four", func(t *testing.T) {
+		err := checkClaimFamilies(nil, []string{"edge", "vertexes", "loops"})
+
+		var unknown UnknownFamilyError
+		require.ErrorAs(t, err, &unknown)
+		assert.Equal(t, "vertexes", unknown.Family)
+		assert.Equal(t, []string{familyNode, familyVertex, familyEdge, familyLoop}, unknown.Known)
+	})
+
+	t.Run("refuses a type no family asked for can declare", func(t *testing.T) {
+		err := checkClaimFamilies([]string{"MeetingRoom"}, []string{"vertex", "edge", "loop"})
+
+		assert.ErrorIs(t, err, ErrTypeNeedsNodeFamily)
+	})
+
+	t.Run("accepts a type beside no family, or beside node", func(t *testing.T) {
+		assert.NoError(t, checkClaimFamilies([]string{"MeetingRoom"}, nil))
+		assert.NoError(t, checkClaimFamilies([]string{"MeetingRoom"}, []string{"edge", "node"}))
+		assert.NoError(t, checkClaimFamilies(nil, claimFamilies))
+	})
+}
+
+// TestRunClaimsAnswersAModelWithNoClaims is its own function because it runs
+// against a model of its own: one which declares predicates and claims nothing
+// under any of them, which is an empty list rather than a failure.
+func TestRunClaimsAnswersAModelWithNoClaims(t *testing.T) {
+	t.Chdir(tree(t, map[string]string{
+		"registry.dfc": auditRegistry,
+		"entities/site.dfc": `(node site:Z-01
+  (label "Riverside campus")
+  (kind Zone)
+  (type Campus))
+`,
+	}))
+
+	for _, args := range [][]string{{"claims"}, {"claims", "--predicate", "area"}} {
+		t.Run(strings.Join(args, " ")+" answers an empty list", func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(args, &stdout, &stderr), stderr.String())
+
+			result := object(t, stdout.String())
+			assert.Equal(t, []any{}, result["claims"])
+			assert.NotContains(t, result, "subject")
+		})
+	}
+}
+
+// TestRunClaimsAnswersAModelTheLoadRefused is its own function because it is
+// about the load rather than the listing: every subject's claims are still what
+// the model holds when the load refused it, and the answer says it was refused.
+func TestRunClaimsAnswersAModelTheLoadRefused(t *testing.T) {
+	files := auditable()
+	files["entities/broken.dfc"] = unparseable
+
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"claims"}, &stdout, &stderr))
+
+	result := listed[claimsResult](t, stdout.String())
+	assert.True(t, result.Refused)
+	assert.Equal(t, everyClaim(), rows(result.Claims))
+	assert.Contains(t, stderr.String(), "broken.dfc:1:")
+}
+
+// TestRunClaimsOverASurveyedPlot runs the listing with no subject over the
+// siting fixture's surveyed plot, which is the question the listing was asked
+// for: every corner's position, with its method and accuracy, in one call.
+//
+// It is also where the frame exclusion is exercised, because the plot's
+// registry places each of its frames with a claim written on the frame.
+func TestRunClaimsOverASurveyedPlot(t *testing.T) {
+	const root = "../../testdata/siting/surveyed"
+
+	run := func(t *testing.T, args ...string) claimsResult {
+		t.Helper()
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(append([]string{"claims", "--root", root}, args...), &stdout, &stderr), stderr.String())
+
+		return listed[claimsResult](t, stdout.String())
+	}
+
+	t.Run("lists every surveyed corner's position with its method and accuracy", func(t *testing.T) {
+		claims := run(t, "--predicate", "position", "--family", "vertex").Claims
+
+		require.Len(t, claims, 24)
+		for _, claim := range claims {
+			assert.Equal(t, familyVertex, claim.Family)
+			assert.Equal(t, "position", claim.Predicate)
+			assert.NotEmpty(t, claim.Method, claim.Subject)
+			assert.NotEmpty(t, claim.Accuracy, claim.Subject)
+		}
+		assert.Equal(t, "geom:V-01", claims[0].Subject)
+		assert.IsIncreasing(t, subjectsOf(claims))
+	})
+
+	t.Run("leaves out the claims written on a frame", func(t *testing.T) {
+		graph, _ := dfcad.LoadGraph(root)
+
+		var onFrames int
+		for claim := range graph.Claims().All() {
+			if strings.HasPrefix(string(claim.Subject()), "frame:") {
+				onFrames++
+			}
+		}
+		require.Positive(t, onFrames, "the plot no longer writes a claim on a frame, so this says nothing")
+
+		for _, claim := range run(t).Claims {
+			assert.False(t, strings.HasPrefix(claim.Subject, "frame:"), claim.Subject)
+		}
+		assert.Empty(t, run(t, "--predicate", "frame-transform").Claims)
+	})
+}
+
+// subjectsOf is the subject of each row, which is what an order by subject is
+// asserted on.
+func subjectsOf(claims []claimRow) []string {
+	out := make([]string, 0, len(claims))
+	for _, claim := range claims {
+		out = append(out, claim.Subject)
+	}
+	return out
 }

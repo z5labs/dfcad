@@ -15,21 +15,27 @@ import (
 	"github.com/z5labs/dfcad"
 )
 
-const claimsUsage = `dfcad claims — every claim written on one thing.
+const claimsUsage = `dfcad claims — every claim written on one thing, or on every thing.
 
 Usage:
 
-	dfcad claims [flags] <id> [predicate]
+	dfcad claims [flags] [<id> [predicate]]
 
 Every claim on the subject, live and retracted alike, each with its value, its
 unit, what evidences it, how it was obtained, how well it is known, when, its
 rank and its own id. With a predicate, only the claims written under that one.
 
-This is the audit view of one subject. "dfcad get" answers what the model says
-about a thing now; this answers everything anybody has said about it and what
-became of each statement. Deprecated claims are therefore in the answer rather
-than behind a flag, marked as retracted and carrying the id of the claim which
-replaced them, so a retraction is followable forward without a second call.
+With no id, every claim written on every node, vertex, edge and loop in the
+model: exactly what "dfcad claims <id>" answers for each of them, one after
+another in id order. That is the audit view of the whole model, which is how
+"every position claim, with its method and its accuracy" is one call rather than
+a listing followed by one call per thing listed.
+
+This is the audit view. "dfcad get" answers what the model says about a thing
+now; this answers everything anybody has said about it and what became of each
+statement. Deprecated claims are therefore in the answer rather than behind a
+flag, marked as retracted and carrying the id of the claim which replaced them,
+so a retraction is followable forward without a second call.
 
 Every claim says what resolution made of it:
 
@@ -42,24 +48,48 @@ Every claim says what resolution made of it:
 	outranked   a live claim which another claim under the same predicate beat
 	retracted   a deprecated claim, which resolution never considers
 
-Claims come back in predicate order and then in the order they were written, so
-two runs over one model diff against each other and moving a claim between
-files does not reshuffle the answer.
+Flags:
+
+	--predicate <name>  only claims written under this predicate; repeat
+	--type <name>       only claims on a node declaring this type; repeat
+	--family <family>   only claims on a thing of this family: node, vertex,
+	                    edge or loop; repeat
+
+Filters combine: a claim is listed when it satisfies every filter given, and a
+filter written more than once is satisfied by any of its values. They apply with
+an id as well as without one, and a predicate written after the id counts as one
+more --predicate, checked before the flag's values. --type beside --family values none of which is node is refused
+rather than answered with nothing: only a node declares a type, so no claim
+satisfies both, and an empty answer would read as a model with no such claims.
+
+Claims come back in subject id order, then in predicate order and then in the
+order they were written, so two runs over one model diff against each other and
+moving a claim between files does not reshuffle the answer. Each carries the
+subject it is written on, that subject's family, its type for a node, and
+"retired" where the node has been retired, so the listing reads without a "get"
+per subject.
+
+A claim written on something "dfcad claims <id>" cannot be asked about by id is
+not listed. Today that is a claim written on a frame, such as the transform
+which places one frame in its parent.
 
 A disagreement is a finding rather than a failure, so this exits zero whatever
 it finds. Whether a disagreement is allowed is what "dfcad check" answers.
 
 An id nothing in the model holds is a usage error naming it, and naming the
 nearest id there is when one is close enough to be the id that was meant. A
-predicate the registry does not declare is a usage error for the same reason: a
-predicate nobody declared and a predicate nothing is claimed under are different
-answers, and a caller which cannot tell them apart retries a misspelling
-forever.
+predicate or a type the registry does not declare, and a family which is none of
+the four, is a usage error for the same reason, whichever of a filter's values
+it is: a predicate nobody declared and a predicate nothing is claimed under are
+different answers, and a caller which cannot tell them apart retries a
+misspelling forever. A declared predicate nothing is claimed under is an empty
+list and exit zero.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
-The object claims writes carries "subject", the id it was asked about, and
-"claims", every claim written on it in predicate order.
+The object claims writes carries "subject", the id it was asked about, when one
+was, and "claims", every claim written on it — or on every subject, where no id
+was given — in subject, predicate and written order.
 `
 
 const conflictsUsage = `dfcad conflicts — every disagreement in the model.
@@ -144,6 +174,24 @@ var ErrAmbiguousAndResolved = errors.New(
 		"best claim or does not, and none is both",
 )
 
+// ErrTypeNeedsNodeFamily is --type asked for beside --family values none of
+// which is node.
+//
+// It is refused rather than answered with nothing, for the reason --ambiguous
+// beside --resolved is: only a node declares a type, so no claim on a vertex, an
+// edge or a loop satisfies a type, and an empty answer would read as a model
+// holding no such claims.
+var ErrTypeNeedsNodeFamily = errors.New(
+	"--type names a type only a node declares, and no --family value is node: no claim satisfies both",
+)
+
+// claimFamilies are the four families a subject of a claim can belong to, in
+// the order the usage lists them.
+//
+// They are list-geometry's three with node added, because a claim is written on
+// a semantic node as often as on a geometric one.
+var claimFamilies = []string{familyNode, familyVertex, familyEdge, familyLoop}
+
 // UnknownPredicateError is a predicate no registry file declares.
 type UnknownPredicateError struct {
 	// Predicate is what was asked for.
@@ -167,12 +215,39 @@ type claimsResult struct {
 	loadState
 
 	// Subject is the id the claims below are written on, which is the id asked
-	// for.
+	// for. Absent where no id was, and the claims are every subject's.
+	Subject string `json:"subject,omitempty"`
+
+	// Claims is every claim written on it, in predicate order, or on every
+	// subject in subject and then predicate order. Empty rather than null when
+	// nothing is claimed.
+	Claims []claimRow `json:"claims"`
+}
+
+// claimRow is one claim as claims reports it: the claim object get writes,
+// with what it is written on beside it.
+//
+// The subject's fields are written beside the claim's rather than nested under a
+// key of their own, as a plan's annotation writes them, so that a claim here
+// reads exactly like a claim anywhere else in this contract. They are written
+// whether or not an id was asked about, so that an entry has one shape whatever
+// narrowed the listing.
+type claimRow struct {
+	// Subject is the id of the thing the claim is written on.
 	Subject string `json:"subject"`
 
-	// Claims is every claim written on it, in predicate order. Empty rather
-	// than null when nothing is claimed about it.
-	Claims []claimEntry `json:"claims"`
+	// Family is which family holds the subject: node, vertex, edge or loop.
+	Family string `json:"family"`
+
+	// Type is the type the subject declares, for a node. Absent for a vertex, an
+	// edge or a loop, which declare none.
+	Type string `json:"type,omitempty"`
+
+	// Retired reports that the subject is a node which has been retired. Absent
+	// otherwise.
+	Retired bool `json:"retired,omitempty"`
+
+	claimEntry
 }
 
 // conflictsResult is the object conflicts writes to stdout.
@@ -222,14 +297,19 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
+	predicateFlag := &repeated{}
+	typeFlag := &repeated{}
+	familyFlag := &repeated{}
+
+	flags.Var(predicateFlag, flagPredicate, "")
+	flags.Var(typeFlag, "type", "")
+	flags.Var(familyFlag, flagFamily, "")
+
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
 		return exit
 	}
 
-	if len(arguments) == 0 {
-		return usageError(cmd, ErrMissingID, stderr, true)
-	}
 	if len(arguments) > 2 {
 		return usageError(cmd, UnexpectedArgumentsError{Extra: arguments[2:]}, stderr, true)
 	}
@@ -237,31 +317,89 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	// An argument which is not an id is a different mistake from an id nothing
 	// holds, and the production it broke is a better answer than a lookup which
 	// was never going to find anything.
-	subject, err := dfcad.ParseID(arguments[0])
-	if err != nil {
-		return usageError(cmd, err, stderr, false)
+	var subject dfcad.ID
+	if len(arguments) > 0 {
+		parsed, err := dfcad.ParseID(arguments[0])
+		if err != nil {
+			return usageError(cmd, err, stderr, false)
+		}
+		subject = parsed
 	}
 
-	var predicate string
-	if len(arguments) == 2 {
-		predicate = arguments[1]
+	// A predicate written after the id is one more --predicate, so that the
+	// positional form and the flag are one filter rather than two which could
+	// disagree. It is checked first, with the id it follows: arguments and flags
+	// may be written in any order, and the flag package does not say where
+	// between the flag's values an argument fell.
+	predicates := filterOf(*predicateFlag)
+	if len(arguments) == 2 && arguments[1] != "" {
+		predicates = append([]string{arguments[1]}, predicates...)
+	}
+	types, wanted := filterOf(*typeFlag), filterOf(*familyFlag)
+
+	// A family is checked before the load, as list-geometry checks one: the four
+	// are a closed set compiled in, so nothing in the tree makes a misspelling
+	// any more of a family.
+	if err := checkClaimFamilies(types, wanted); err != nil {
+		return usageError(cmd, err, stderr, false)
 	}
 
 	graph, loaded := loadModel(cmd, globals, stderr)
+	registry := graph.Registry()
 
-	if _, ok := graph.Entity(subject); !ok {
-		nearest, _ := graph.Nearest(subject)
-		return usageError(cmd, UnknownIDError{ID: string(subject), Nearest: string(nearest)}, stderr, false)
+	if subject != "" {
+		if _, ok := graph.Entity(subject); !ok {
+			nearest, _ := graph.Nearest(subject)
+			return usageError(cmd, UnknownIDError{ID: string(subject), Nearest: string(nearest)}, stderr, false)
+		}
 	}
-	if err := checkPredicate(graph.Registry(), predicate); err != nil {
+	for _, asked := range predicates {
+		if err := checkPredicate(registry, asked); err != nil {
+			return usageError(cmd, err, stderr, false)
+		}
+	}
+	if err := checkFilters(registry, types, nil, nil); err != nil {
 		return usageError(cmd, err, stderr, false)
+	}
+
+	subjects := []dfcad.ID{subject}
+	if subject == "" {
+		subjects = claimedSubjects(graph)
 	}
 
 	result := claimsResult{
 		envelope:  newEnvelope(cmd.name),
 		loadState: loaded,
 		Subject:   string(subject),
-		Claims:    audited(graph, subject, predicate),
+
+		// Made rather than declared so that a model nothing is claimed about
+		// writes an empty list rather than a null.
+		Claims: make([]claimRow, 0),
+	}
+
+	// One predicate is handed to the walk rather than filtered after it, so that
+	// the common --predicate X resolves that one predicate on each subject rather
+	// than every predicate written there. The order is the same either way.
+	var only string
+	if len(predicates) == 1 {
+		only = predicates[0]
+	}
+
+	for _, each := range subjects {
+		entity, _ := graph.Entity(each)
+		row := subjectOf(entity)
+
+		if !admits(wanted, row.Family) || !admits(types, row.Type) {
+			continue
+		}
+
+		for _, claim := range audited(graph, each, only) {
+			if !admits(predicates, claim.Predicate) {
+				continue
+			}
+			row.claimEntry = claim
+			result.Claims = append(result.Claims, row)
+		}
 	}
 
 	reportClaims(result, globals, stderr)
@@ -272,6 +410,75 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	return exitSuccess
+}
+
+// checkClaimFamilies reports the first --family value which is none of the four,
+// and a --type which no --family value leaves a node to satisfy.
+//
+// Neither needs the model: the families are a closed set compiled in, and only
+// a node declares a type whatever the registry says. The types themselves are
+// registry data and are checked after the load, by [checkFilters].
+func checkClaimFamilies(types, families []string) error {
+	for _, asked := range families {
+		if !slices.Contains(claimFamilies, asked) {
+			return UnknownFamilyError{Family: asked, Known: claimFamilies}
+		}
+	}
+
+	if len(types) > 0 && len(families) > 0 && !slices.Contains(families, familyNode) {
+		return ErrTypeNeedsNodeFamily
+	}
+
+	return nil
+}
+
+// claimedSubjects is every subject a claim is written on which claims can answer
+// for by id, each once and in id order.
+//
+// A subject [dfcad.Graph.Entity] does not hold is left out. Today that is a
+// frame, which carries the claim placing it in its parent: "dfcad claims
+// frame:building" is refused as an unknown id, and a listing of every subject's
+// claims which held rows no single-subject call could return would be two
+// answers to one question.
+func claimedSubjects(graph *dfcad.Graph) []dfcad.ID {
+	seen := make(map[dfcad.ID]struct{})
+	var out []dfcad.ID
+
+	for claim := range graph.Claims().All() {
+		subject := claim.Subject()
+		if _, done := seen[subject]; done {
+			continue
+		}
+		seen[subject] = struct{}{}
+
+		if _, ok := graph.Entity(subject); ok {
+			out = append(out, subject)
+		}
+	}
+
+	slices.Sort(out)
+
+	return out
+}
+
+// subjectOf is what a claim row says about the thing it is written on.
+func subjectOf(entity dfcad.Entity) claimRow {
+	row := claimRow{Subject: string(entity.ID())}
+
+	switch found := entity.(type) {
+	case *dfcad.SemanticNode:
+		row.Family = familyNode
+		row.Type = found.Type()
+		row.Retired = found.Retired()
+	case *dfcad.Vertex:
+		row.Family = familyVertex
+	case *dfcad.Edge:
+		row.Family = familyEdge
+	case *dfcad.Loop:
+		row.Family = familyLoop
+	}
+
+	return row
 }
 
 // runConflicts is the conflicts command.
@@ -469,24 +676,36 @@ func reportClaims(result claimsResult, globals *globals, stderr io.Writer) {
 	}
 
 	predicates := make(map[string]struct{}, len(result.Claims))
+	subjects := make(map[string]struct{}, len(result.Claims))
 	retracted := 0
 
 	for _, claim := range result.Claims {
 		predicates[claim.Predicate] = struct{}{}
+		subjects[claim.Subject] = struct{}{}
 		if claim.Rank == string(dfcad.RankDeprecated) {
 			retracted++
 		}
 
 		// The claims themselves are already the result, on stdout, so the
-		// reading of them is progress rather than result.
+		// reading of them is progress rather than result. Every subject's
+		// claims are named by the subject, which one subject's need not be.
 		if globals.Verbosity >= verbosityProgress {
-			_, _ = fmt.Fprintf(stderr, "%s: %s\n", claim.Predicate, spellClaim(claim))
+			prefix := ""
+			if result.Subject == "" {
+				prefix = claim.Subject + " "
+			}
+			_, _ = fmt.Fprintf(stderr, "%s%s: %s\n", prefix, claim.Predicate, spellClaim(claim.claimEntry))
 		}
+	}
+
+	of := result.Subject
+	if of == "" {
+		of = plural(len(subjects), "subject")
 	}
 
 	_, _ = fmt.Fprintf(stderr, "%s of %s under %s, %d retracted\n",
 		plural(len(result.Claims), "claim"),
-		result.Subject,
+		of,
 		plural(len(predicates), "predicate"),
 		retracted,
 	)

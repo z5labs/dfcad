@@ -260,6 +260,16 @@ var (
 		args:  []string{"get", "-", "--root", budgetRoot},
 		stdin: "site:S-102\nsite:S-111\nsite:S-112\nsite:S-202\nsite:S-211\nsite:S-212\n",
 	}
+	// roomAreas is every area claim written on a meeting room, live and
+	// retracted, each with what resolution made of it.
+	roomAreas = call{
+		name: "dfcad claims --type MeetingRoom --predicate area",
+		args: []string{
+			"claims",
+			"--type", "MeetingRoom", "--predicate", "area",
+			"--root", budgetRoot,
+		},
+	}
 	planLevel = call{
 		name: "dfcad plan site:L-01 --annotate area",
 		args: []string{
@@ -421,9 +431,22 @@ var (
 		calls:   []call{listRooms, getRooms},
 	}
 
+	everyRoomArea = path{
+		name: "every area claimed of a meeting room",
+		what: "every area anybody has claimed of a meeting room, with its evidence and what resolution made of it",
+		// No target. Like the other listings here it enumerates every instance
+		// of a type, so what it costs is the number of claims times the size of
+		// one rather than the arrangement. It is measured because it is the call
+		// a consumer replaces one `claims` per room with, and because a field
+		// added to a claim row is paid here once per claim.
+		ceiling: 860,
+		calls:   []call{roomAreas},
+	}
+
 	paths = []path{
 		discovery, coldQuestion, warmQuestion, wholeRetrieval,
 		derivedQuestion, geometricDiscovery, annotatedPlan, everyRoom,
+		everyRoomArea,
 	}
 )
 
@@ -580,6 +603,10 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 		{
 			name: "retrieves every meeting room whole in one call",
 			path: everyRoom,
+		},
+		{
+			name: "lists every area claimed of a meeting room in one call",
+			path: everyRoomArea,
 		},
 	}
 
