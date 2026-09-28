@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"strings"
 	"testing"
 
@@ -652,6 +653,21 @@ func TestRunClaimsAndConflictsRejectWhatTheModelDoesNotHold(t *testing.T) {
 				UnknownPredicateError{Predicate: "aera", Declared: auditPredicates()}.Error() + "\n",
 		},
 		{
+			name: "rejects a second type the registry does not declare",
+			args: []string{"conflicts", "--type", "MeetingRoom", "--type", "MeetingRom"},
+			expectedStderr: "dfcad conflicts: " +
+				UnknownTypeError{
+					Type:     "MeetingRom",
+					Declared: []string{"Campus", "Corridor", "MeetingRoom"},
+				}.Error() + "\n",
+		},
+		{
+			name: "rejects a second predicate the registry does not declare",
+			args: []string{"conflicts", "--predicate", "area", "--predicate", "aera"},
+			expectedStderr: "dfcad conflicts: " +
+				UnknownPredicateError{Predicate: "aera", Declared: auditPredicates()}.Error() + "\n",
+		},
+		{
 			name:           "refuses the two halves of the register together",
 			args:           []string{"conflicts", "--ambiguous", "--resolved"},
 			expectedStderr: "dfcad conflicts: " + ErrAmbiguousAndResolved.Error() + "\n",
@@ -837,6 +853,71 @@ func TestClaimsAndConflictsErrorsAreNotSwallowed(t *testing.T) {
 
 			assert.Equal(t, exitLoad, run(args, brokenWriter{}, &stderr))
 			assert.Contains(t, stderr.String(), "dfcad "+args[0]+":")
+		})
+	}
+}
+
+// conflictOrder is the documented order of the register: by subject, and then
+// by predicate.
+func conflictOrder(a, b map[string]any) int {
+	return cmp.Or(
+		strings.Compare(a["subject"].(string), b["subject"].(string)),
+		strings.Compare(a["predicate"].(string), b["predicate"].(string)),
+	)
+}
+
+// TestConflictsFiltersWrittenTwiceAnswerTheUnion is the property both of the
+// register's naming filters promise: within one flag a pair is listed when it
+// satisfies any of the values.
+//
+// It runs against the audit fixture, written to a temporary directory, rather
+// than against the budget model, which states nothing twice: here two types and
+// three predicates each have pairs in dispute.
+func TestConflictsFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
+	testCases := []struct {
+		name   string
+		args   []string
+		flag   string
+		first  string
+		second string
+	}{
+		{
+			name:   "lists the pairs whose subject declares either type",
+			args:   []string{"conflicts"},
+			flag:   "type",
+			first:  "MeetingRoom",
+			second: "Corridor",
+		},
+		{
+			name:   "lists the pairs written under either predicate",
+			args:   []string{"conflicts"},
+			flag:   "predicate",
+			first:  "area",
+			second: "height",
+		},
+		{
+			// Two predicates written on one subject: the subject's pairs are
+			// each listed once, in predicate order, rather than grouped by the
+			// value which selected them.
+			name:   "lists the pairs under either predicate beside another filter",
+			args:   []string{"conflicts", "--type", "MeetingRoom"},
+			flag:   "predicate",
+			first:  "height",
+			second: "area",
+		},
+		{
+			name:   "lists the pairs under either predicate among the ones resolution cannot decide",
+			args:   []string{"conflicts", "--ambiguous"},
+			flag:   "predicate",
+			first:  "occupancy",
+			second: "height",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertFilterIsAUnion(t, tree(t, auditable()), testCase.args,
+				testCase.flag, testCase.first, testCase.second, "conflicts", conflictOrder)
 		})
 	}
 }

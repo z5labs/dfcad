@@ -41,8 +41,8 @@ Flags:
 	--depth <n>    how many steps of the relation to follow: a count of one or
 	               more, or "all" to follow it as far as the model goes
 	               (default "1")
-	--kind <kind>  only results which declare this kind
-	--type <name>  only results which declare this type
+	--kind <kind>  only results which declare this kind; repeat for more
+	--type <name>  only results which declare this type; repeat for more
 
 Every result says which relation produced it — containment, membership,
 boundary or adjacency — and how many steps away it was found. Containment and
@@ -67,7 +67,9 @@ result rather than two.
 
 A filter narrows what is reported and never what is walked. Every room three
 levels below a site is still reached with --kind Space, though the building and
-the storey between them are not reported.
+the storey between them are not reported. Filters combine: a result is reported
+when it satisfies every filter given, and a filter written more than once is
+satisfied by any of its values.
 
 Results come back in depth order and then in id order, so two runs over one
 model diff against each other and moving a node between files changes nothing.
@@ -437,8 +439,11 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 
 	depth := traversalDepth(1)
 	flags.Var(&depth, flagDepth, "")
-	kind := flags.String(flagKind, "", "")
-	declaredType := flags.String(flagType, "", "")
+	kindFlag := &repeated{}
+	typeFlag := &repeated{}
+
+	flags.Var(kindFlag, flagKind, "")
+	flags.Var(typeFlag, flagType, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -470,7 +475,9 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 
 	graph, loaded := loadModel(cmd, globals, stderr)
 
-	if err := checkFilters(graph.Registry(), *declaredType, *kind, ""); err != nil {
+	kinds, types := filterOf(*kindFlag), filterOf(*typeFlag)
+
+	if err := checkFilters(graph.Registry(), types, kinds, nil); err != nil {
 		return usageError(cmd, err, stderr, false)
 	}
 
@@ -485,7 +492,7 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		Subject:   string(id),
 		Query:     asked.name,
 		Depth:     int(depth),
-		Results:   narrow(asked.walk(graph, subject, int(depth)), *kind, *declaredType),
+		Results:   narrow(asked.walk(graph, subject, int(depth)), kinds, types),
 	}
 
 	// Depth first and then id, so that two runs over one model diff against each
@@ -578,17 +585,20 @@ func familyOf(entity dfcad.Entity) string {
 // filter, because the filter says what to report rather than what to walk
 // through — a walk which pruned on it would answer "no rooms" for a model whose
 // every room is inside something else.
-func narrow(results []traversed, kind, declaredType string) []traversed {
+//
+// A result is reported once however many values of a filter it satisfies: the
+// filters decide whether it is kept, and never how many times.
+func narrow(results []traversed, kinds, types []string) []traversed {
 	// Made rather than declared so that a walk which reached nothing writes an
 	// empty list rather than a null, and a caller indexing it needs no special
 	// case for the thing at the edge of the model.
 	out := make([]traversed, 0, len(results))
 
 	for _, result := range results {
-		if kind != "" && result.Kind != kind {
+		if !admits(kinds, result.Kind) {
 			continue
 		}
-		if declaredType != "" && result.Type != declaredType {
+		if !admits(types, result.Type) {
 			continue
 		}
 		out = append(out, result)
