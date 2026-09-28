@@ -144,18 +144,18 @@ edges, "unreadable-boundary" for one whose edges this run could not read,
 one whose shape could not be carried into the plan's frame — the frames are not
 related, a transform could not be applied, or the plan's frame is in a unit
 other than the tolerance's. An undrawn node read in a frame other than the
-plan's carries "declared-in" too. "outlines" and "undrawn" account between them for everything the subject
-contains, so a renderer which drew every outline and listed every undrawn node
-has drawn or named the whole storey. The key is absent for a storey every node
-of which was drawn.
+plan's carries "declared-in" too. "outlines" and "undrawn" account between
+them for everything the subject contains, so a renderer which drew every
+outline and listed every undrawn node has drawn or named the whole storey. The
+key is absent for a storey every node of which was drawn.
 
 Exit code 1 is a plan a ring of which could not be read — a boundary which does
 not close, one which crosses itself, corners which are not in one plane, a
 tolerance the registry does not declare in the frame's unit — or could not be
-carried into the plan's frame. The other rooms
-are still drawn and the object still comes back, with "planned" false and the
-room named under "undrawn", so a caller reads which room to fix from that and
-from the diagnostics on stderr rather than from an empty stream.
+carried into the plan's frame. The other rooms are still drawn and the object
+still comes back, with "planned" false and the room named under "undrawn", so a
+caller reads which room to fix from that and from the diagnostics on stderr
+rather than from an empty stream.
 `
 
 // flagAnnotate is the flag naming a predicate whose claims a plan reports. It
