@@ -1,0 +1,14 @@
+testdata/claim/plain-value-without-a-unit/claims.dfc:7:3: error: expected a unit after the value, found none
+7 |   (nominal-width 8.5))
+  |   ^^^^^^^^^^^^^^^^^^^
+  = hint: nominal-width declares m, and a dimensional value is written with its unit
+testdata/claim/plain-value-without-a-unit/registry.dfc:18:12: note: the predicate is declared here
+18 | (predicate nominal-width
+   |            ^^^^^^^^^^^^^
+testdata/claim/plain-value-without-a-unit/claims.dfc:11:3: error: expected a unit after the value, found none
+11 |   (design-position (4.0 0.0 0.0)))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: design-position declares m, and a dimensional value is written with its unit
+testdata/claim/plain-value-without-a-unit/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate design-position
+   |            ^^^^^^^^^^^^^^^

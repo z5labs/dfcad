@@ -1,0 +1,28 @@
+testdata/claim/plain-value-collected/a.dfc:8:22: error: expected the unit the predicate nominal-width declares, found ft
+8 |   (nominal-width 8.5 ft)
+  |                      ^^
+  = hint: nominal-width declares m, and a value written in another unit is converted by whoever writes it rather than by the loader
+testdata/claim/plain-value-collected/registry.dfc:18:12: note: the predicate is declared here
+18 | (predicate nominal-width
+   |            ^^^^^^^^^^^^^
+testdata/claim/plain-value-collected/a.dfc:10:19: error: expected no unit after the value, found m
+10 |   (occupancy 12.0 m))
+   |                   ^
+   = hint: occupancy declares no unit, and there is no unitless token: a non-dimensional value is written with no unit at all
+testdata/claim/plain-value-collected/registry.dfc:24:12: note: the predicate is declared here
+24 | (predicate occupancy
+   |            ^^^^^^^^^
+testdata/claim/plain-value-collected/a.dfc:17:3: error: expected the text value the predicate colour declares, found a number
+17 |   (colour 4.0))
+   |   ^^^^^^^^^^^^
+   = hint: colour declares a text value
+testdata/claim/plain-value-collected/registry.dfc:29:12: note: the predicate is declared here
+29 | (predicate colour
+   |            ^^^^^^
+testdata/claim/plain-value-collected/b.dfc:4:20: error: expected the 3 components the predicate design-position declares, found 2
+4 |   (design-position (4.0 0.0) m))
+  |                    ^^^^^^^^^
+  = hint: design-position declares a coordinate of 3 components
+testdata/claim/plain-value-collected/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate design-position
+   |            ^^^^^^^^^^^^^^^

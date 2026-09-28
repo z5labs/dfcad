@@ -1,0 +1,14 @@
+testdata/claim/plain-value-wrong-unit/claims.dfc:8:22: error: expected the unit the predicate nominal-width declares, found ft
+8 |   (nominal-width 8.5 ft))
+  |                      ^^
+  = hint: nominal-width declares m, and a value written in another unit is converted by whoever writes it rather than by the loader
+testdata/claim/plain-value-wrong-unit/registry.dfc:18:12: note: the predicate is declared here
+18 | (predicate nominal-width
+   |            ^^^^^^^^^^^^^
+testdata/claim/plain-value-wrong-unit/claims.dfc:12:34: error: expected the unit the predicate design-position declares, found usft
+12 |   (design-position (4.0 0.0 0.0) usft))
+   |                                  ^^^^
+   = hint: design-position declares m, and a value written in another unit is converted by whoever writes it rather than by the loader
+testdata/claim/plain-value-wrong-unit/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate design-position
+   |            ^^^^^^^^^^^^^^^

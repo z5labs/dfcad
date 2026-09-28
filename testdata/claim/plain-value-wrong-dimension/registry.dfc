@@ -1,0 +1,46 @@
+; The vocabulary the plain values beside this file are judged against. Every
+; predicate here is declared (claim-bearing #f), so each takes its value
+; directly — and that value is written, and checked, exactly as the value child
+; of a claim under it would be.
+(project
+  (label "Plain value fixture")
+  (globalid-namespace "https://example.org/models/plain-value"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace site (description "Semantic nodes minted by this model."))
+
+(type MeetingRoom
+  (kind Space)
+  (geometry area)
+  (description "An enclosed room used for meetings."))
+
+(predicate nominal-width
+  (unit m)
+  (shape scalar)
+  (claim-bearing #f)
+  (description "The width the thing was designed to, rather than measured at."))
+
+(predicate occupancy
+  (shape scalar)
+  (claim-bearing #f)
+  (description "How many people the thing is rated for."))
+
+(predicate colour
+  (shape text)
+  (claim-bearing #f)
+  (description "What colour the thing was finished in."))
+
+(predicate design-position
+  (unit m)
+  (shape coordinate)
+  (dimension 3)
+  (claim-bearing #f)
+  (description "Where the drawings put a vertex, in its frame."))
+
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The projected coordinate reference system a frame is rooted at."))
+
+(frame frame:building (label "Building local grid") (unit m))

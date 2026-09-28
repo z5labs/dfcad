@@ -1,0 +1,12 @@
+; A plain value written in a unit other than the one its predicate declares.
+; It is not converted: a value in another unit is converted by whoever writes it
+; rather than by the loader, whichever spelling it was written in.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (nominal-width 8.5 ft))
+
+(vertex geom:V-01
+  (frame frame:building)
+  (design-position (4.0 0.0 0.0) usft))

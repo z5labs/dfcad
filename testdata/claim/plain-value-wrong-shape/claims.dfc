@@ -1,0 +1,10 @@
+; A plain value of one shape written under a predicate which declares another.
+; The same mistake in a claim's value child is refused, and a plain value is
+; written exactly as that child would be, so it is refused in the same words.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (nominal-width "wide")
+  (colour 8.5)
+  (design-position 8.5 m))

@@ -1,0 +1,17 @@
+; Several bad plain values across two files, among correct ones and a claim.
+; Each is reported, in file and then position order, and none of them stops the
+; rest of the tree being read.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (nominal-width 8.5 ft)
+  (colour "slate")
+  (occupancy 12.0 m))
+
+(node site:S-102
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (nominal-width 3.2 m)
+  (colour 4.0))

@@ -101,6 +101,30 @@ func TestLoadClaims(t *testing.T) {
 			fixture: "claim-for-a-plain-value",
 		},
 		{
+			name:    "names a plain value of a shape other than the one its predicate declares, as a value child's is named",
+			fixture: "plain-value-wrong-shape",
+		},
+		{
+			name:    "names a plain value in a unit its predicate does not declare rather than converting it",
+			fixture: "plain-value-wrong-unit",
+		},
+		{
+			name:    "names a dimensional plain value written with no unit",
+			fixture: "plain-value-without-a-unit",
+		},
+		{
+			name:    "names a unit written after a non-dimensional plain value",
+			fixture: "plain-value-with-a-unit",
+		},
+		{
+			name:    "names a plain coordinate with other than the components its predicate declares",
+			fixture: "plain-value-wrong-dimension",
+		},
+		{
+			name:    "names every bad plain value in a tree, in file and then position order",
+			fixture: "plain-value-collected",
+		},
+		{
 			name:    "names a deprecation which left out what replaced it, and the claim it retracted",
 			fixture: "deprecated-without-replacement",
 		},
@@ -729,6 +753,157 @@ func TestLoadClaimsIgnoresAPlainValue(t *testing.T) {
 
 	assert.Zero(t, claims.Len())
 	assert.Empty(t, diags)
+}
+
+// plainValueRegistry declares one predicate, width, either claim-bearing or
+// not. Nothing else about the declaration moves, so a diagnostic pointing at it
+// points at the same place whichever spelling the registry asks for.
+func plainValueRegistry(claimBearing bool) string {
+	bearing := "#t"
+	if !claimBearing {
+		bearing = "#f"
+	}
+
+	return `(project (globalid-namespace "https://example.org/models/plain"))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate width (unit m) (shape scalar) (claim-bearing ` + bearing + `) (description "How wide it is."))
+`
+}
+
+// TestLoadClaimsChecksAPlainValueAsAValueChild checks that a plain value is
+// read by the reader a claim's value child is read by: the same mistake written
+// either way is refused in the same words, with the same hint, pointing at the
+// same declaration.
+func TestLoadClaimsChecksAPlainValueAsAValueChild(t *testing.T) {
+	testCases := []struct {
+		name  string
+		value string
+	}{
+		{name: "refuses a string where a scalar is declared", value: `"wide"`},
+		{name: "refuses a coordinate where a scalar is declared", value: `(8.5 3.0) m`},
+		{name: "refuses a unit other than the declared one", value: `8.5 ft`},
+		{name: "refuses a dimensional value with no unit", value: `8.5`},
+		{name: "refuses an integer where a real is spelled", value: `8 m`},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			node := func(predicate string) string {
+				return "(node site:S-101\n  (kind Space)\n  (type MeetingRoom)\n  (geometry area)\n  " + predicate + ")\n"
+			}
+
+			plainClaims, plain := loadClaimModel(t, plainValueRegistry(false), node("(width "+testCase.value+")"))
+			_, asClaim := loadClaimModel(t, plainValueRegistry(true), node(
+				`(width (value `+testCase.value+`) (source "Plan A-101") (method method:scaled) (date "2026-01-09"))`,
+			))
+
+			require.Len(t, plain, 1)
+			require.NotEmpty(t, asClaim)
+
+			// The claim form also names its method, whose namespace this
+			// registry leaves unregistered on purpose; only the value's
+			// diagnostic is the one being compared.
+			var fromValue Diagnostic
+			for _, diag := range asClaim {
+				if diag.Message == plain[0].Message {
+					fromValue = diag
+				}
+			}
+			require.NotZero(t, fromValue.Message, "the value child is refused in the same words: %v", asClaim)
+
+			assert.Zero(t, plainClaims.Len(), "a plain value becomes no claim, refused or not")
+			assert.Equal(t, SeverityError, plain[0].Severity)
+			assert.Equal(t, fromValue.Hint, plain[0].Hint)
+
+			// The two models live in two directories, so the declaration is
+			// compared by where in its file it is rather than by the file.
+			require.Len(t, plain[0].Related, len(fromValue.Related))
+			for i, related := range plain[0].Related {
+				assert.Equal(t, filepath.Base(fromValue.Related[i].Span.Start.Path), filepath.Base(related.Span.Start.Path))
+				assert.Equal(t, fromValue.Related[i].Span.Start.Offset, related.Span.Start.Offset)
+				assert.Equal(t, fromValue.Related[i].Span.End.Offset, related.Span.End.Offset)
+				assert.Equal(t, fromValue.Related[i].Message, related.Message)
+			}
+		})
+	}
+}
+
+// TestLoadClaimsPointsAtThePlainValue checks where the diagnostic about a plain
+// value lands: within the form which wrote it, rather than at the node it was
+// written on or at the declaration.
+func TestLoadClaimsPointsAtThePlainValue(t *testing.T) {
+	const written = `(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (width 8.5 ft))
+`
+
+	_, diags := loadClaimModel(t, plainValueRegistry(false), written)
+	require.Len(t, diags, 1)
+
+	form := strings.Index(written, "(width 8.5 ft)")
+	unit := strings.Index(written, "ft)")
+
+	assert.Equal(t, unit, diags[0].Span.Start.Offset, "the unit is the thing which is wrong")
+	assert.GreaterOrEqual(t, diags[0].Span.Start.Offset, form)
+	assert.LessOrEqual(t, diags[0].Span.End.Offset, form+len("(width 8.5 ft)"))
+}
+
+// TestLoadClaimsReportsAnUndeclaredPlainValueOnce checks that a plain value
+// under a predicate nothing declares is heard about as the misspelling it is,
+// once, and not a second time about a value nothing can judge.
+func TestLoadClaimsReportsAnUndeclaredPlainValueOnce(t *testing.T) {
+	testCases := []struct {
+		name  string
+		value string
+	}{
+		{name: "a value which would read as a scalar", value: `8.5 ft`},
+		{name: "a value which would read as nothing at all", value: `wide`},
+		{name: "an integer", value: `8`},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := "(node site:S-101\n  (kind Space)\n  (type MeetingRoom)\n  (geometry area)\n  (breadth " + testCase.value + "))\n"
+
+			claims, diags := loadClaimModel(t, plainValueRegistry(false), written)
+
+			assert.Zero(t, claims.Len())
+			require.Len(t, diags, 1)
+			assert.Contains(t, diags[0].Message, "expected a declared predicate")
+		})
+	}
+}
+
+// TestLoadClaimsCollectsBadPlainValues checks that a tree holding several bad
+// plain values hears about every one of them in one load, in file and then
+// position order, and that the same load twice says the same thing.
+func TestLoadClaimsCollectsBadPlainValues(t *testing.T) {
+	registry := mustLoadRegistry(t, claimFixture("plain-value-collected"))
+
+	claims, diags := LoadClaims(claimFixture("plain-value-collected"), registry)
+	_, again := LoadClaims(claimFixture("plain-value-collected"), registry)
+
+	assert.Zero(t, claims.Len(), "no plain value becomes a claim")
+	assert.Equal(t, diags, again)
+
+	var collected Diagnostics
+	collected.Add(diags...)
+	sorted := collected.All()
+	require.Len(t, sorted, 4)
+
+	files := make([]string, 0, len(sorted))
+	for _, diag := range sorted {
+		assert.Equal(t, SeverityError, diag.Severity)
+		files = append(files, filepath.Base(diag.Span.Start.Path))
+	}
+
+	assert.Equal(t, []string{"a.dfc", "a.dfc", "a.dfc", "b.dfc"}, files, "the second file is read whatever the first held")
+	assert.Less(t, sorted[0].Span.Start.Offset, sorted[1].Span.Start.Offset)
+	assert.Less(t, sorted[1].Span.Start.Offset, sorted[2].Span.Start.Offset)
 }
 
 // TestLoadClaimsRefusesABareScalar is the rule the model depends on: where a

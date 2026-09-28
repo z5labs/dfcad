@@ -1,0 +1,8 @@
+; A non-dimensional plain value written with a unit. There is no unitless
+; token, so a value whose predicate declares no unit is written with none.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (occupancy 12.0 m)
+  (colour "slate" m))
