@@ -121,11 +121,16 @@ Flags:
 	--predicate <name>   the predicate the node carries; required, and once
 	--family <family>    only nodes of this family: vertex, edge or loop;
 	                     repeat for more
+	--frame <id>         only nodes expressed in this coordinate frame; repeat
+	                     for more
 
---family is a filter, and a filter written more than once is satisfied by any
-of its values. --predicate is not a filter: it names what is listed, and the
-answer reports it as one predicate, so writing it twice is a usage error rather
-than a union of two listings.
+--family and --frame are filters. They combine: a node is listed when it
+satisfies every filter given, and a filter written more than once is satisfied
+by any of its values. A frame matches exactly, as it does for
+"dfcad list-instances": a node expressed in a child frame is not listed for its
+parent. --predicate is not a filter: it names what is listed, and the answer
+reports it as one predicate, so writing it twice is a usage error rather than a
+union of two listings.
 
 --predicate has no default and never will, for the reason "dfcad buildable" has
 none: which predicate carries a position, a setback or a span is something the
@@ -152,7 +157,8 @@ A predicate the registry does not declare is a usage error naming it, rather
 than an empty list: a predicate nobody declared and a predicate nothing is
 written under are different answers, and a caller which cannot tell them apart
 retries a misspelling forever. The same holds for a family which is none of the
-three, whichever of a repeated --family's values it is.
+three and for a frame the registry does not declare, whichever of a repeated
+filter's values it is.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -167,6 +173,7 @@ at, and — for an edge — the two vertices it runs between, in the authored or
 const (
 	flagPredicate = "predicate"
 	flagFamily    = "family"
+	flagFrame     = "frame"
 )
 
 // families are the three families a geometric node can belong to, in the order
@@ -607,9 +614,11 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 
 	predicateFlag := &repeated{}
 	familyFlag := &repeated{}
+	frameFlag := &repeated{}
 
 	flags.Var(predicateFlag, flagPredicate, "")
 	flags.Var(familyFlag, flagFamily, "")
+	flags.Var(frameFlag, flagFrame, "")
 
 	extra, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -659,6 +668,14 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		return usageError(cmd, err, stderr, false)
 	}
 
+	// A frame is registry data as well, and is refused the way list-instances
+	// refuses one, through the same check: one filter with one meaning, whichever
+	// listing it narrows.
+	wantedFrames := filterOf(*frameFlag)
+	if err := checkFilters(graph.Registry(), nil, nil, wantedFrames); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	result := listGeometryResult{
 		envelope:  newEnvelope(cmd.name),
 		loadState: loaded,
@@ -674,7 +691,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 
 	if admits(wantedFamilies, familyVertex) {
 		for vertex := range topology.Vertices() {
-			if !carries(graph, vertex.ID(), predicate) {
+			if !admits(wantedFrames, string(vertex.Frame())) || !carries(graph, vertex.ID(), predicate) {
 				continue
 			}
 
@@ -690,7 +707,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 
 	if admits(wantedFamilies, familyEdge) {
 		for edge := range topology.Edges() {
-			if !carries(graph, edge.ID(), predicate) {
+			if !admits(wantedFrames, string(edge.Frame())) || !carries(graph, edge.ID(), predicate) {
 				continue
 			}
 
@@ -710,7 +727,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 
 	if admits(wantedFamilies, familyLoop) {
 		for loop := range topology.Loops() {
-			if !carries(graph, loop.ID(), predicate) {
+			if !admits(wantedFrames, string(loop.Frame())) || !carries(graph, loop.ID(), predicate) {
 				continue
 			}
 

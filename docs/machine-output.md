@@ -191,7 +191,8 @@ Every filter follows one rule, whichever command takes it:
 - **A value nobody declared is a usage error naming it** — exit `3`, with nothing on stdout —
   whichever of a filter's values it is: the first such value, in the order they were written,
   is the one reported. A type the registry does not declare, a kind which is not one of the
-  seven, a family which is not one of the three: each is the error it is when written alone.
+  seven, a family which is not one of the three, a frame the registry does not declare: each
+  is the error it is when written alone.
   A filter that silently dropped a value nobody declared would answer a narrower question
   than the one asked, and the answer would read as complete.
 
@@ -433,12 +434,19 @@ list either.
 ### `list-geometry`
 
 The geometric nodes — vertices, edges and loops — which carry a claim under one predicate.
-It takes no arguments and two flags.
+It takes no arguments and three flags.
 
 | Flag | Meaning |
 |------|---------|
 | `--predicate <name>` | The predicate the node carries. **Required**, and it has no default. Written once: it names what is listed rather than filtering it. |
 | `--family <family>` | Only nodes of this family: `vertex`, `edge` or `loop`. [Repeatable](#filters). |
+| `--frame <id>` | Only nodes expressed in this coordinate frame. [Repeatable](#filters). |
+
+`--family` and `--frame` are filters. They combine: a node is listed when it satisfies every
+filter given, and a filter written more than once is satisfied by any of its values; see
+[Filters](#filters). `--frame` is the flag `list-instances` takes, with the same meaning: the
+match is exact, so a node expressed in a child frame is not listed for its parent. The answer
+does not echo it, because every node already carries its `frame`.
 
 It is the geometric sibling of `list-instances`, which reports the `type` and the `kind` a
 vertex, an edge and a loop do not have. Without it a geometric node is reachable only by its
@@ -522,9 +530,11 @@ records no spans is an ordinary model, and answering it with a failure would mak
 parse a message to tell nothing-there from something-wrong.
 
 A predicate the registry does not declare is a **usage error** naming it and listing the
-predicates that are declared, and so is a `--family` which is none of the three. A predicate
-nobody declared and a predicate nothing is written under are different answers, and a caller
-that cannot tell them apart retries a misspelling forever.
+predicates that are declared, and so is a `--family` which is none of the three. A `--frame`
+the registry does not declare is one too, listing the frames that are declared, exactly as
+it is for `list-instances`. Each is exit `3`, with nothing on stdout, whichever of a repeated
+filter's values it is. A predicate nobody declared and a predicate nothing is written under
+are different answers, and a caller that cannot tell them apart retries a misspelling forever.
 
 `--predicate` written more than once is a **usage error** too — exit `3`, with nothing on
 stdout — naming the flag and every value it was given, in the order they were written. It is
