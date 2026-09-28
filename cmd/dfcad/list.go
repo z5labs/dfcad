@@ -70,11 +70,12 @@ large one is narrowed with the filters below.
 
 Flags:
 
-	--kind <kind>    only instances which declare this kind
-	--frame <id>     only instances which declare this coordinate frame
+	--kind <kind>    only instances which declare this kind; repeat for more
+	--frame <id>     only instances which declare this coordinate frame; repeat
 	--retired        include the instances which stopped existing
 
-Filters combine: an instance is listed when it satisfies every filter given.
+Filters combine: an instance is listed when it satisfies every filter given, and
+a filter written more than once is satisfied by any of its values.
 
 A retired node is left out unless it is asked for. It is still a node the model
 holds — its id is never issued again, and a reference to it still resolves — but
@@ -89,7 +90,8 @@ A type the registry does not declare is a usage error naming it, rather than an
 empty list: a type nobody declared and a type nothing instantiates are
 different answers, and a caller which cannot tell them apart is one which
 retries a misspelling forever. The same holds for a kind which is not one of
-the seven and for a frame the registry does not declare.
+the seven and for a frame the registry does not declare, whichever of a
+repeated filter's values it is.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -116,8 +118,14 @@ already know its id, which means keeping a second list of them by hand.
 
 Flags:
 
-	--predicate <name>   the predicate the node carries; required
-	--family <family>    only nodes of this family: vertex, edge or loop
+	--predicate <name>   the predicate the node carries; required, and once
+	--family <family>    only nodes of this family: vertex, edge or loop;
+	                     repeat for more
+
+--family is a filter, and a filter written more than once is satisfied by any
+of its values. --predicate is not a filter: it names what is listed, and the
+answer reports it as one predicate, so writing it twice is a usage error rather
+than a union of two listings.
 
 --predicate has no default and never will, for the reason "dfcad buildable" has
 none: which predicate carries a position, a setback or a span is something the
@@ -144,7 +152,7 @@ A predicate the registry does not declare is a usage error naming it, rather
 than an empty list: a predicate nobody declared and a predicate nothing is
 written under are different answers, and a caller which cannot tell them apart
 retries a misspelling forever. The same holds for a family which is none of the
-three.
+three, whichever of a repeated --family's values it is.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -505,8 +513,11 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
-	kind := flags.String("kind", "", "")
-	frame := flags.String("frame", "", "")
+	kindFlag := &repeated{}
+	frameFlag := &repeated{}
+
+	flags.Var(kindFlag, "kind", "")
+	flags.Var(frameFlag, "frame", "")
 	retired := flags.Bool("retired", false, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
@@ -523,6 +534,8 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 		declaredType = arguments[0]
 	}
 
+	kinds, frames := filterOf(*kindFlag), filterOf(*frameFlag)
+
 	// The model is loaded before the arguments are checked because the registry
 	// is what says whether a type or a frame exists, and the registry is the
 	// model. Its diagnostics reach stderr either way, so a name which is
@@ -531,7 +544,7 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 	graph, loaded := loadModel(cmd, globals, stderr)
 	registry := graph.Registry()
 
-	if err := checkFilters(registry, declaredType, *kind, *frame); err != nil {
+	if err := checkFilters(registry, filterOf([]string{declaredType}), kinds, frames); err != nil {
 		return usageError(cmd, err, stderr, false)
 	}
 
@@ -546,7 +559,7 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 		nodes = graph.OfType(declaredType)
 	}
 	for node := range nodes {
-		if !matches(node, *kind, *frame, *retired) {
+		if !matches(node, kinds, frames, *retired) {
 			continue
 		}
 
@@ -592,8 +605,11 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
-	predicate := flags.String(flagPredicate, "", "")
-	family := flags.String(flagFamily, "", "")
+	predicateFlag := &repeated{}
+	familyFlag := &repeated{}
+
+	flags.Var(predicateFlag, flagPredicate, "")
+	flags.Var(familyFlag, flagFamily, "")
 
 	extra, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -604,20 +620,33 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
 	}
 
+	// --predicate names what the listing is of, and the answer reports it as one
+	// string, so a second one is a second question rather than a wider filter.
+	// It is refused before anything else is said about the invocation: every
+	// check below is about the one predicate being listed, and a run which wrote
+	// two has not said which that is.
+	predicate, err := once(flagPredicate, *predicateFlag)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	// The vocabulary is checked before the model is read, which is the one
 	// order-of-checks difference from list-instances. A run which did not say
 	// which predicate to ask about has not asked a question yet, and no registry
 	// can supply the word it left out — so reporting a whole model's diagnostics
 	// first would bury the one thing wrong with the invocation.
-	if err := vocabularyOf(given{flag: flagPredicate, value: *predicate}); err != nil {
+	if err := vocabularyOf(given{flag: flagPredicate, value: predicate}); err != nil {
 		return usageError(cmd, err, stderr, true)
 	}
 
 	// A family is checked before the load too, for the same reason: the three
 	// are a closed set compiled in, so nothing in the tree makes `--family
 	// vertexes` any more of a family.
-	if err := checkFamily(*family); err != nil {
-		return usageError(cmd, err, stderr, false)
+	wantedFamilies := filterOf(*familyFlag)
+	for _, asked := range wantedFamilies {
+		if err := checkFamily(asked); err != nil {
+			return usageError(cmd, err, stderr, false)
+		}
 	}
 
 	// The predicate, in contrast, is registry data, and the registry is the
@@ -626,14 +655,14 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	// reason it did not.
 	graph, loaded := loadModel(cmd, globals, stderr)
 
-	if err := checkPredicate(graph.Registry(), *predicate); err != nil {
+	if err := checkPredicate(graph.Registry(), predicate); err != nil {
 		return usageError(cmd, err, stderr, false)
 	}
 
 	result := listGeometryResult{
 		envelope:  newEnvelope(cmd.name),
 		loadState: loaded,
-		Predicate: *predicate,
+		Predicate: predicate,
 
 		// Made rather than declared so that a predicate nothing carries writes an
 		// empty list rather than a null, and a caller indexing it needs no
@@ -643,9 +672,9 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 
 	topology := graph.Topology()
 
-	if wanted(*family, familyVertex) {
+	if admits(wantedFamilies, familyVertex) {
 		for vertex := range topology.Vertices() {
-			if !carries(graph, vertex.ID(), *predicate) {
+			if !carries(graph, vertex.ID(), predicate) {
 				continue
 			}
 
@@ -659,9 +688,9 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		}
 	}
 
-	if wanted(*family, familyEdge) {
+	if admits(wantedFamilies, familyEdge) {
 		for edge := range topology.Edges() {
-			if !carries(graph, edge.ID(), *predicate) {
+			if !carries(graph, edge.ID(), predicate) {
 				continue
 			}
 
@@ -679,9 +708,9 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		}
 	}
 
-	if wanted(*family, familyLoop) {
+	if admits(wantedFamilies, familyLoop) {
 		for loop := range topology.Loops() {
-			if !carries(graph, loop.ID(), *predicate) {
+			if !carries(graph, loop.ID(), predicate) {
 				continue
 			}
 
@@ -718,10 +747,35 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	return exitSuccess
 }
 
-// wanted reports whether a family is asked for, where the empty filter asks for
-// all three.
-func wanted(filter, family string) bool {
-	return filter == "" || filter == family
+// filterOf is the values a filter flag was written with, less the empty ones.
+//
+// An empty value has always been no filter at all — `--kind ""` lists every
+// kind — and a filter which takes a repeat keeps it that way, so that an
+// invocation which wrote each filter at most once answers exactly as it did
+// before a repeat was honoured. The values stay in the order they were written,
+// which is the order they are validated in and so the one whose first unknown
+// name the usage error reports.
+func filterOf(written []string) []string {
+	out := make([]string, 0, len(written))
+	for _, value := range written {
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// admits reports whether a value satisfies a filter: any of its values, or
+// anything at all when it was not given.
+//
+// Any rather than every, because a thing declares one kind, one type, one frame
+// and belongs to one family, so a filter holding two of them which demanded both
+// would answer nothing by construction. That is the rule "dfcad check" has
+// always had for its own filters, and it is one rule for every command rather
+// than a decision each of them makes: within one flag any of its values, across
+// flags every flag given.
+func admits(filter []string, value string) bool {
+	return len(filter) == 0 || slices.Contains(filter, value)
 }
 
 // carries reports whether a live claim is written on the subject under the
@@ -749,24 +803,33 @@ func checkFamily(family string) error {
 	return UnknownFamilyError{Family: family, Known: families}
 }
 
-// checkFilters reports the first filter which names something the model has no
-// such thing of.
+// checkFilters reports the first filter value which names something the model
+// has no such thing of: the types, then the kinds, then the frames, each in the
+// order they were written.
 //
 // An unknown name is a usage error rather than an empty list. A type nobody
 // declared and a type nothing instantiates are different answers, and a caller
 // which cannot tell them apart retries a misspelling forever; the same is true
-// of a kind and of a frame.
-func checkFilters(registry *dfcad.Registry, declaredType, kind, frame string) error {
-	if declaredType != "" && !registry.Declares(dfcad.SortType, declaredType) {
-		return UnknownTypeError{Type: declaredType, Declared: registry.Names(dfcad.SortType)}
+// of a kind and of a frame. It is just as true of the second value of a repeated
+// filter as of the first: answering with the values which did name something
+// would be a narrower listing that reads as the one which was asked for.
+func checkFilters(registry *dfcad.Registry, types, kinds, frames []string) error {
+	for _, declaredType := range types {
+		if !registry.Declares(dfcad.SortType, declaredType) {
+			return UnknownTypeError{Type: declaredType, Declared: registry.Names(dfcad.SortType)}
+		}
 	}
 
-	if kind != "" && !slices.Contains(dfcad.Kinds(), dfcad.Kind(kind)) {
-		return UnknownKindError{Kind: kind, Known: dfcad.Kinds()}
+	for _, kind := range kinds {
+		if !slices.Contains(dfcad.Kinds(), dfcad.Kind(kind)) {
+			return UnknownKindError{Kind: kind, Known: dfcad.Kinds()}
+		}
 	}
 
-	if frame != "" && !registry.Declares(dfcad.SortFrame, frame) {
-		return UnknownFrameError{Frame: frame, Declared: registry.Names(dfcad.SortFrame)}
+	for _, frame := range frames {
+		if !registry.Declares(dfcad.SortFrame, frame) {
+			return UnknownFrameError{Frame: frame, Declared: registry.Names(dfcad.SortFrame)}
+		}
 	}
 
 	return nil
@@ -779,18 +842,18 @@ func checkFilters(registry *dfcad.Registry, declaredType, kind, frame string) er
 // is the one filter which is on by default: a listing is a question about what
 // is there, and a node which stopped existing answers it only when it was asked
 // for.
-func matches(node *dfcad.SemanticNode, kind, frame string, retired bool) bool {
+func matches(node *dfcad.SemanticNode, kinds, frames []string, retired bool) bool {
 	if node.Retired() && !retired {
 		return false
 	}
 
-	if kind != "" && node.Kind() != dfcad.Kind(kind) {
+	if !admits(kinds, string(node.Kind())) {
 		return false
 	}
 
-	if frame != "" {
+	if len(frames) > 0 {
 		id, ok := node.Frame()
-		if !ok || string(id) != frame {
+		if !ok || !admits(frames, string(id)) {
 			return false
 		}
 	}

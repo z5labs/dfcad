@@ -75,12 +75,16 @@ lookable-at rather than a property of the design.
 
 Flags:
 
-	--type <name>       only pairs whose subject declares this type
-	--predicate <name>  only pairs written under this predicate
+	--type <name>       only pairs whose subject declares this type; repeat
+	--predicate <name>  only pairs written under this predicate; repeat
 	--ambiguous         only pairs resolution cannot decide
 	--resolved          only pairs resolution can
 
-Filters combine: a pair is listed when it satisfies every filter given.
+Filters combine: a pair is listed when it satisfies every filter given, and a
+filter written more than once is satisfied by any of its values. A type or a
+predicate the registry does not declare is a usage error naming it, whichever of
+the values it is.
+
 --ambiguous and --resolved are refused together rather than answered with
 nothing: a pair with more than one live claim either has a best one or does not,
 so no pair is both and an empty answer would read as a model without conflicts.
@@ -275,8 +279,11 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
-	declaredType := flags.String("type", "", "")
-	predicate := flags.String("predicate", "", "")
+	typeFlag := &repeated{}
+	predicateFlag := &repeated{}
+
+	flags.Var(typeFlag, "type", "")
+	flags.Var(predicateFlag, "predicate", "")
 	ambiguous := flags.Bool("ambiguous", false, "")
 	resolved := flags.Bool("resolved", false, "")
 
@@ -298,14 +305,16 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	if *ambiguous && *resolved {
 		return usageError(cmd, ErrAmbiguousAndResolved, stderr, false)
 	}
-	if *declaredType != "" && !registry.Declares(dfcad.SortType, *declaredType) {
-		return usageError(cmd, UnknownTypeError{
-			Type:     *declaredType,
-			Declared: registry.Names(dfcad.SortType),
-		}, stderr, false)
-	}
-	if err := checkPredicate(registry, *predicate); err != nil {
+
+	types, predicates := filterOf(*typeFlag), filterOf(*predicateFlag)
+
+	if err := checkFilters(registry, types, nil, nil); err != nil {
 		return usageError(cmd, err, stderr, false)
+	}
+	for _, asked := range predicates {
+		if err := checkPredicate(registry, asked); err != nil {
+			return usageError(cmd, err, stderr, false)
+		}
 	}
 
 	result := conflictsResult{
@@ -321,10 +330,10 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	for conflict := range graph.Claims().Conflicts() {
 		entry := disagreement(graph, conflict)
 
-		if *predicate != "" && entry.Predicate != *predicate {
+		if !admits(predicates, entry.Predicate) {
 			continue
 		}
-		if *declaredType != "" && entry.Type != *declaredType {
+		if !admits(types, entry.Type) {
 			continue
 		}
 		if *ambiguous && !entry.Ambiguous {

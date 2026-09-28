@@ -9,7 +9,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"maps"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -878,7 +880,7 @@ func TestUnknownTypeErrorSaysWhereToLook(t *testing.T) {
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			err := checkFilters(registryOf(t, testCase.declared), "Nope", "", "")
+			err := checkFilters(registryOf(t, testCase.declared), []string{"Nope"}, nil, nil)
 
 			var unknown UnknownTypeError
 			require.ErrorAs(t, err, &unknown)
@@ -918,11 +920,11 @@ func TestCheckFiltersAcceptsWhatTheModelDeclares(t *testing.T) {
 
 	registry := graph.Registry()
 
-	assert.NoError(t, checkFilters(registry, "", "", ""))
-	assert.NoError(t, checkFilters(registry, "MeetingRoom", "Space", "frame:building"))
+	assert.NoError(t, checkFilters(registry, nil, nil, nil))
+	assert.NoError(t, checkFilters(registry, []string{"MeetingRoom"}, []string{"Space"}, []string{"frame:building"}))
 
 	for _, kind := range dfcad.Kinds() {
-		assert.NoError(t, checkFilters(registry, "", string(kind), ""))
+		assert.NoError(t, checkFilters(registry, nil, []string{string(kind)}, nil))
 	}
 }
 
@@ -1505,4 +1507,381 @@ func TestCheckFamilyAcceptsTheThreeFamilies(t *testing.T) {
 	require.ErrorAs(t, checkFamily("node"), &unknown)
 	assert.Equal(t, "node", unknown.Family)
 	assert.Equal(t, []string{"vertex", "edge", "loop"}, unknown.Known)
+}
+
+// answerOf runs one invocation against the model at root and decodes the whole
+// of what it wrote on stdout, failing the test on anything but a success.
+//
+// It decodes into generic JSON rather than into the command's result type, so
+// that what is compared is the contract a caller reads — every field, including
+// one a result type might forget to decode — rather than a Go value.
+func answerOf(t *testing.T, root string, args ...string) map[string]any {
+	t.Helper()
+
+	invocation := append([]string{args[0], "--root", root}, args[1:]...)
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(invocation, &stdout, &stderr), stderr.String())
+
+	return listed[map[string]any](t, stdout.String())
+}
+
+// entriesOf is the list an answer carries its things in.
+func entriesOf(t *testing.T, answer map[string]any, field string) []any {
+	t.Helper()
+
+	entries, ok := answer[field].([]any)
+	require.True(t, ok, "the answer carries no %q list: %v", field, answer)
+
+	return entries
+}
+
+// byID orders two entries of an answer by their ids, which is the documented
+// order of both listings.
+func byID(a, b map[string]any) int {
+	return strings.Compare(a["id"].(string), b["id"].(string))
+}
+
+// assertFilterIsAUnion asserts the property a repeated filter promises: the
+// answer to a filter written with two values is the union of the answers to each
+// value on its own, each thing once, in the command's documented order; and a
+// value written twice answers exactly as it does written once.
+//
+// Everything outside the list is compared as well, so a repeat which moved the
+// envelope, the load state or the predicate a listing reports is caught here too.
+func assertFilterIsAUnion(
+	t *testing.T,
+	root string,
+	args []string,
+	flag, first, second, field string,
+	order func(a, b map[string]any) int,
+) {
+	t.Helper()
+
+	with := func(values ...string) []string {
+		out := slices.Clone(args)
+		for _, value := range values {
+			out = append(out, "--"+flag, value)
+		}
+		return out
+	}
+
+	alone := answerOf(t, root, with(first)...)
+	other := answerOf(t, root, with(second)...)
+
+	var union []any
+	for _, entry := range append(entriesOf(t, alone, field), entriesOf(t, other, field)...) {
+		seen := slices.ContainsFunc(union, func(held any) bool { return reflect.DeepEqual(held, entry) })
+		if !seen {
+			union = append(union, entry)
+		}
+	}
+	require.NotEmpty(t, union, "neither value selects anything, so the property says nothing")
+
+	slices.SortStableFunc(union, func(a, b any) int {
+		return order(a.(map[string]any), b.(map[string]any))
+	})
+
+	expected := maps.Clone(alone)
+	expected[field] = union
+
+	assert.Equal(t, expected, answerOf(t, root, with(first, second)...), "--%s %s --%s %s", flag, first, flag, second)
+	assert.Equal(t, alone, answerOf(t, root, with(first, first)...), "a value written twice")
+}
+
+// geometryFamilies is a model whose one predicate is carried by a node of each
+// of the three families.
+//
+// It is a fixture of its own because neither of the others has one: the budget
+// model records positions on vertices and nothing else, and the listing fixture
+// writes each of its predicates on one family. A filter whose two values each
+// select something needs two families carrying the same predicate.
+func geometryFamilies() map[string]string {
+	return map[string]string{
+		"registry.dfc": `(project
+  (label "Family fixture")
+  (globalid-namespace "https://example.org/models/family"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+
+(frame frame:site-grid (label "Site survey grid") (unit m))
+
+(predicate datum
+  (unit m)
+  (shape scalar)
+  (description "A level recorded against whatever it is written on."))
+`,
+		"entities/geometry.dfc": `(vertex geom:V-01
+  (frame frame:site-grid)
+  (datum
+    (value 1.0 m)
+    (source "Level survey LS-01")
+    (method method:level)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(vertex geom:V-02 (frame frame:site-grid))
+
+(vertex geom:V-03 (frame frame:site-grid))
+
+(edge geom:E-01 (frame frame:site-grid) (vertices geom:V-01 geom:V-02)
+  (datum
+    (value 2.0 m)
+    (source "Level survey LS-01")
+    (method method:level)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+
+(edge geom:E-02 (frame frame:site-grid) (vertices geom:V-02 geom:V-03))
+
+(edge geom:E-03 (frame frame:site-grid) (vertices geom:V-03 geom:V-01))
+
+(loop geom:L-01
+  (frame frame:site-grid)
+  (edges geom:E-01 geom:E-02 geom:E-03)
+  (datum
+    (value 3.0 m)
+    (source "Level survey LS-01")
+    (method method:level)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-02")))
+`,
+	}
+}
+
+// TestListFiltersWrittenTwiceAnswerTheUnion is the property every repeatable
+// filter of the two listings promises: within one flag a thing is listed when
+// it satisfies any of the values.
+func TestListFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
+	budget, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name   string
+		root   func(t *testing.T) string
+		args   []string
+		flag   string
+		first  string
+		second string
+		field  string
+	}{
+		{
+			name:   "lists the instances of either kind",
+			root:   func(*testing.T) string { return budget },
+			args:   []string{"list-instances"},
+			flag:   "kind",
+			first:  "Space",
+			second: "Element",
+			field:  "instances",
+		},
+		{
+			name:   "lists the instances of either kind beside a type",
+			root:   func(*testing.T) string { return budget },
+			args:   []string{"list-instances", "Office"},
+			flag:   "kind",
+			first:  "Space",
+			second: "Element",
+			field:  "instances",
+		},
+		{
+			// The budget model is expressed in one frame, so the frames come
+			// from the listing fixture, which draws on two.
+			name:   "lists the instances in either frame",
+			root:   func(t *testing.T) string { return tree(t, model()) },
+			args:   []string{"list-instances"},
+			flag:   "frame",
+			first:  "frame:building",
+			second: "frame:site-grid",
+			field:  "instances",
+		},
+		{
+			// The case the story reproduced: before a repeat was honoured this
+			// kept only the edges, which carry no position here, and answered
+			// nothing at all.
+			name:   "lists the nodes of either family where only one carries the predicate",
+			root:   func(*testing.T) string { return budget },
+			args:   []string{"list-geometry", "--predicate", "position"},
+			flag:   "family",
+			first:  "vertex",
+			second: "edge",
+			field:  "nodes",
+		},
+		{
+			name:   "lists the nodes of either family where both carry the predicate",
+			root:   func(t *testing.T) string { return tree(t, geometryFamilies()) },
+			args:   []string{"list-geometry", "--predicate", "datum"},
+			flag:   "family",
+			first:  "vertex",
+			second: "loop",
+			field:  "nodes",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertFilterIsAUnion(t, testCase.root(t), testCase.args,
+				testCase.flag, testCase.first, testCase.second, testCase.field, byID)
+		})
+	}
+}
+
+// TestRunListRejectsAnUndeclaredValueOfARepeatedFilter is the usage error a
+// repeated filter raises: its first value nobody declared, reported exactly as
+// it would be written alone, whichever position it was written in.
+func TestRunListRejectsAnUndeclaredValueOfARepeatedFilter(t *testing.T) {
+	declaredFrames := []string{"frame:building", "frame:site-grid"}
+
+	testCases := []struct {
+		name           string
+		args           []string
+		expectedStderr string
+	}{
+		{
+			name: "names a second kind which is not one of the seven",
+			args: []string{"list-instances", "--kind", "Space", "--kind", "Room"},
+			expectedStderr: "dfcad list-instances: " +
+				UnknownKindError{Kind: "Room", Known: dfcad.Kinds()}.Error() + "\n",
+		},
+		{
+			name: "names the first of two kinds which are not",
+			args: []string{"list-instances", "--kind", "Rooms", "--kind", "Room"},
+			expectedStderr: "dfcad list-instances: " +
+				UnknownKindError{Kind: "Rooms", Known: dfcad.Kinds()}.Error() + "\n",
+		},
+		{
+			name: "names a second frame the registry does not declare",
+			args: []string{"list-instances", "--frame", "frame:building", "--frame", "frame:annex"},
+			expectedStderr: "dfcad list-instances: " +
+				UnknownFrameError{Frame: "frame:annex", Declared: declaredFrames}.Error() + "\n",
+		},
+		{
+			name: "names a second family which is none of the three",
+			args: []string{"list-geometry", "--predicate", "position", "--family", "vertex", "--family", "vertices"},
+			expectedStderr: "dfcad list-geometry: " +
+				UnknownFamilyError{Family: "vertices", Known: families}.Error() + "\n",
+		},
+		{
+			name: "refuses a predicate written twice",
+			args: []string{"list-geometry", "--predicate", "position", "--predicate", "setback"},
+			expectedStderr: "dfcad list-geometry: " +
+				RepeatedFlagError{Flag: flagPredicate, Values: []string{"position", "setback"}}.Error() + "\n",
+		},
+		{
+			name: "refuses a predicate written twice with one value",
+			args: []string{"list-geometry", "--predicate", "position", "--predicate", "position"},
+			expectedStderr: "dfcad list-geometry: " +
+				RepeatedFlagError{Flag: flagPredicate, Values: []string{"position", "position"}}.Error() + "\n",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, model()))
+
+			var stdout, stderr bytes.Buffer
+
+			require.Equal(t, exitUsage, run(testCase.args, &stdout, &stderr))
+
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, testCase.expectedStderr, stderr.String())
+		})
+	}
+}
+
+// TestCheckFiltersReportsTheFirstUndeclaredValue asserts the error a repeated
+// filter's validation returns, by type and by field: the values are checked in
+// the order they were written, and the first which names nothing is the one
+// reported.
+func TestCheckFiltersReportsTheFirstUndeclaredValue(t *testing.T) {
+	dir := tree(t, model())
+
+	graph, diags := dfcad.LoadGraph(dir)
+	require.Empty(t, diags)
+
+	registry := graph.Registry()
+
+	t.Run("reports an undeclared second type", func(t *testing.T) {
+		var unknown UnknownTypeError
+		require.ErrorAs(t, checkFilters(registry, []string{"MeetingRoom", "BoardRoom"}, nil, nil), &unknown)
+		assert.Equal(t, "BoardRoom", unknown.Type)
+	})
+
+	t.Run("reports an undeclared second kind", func(t *testing.T) {
+		var unknown UnknownKindError
+		require.ErrorAs(t, checkFilters(registry, nil, []string{"Space", "Room", "Rooms"}, nil), &unknown)
+		assert.Equal(t, "Room", unknown.Kind)
+		assert.Equal(t, dfcad.Kinds(), unknown.Known)
+	})
+
+	t.Run("reports an undeclared second frame", func(t *testing.T) {
+		var unknown UnknownFrameError
+		require.ErrorAs(t, checkFilters(registry, nil, nil, []string{"frame:building", "frame:annex"}), &unknown)
+		assert.Equal(t, "frame:annex", unknown.Frame)
+		assert.Equal(t, []string{"frame:building", "frame:site-grid"}, unknown.Declared)
+	})
+}
+
+// TestOnceGivesTheOneValueWritten is the other half of the refusal below: a
+// flag written at most once answers exactly as a plain string flag did.
+func TestOnceGivesTheOneValueWritten(t *testing.T) {
+	testCases := []struct {
+		name     string
+		written  repeated
+		expected string
+	}{
+		{
+			name:     "gives nothing for a flag which was not written",
+			written:  nil,
+			expected: "",
+		},
+		{
+			name:     "gives the one value written",
+			written:  repeated{"position"},
+			expected: "position",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got, err := once(flagPredicate, testCase.written)
+
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestOnceRefusesASecondValue asserts the error a flag which is written once
+// returns when it was written more, by type and by field.
+func TestOnceRefusesASecondValue(t *testing.T) {
+	testCases := []struct {
+		name    string
+		written repeated
+	}{
+		{
+			name:    "holds two values in the order they were written",
+			written: repeated{"position", "area"},
+		},
+		{
+			name:    "refuses one value written twice",
+			written: repeated{"position", "position"},
+		},
+		{
+			name:    "holds every value however many were written",
+			written: repeated{"position", "area", "setback"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, err := once(flagPredicate, testCase.written)
+
+			var repeatedFlag RepeatedFlagError
+			require.ErrorAs(t, err, &repeatedFlag)
+			assert.Equal(t, flagPredicate, repeatedFlag.Flag)
+			assert.Equal(t, []string(testCase.written), repeatedFlag.Values)
+		})
+	}
 }

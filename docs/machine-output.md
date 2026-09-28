@@ -173,6 +173,38 @@ because it reads no model: `dfcad version --entity-format 1.2` exits `0` where t
 loads a 1.2 model and `2` where it does not. [`versioning.md`](./versioning.md) is what a
 consumer does with that.
 
+## Filters
+
+A **filter** narrows what a command reports. It never changes the shape of the answer, and it
+never changes what a command reads to reach it: `traverse --kind Space` still walks through
+the building and the storey between a site and its rooms, and reports only the rooms.
+
+Every filter follows one rule, whichever command takes it:
+
+- **Across flags, all of them.** A thing is reported when it satisfies every filter given.
+  `list-instances --kind Space --frame frame:building` lists the spaces expressed in that
+  frame, and nothing else.
+- **Within one flag, any of its values.** A filter written more than once is satisfied by any
+  of its values. `list-instances --kind Space --kind Element` lists the spaces and the
+  elements. A thing which satisfies two values of one filter is reported once, in the
+  command's documented order, and a value written twice is the same as writing it once.
+- **A value nobody declared is a usage error naming it** — exit `3`, with nothing on stdout —
+  whichever of a filter's values it is: the first such value, in the order they were written,
+  is the one reported. A type the registry does not declare, a kind which is not one of the
+  seven, a family which is not one of the three: each is the error it is when written alone.
+  A filter that silently dropped a value nobody declared would answer a narrower question
+  than the one asked, and the answer would read as complete.
+
+A flag which names **what an answer is of** is not a filter, and takes one value.
+`list-geometry --predicate` is one: the listing is of the nodes carrying that predicate, and
+the answer reports it as a single `predicate` string. Written more than once it is a **usage
+error** rather than a union of two listings, because a union would need each node to say
+which predicate put it there.
+
+The filters are marked **Repeatable** in the flag table of each command which takes them:
+[`list-instances`](#list-instances), [`list-geometry`](#list-geometry),
+[`traverse`](#traverse), [`conflicts`](#conflicts) and [`check`](#check).
+
 ## Payloads
 
 ### `version`
@@ -335,12 +367,14 @@ two filters.
 
 | Flag | Meaning |
 |------|---------|
-| `--kind <kind>` | Only instances that declare this kind. |
-| `--frame <id>` | Only instances that declare this coordinate frame. |
+| `--kind <kind>` | Only instances that declare this kind. [Repeatable](#filters). |
+| `--frame <id>` | Only instances that declare this coordinate frame. [Repeatable](#filters). |
 | `--retired` | Include the instances that stopped existing. |
 
-Filters combine: an instance is listed when it satisfies every filter given. Flags and the
-type argument may be written in either order.
+Filters combine: an instance is listed when it satisfies every filter given, and a filter
+written more than once is satisfied by any of its values; see [Filters](#filters). Flags and
+the type argument may be written in either order. The type argument is not a filter: a
+second one is a usage error.
 
 A **retired** node is left out unless it is asked for. It is still a node the model holds —
 its id is never issued again, and a reference to it still resolves — but a listing is a
@@ -403,8 +437,8 @@ It takes no arguments and two flags.
 
 | Flag | Meaning |
 |------|---------|
-| `--predicate <name>` | The predicate the node carries. **Required**, and it has no default. |
-| `--family <family>` | Only nodes of this family: `vertex`, `edge` or `loop`. |
+| `--predicate <name>` | The predicate the node carries. **Required**, and it has no default. Written once: it names what is listed rather than filtering it. |
+| `--family <family>` | Only nodes of this family: `vertex`, `edge` or `loop`. [Repeatable](#filters). |
 
 It is the geometric sibling of `list-instances`, which reports the `type` and the `kind` a
 vertex, an edge and a loop do not have. Without it a geometric node is reachable only by its
@@ -491,6 +525,12 @@ A predicate the registry does not declare is a **usage error** naming it and lis
 predicates that are declared, and so is a `--family` which is none of the three. A predicate
 nobody declared and a predicate nothing is written under are different answers, and a caller
 that cannot tell them apart retries a misspelling forever.
+
+`--predicate` written more than once is a **usage error** too — exit `3`, with nothing on
+stdout — naming the flag and every value it was given, in the order they were written. It is
+not a filter: it names what the listing is of, and `predicate` in the answer is one string.
+A caller wanting two predicates' nodes asks twice, and gets two answers each saying which
+question it answers. See [Filters](#filters).
 
 ### `get`
 
@@ -786,8 +826,8 @@ takes a query, an id, and three flags.
 | Flag | Meaning |
 |------|---------|
 | `--depth <n>` | How many steps of the relation to follow: a count of one or more, or `all` to follow it as far as the model goes. Default `1`. |
-| `--kind <kind>` | Only results that declare this kind. |
-| `--type <name>` | Only results that declare this type. |
+| `--kind <kind>` | Only results that declare this kind. [Repeatable](#filters). |
+| `--type <name>` | Only results that declare this type. [Repeatable](#filters). |
 
 | Query | Answers | Relation |
 |-------|---------|----------|
@@ -859,7 +899,9 @@ the model terminates and something reachable two ways is one result rather than 
 
 A filter narrows what is reported and never what is walked. Every room three levels below a
 site is still reached with `--kind Space`, though the building and the storey between them
-are not reported.
+are not reported. Filters combine: a result is reported when it satisfies every filter given,
+and a filter written more than once is satisfied by any of its values; see
+[Filters](#filters).
 
 Results come back in depth order and then in id order, so two runs over one model diff
 against each other and moving a node between files does not move the answer. The edges of a
@@ -867,8 +909,8 @@ boundary are the exception: they come back in the order the loops traverse them,
 that order is the ring itself and is data rather than presentation.
 
 `boundary-of` is one step from the thing it bounds, and its results are edges. `--depth`,
-`--kind` and `--type` written beside it are **usage errors** rather than flags that are
-quietly ignored, for the reason `--deprecated` beside `--claims resolved` is: a flag that is
+`--kind` and `--type` written beside it are **usage errors**, however many times they are
+written, rather than flags that are quietly ignored, for the reason `--deprecated` beside `--claims resolved` is: a flag that is
 silently dropped answers a different question from the one that was asked.
 
 An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
@@ -966,12 +1008,13 @@ filters.
 
 | Flag | Meaning |
 |------|---------|
-| `--type <name>` | Only pairs whose subject declares this type. |
-| `--predicate <name>` | Only pairs written under this predicate. |
+| `--type <name>` | Only pairs whose subject declares this type. [Repeatable](#filters). |
+| `--predicate <name>` | Only pairs written under this predicate. [Repeatable](#filters). |
 | `--ambiguous` | Only pairs resolution cannot decide. |
 | `--resolved` | Only pairs resolution can. |
 
-Filters combine: a pair is listed when it satisfies every filter given. `--ambiguous` and
+Filters combine: a pair is listed when it satisfies every filter given, and a filter written
+more than once is satisfied by any of its values; see [Filters](#filters). `--ambiguous` and
 `--resolved` together are a **usage error** rather than an empty register — a pair carrying
 more than one live claim either has a best claim or does not, so no pair is both, and an
 empty answer would read as a model nobody disagrees about.
@@ -1605,9 +1648,9 @@ four flags.
 
 | Flag | Meaning |
 |------|---------|
-| `--subject <id>` | Only the rules bound to this thing. Repeatable. |
-| `--type <name>` | Only the rules bound to instances of this type. Repeatable. |
-| `--check <name>` | Only the rules naming this check. Repeatable. |
+| `--subject <id>` | Only the rules bound to this thing. [Repeatable](#filters). |
+| `--type <name>` | Only the rules bound to instances of this type. [Repeatable](#filters). |
+| `--check <name>` | Only the rules naming this check. [Repeatable](#filters). |
 | `--list` | Write what would run, and run none of it. |
 
 Filters combine: a rule is selected when it satisfies every filter given, and a filter written

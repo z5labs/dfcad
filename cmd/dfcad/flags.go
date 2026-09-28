@@ -77,6 +77,47 @@ func (e RootError) Unwrap() error {
 	return e.Cause
 }
 
+// RepeatedFlagError is a flag written more than once which is written once.
+//
+// It is refused rather than answered with its last value, because the flag
+// package keeps the last and says nothing: a run which dropped a value the
+// caller wrote would come back complete-looking and answering a narrower
+// question than the one asked. A flag which names what an answer is of —
+// list-geometry's --predicate — is not a filter, so a second value is not a
+// union but a second question, and a question the answer has no room for.
+type RepeatedFlagError struct {
+	// Flag is the flag, without its dashes.
+	Flag string
+
+	// Values is every value it was given, in the order they were written.
+	Values []string
+}
+
+// Error implements [error].
+func (e RepeatedFlagError) Error() string {
+	return fmt.Sprintf(
+		"--%s written %d times (%s): it names what is listed rather than narrowing it, so it is written once",
+		e.Flag, len(e.Values), strings.Join(e.Values, ", "),
+	)
+}
+
+// once is the one value a flag which is written once was given, or the empty
+// string where it was not written at all.
+//
+// It takes the flag as a [repeated] rather than as a string so that a second
+// value reaches it at all: the flag package's own string flag keeps the last
+// value written and drops the rest without a word.
+func once(flag string, written repeated) (string, error) {
+	switch len(written) {
+	case 0:
+		return "", nil
+	case 1:
+		return written[0], nil
+	default:
+		return "", RepeatedFlagError{Flag: flag, Values: slices.Clone([]string(written))}
+	}
+}
+
 // InvalidVerbosityError is a --verbose that names no level.
 type InvalidVerbosityError struct {
 	// Value is what was given.

@@ -7,7 +7,9 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -561,6 +563,30 @@ func TestTraverseUsageErrors(t *testing.T) {
 			args:     []string{"traverse", queryBoundaryOf, "--type", "MeetingRoom", "site:S-101"},
 			expected: "--type says nothing under boundary-of",
 		},
+		{
+			name:     "reports a second kind which is none of the kinds",
+			args:     []string{"traverse", queryContains, "--kind", "Space", "--kind", "Storeys", "site:S-01"},
+			expected: "Storeys",
+		},
+		{
+			name:     "reports a second type the registry does not declare",
+			args:     []string{"traverse", queryContains, "--type", "MeetingRoom", "--type", "BoardRoom", "site:S-01"},
+			expected: "BoardRoom",
+		},
+		{
+			name: "refuses a kind written twice beside the query whose results declare none",
+			args: []string{
+				"traverse", queryBoundaryOf, "--kind", "Space", "--kind", "Element", "site:S-101",
+			},
+			expected: "--kind says nothing under boundary-of",
+		},
+		{
+			name: "refuses a type written twice beside the query whose results declare none",
+			args: []string{
+				"traverse", queryBoundaryOf, "--type", "MeetingRoom", "--type", "MeetingRoom", "site:S-101",
+			},
+			expected: "--type says nothing under boundary-of",
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -838,4 +864,57 @@ func TestTraverseRendersForAPerson(t *testing.T) {
 	// also asked to render its result.
 	assert.NotContains(t, humanReport, "site:S-101a: containment at 4")
 	assert.Contains(t, bothReport, "site:S-101a: containment at 4")
+}
+
+// traversalOrder is the documented order of a traversal which groups: depth
+// first, and then id.
+func traversalOrder(a, b map[string]any) int {
+	return cmp.Or(cmp.Compare(a["depth"].(float64), b["depth"].(float64)), byID(a, b))
+}
+
+// TestTraverseFiltersWrittenTwiceAnswerTheUnion is the property both of
+// traverse's filters promise: within one flag a result is reported when it
+// satisfies any of the values, and the walk beneath them is the same walk.
+func TestTraverseFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
+	budget, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name   string
+		args   []string
+		flag   string
+		first  string
+		second string
+	}{
+		{
+			name:   "reports the results of either kind",
+			args:   []string{"traverse", queryContains, "site:B-01", "--depth", "all"},
+			flag:   flagKind,
+			first:  "Space",
+			second: "Element",
+		},
+		{
+			// The case the story reproduced: before a repeat was honoured this
+			// answered with the meeting rooms alone.
+			name:   "reports the results of either type",
+			args:   []string{"traverse", queryContains, "site:B-01", "--depth", "all"},
+			flag:   flagType,
+			first:  "Office",
+			second: "MeetingRoom",
+		},
+		{
+			name:   "reports the results of either type one step from a storey",
+			args:   []string{"traverse", queryContains, "site:L-01"},
+			flag:   flagType,
+			first:  "Office",
+			second: "Corridor",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assertFilterIsAUnion(t, budget, testCase.args,
+				testCase.flag, testCase.first, testCase.second, "results", traversalOrder)
+		})
+	}
 }
