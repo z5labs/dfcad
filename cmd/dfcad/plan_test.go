@@ -1753,8 +1753,11 @@ func TestRunPlanAlwaysWritesWithin(t *testing.T) {
 
 // filtered is the ordinary invocation of the storey narrowed by the filters
 // given, which are written ahead of the subject exactly as a caller writes them.
+//
+// The arguments are a new slice rather than an append to filters, so that a
+// caller passing a slice it goes on using is never written into.
 func filtered(id string, filters ...string) []string {
-	return append(filters, wholeStorey(id)...)
+	return slices.Concat(filters, wholeStorey(id))
 }
 
 func TestRunPlanReportsOnlyWhatItsFiltersSelect(t *testing.T) {
