@@ -61,6 +61,14 @@ there. Under a predicate the registry declares strict the same ambiguity exits 5
 instead: strictness is the author's assertion that for this quantity no answer
 is safer than an arbitrary one.
 
+The id may be a frame the registry declares as well as a node, a vertex, an
+edge or a loop. A claim written on a frame — its ground-to-grid factor, the
+transform which places it in its parent — is resolved as a claim written on
+anything else is, with the same answer and the same exit codes. A plain value
+written on a frame is not a claim, so it is not resolved: "dfcad get" reports
+it. --frame is refused beside a frame: a frame is not expressed in another, and
+its relation to one is its transform.
+
 A thing nothing is claimed about under the predicate exits 1 and says so. It is
 not the same answer as an id nothing holds, which is a usage error naming the
 nearest id there is: a thing which is not there and a thing nobody has measured
@@ -388,7 +396,10 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 	registry := graph.Registry()
 
-	entity, held := graph.Entity(subject)
+	// The id is looked up as get looks one up, so that a frame — which the
+	// graph does not hold, and on which a claim is written as on anything
+	// else — is a subject here exactly as it is there.
+	found, held := retrieve(graph, subject)
 	if !held {
 		nearest, _ := graph.Nearest(subject)
 		return usageError(cmd, UnknownIDError{ID: string(subject), Nearest: string(nearest)}, stderr, false)
@@ -405,7 +416,7 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	// which turned out to be ambiguous. A flag which is silently ignored is
 	// worse than one which does not exist.
 	if *into != "" {
-		if err := expressible(registry, entity, predicate, *into); err != nil {
+		if err := expressible(registry, found, predicate, *into); err != nil {
 			return usageError(cmd, err, stderr, false)
 		}
 	}
@@ -443,7 +454,7 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 			result.Claim = &entry
 		}
 
-		if written, ok := frameOf(entity); ok && value.Shape == string(dfcad.ShapeCoordinate) {
+		if written, ok := frameOf(found.entity); ok && value.Shape == string(dfcad.ShapeCoordinate) {
 			result.Frame = string(written)
 		}
 	}
@@ -461,7 +472,7 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 
 	if *into != "" && answerable {
-		if code := express(&result, graph, entity, answer, *into, cmd, stderr); code != exitSuccess {
+		if code := express(&result, graph, found.entity, answer, *into, cmd, stderr); code != exitSuccess {
 			return code
 		}
 	}
@@ -539,9 +550,16 @@ func codeFor(result resolveResult) int {
 // Every one of them is a property of the vocabulary and of the thing asked
 // about rather than of the claim which won, which is what lets them be answered
 // before anything is resolved.
-func expressible(registry *dfcad.Registry, entity dfcad.Entity, predicate, into string) error {
+func expressible(registry *dfcad.Registry, subject held, predicate, into string) error {
 	if !registry.Declares(dfcad.SortFrame, into) {
 		return UnknownFrameError{Frame: into, Declared: registry.Names(dfcad.SortFrame)}
+	}
+
+	// A frame is not expressed in a frame: its relation to another is its
+	// transform, which is itself a claim written on it. That holds whatever the
+	// predicate, so it is said before anything about the predicate is.
+	if subject.frame != nil {
+		return UnframedSubjectError{Subject: string(subject.id()), Frame: into}
 	}
 
 	// A frame relates positions to positions. How much floor a space has is the
@@ -555,8 +573,8 @@ func expressible(registry *dfcad.Registry, entity dfcad.Entity, predicate, into 
 		}
 	}
 
-	if _, ok := frameOf(entity); !ok {
-		return UnframedSubjectError{Subject: string(entity.ID()), Frame: into}
+	if _, ok := frameOf(subject.entity); !ok {
+		return UnframedSubjectError{Subject: string(subject.id()), Frame: into}
 	}
 
 	return nil

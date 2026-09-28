@@ -2241,3 +2241,233 @@ func TestRunClaimsUnrankableOverAModelWhereEveryClaimStatesAnAccuracy(t *testing
 		})
 	}
 }
+
+// claimedFramesRegistry is a registry whose claims are written on frames, for
+// claims and resolve asked about a frame id. It is modelled on
+// testdata/checks/grid/affirmed: a root frame carrying its coordinate reference
+// system as a plain value and its ground-to-grid factor as claims, and a child
+// fitted to it by a transform.
+//
+// The root carries more than the fixture does. Two live factors say the same
+// thing with nothing rankable behind either, so resolution cannot choose, and a
+// third is deprecated in favour of one of them. Two convergence angles under a
+// strict predicate are equally accurate and equally recent, which is the
+// ambiguity strictness turns into a failure.
+const claimedFramesRegistry = `(project
+  (label "Claims on frames fixture")
+  (globalid-namespace "https://example.org/models/claims-frames"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The projected coordinate reference system the chain is rooted at."))
+
+(predicate ground-to-grid
+  (shape scalar)
+  (description "The combined ground-to-grid factor."))
+
+(predicate grid-convergence
+  (unit deg)
+  (shape scalar)
+  (strict #t)
+  (description "The angle between grid north and true north at the site."))
+
+(frame frame:survey-grid
+  (label "Site survey grid")
+  (unit m)
+  (crs "EPSG:25831")
+  (ground-to-grid
+    (id survey:C-0009)
+    (value 1.0002)
+    (source "Desk estimate, Acme Surveys")
+    (method method:assumed)
+    (date "2025-11-02")
+    (rank deprecated)
+    (superseded-by survey:C-0010))
+  (ground-to-grid
+    (id survey:C-0010)
+    (value 1.0)
+    (source "Georeferencing report GR-2026-002, Acme Surveys, section 4: combined factor")
+    (method method:gnss-static)
+    (date "2026-02-11"))
+  (ground-to-grid
+    (id survey:C-0011)
+    (value 0.99992)
+    (source "Georeferencing report GR-2026-002, Acme Surveys, section 5: check factor")
+    (method method:gnss-static)
+    (date "2026-02-11"))
+  (grid-convergence
+    (id survey:G-0001)
+    (value 0.52 deg)
+    (source "Georeferencing report GR-2026-002, Acme Surveys, section 6")
+    (method method:gnss-static)
+    (accuracy (independent 0.01 deg))
+    (date "2026-02-11"))
+  (grid-convergence
+    (id survey:G-0002)
+    (value 0.55 deg)
+    (source "Convergence check CC-2026-001, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.01 deg))
+    (date "2026-02-11")))
+
+(frame frame:site
+  (label "Site setting-out grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 100.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-11")))
+`
+
+// claimedFrames is the frame fixture claims and resolve are asked about.
+func claimedFrames() map[string]string {
+	return map[string]string{"registry.dfc": claimedFramesRegistry}
+}
+
+func TestRunClaimsAnswersAFrameID(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "lists the one claim written on a frame",
+			args:     []string{"frame:site"},
+			expected: []string{"frame:site frame-transform survey:C-0001 current"},
+		},
+		{
+			name: "lists every claim on a frame, live and retracted, each with its resolution",
+			args: []string{"frame:survey-grid"},
+			expected: []string{
+				"frame:survey-grid grid-convergence survey:G-0001 tied",
+				"frame:survey-grid grid-convergence survey:G-0002 tied",
+				"frame:survey-grid ground-to-grid survey:C-0009 retracted",
+				"frame:survey-grid ground-to-grid survey:C-0010 tied",
+				"frame:survey-grid ground-to-grid survey:C-0011 tied",
+			},
+		},
+		{
+			name: "narrows a frame to the predicate written after its id",
+			args: []string{"frame:survey-grid", "ground-to-grid"},
+			expected: []string{
+				"frame:survey-grid ground-to-grid survey:C-0009 retracted",
+				"frame:survey-grid ground-to-grid survey:C-0010 tied",
+				"frame:survey-grid ground-to-grid survey:C-0011 tied",
+			},
+		},
+		{
+			name: "marks the claims under a strict predicate on a frame tied as under any other",
+			args: []string{"frame:survey-grid", "--predicate", "grid-convergence"},
+			expected: []string{
+				"frame:survey-grid grid-convergence survey:G-0001 tied",
+				"frame:survey-grid grid-convergence survey:G-0002 tied",
+			},
+		},
+		{
+			name:     "reports no plain value written on a frame, which is not a claim",
+			args:     []string{"frame:survey-grid", "crs"},
+			expected: []string{},
+		},
+		{
+			name:     "lists nothing on a frame for a family filter the frame is not",
+			args:     []string{"frame:site", "--family", familyNode},
+			expected: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := invoke(t, exitSuccess, tree(t, claimedFrames()), append([]string{"claims"}, testCase.args...)...)
+			assert.Empty(t, stderr)
+
+			result := listed[claimsResult](t, stdout)
+			assert.Equal(t, outputVersion, result.Version)
+			assert.Equal(t, testCase.args[0], result.Subject)
+			assert.Equal(t, testCase.expected, rows(result.Claims))
+
+			for _, row := range result.Claims {
+				assert.Equal(t, familyFrame, row.Family)
+				assert.Empty(t, row.Type, "a frame declares no type")
+				assert.False(t, row.Retired)
+			}
+		})
+	}
+}
+
+// TestRunClaimsMarksARetractedClaimOnAFrameWithWhatReplacedIt checks the one
+// field a retraction adds, on a frame as on a node: the claim which replaced it,
+// so the retraction is followable forward without a second call.
+func TestRunClaimsMarksARetractedClaimOnAFrameWithWhatReplacedIt(t *testing.T) {
+	stdout, _ := invoke(t, exitSuccess, tree(t, claimedFrames()), "claims", "frame:survey-grid", "ground-to-grid")
+
+	claims := listed[claimsResult](t, stdout).Claims
+	require.NotEmpty(t, claims)
+
+	retracted := claims[0]
+	assert.Equal(t, "survey:C-0009", retracted.ID)
+	assert.Equal(t, resolutionRetracted, retracted.Resolution)
+	assert.Equal(t, "deprecated", retracted.Rank)
+	assert.Equal(t, "survey:C-0010", retracted.SupersededBy)
+}
+
+// TestRunClaimsOfAFrameIsWhatGetReportsOfIt is the property which holds of a
+// node: the live claims the audit view lists on a subject are exactly the claims
+// get reports on it, in the same order, and the audit view adds only what
+// resolution made of each.
+func TestRunClaimsOfAFrameIsWhatGetReportsOfIt(t *testing.T) {
+	testCases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{name: "holds of every frame of the claims fixture", files: claimedFrames()},
+		{name: "holds of every frame of the get fixture", files: framesTree()},
+		{name: "holds of every frame of the bare fixture", files: map[string]string{"registry.dfc": bareFrameRegistry}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, testCase.files)
+
+			registry, diags := dfcad.LoadRegistry(root)
+			require.Empty(t, diags)
+
+			var declared int
+			for frame := range registry.Frames() {
+				declared++
+
+				audit, _ := invoke(t, exitSuccess, root, "claims", string(frame.ID))
+				retrieval, _ := invoke(t, exitSuccess, root, "get", string(frame.ID), "--claims", claimsFull)
+
+				live := make([]claimEntry, 0)
+				for _, row := range listed[claimsResult](t, audit).Claims {
+					if row.Resolution == resolutionRetracted {
+						continue
+					}
+					row.Resolution = ""
+					live = append(live, row.claimEntry)
+				}
+
+				assert.Equal(t, listed[getResult](t, retrieval).Entity.Claims, live, frame.ID)
+			}
+			require.Positive(t, declared, "the fixture declares a frame")
+		})
+	}
+}

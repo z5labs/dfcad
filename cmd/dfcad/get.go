@@ -733,9 +733,11 @@ type retrieval struct {
 // declares. Exactly one of the two is set.
 //
 // A frame is not an entity of the graph, and is not made one here: the lookup
-// every other command makes — traverse, check --subject, plan, the writers —
-// is Graph.Entity, and a frame reaching any of them would be a family none of
-// them was written for. It is get alone which answers one.
+// the commands which walk or write the graph make — traverse, check --subject,
+// plan, the writers — is Graph.Entity, and a frame reaching any of them would
+// be a family none of them was written for. The commands which read what is
+// written on a thing — get, claims and resolve — make this one, so that a
+// frame is a subject to all three alike.
 type held struct {
 	entity dfcad.Entity
 	frame  *dfcad.Frame
