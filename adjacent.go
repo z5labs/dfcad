@@ -80,6 +80,11 @@ func (a Adjacent) From() *SemanticNode { return a.from }
 // one with the smallest id — never the one read first — so which edges these are
 // is decided by the model and not by which file each region is written in, and
 // can be checked against the boundaries of the regions a step nearer.
+//
+// A walk given an [AdjacencyFilter] names only the edges it crossed: the shared
+// edges the filter allows, and not the wall beside the doorway. Under a filter
+// this is the answer to "how do you get between them", and [Boundaries.Classify]
+// is still where "what separates them" is asked.
 func (a Adjacent) Via() []*Edge { return slices.Clone(a.via) }
 
 // Depth returns how many steps of adjacency the traversal took to reach it: one
@@ -132,7 +137,92 @@ func (b *Boundaries) Adjacent(region *SemanticNode) iter.Seq[Adjacent] {
 // order to make it so: expanding in the order regions were discovered would
 // choose by the order the files were read in, and moving a region between
 // files would change the answer.
+//
+// Every shared edge may be crossed. It is [Boundaries.AdjacentWalk] with an empty
+// [AdjacencyFilter], and answers exactly what that does.
 func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjacent] {
+	return b.AdjacentWalk(region, depth, AdjacencyFilter{})
+}
+
+// AdjacencyFilter says which shared edges an adjacency walk may cross.
+//
+// It follows the convention [RuleFilter] sets: a filter left empty matches
+// everything, so the zero value crosses every shared edge and a walk with it is
+// [Boundaries.AdjacentTo]. Within one field the values are alternatives. The two
+// fields are alternatives too, because each names a way through: an edge may be
+// crossed when either of them allows it.
+//
+// Which types count as a way through is the caller's to say. The engine compares
+// the names it is handed with the types the backing elements declare and attaches
+// no meaning to either
+// ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)): a
+// Doorway is a passage in one registry and a word nobody declared in another.
+type AdjacencyFilter struct {
+	// CrossVirtual allows an edge nothing backs to be crossed. The open line
+	// between a foyer and a dining room is written that way, and so is a doorway
+	// in a model which draws its openings as nothing at all.
+	CrossVirtual bool
+
+	// CrossTypes are the types a backing element may declare for the edge it
+	// backs to be crossed. At least one of an edge's backing elements has to
+	// declare one of them, rather than all of them, because a doorway is cut into
+	// a wall and the model says so by backing one edge with both.
+	CrossTypes []string
+}
+
+// empty reports whether the filter was given nothing, in which case every edge
+// may be crossed.
+func (f AdjacencyFilter) empty() bool {
+	return !f.CrossVirtual && len(f.CrossTypes) == 0
+}
+
+// Matches reports whether the edge may be crossed.
+//
+// An empty filter matches every edge. Otherwise an edge matches in two cases: it
+// is virtual and [AdjacencyFilter.CrossVirtual] is set, or at least one of the
+// elements backing it declares a type in [AdjacencyFilter.CrossTypes]. An
+// unresolved edge — one which names backing elements the model does not hold —
+// never matches a filter which was given, because nothing is known about what
+// realises it: calling it virtual would be the silent reclassification its load
+// error exists to prevent, and it has no element to declare a type.
+func (f AdjacencyFilter) Matches(edge BoundaryEdge) bool {
+	if f.empty() {
+		return true
+	}
+
+	switch edge.Classification() {
+	case ClassificationVirtual:
+		return f.CrossVirtual
+	case ClassificationPhysical:
+		for _, element := range edge.backing {
+			if slices.Contains(f.CrossTypes, element.Type()) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// AdjacentWalk iterates the regions reachable from region across the shared
+// edges filter allows to be crossed, stopping after depth steps.
+//
+// It is [Boundaries.AdjacentTo] with a say in which edges are ways through. A
+// walk from a corridor with a filter naming only doorways reaches the rooms whose
+// doors open onto it and not the riser behind a solid wall, which is the question
+// "what can somebody reach from here" rather than "what is next to what". A
+// region which shares only edges the filter refuses is not reached across them,
+// though it may still be reached another way.
+//
+// [Adjacent.Via] names only the edges crossed — the crossable edges the result
+// shares with the region it was reached from — so under a filter it answers "how
+// do you get between them" rather than "what separates them". [Adjacent.From] is
+// the region one step nearer with the smallest id among those which share a
+// crossable edge with it.
+//
+// An empty filter crosses every shared edge and answers exactly what
+// [Boundaries.AdjacentTo] does.
+func (b *Boundaries) AdjacentWalk(region *SemanticNode, depth int, filter AdjacencyFilter) iter.Seq[Adjacent] {
 	return func(yield func(Adjacent) bool) {
 		if region == nil || depth == 0 {
 			return
@@ -153,7 +243,7 @@ func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjace
 			var next []*SemanticNode
 
 			for _, from := range frontier {
-				for _, neighbour := range index.neighbours(from) {
+				for _, neighbour := range index.neighbours(from, filter) {
 					if seen[neighbour.node] {
 						continue
 					}
@@ -174,18 +264,23 @@ func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjace
 	}
 }
 
-// neighbours is the regions which share an edge with region, in the order its
-// boundary reaches them and each with every edge it shares.
+// neighbours is the regions which share an edge filter allows to be crossed with
+// region, in the order its boundary reaches them and each with every such edge
+// it shares.
 //
 // It is a slice rather than a sequence because a neighbour reached through two
 // edges is one neighbour: the edges have to be collected before the first result
 // can be complete, and a caller handed the same region twice would be counting
 // the ways it got there rather than what is next to it.
-func (b *Boundaries) neighbours(region *SemanticNode) []Adjacent {
+func (b *Boundaries) neighbours(region *SemanticNode, filter AdjacencyFilter) []Adjacent {
 	var out []Adjacent
 
 	at := make(map[*SemanticNode]int)
 	for _, edge := range b.edges[region] {
+		if !filter.Matches(BoundaryEdge{edge: edge, backing: b.backing[edge]}) {
+			continue
+		}
+
 		for _, neighbour := range b.regions[edge] {
 			if neighbour == region {
 				continue

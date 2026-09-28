@@ -1236,6 +1236,35 @@ func ExampleBoundaries_Adjacent() {
 	// site:S-C is 2 away
 }
 
+// ExampleBoundaries_AdjacentWalk answers what can be reached from a room rather
+// than what is next to it, by saying which shared edges are ways through.
+func ExampleBoundaries_AdjacentWalk() {
+	root := "testdata/boundary/adjacent"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	room, _ := nodes.Node("site:S-A")
+
+	// This model draws its doorway as an edge nothing backs, so crossing
+	// virtual edges is crossing the doorway. The corridor is reached through it
+	// and not through the partition beside it, and room C, behind a partition
+	// with no opening, is not reached at all.
+	passable := dfcad.AdjacencyFilter{CrossVirtual: true}
+
+	for neighbour := range boundaries.AdjacentWalk(room, dfcad.Unbounded, passable) {
+		for _, edge := range neighbour.Via() {
+			fmt.Printf("%s reaches %s through %s\n", neighbour.From().ID(), neighbour.Node().ID(), edge.ID())
+		}
+	}
+
+	// Output:
+	// site:S-A reaches site:S-B through geom:E-03
+}
+
 // ExampleNodes_DescendantsTo walks containment with a bound, which is what makes
 // a traversal of a model nobody has read an answer of a known size.
 func ExampleNodes_DescendantsTo() {

@@ -865,6 +865,38 @@ func TestTraverseUsageErrors(t *testing.T) {
 			expected: "--kind says nothing under boundary-of",
 		},
 		{
+			name:     "reports a type to cross which the registry does not declare",
+			args:     []string{"traverse", queryAdjacentTo, "--cross-type", "Doorway", "site:S-101"},
+			expected: "unknown type Doorway",
+		},
+		{
+			name:     "reports a type to cross which nothing of can back an edge",
+			args:     []string{"traverse", queryAdjacentTo, "--cross-type", "MeetingRoom", "site:S-101"},
+			expected: "type MeetingRoom cannot back an edge",
+		},
+		{
+			name: "reports a second type to cross which nothing of can back an edge",
+			args: []string{
+				"traverse", queryAdjacentTo, "--cross-type", "Partition", "--cross-type", "Corridor", "site:S-101",
+			},
+			expected: "type Corridor cannot back an edge",
+		},
+		{
+			name:     "refuses crossing virtual edges beside a query which crosses no edges",
+			args:     []string{"traverse", queryContains, "--cross-virtual", "site:S-01"},
+			expected: "--cross-virtual says nothing under contains",
+		},
+		{
+			name:     "refuses a type to cross beside a query which crosses no edges",
+			args:     []string{"traverse", queryBoundaryOf, "--cross-type", "Partition", "site:S-101"},
+			expected: "--cross-type says nothing under boundary-of",
+		},
+		{
+			name:     "refuses a type to cross beside the query which walks from a shape",
+			args:     []string{"traverse", queryBounds, "--cross-type", "Partition", "geom:E-02"},
+			expected: "--cross-type says nothing under bounds",
+		},
+		{
 			name: "refuses a type written twice beside the query whose results declare none",
 			args: []string{
 				"traverse", queryBoundaryOf, "--type", "MeetingRoom", "--type", "MeetingRoom", "site:S-101",
@@ -1037,10 +1069,36 @@ func TestFlagNotApplicableCarriesWhichAndWhy(t *testing.T) {
 		assert.NoError(t, checkFlags(bounds, map[string]bool{flagKind: true, flagType: true}))
 	})
 
+	t.Run("refuses a crossing filter beside every query but adjacent-to, saying why", func(t *testing.T) {
+		for _, asked := range queries {
+			for _, crossing := range []string{flagCrossVirtual, flagCrossType} {
+				err := checkFlags(asked, map[string]bool{crossing: true})
+
+				if asked.name == queryAdjacentTo {
+					assert.NoError(t, err, "%s honours --%s", asked.name, crossing)
+					continue
+				}
+
+				var refused FlagNotApplicableError
+				require.ErrorAs(t, err, &refused, "%s refuses --%s", asked.name, crossing)
+				assert.Equal(t, crossing, refused.Flag)
+				assert.Equal(t, asked.name, refused.Query)
+				assert.Equal(t, crossingNotApplicable, refused.Reason)
+			}
+		}
+	})
+
 	// Every query refuses exactly what it declares it cannot honour, and none of
 	// them is refused when it was not written.
 	for _, asked := range queries {
 		assert.NoError(t, checkFlags(asked, nil))
+
+		if asked.crosses {
+			assert.NoError(t, checkFlags(asked, map[string]bool{flagCrossVirtual: true, flagCrossType: true}), asked.name)
+		} else {
+			assert.Error(t, checkFlags(asked, map[string]bool{flagCrossVirtual: true}), asked.name)
+			assert.Error(t, checkFlags(asked, map[string]bool{flagCrossType: true}), asked.name)
+		}
 
 		if asked.deep {
 			assert.NoError(t, checkFlags(asked, map[string]bool{flagDepth: true}), asked.name)
@@ -1788,4 +1846,253 @@ func TestTraverseAdjacentToFromIsAShortestPath(t *testing.T) {
 	}
 
 	require.NotZero(t, walked, "the budget model has spaces")
+}
+
+// adjacentRoot is the three rooms in a row the library's adjacency tests walk:
+// room A and the corridor share a partition and a doorway drawn as an edge
+// nothing backs, and the corridor and room C share only a partition.
+const adjacentRoot = "../../testdata/boundary/adjacent"
+
+// crossing is one adjacent result flattened to what a crossing filter decides:
+// what was reached, from where, and across which edges.
+type crossing struct {
+	id    string
+	depth int
+	from  string
+	via   []string
+}
+
+// walkedAcross flattens a traversal to what a crossing filter decides.
+func walkedAcross(result traverseResult) []crossing {
+	out := make([]crossing, 0, len(result.Results))
+	for _, entry := range result.Results {
+		out = append(out, crossing{id: entry.ID, depth: entry.Depth, from: entry.From, via: entry.Via})
+	}
+	return out
+}
+
+// TestTraverseAdjacentToCrossesOnlyWhatItIsTold walks adjacency across only the
+// edges the flags allow, over the budget model and over the row of three rooms.
+//
+// The budget model's central corridor has a door into two spaces and solid
+// partitions onto every other, so a walk through doorways reaches two spaces
+// where a walk across every shared edge reaches all twelve.
+func TestTraverseAdjacentToCrossesOnlyWhatItIsTold(t *testing.T) {
+	testCases := []struct {
+		name     string
+		root     string
+		args     []string
+		expected []crossing
+	}{
+		{
+			name: "reaches only the spaces a door opens into from the corridor",
+			root: budgetRoot,
+			args: []string{"--depth", depthAll, "--cross-type", "Doorway", "site:S-113"},
+			expected: []crossing{
+				{id: "site:S-102", depth: 1, from: "site:S-113", via: []string{"geom:E-1-B2-C2"}},
+				{id: "site:S-111", depth: 1, from: "site:S-113", via: []string{"geom:E-1-E3-F3"}},
+			},
+		},
+		{
+			name:     "reaches nothing from the corridor across edges nothing backs, since it shares none",
+			root:     budgetRoot,
+			args:     []string{"--depth", depthAll, "--cross-virtual", "site:S-113"},
+			expected: []crossing{},
+		},
+		{
+			// The riser is a shaft with no doorway: two exterior edges and two
+			// partitions.
+			name:     "reaches nothing from a shaft with no doorway",
+			root:     budgetRoot,
+			args:     []string{"--depth", depthAll, "--cross-type", "Doorway", "site:S-101"},
+			expected: []crossing{},
+		},
+		{
+			name:     "crosses the doorway from room A and not the partitions",
+			root:     adjacentRoot,
+			args:     []string{"--depth", depthAll, "--cross-virtual", "site:S-A"},
+			expected: []crossing{{id: "site:S-B", depth: 1, from: "site:S-A", via: []string{"geom:E-03"}}},
+		},
+		{
+			name: "crosses the partitions from room A and not the doorway",
+			root: adjacentRoot,
+			args: []string{"--depth", depthAll, "--cross-type", "Partition", "site:S-A"},
+			expected: []crossing{
+				{id: "site:S-B", depth: 1, from: "site:S-A", via: []string{"geom:E-02"}},
+				{id: "site:S-C", depth: 2, from: "site:S-B", via: []string{"geom:E-07"}},
+			},
+		},
+		{
+			name: "crosses what either flag allows when both are written",
+			root: adjacentRoot,
+			args: []string{"--depth", depthAll, "--cross-virtual", "--cross-type", "Partition", "site:S-A"},
+			expected: []crossing{
+				{id: "site:S-B", depth: 1, from: "site:S-A", via: []string{"geom:E-02", "geom:E-03"}},
+				{id: "site:S-C", depth: 2, from: "site:S-B", via: []string{"geom:E-07"}},
+			},
+		},
+		{
+			// A filter narrows what is reported and never what is walked, crossing
+			// filter or not: room C is still reached through the corridor.
+			name:     "still narrows only what is reported by type",
+			root:     adjacentRoot,
+			args:     []string{"--depth", depthAll, "--cross-type", "Partition", "--type", "MeetingRoom", "site:S-A"},
+			expected: []crossing{{id: "site:S-C", depth: 2, from: "site:S-B", via: []string{"geom:E-07"}}},
+		},
+		{
+			name:     "still narrows only what is reported by kind",
+			root:     adjacentRoot,
+			args:     []string{"--depth", depthAll, "--cross-type", "Partition", "--kind", "Element", "site:S-A"},
+			expected: []crossing{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root, err := filepath.Abs(testCase.root)
+			require.NoError(t, err)
+
+			result := walkIn(t, root, append([]string{queryAdjacentTo}, testCase.args...)...)
+
+			assert.Equal(t, testCase.expected, walkedAcross(result))
+		})
+	}
+}
+
+// TestTraverseAdjacentToWithNoCrossingFilterIsUnchanged is its own function
+// because it compares against the library rather than against literals: with
+// neither flag written, every shared edge may be crossed, and the answer is the
+// one AdjacentTo gives — the riser still reached from the corridor across a solid
+// partition.
+func TestTraverseAdjacentToWithNoCrossingFilterIsUnchanged(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	result := walkIn(t, root, queryAdjacentTo, "--depth", depthAll, "site:S-113")
+
+	assert.Len(t, result.Results, 12, "the corridor reaches every other space on its level")
+
+	riser, ok := resultFor(result, "site:S-101")
+	require.True(t, ok)
+	assert.Equal(t, []string{"geom:E-1-A2-B2"}, riser.Via)
+
+	graph, _ := dfcad.LoadGraph(root)
+	require.NotNil(t, graph)
+
+	corridor, ok := graph.Nodes().Node("site:S-113")
+	require.True(t, ok)
+
+	var expected []crossing
+	for neighbour := range graph.AdjacentTo(corridor, dfcad.Unbounded) {
+		var via []string
+		for _, edge := range neighbour.Via() {
+			via = append(via, string(edge.ID()))
+		}
+		expected = append(expected, crossing{
+			id: string(neighbour.Node().ID()), depth: neighbour.Depth(), from: string(neighbour.From().ID()), via: via,
+		})
+	}
+	slices.SortStableFunc(expected, func(a, b crossing) int {
+		return cmp.Or(cmp.Compare(a.depth, b.depth), strings.Compare(a.id, b.id))
+	})
+
+	assert.Equal(t, expected, walkedAcross(result))
+}
+
+// TestTraverseCrossTypeIsTheTypeGetGives is the property --cross-type promises,
+// over every space of the budget model walked with no bound: every edge a result
+// was reached through is backed by an element whose type, as get reports it, is
+// one of the types named.
+func TestTraverseCrossTypeIsTheTypeGetGives(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	graph, _ := dfcad.LoadGraph(root)
+	require.NotNil(t, graph)
+
+	backingOf := make(map[string][]string)
+	for node := range graph.OfKind(dfcad.KindSpace) {
+		for _, entry := range walkIn(t, root, queryBoundaryOf, string(node.ID())).Results {
+			backingOf[entry.ID] = entry.Backing
+		}
+	}
+
+	typeOf := make(map[string]string)
+	typed := func(t *testing.T, element string) string {
+		t.Helper()
+
+		if declared, ok := typeOf[element]; ok {
+			return declared
+		}
+		typeOf[element] = fetched(t, root, element).Type
+		return typeOf[element]
+	}
+
+	filters := [][]string{{"Doorway"}, {"Partition"}, {"Doorway", "Partition"}}
+
+	crossedEdges := 0
+	for node := range graph.OfKind(dfcad.KindSpace) {
+		for _, named := range filters {
+			args := []string{queryAdjacentTo, "--depth", depthAll}
+			for _, name := range named {
+				args = append(args, "--cross-type", name)
+			}
+			args = append(args, string(node.ID()))
+
+			for _, entry := range walkIn(t, root, args...).Results {
+				require.NotEmpty(t, entry.Via, "%s was reached across something", entry.ID)
+
+				for _, edge := range entry.Via {
+					crossedEdges++
+
+					assert.True(t, slices.ContainsFunc(backingOf[edge], func(element string) bool {
+						return slices.Contains(named, typed(t, element))
+					}), "%s, crossed from %s to %s, is backed by one of %v", edge, entry.From, entry.ID, named)
+				}
+			}
+		}
+	}
+
+	require.NotZero(t, crossedEdges, "the budget model has edges to cross")
+}
+
+// TestCrossTypeRefusalsCarryWhatWasWrong checks the two refusals of a
+// --cross-type in a form a caller can branch on rather than only in a message.
+func TestCrossTypeRefusalsCarryWhatWasWrong(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	graph, _ := dfcad.LoadGraph(root)
+	require.NotNil(t, graph)
+
+	t.Run("names a type the registry does not declare", func(t *testing.T) {
+		var unknown UnknownTypeError
+		require.ErrorAs(t, checkCrossTypes(graph.Registry(), []string{"Doorway", "Window"}), &unknown)
+		assert.Equal(t, "Window", unknown.Type)
+		assert.Contains(t, unknown.Declared, "Doorway")
+	})
+
+	t.Run("names a type which cannot back an edge, and the kinds it permits", func(t *testing.T) {
+		var refused NotABackingTypeError
+		require.ErrorAs(t, checkCrossTypes(graph.Registry(), []string{"Doorway", "ServiceRiser"}), &refused)
+		assert.Equal(t, "ServiceRiser", refused.Type)
+		assert.Equal(t, []dfcad.Kind{dfcad.KindSpace}, refused.Kinds)
+	})
+
+	t.Run("accepts types which back edges", func(t *testing.T) {
+		assert.NoError(t, checkCrossTypes(graph.Registry(), []string{"Doorway", "Partition"}))
+		assert.NoError(t, checkCrossTypes(graph.Registry(), nil))
+	})
+
+	t.Run("exits as a usage error with nothing on stdout", func(t *testing.T) {
+		for _, name := range []string{"Window", "ServiceRiser"} {
+			t.Chdir(root)
+
+			var stdout, stderr bytes.Buffer
+			assert.Equal(t, exitUsage, run(
+				[]string{"traverse", queryAdjacentTo, "--cross-type", name, "site:S-113"}, &stdout, &stderr,
+			), name)
+			assert.Empty(t, stdout.String(), name)
+		}
+	})
 }
