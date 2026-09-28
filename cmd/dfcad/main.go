@@ -87,6 +87,12 @@ var commands = []command{
 		run:     runListTolerances,
 	},
 	{
+		name:    "list-frames",
+		summary: "list the coordinate frames the registry declares",
+		usage:   listFramesUsage,
+		run:     runListFrames,
+	},
+	{
 		name:    "list-instances",
 		summary: "list the instances of a type",
 		usage:   listInstancesUsage,
