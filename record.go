@@ -794,8 +794,12 @@ func (c *Claims) Live(subject ID, predicate string) []*Claim {
 type NoticeKind string
 
 const (
-	// NoticeUnrankable is a claim written with no accuracy, which can never win
-	// resolution.
+	// NoticeUnrankable is a claim whose accuracy does not combine into one
+	// figure, which can never win resolution. That is a claim written with no
+	// accuracy, or one whose accuracy terms are not all in one unit — nothing
+	// converts between them, and [Notice.Units] names the units it found. A
+	// term the arithmetic cannot use at all, such as a magnitude which is not a
+	// finite number, stops the combination too, and [Notice.Unusable] says so.
 	NoticeUnrankable NoticeKind = "unrankable"
 
 	// NoticeConflict is a claim written on a subject and predicate the model
@@ -837,12 +841,40 @@ type Notice struct {
 	// Competing are the claims already written on the same subject and
 	// predicate, and are empty for a notice which is not about a disagreement.
 	Competing []*Claim
+
+	// Units are the units an unrankable claim's accuracy terms were written in,
+	// each once, in the order written. They are empty unless the notice is about
+	// a claim whose accuracy is unrankable because its terms are in more than
+	// one unit.
+	Units []Unit
+
+	// Unusable reports that an unrankable claim did write accuracy terms, and
+	// that one of them is not a term the arithmetic can use — a magnitude which
+	// is not a finite number. It is false for every other notice, including one
+	// about a claim which wrote no accuracy at all.
+	Unusable bool
 }
 
 // Message is the notice as a sentence, for a person reading a terminal.
 func (n Notice) Message() string {
 	switch n.Kind {
 	case NoticeUnrankable:
+		if len(n.Units) > 0 {
+			return fmt.Sprintf(
+				"the %s of %s carries an accuracy in %s, and nothing converts between them, so it is unrankable: "+
+					"it can never win resolution until its terms are in one unit",
+				n.Predicate, n.Subject, join(spellings(n.Units), "and"),
+			)
+		}
+
+		if n.Unusable {
+			return fmt.Sprintf(
+				"the %s of %s carries an accuracy term which is not a finite number, so its accuracy combines "+
+					"to no figure and it is unrankable: it can never win resolution",
+				n.Predicate, n.Subject,
+			)
+		}
+
 		return fmt.Sprintf(
 			"the %s of %s carries no accuracy, so it is unrankable: it can never win resolution, "+
 				"and it is not given a default",
@@ -911,13 +943,8 @@ func (tx *Tx) AddClaim(spec ClaimSpec) (ID, []Notice, error) {
 
 	var notices []Notice
 
-	if len(spec.Accuracy) == 0 {
-		notices = append(notices, Notice{
-			Kind:      NoticeUnrankable,
-			Subject:   spec.Subject,
-			Predicate: spec.Predicate,
-			Claim:     spec.ID,
-		})
+	if notice, ok := unrankable(spec); ok {
+		notices = append(notices, notice)
 	}
 
 	if len(competing) > 0 {
@@ -1233,16 +1260,52 @@ func (tx *Tx) Supersede(spec ClaimSpec) (ID, []Notice, error) {
 	}
 
 	var notices []Notice
-	if len(spec.Accuracy) == 0 {
-		notices = append(notices, Notice{
-			Kind:      NoticeUnrankable,
-			Subject:   spec.Subject,
-			Predicate: spec.Predicate,
-			Claim:     spec.ID,
-		})
+	if notice, ok := unrankable(spec); ok {
+		notices = append(notices, notice)
 	}
 
 	return spec.ID, notices, nil
+}
+
+// unrankable is the notice a written claim is owed when it can never win
+// resolution, and whether it is owed one.
+//
+// The test is the one resolution applies — whether the claim's accuracy
+// combines into one figure — asked of the claim the spec describes rather than
+// of whether the spec carries any terms. An accuracy whose terms are in more
+// than one unit carries terms and still combines to nothing, and calling it
+// rankable would be telling the author the opposite of what resolution does
+// with it.
+func unrankable(spec ClaimSpec) (Notice, bool) {
+	claim := &Claim{
+		id:          spec.ID,
+		subject:     spec.Subject,
+		predicate:   spec.Predicate,
+		accuracy:    Accuracy{Terms: spec.Accuracy},
+		hasAccuracy: len(spec.Accuracy) > 0,
+	}
+
+	_, err := claim.combined()
+	if err == nil {
+		return Notice{}, false
+	}
+
+	notice := Notice{
+		Kind:      NoticeUnrankable,
+		Subject:   spec.Subject,
+		Predicate: spec.Predicate,
+		Claim:     spec.ID,
+	}
+
+	var mixed MixedUnitsError
+	switch {
+	case errors.As(err, &mixed):
+		notice.Units = mixed.Units
+	case claim.hasAccuracy:
+		notice.Unusable = true
+	}
+
+	return notice, true
 }
 
 // MintClaimID is the id a claim of this subject and predicate is given when

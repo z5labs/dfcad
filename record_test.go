@@ -6,6 +6,7 @@
 package dfcad
 
 import (
+	"math"
 	"slices"
 	"strings"
 	"testing"
@@ -263,6 +264,8 @@ func TestTxAddClaimReportsWhatItLeftBehind(t *testing.T) {
 		spec              func(spec ClaimSpec) ClaimSpec
 		expectedKinds     []NoticeKind
 		expectedCompeting int
+		expectedUnits     []Unit
+		expectedUnusable  bool
 	}{
 		{
 			name:          "says nothing about a rankable claim on a subject nothing states",
@@ -276,6 +279,28 @@ func TestTxAddClaimReportsWhatItLeftBehind(t *testing.T) {
 				return spec
 			},
 			expectedKinds: []NoticeKind{NoticeUnrankable},
+		},
+		{
+			name: "reports a claim whose terms are in more than one unit as unrankable, naming the units",
+			spec: func(spec ClaimSpec) ClaimSpec {
+				spec.Accuracy = []AccuracyTerm{
+					{Kind: TermIndependent, Magnitude: 500, Unit: "cm2"},
+					{Kind: TermIndependent, Magnitude: 0.05, Unit: "m2"},
+					{Kind: TermIndependent, Magnitude: 400, Unit: "cm2"},
+				}
+				return spec
+			},
+			expectedKinds: []NoticeKind{NoticeUnrankable},
+			expectedUnits: []Unit{"cm2", "m2"},
+		},
+		{
+			name: "reports a claim with a term it cannot use as unrankable, and says that is why",
+			spec: func(spec ClaimSpec) ClaimSpec {
+				spec.Accuracy = []AccuracyTerm{{Kind: TermIndependent, Magnitude: math.Inf(1), Unit: "m2"}}
+				return spec
+			},
+			expectedKinds:    []NoticeKind{NoticeUnrankable},
+			expectedUnusable: true,
 		},
 		{
 			name: "reports a second claim on one pair as a conflict, naming the competing claim",
@@ -318,8 +343,12 @@ func TestTxAddClaimReportsWhatItLeftBehind(t *testing.T) {
 			assert.Equal(t, testCase.expectedKinds, sliceOrNil(kinds))
 
 			for _, notice := range notices {
-				if notice.Kind == NoticeConflict {
+				switch notice.Kind {
+				case NoticeConflict:
 					assert.Len(t, notice.Competing, testCase.expectedCompeting)
+				case NoticeUnrankable:
+					assert.Equal(t, testCase.expectedUnits, notice.Units)
+					assert.Equal(t, testCase.expectedUnusable, notice.Unusable)
 				}
 			}
 		})

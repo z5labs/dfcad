@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/z5labs/dfcad"
@@ -63,7 +64,9 @@ naming what would have been permitted.
 Leaving out the accuracy is permitted and is reported: the claim loads and is
 unrankable, which means it can never win resolution and is not given a default.
 That is the one escape hatch the rule keeps open, and taking it deliberately is
-different from taking it by accident.
+different from taking it by accident. An accuracy whose terms are not all in
+one unit is reported the same way: nothing converts between them, so they never
+combine into a figure to rank by, and the claim is unrankable too.
 
 Adding a second claim under a subject and predicate which already carries one
 succeeds and reports that it created a conflict, naming what it now competes
@@ -248,9 +251,10 @@ type claimResult struct {
 	Replaced string `json:"replaced,omitempty"`
 
 	// Rankable reports whether the claim which was written can take part in
-	// resolution, which is whether it carries an accuracy. It is reported
-	// whether or not it does, because a claim which can never win is a property
-	// of the claim rather than an absence.
+	// resolution, which is whether its accuracy combines into one figure: it
+	// carries one, and its terms are all in one unit. It is reported whether or
+	// not it does, because a claim which can never win is a property of the
+	// claim rather than an absence.
 	Rankable bool `json:"rankable"`
 
 	// Notices are what the change has to say about the model it produced, in
@@ -319,7 +323,7 @@ func runAddClaim(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 
 	return finish(cmd, tx, globals, stdout, stderr, claimResult{
 		Claim:    string(id),
-		Rankable: len(spec.Accuracy) > 0,
+		Rankable: rankable(notices),
 		Notices:  noticed(notices),
 	}, notices)
 }
@@ -366,7 +370,7 @@ func runSupersede(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	return finish(cmd, tx, globals, stdout, stderr, claimResult{
 		Claim:    string(id),
 		Replaced: replaced,
-		Rankable: len(spec.Accuracy) > 0,
+		Rankable: rankable(notices),
 		Notices:  noticed(notices),
 	}, notices)
 }
@@ -552,6 +556,21 @@ func finish(
 	result.envelope, result.Commit = newEnvelope(cmd.name), out
 
 	return emitted(cmd, stdout, stderr, result)
+}
+
+// rankable reports whether the claim a change wrote can take part in
+// resolution.
+//
+// The engine has already decided it: an unrankable notice is the claim's
+// accuracy failing to combine into one figure, by the arithmetic resolution
+// ranks with. Reading the answer off the notices rather than off whether any
+// terms were written is what keeps "rankable" and the notice beside it from
+// contradicting each other — a claim with a millimetre term beside a metre one
+// carries terms and still ranks nowhere.
+func rankable(notices []dfcad.Notice) bool {
+	return !slices.ContainsFunc(notices, func(notice dfcad.Notice) bool {
+		return notice.Kind == dfcad.NoticeUnrankable
+	})
 }
 
 // noticed is each notice as the result object carries it.

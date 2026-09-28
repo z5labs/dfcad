@@ -378,6 +378,180 @@ func TestLoadClaimsWithoutAnAccuracy(t *testing.T) {
 	assert.True(t, beside[0].Rankable())
 }
 
+// mixedUnitsRegistry declares what the mixed-units tests write: one linear
+// predicate, and a namespace a systematic term can be shared with.
+const mixedUnitsRegistry = `(project (globalid-namespace "https://example.org/models/mixed-units"))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace control (description "Survey control points."))
+(namespace survey (description "Claims read off a survey."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate width (unit m) (shape scalar) (description "How wide the thing is."))
+`
+
+// mixedUnitsNode writes one node carrying one width claim, whose accuracy is
+// the terms given — or none at all, where terms is empty.
+func mixedUnitsNode(id, claimID, terms string) string {
+	var out strings.Builder
+	out.WriteString("(node " + id + "\n  (kind Space)\n  (type MeetingRoom)\n  (geometry area)\n  (width\n")
+	if claimID != "" {
+		out.WriteString("    (id " + claimID + ")\n")
+	}
+	out.WriteString("    (value 5.001 m)\n    (source \"Resurvey RS-2026-011\")\n    (method method:total-station)\n")
+	if terms != "" {
+		out.WriteString("    (accuracy " + terms + ")\n")
+	}
+	out.WriteString("    (date \"2026-09-28\")))\n")
+	return out.String()
+}
+
+// TestLoadClaimsWarnsOfAnAccuracyInMixedUnits checks the one diagnostic a claim
+// whose accuracy terms are not all in one unit carries: a warning, since the
+// claim is valid and loads, saying why it will never be ranked.
+func TestLoadClaimsWarnsOfAnAccuracyInMixedUnits(t *testing.T) {
+	const terms = "(independent 1.0 mm) (systematic 0.001 m control:CP-3) (independent 2.0 mm)"
+
+	written := mixedUnitsNode("site:CDU-01", "survey:C-0309", terms)
+	claims, diags := loadClaimModel(t, mixedUnitsRegistry, written)
+
+	require.Len(t, diags, 1)
+	warning := diags[0]
+
+	t.Run("is a warning, and the claim still loads", func(t *testing.T) {
+		assert.Equal(t, SeverityWarning, warning.Severity)
+
+		claim, ok := claims.Claim("survey:C-0309")
+		require.True(t, ok)
+
+		accuracy, hasAccuracy := claim.Accuracy()
+		assert.True(t, hasAccuracy, "the accuracy is still what was written")
+		assert.Len(t, accuracy.Terms, 3)
+		assert.False(t, claim.Rankable(), "terms nothing converts between rank nowhere")
+	})
+
+	t.Run("points at the accuracy form", func(t *testing.T) {
+		start := strings.Index(written, "(accuracy")
+		require.GreaterOrEqual(t, start, 0)
+
+		assert.Equal(t, start, warning.Span.Start.Offset)
+		assert.Equal(t, 10, warning.Span.Start.Line)
+		assert.Equal(t, 5, warning.Span.Start.Column)
+		assert.Equal(t, start+len("(accuracy "+terms+")"), warning.Span.End.Offset)
+	})
+
+	t.Run("names the claim as a diagnostic spells it", func(t *testing.T) {
+		claim, ok := claims.Claim("survey:C-0309")
+		require.True(t, ok)
+
+		assert.Contains(t, warning.Message, claimName(claim))
+	})
+
+	t.Run("names every unit found, each once, in the order written", func(t *testing.T) {
+		assert.Contains(t, warning.Message, "mm and m")
+		assert.NotContains(t, warning.Message, "m and mm")
+	})
+
+	t.Run("points at every term, with the unit each was written in", func(t *testing.T) {
+		require.Len(t, warning.Related, 3)
+
+		for i, want := range []struct {
+			text string
+			unit string
+		}{
+			{text: "(independent 1.0 mm)", unit: "mm"},
+			{text: "(systematic 0.001 m control:CP-3)", unit: "m"},
+			{text: "(independent 2.0 mm)", unit: "mm"},
+		} {
+			related := warning.Related[i]
+			start := strings.Index(written, want.text)
+			require.GreaterOrEqual(t, start, 0)
+
+			assert.Equal(t, start, related.Span.Start.Offset, "term %d", i)
+			assert.Equal(t, start+len(want.text), related.Span.End.Offset, "term %d", i)
+			assert.True(t, strings.HasSuffix(related.Message, " "+want.unit), "term %d: %q", i, related.Message)
+		}
+	})
+}
+
+// TestLoadClaimsWarnsOfMixedUnitsOnlyWhereTheyAreMixed checks which claims the
+// warning is for: one per claim whose terms are in more than one unit, and none
+// for a claim whose terms agree or which carries no accuracy at all.
+func TestLoadClaimsWarnsOfMixedUnitsOnlyWhereTheyAreMixed(t *testing.T) {
+	testCases := []struct {
+		name     string
+		entities string
+		expected int
+	}{
+		{
+			name:     "warns once for one claim whose terms are mixed",
+			entities: mixedUnitsNode("site:CDU-01", "", "(independent 1.0 mm) (independent 0.002 m)"),
+			expected: 1,
+		},
+		{
+			name: "warns once for each claim whose terms are mixed",
+			entities: mixedUnitsNode("site:CDU-01", "", "(independent 1.0 mm) (independent 0.002 m)") +
+				mixedUnitsNode("site:CDU-02", "", "(independent 0.002 m) (independent 1.0 mm)"),
+			expected: 2,
+		},
+		{
+			name:     "says nothing of a claim whose terms share one unit",
+			entities: mixedUnitsNode("site:CDU-01", "", "(independent 1.0 mm) (systematic 2.0 mm control:CP-3)"),
+			expected: 0,
+		},
+		{
+			name:     "says nothing of a claim with no accuracy, which is unrankable without a warning",
+			entities: mixedUnitsNode("site:CDU-01", "", ""),
+			expected: 0,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, diags := loadClaimModel(t, mixedUnitsRegistry, testCase.entities)
+
+			assert.Len(t, diags, testCase.expected)
+			for _, diag := range diags {
+				assert.Equal(t, SeverityWarning, diag.Severity)
+			}
+		})
+	}
+}
+
+// TestLoadClaimsOrdersMixedUnitsWarnings checks that the warnings about several
+// claims come back collected and ordered by file and then by position, so that
+// a model with two such claims hears about both, in an order that diffs.
+func TestLoadClaimsOrdersMixedUnitsWarnings(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "registry"+Extension), []byte(mixedUnitsRegistry), 0o644))
+
+	const mixed = "(independent 1.0 mm) (independent 0.002 m)"
+	files := map[string]string{
+		"a" + Extension: mixedUnitsNode("site:A-01", "", mixed) + mixedUnitsNode("site:A-02", "", mixed),
+		"b" + Extension: mixedUnitsNode("site:B-01", "", mixed),
+	}
+	for name, text := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0o644))
+	}
+
+	registry := mustLoadRegistry(t, root)
+	_, diags := LoadClaims(root, registry)
+	require.Len(t, diags, 3)
+
+	for i, want := range []struct {
+		file    string
+		subject string
+	}{
+		{file: "a" + Extension, subject: "site:A-01"},
+		{file: "a" + Extension, subject: "site:A-02"},
+		{file: "b" + Extension, subject: "site:B-01"},
+	} {
+		assert.Equal(t, want.file, filepath.Base(diags[i].Span.Start.Path), "warning %d", i)
+		assert.Contains(t, diags[i].Message, "the width of "+want.subject, "warning %d", i)
+	}
+
+	assert.Less(t, diags[0].Span.Start.Offset, diags[1].Span.Start.Offset)
+}
+
 // TestLoadClaimsRankDefaultsToNormal checks the default the canonical printer
 // leaves out, and that the closed set has exactly one other member.
 func TestLoadClaimsRankDefaultsToNormal(t *testing.T) {

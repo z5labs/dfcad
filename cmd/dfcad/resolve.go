@@ -205,7 +205,9 @@ type resolveResult struct {
 	// Accuracy is how well the answer is known, one entry per term, as the
 	// claim it came from stated it. Absent where nothing resolved, and absent
 	// where the claim stated none — which makes the answer unrankable rather
-	// than exact, and is what Reason says.
+	// than exact, and is what Reason says. Present on an unranked answer whose
+	// claim wrote terms in more than one unit, which nothing converts between
+	// and so never combine into a figure to rank by.
 	//
 	// It is beside the value rather than only inside the claim because it is
 	// part of the answer: a dimension without an accuracy is a number somebody
