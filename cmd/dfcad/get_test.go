@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -717,10 +718,22 @@ func TestRunGetRejectsWhatTheModelDoesNotHold(t *testing.T) {
 			expectedStderr: "dfcad get: " + ErrMissingID.Error() + "\n\n" + getUsage,
 		},
 		{
-			name: "rejects a second id",
+			name: "refuses a second id, pointing at standard input for several",
 			args: []string{"get", "site:S-101", "site:Z-01"},
 			expectedStderr: "dfcad get: " +
-				UnexpectedArgumentsError{Extra: []string{"site:Z-01"}}.Error() + "\n\n" + getUsage,
+				SeveralIDsError{IDs: []string{"site:S-101", "site:Z-01"}}.Error() + "\n\n" + getUsage,
+		},
+		{
+			name: "refuses standard input beside an id",
+			args: []string{"get", "-", "site:Z-01"},
+			expectedStderr: "dfcad get: " +
+				SeveralIDsError{IDs: []string{"-", "site:Z-01"}}.Error() + "\n\n" + getUsage,
+		},
+		{
+			name: "refuses an id beside standard input",
+			args: []string{"get", "site:S-101", "-"},
+			expectedStderr: "dfcad get: " +
+				SeveralIDsError{IDs: []string{"site:S-101", "-"}}.Error() + "\n\n" + getUsage,
 		},
 	}
 
@@ -1282,4 +1295,330 @@ func TestTheContractDocumentsEveryFieldOfAnAssertion(t *testing.T) {
 		assert.True(t, documented["assertions[]."+key],
 			"get writes assertions[].%s and the get section of docs/machine-output.md has no row for it", key)
 	}
+}
+
+// TestSeveralIDsErrorPointsAtStandardInput checks that the refusal of several
+// id arguments names the way to retrieve several, so that the misuse points at
+// the fix.
+func TestSeveralIDsErrorPointsAtStandardInput(t *testing.T) {
+	err := SeveralIDsError{IDs: []string{"site:S-111", "site:S-112"}}
+
+	assert.Contains(t, err.Error(), "write "+stdinPath)
+}
+
+// gotMany runs get - over the representative model with written on standard
+// input, requiring the exit code it was told to expect.
+func gotMany(t *testing.T, expectedCode int, written string, args ...string) (stdout, stderr string) {
+	t.Helper()
+
+	return piped(t, expectedCode, budgetRoot, written, append([]string{"get"}, append(args, stdinPath)...)...)
+}
+
+// entityIDs is the id of each entity, in the order they were answered.
+func entityIDs(entities []getEntity) []string {
+	out := make([]string, 0, len(entities))
+	for _, entity := range entities {
+		out = append(out, entity.ID)
+	}
+	return out
+}
+
+// TestRunGetManyAnswersEveryFamilyInOneObject is the batch this form exists
+// for: one id of each family, one load, one object, with "entities" in place of
+// "entity".
+func TestRunGetManyAnswersEveryFamilyInOneObject(t *testing.T) {
+	stdout, stderr := gotMany(t, exitSuccess, "site:S-111\ngeom:V-1-A1\ngeom:E-1-A1-A2\ngeom:L-101\n")
+
+	assert.Empty(t, stderr)
+
+	var keys map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(stdout), &keys))
+	assert.Contains(t, keys, "entities")
+	assert.NotContains(t, keys, "entity", "the batch answers in one shape, and it is not the shape of one id")
+
+	result := listed[getBatchResult](t, stdout)
+
+	assert.Equal(t, outputVersion, result.Version)
+	assert.Equal(t, "get", result.Command)
+	assert.False(t, result.Refused)
+
+	families := make(map[string]string)
+	for _, entity := range result.Entities {
+		families[entity.ID] = entity.Family
+	}
+	assert.Equal(t, map[string]string{
+		"geom:E-1-A1-A2": familyEdge,
+		"geom:L-101":     familyLoop,
+		"geom:V-1-A1":    familyVertex,
+		"site:S-111":     familyNode,
+	}, families)
+}
+
+func TestRunGetManyIsInIDOrderAndAnswersEachIDOnce(t *testing.T) {
+	testCases := []struct {
+		name    string
+		written string
+	}{
+		{
+			name:    "answers in id order whatever order the ids were written in",
+			written: "site:S-112\ngeom:V-1-A1\nsite:S-111\n",
+		},
+		{
+			name:    "reads ids separated by any whitespace, not only by lines",
+			written: "site:S-111 geom:V-1-A1\tsite:S-112",
+		},
+		{
+			name:    "answers an id written more than once once",
+			written: "site:S-112\nsite:S-111\n\nsite:S-112\n  geom:V-1-A1\nsite:S-111\n",
+		},
+	}
+
+	// Every case names the same three ids, so every case writes the same
+	// bytes: the order of standard input changes nothing on stdout.
+	expected, _ := gotMany(t, exitSuccess, "geom:V-1-A1\nsite:S-111\nsite:S-112\n")
+	assert.Equal(t,
+		[]string{"geom:V-1-A1", "site:S-111", "site:S-112"},
+		entityIDs(listed[getBatchResult](t, expected).Entities))
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, _ := gotMany(t, exitSuccess, testCase.written)
+
+			assert.Equal(t, expected, stdout)
+		})
+	}
+}
+
+func TestRunGetManyWithNoIDAnswersNothing(t *testing.T) {
+	testCases := []struct {
+		name    string
+		written string
+	}{
+		{name: "answers an empty list for empty input", written: ""},
+		{name: "answers an empty list for input holding only whitespace", written: "\n  \t\n\n"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := gotMany(t, exitSuccess, testCase.written)
+
+			assert.Empty(t, stderr)
+			assert.Contains(t, stdout, `"entities":[]`, "empty rather than null")
+
+			result := listed[getBatchResult](t, stdout)
+			assert.Equal(t, "get", result.Command)
+			assert.Empty(t, result.Entities)
+		})
+	}
+}
+
+func TestRetrieveAllReportsEveryIDItCannotRetrieve(t *testing.T) {
+	graph, diags := dfcad.LoadGraph(budgetRoot)
+	require.Empty(t, diags)
+
+	testCases := []struct {
+		name     string
+		written  []string
+		expected []error
+	}{
+		{
+			name:    "reports an unknown id with the nearest id there is",
+			written: []string{"site:S-111", "site:S-1O2"},
+			expected: []error{
+				UnknownIDError{ID: "site:S-1O2", Nearest: "site:S-102"},
+			},
+		},
+		{
+			name:    "reports an unknown id nothing is close to",
+			written: []string{"other:nothing-like-it"},
+			expected: []error{
+				UnknownIDError{ID: "other:nothing-like-it"},
+			},
+		},
+		{
+			name:    "reports a malformed id with the rule it broke",
+			written: []string{"S-111"},
+			expected: []error{
+				dfcad.MalformedIDError{Written: "S-111", Reason: dfcad.IDUnqualified},
+			},
+		},
+		{
+			name:    "reports every one of them rather than the first, in the order of the ids",
+			written: []string{"site:S-1O2", "site:S-111", "S-111", "other:nothing-like-it", "site:S-1O2"},
+			expected: []error{
+				dfcad.MalformedIDError{Written: "S-111", Reason: dfcad.IDUnqualified},
+				UnknownIDError{ID: "other:nothing-like-it"},
+				UnknownIDError{ID: "site:S-1O2", Nearest: "site:S-102"},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			entities, err := retrieveAll(graph, testCase.written)
+
+			assert.Nil(t, entities, "no partial answer")
+
+			var batch BatchIDsError
+			require.True(t, errors.As(err, &batch), "expected BatchIDsError, got %T", err)
+			assert.Equal(t, testCase.expected, batch.Errs)
+
+			// Each kind of element is reachable through the batch itself, which
+			// is what Unwrap() []error is for: a caller asks errors.As of the
+			// one error it was handed.
+			for _, each := range testCase.expected {
+				switch each.(type) {
+				case UnknownIDError:
+					var got UnknownIDError
+					require.True(t, errors.As(err, &got), "errors.As reaches an unknown id through the batch")
+					assert.Contains(t, testCase.expected, got)
+				case dfcad.MalformedIDError:
+					var got dfcad.MalformedIDError
+					require.True(t, errors.As(err, &got), "errors.As reaches a malformed id through the batch")
+					assert.Contains(t, testCase.expected, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRunGetManyReportsEveryBadIDAndWritesNothing is the command's half of the
+// rejection: exit 3, nothing on stdout, and every bad id on a line of its own in
+// the words a get of that id alone would use.
+func TestRunGetManyReportsEveryBadIDAndWritesNothing(t *testing.T) {
+	stdout, stderr := gotMany(t, exitUsage, "site:S-1O2\nsite:S-111\nS-111\nother:nothing-like-it\n")
+
+	assert.Empty(t, stdout, "no partial answer")
+	assert.Equal(t,
+		"dfcad get: "+dfcad.MalformedIDError{Written: "S-111", Reason: dfcad.IDUnqualified}.Error()+"\n"+
+			"dfcad get: "+UnknownIDError{ID: "other:nothing-like-it"}.Error()+"\n"+
+			"dfcad get: "+UnknownIDError{ID: "site:S-1O2", Nearest: "site:S-102"}.Error()+"\n",
+		stderr)
+}
+
+// TestRunGetManyTakesFlagsOnEitherSideOfStandardInput checks that - is an
+// argument like any other, which flags may be written before or after.
+func TestRunGetManyTakesFlagsOnEitherSideOfStandardInput(t *testing.T) {
+	before, _ := piped(t, exitSuccess, budgetRoot, "site:S-111", "get", "--claims", claimsResolved, stdinPath)
+	after, _ := piped(t, exitSuccess, budgetRoot, "site:S-111", "get", stdinPath, "--claims", claimsResolved)
+
+	assert.Equal(t, before, after)
+
+	entities := listed[getBatchResult](t, before).Entities
+	require.Len(t, entities, 1)
+	for _, claim := range entities[0].Claims {
+		assert.NotEmpty(t, claim.Resolution, "the flag reached the batch")
+	}
+}
+
+// everyID is every id the representative model holds, in all four families.
+func everyID(t *testing.T) []string {
+	t.Helper()
+
+	graph, diags := dfcad.LoadGraph(budgetRoot)
+	require.Empty(t, diags)
+
+	var out []string
+	for node := range graph.Nodes().All() {
+		out = append(out, string(node.ID()))
+	}
+	for vertex := range graph.Topology().Vertices() {
+		out = append(out, string(vertex.ID()))
+	}
+	for edge := range graph.Topology().Edges() {
+		out = append(out, string(edge.ID()))
+	}
+	for loop := range graph.Topology().Loops() {
+		out = append(out, string(loop.ID()))
+	}
+	return out
+}
+
+// TestRunGetManyAnswersEachIDAsGetOfItAlone is the property the batch rests on:
+// for every id the model holds, its element of get - is exactly the entity get
+// of that id writes, compared as parsed JSON.
+func TestRunGetManyAnswersEachIDAsGetOfItAlone(t *testing.T) {
+	ids := everyID(t)
+	require.NotEmpty(t, ids)
+
+	for _, selection := range claimSelections {
+		t.Run("under --claims "+selection+" answers each id as get of it alone", func(t *testing.T) {
+			stdout, _ := gotMany(t, exitSuccess, strings.Join(ids, "\n"), "--claims", selection)
+
+			var batch struct {
+				Entities []map[string]any `json:"entities"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(stdout), &batch))
+			require.Len(t, batch.Entities, len(ids))
+
+			elements := make(map[string]map[string]any, len(batch.Entities))
+			for _, element := range batch.Entities {
+				elements[element["id"].(string)] = element
+			}
+
+			for _, id := range ids {
+				alone, _ := invoke(t, exitSuccess, budgetRoot, "get", "--claims", selection, id)
+
+				var single struct {
+					Entity map[string]any `json:"entity"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(alone), &single))
+
+				assert.Equal(t, single.Entity, elements[id], id)
+			}
+		})
+	}
+}
+
+// sharedObservedTree is [observedTree] with a third corner whose links share a
+// file with the second, so that a batch of the two reads that file for both.
+func sharedObservedTree() map[string]string {
+	files := observedTree()
+	files["entities/geometry.dfc"] = observedModel + `
+(vertex geom:V-03
+  (label "The corner shot from both setups")
+  (frame frame:site)
+  (observed-in "observations/site-control.obs")
+  (observed-in "observations/suspect.obs"))
+`
+	return files
+}
+
+// TestRunGetManyRendersAProblemInASharedFileOnce checks that a file several of
+// the entities link to is reported on once, however many of them link to it.
+func TestRunGetManyRendersAProblemInASharedFileOnce(t *testing.T) {
+	root := tree(t, sharedObservedTree())
+
+	_, alone := invoke(t, exitSuccess, root, "get", "--observations", "geom:V-02")
+	require.Contains(t, alone, "suspect.obs:1:")
+
+	stdout, stderr := piped(t, exitSuccess, root, "geom:V-02\ngeom:V-03\n", "get", "--observations", stdinPath)
+
+	assert.Equal(t, strings.Count(alone, "suspect.obs:1:"), strings.Count(stderr, "suspect.obs:1:"),
+		"the problem in the shared file is rendered once, as it is for one entity")
+
+	entities := listed[getBatchResult](t, stdout).Entities
+	require.Len(t, entities, 2)
+	require.NotNil(t, entities[0].Records)
+	require.NotNil(t, entities[1].Records)
+	assert.Empty(t, *entities[0].Records)
+	assert.Len(t, *entities[1].Records, 2, "the sound file behind the third corner is read for it")
+}
+
+// TestRunGetManyHumanOutputNeverChangesStdout checks the human rendering of a
+// batch: each entity summarised as get of it alone would, and a line counting
+// them, all on stderr.
+func TestRunGetManyHumanOutputNeverChangesStdout(t *testing.T) {
+	machine, machineReport := gotMany(t, exitSuccess, "site:S-111\ngeom:V-1-A1\n")
+	human, humanReport := gotMany(t, exitSuccess, "site:S-111\ngeom:V-1-A1\n", "--format", formatHuman)
+
+	assert.Equal(t, machine, human)
+	assert.Empty(t, machineReport)
+
+	assert.Contains(t, humanReport, "vertex geom:V-1-A1 at ")
+	assert.Contains(t, humanReport, "node site:S-111 at ")
+	assert.True(t, strings.HasSuffix(humanReport, "\n2 entities\n"), humanReport)
+
+	_, emptyReport := gotMany(t, exitSuccess, "", "--format", formatHuman)
+	assert.Equal(t, "0 entities\n", emptyReport)
 }

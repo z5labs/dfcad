@@ -117,6 +117,10 @@ type call struct {
 
 	// args is what run is given, minus the program name.
 	args []string
+
+	// stdin is what the call is given on standard input, which is nothing for
+	// every call but one that reads its ids from there.
+	stdin string
 }
 
 // path is a sequence of calls answering one question from a cold start, and the
@@ -248,6 +252,13 @@ var (
 			"--predicate", "position", "--family", "vertex",
 			"--root", budgetRoot,
 		},
+	}
+	// getRooms is every meeting room [listRooms] names, retrieved whole in one
+	// call: the ids on standard input, one per line, as `jq -r` writes them.
+	getRooms = call{
+		name:  "dfcad get - (the six meeting rooms on standard input)",
+		args:  []string{"get", "-", "--root", budgetRoot},
+		stdin: "site:S-102\nsite:S-111\nsite:S-112\nsite:S-202\nsite:S-211\nsite:S-212\n",
 	}
 	planLevel = call{
 		name: "dfcad plan site:L-01 --annotate area",
@@ -397,9 +408,22 @@ var (
 		calls: []call{planLevel},
 	}
 
+	everyRoom = path{
+		name: "retrieving every meeting room at once",
+		what: "every meeting room in the model, whole, with every claim and assertion written on each",
+		// No target. The gated paths answer about one named thing; this is
+		// every instance of a type, retrieved whole, so what it costs is the
+		// number of rooms times the size of one rather than the arrangement.
+		// It is measured because it is the call a consumer replaces one get
+		// per id with, and because a field added to a retrieved entity is paid
+		// here once per room.
+		ceiling: 1920,
+		calls:   []call{listRooms, getRooms},
+	}
+
 	paths = []path{
 		discovery, coldQuestion, warmQuestion, wholeRetrieval,
-		derivedQuestion, geometricDiscovery, annotatedPlan,
+		derivedQuestion, geometricDiscovery, annotatedPlan, everyRoom,
 	}
 )
 
@@ -410,7 +434,7 @@ func answer(t testing.TB, c call) string {
 	t.Helper()
 
 	var stdout bytes.Buffer
-	code := run(c.args, &stdout, io.Discard)
+	code := runOn(c.args, strings.NewReader(c.stdin), &stdout, io.Discard)
 	require.Equal(t, exitSuccess, code, "%s succeeds", c.name)
 
 	return stdout.String()
@@ -553,6 +577,10 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 			name: "reads a whole storey as rings with the claims written on them",
 			path: annotatedPlan,
 		},
+		{
+			name: "retrieves every meeting room whole in one call",
+			path: everyRoom,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -568,6 +596,26 @@ func TestTheDiscoveryPathDoesNotGetMoreExpensive(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestRetrievingEveryRoomRetrievesWhatTheListingNames checks that the ids the
+// every-room path writes on standard input are the ids its listing answers,
+// which is what makes the path the pipe a consumer writes rather than a list
+// that was true of the fixture once.
+func TestRetrievingEveryRoomRetrievesWhatTheListingNames(t *testing.T) {
+	var listing struct {
+		Instances []struct {
+			ID string `json:"id"`
+		} `json:"instances"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(answer(t, listRooms)), &listing))
+
+	var listed []string
+	for _, instance := range listing.Instances {
+		listed = append(listed, instance.ID)
+	}
+
+	assert.Equal(t, listed, strings.Fields(getRooms.stdin))
 }
 
 // field is one payload field the breakdown prices, so that a partitioning

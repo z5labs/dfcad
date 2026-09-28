@@ -183,6 +183,18 @@ Answering: what level 1 looks like in plan, with the area claimed on each room.
 
 No target: nothing asked this path to cost anything in particular. Regression ceiling 8400 tokens. Claimed at 2 times cheaper than reading the model.
 
+## The cost of retrieving every meeting room at once
+
+Answering: every meeting room in the model, whole, with every claim and assertion written on each.
+
+| Call | `o200k_base` | `cl100k_base` |
+|------|-------|-------|
+| `dfcad list-instances MeetingRoom` | 188 | 187 |
+| `dfcad get - (the six meeting rooms on standard input)` | 1712 | 1668 |
+| **the whole path** | **1900** | **1855** |
+
+No target: nothing asked this path to cost anything in particular. Regression ceiling 1920 tokens. Claimed at 4 times cheaper than reading the model.
+
 ## Where the tokens go
 
 What each answer costs with one field removed. Both figures in a cell are of the
@@ -219,6 +231,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.1× |
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
 | reading a storey as an annotated plan | 2.5×, 2.5× | 0.4×, 0.4× |
+| retrieving every meeting room at once | 10.9×, 11.2× | 1.9×, 2.0× |
 
 One figure per encoding, in the order of the table above.
 
