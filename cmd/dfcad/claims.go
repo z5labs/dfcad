@@ -54,6 +54,7 @@ Flags:
 	--type <name>       only claims on a node declaring this type; repeat
 	--family <family>   only claims on a thing of this family: node, vertex,
 	                    edge or loop; repeat
+	--method <id>       only claims obtained by this method; repeat
 
 Filters combine: a claim is listed when it satisfies every filter given, and a
 filter written more than once is satisfied by any of its values. They apply with
@@ -61,6 +62,15 @@ an id as well as without one, and a predicate written after the id counts as one
 more --predicate, checked before the flag's values. --type beside --family values none of which is node is refused
 rather than answered with nothing: only a node declares a type, so no claim
 satisfies both, and an empty answer would read as a model with no such claims.
+
+A method is an id, and it is matched exactly. There is no registry of methods to
+check one against: its namespace is what the registry governs, so a value which
+is not an id, or an id in a namespace the registry does not declare, is a usage
+error. A well-formed id in a declared namespace which no claim in the model
+names is answered with an empty list, and a warning on stderr says that nothing
+names it, in every format: it may be misspelt, and it may be a method nobody has
+used yet, and nothing here can tell which. Every claim whose method is not one
+of a set is the complement of this listing, which is the caller's to take.
 
 Claims come back in subject id order, then in predicate order and then in the
 order they were written, so two runs over one model diff against each other and
@@ -185,6 +195,10 @@ var ErrTypeNeedsNodeFamily = errors.New(
 	"--type names a type only a node declares, and no --family value is node: no claim satisfies both",
 )
 
+// flagMethod is the filter on how a claim was obtained, named here because the
+// warning about a method nothing names names it.
+const flagMethod = "method"
+
 // claimFamilies are the four families a subject of a claim can belong to, in
 // the order the usage lists them.
 //
@@ -300,10 +314,12 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	predicateFlag := &repeated{}
 	typeFlag := &repeated{}
 	familyFlag := &repeated{}
+	methodFlag := &repeated{}
 
 	flags.Var(predicateFlag, flagPredicate, "")
 	flags.Var(typeFlag, "type", "")
 	flags.Var(familyFlag, flagFamily, "")
+	flags.Var(methodFlag, flagMethod, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -344,6 +360,14 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		return usageError(cmd, err, stderr, false)
 	}
 
+	// A method is checked for being an id before the load for the same reason: the
+	// grammar of an id is compiled in. Whether its namespace is declared is
+	// registry data, and is checked after.
+	methods, err := parseMethods(filterOf(*methodFlag))
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	graph, loaded := loadModel(cmd, globals, stderr)
 	registry := graph.Registry()
 
@@ -359,6 +383,9 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		}
 	}
 	if err := checkFilters(registry, types, nil, nil); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+	if err := checkMethodNamespaces(registry, methods); err != nil {
 		return usageError(cmd, err, stderr, false)
 	}
 
@@ -394,7 +421,7 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		}
 
 		for _, claim := range audited(graph, each, only) {
-			if !admits(predicates, claim.Predicate) {
+			if !admits(predicates, claim.Predicate) || !admits(methods, claim.Method) {
 				continue
 			}
 			row.claimEntry = claim
@@ -402,6 +429,7 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		}
 	}
 
+	reportUnnamedMethods(cmd, unnamedMethods(graph, methods), stderr)
 	reportClaims(result, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
@@ -410,6 +438,89 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	return exitSuccess
+}
+
+// parseMethods is the --method values as ids, in the order they were written,
+// or the first which is not one.
+//
+// They stay strings, spelled as the claim rows spell a method, because what the
+// filter compares them with is what each row writes.
+func parseMethods(written []string) ([]string, error) {
+	out := make([]string, 0, len(written))
+	for _, value := range written {
+		id, err := dfcad.ParseID(value)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, string(id))
+	}
+	return out, nil
+}
+
+// checkMethodNamespaces reports the first method whose namespace the registry
+// does not declare, in the error the write path gives for the same mistake.
+//
+// It is the one check a method can be put to. A method is an id rather than a
+// member of a known set (specification section 12), so its namespace is the only
+// part of it the registry governs: a local part nobody has written yet cannot be
+// told from a misspelt one.
+func checkMethodNamespaces(registry *dfcad.Registry, methods []string) error {
+	for _, method := range methods {
+		namespace := dfcad.ID(method).Namespace()
+		if registry.Declares(dfcad.SortNamespace, namespace) {
+			continue
+		}
+		return dfcad.UnknownAxisError{
+			Axis:      string(dfcad.SortNamespace),
+			Value:     namespace,
+			Permitted: registry.Names(dfcad.SortNamespace),
+		}
+	}
+	return nil
+}
+
+// unnamedMethods is every method asked for which no claim in the model names,
+// each once and in the order they were asked for.
+//
+// Every claim in the model counts, whatever the other filters exclude: a method
+// some claim names is a method in use, and a listing the other filters emptied
+// says nothing about its spelling.
+func unnamedMethods(graph *dfcad.Graph, methods []string) []string {
+	if len(methods) == 0 {
+		return nil
+	}
+
+	named := make(map[string]struct{})
+	for claim := range graph.Claims().All() {
+		named[string(claim.Method())] = struct{}{}
+	}
+
+	var out []string
+	for _, method := range methods {
+		if _, ok := named[method]; ok || slices.Contains(out, method) {
+			continue
+		}
+		out = append(out, method)
+	}
+
+	return out
+}
+
+// reportUnnamedMethods warns, once per method, that no claim names it.
+//
+// It is written in every format, as the curves a rule read straight are: the
+// answer on stdout is an empty list either way, and only this line says that the
+// list is empty because nothing in the model was obtained that way rather than
+// because the other filters left nothing. Stdout is the same bytes with or
+// without it.
+func reportUnnamedMethods(cmd command, methods []string, stderr io.Writer) {
+	for _, method := range methods {
+		_, _ = fmt.Fprintf(stderr,
+			"dfcad %s: warning: no claim in the model names the method %s, so --%s %s matches nothing; "+
+				"a method is not checked against a known set, so it may be misspelt or not yet used\n",
+			cmd.name, method, flagMethod, method,
+		)
+	}
 }
 
 // checkClaimFamilies reports the first --family value which is none of the four,
