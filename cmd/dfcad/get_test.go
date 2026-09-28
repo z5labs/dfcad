@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1621,4 +1622,299 @@ func TestRunGetManyHumanOutputNeverChangesStdout(t *testing.T) {
 
 	_, emptyReport := gotMany(t, exitSuccess, "", "--format", formatHuman)
 	assert.Equal(t, "0 entities\n", emptyReport)
+}
+
+// plainRegistry is the retrieval vocabulary with three predicates declared
+// non-claim-bearing: two of text, one of them written twice below, and a
+// dimensional scalar, which is what shows the unit travelling with the value.
+const plainRegistry = getRegistry + `
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The coordinate reference system it is expressed in."))
+
+(predicate finish
+  (shape text)
+  (claim-bearing #f)
+  (description "What it is finished in."))
+
+(predicate nominal-width
+  (unit m)
+  (shape scalar)
+  (claim-bearing #f)
+  (description "The width it was designed to."))
+`
+
+// plainModel is a room carrying one claim and four plain values, written out of
+// predicate order so that the order the answer puts them in is its own.
+const plainModel = `(node site:S-201
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (area
+    (value 12.0 m2)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.1 m2))
+    (date "2026-05-06"))
+  (nominal-width 3.5 m)
+  (finish "Oak")
+  (crs "EPSG:1234")
+  (finish "Walnut"))
+`
+
+// plainTree is the retrieval fixture with plainModel beside it, so that a thing
+// carrying plain values and one carrying none are asked about in one model.
+func plainTree() map[string]string {
+	files := retrievable()
+	files["registry.dfc"] = plainRegistry
+	files["entities/plain.dfc"] = plainModel
+	return files
+}
+
+// gotPlain runs get over plainTree and returns what reached stdout.
+func gotPlain(t *testing.T, args ...string) string {
+	t.Helper()
+
+	t.Chdir(tree(t, plainTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"get"}, args...), &stdout, &stderr), stderr.String())
+	require.Empty(t, stderr.String(), "the fixture loads clean")
+
+	return stdout.String()
+}
+
+// plainValues is each value as "predicate value", which says both which came
+// back and in which order.
+func plainValues(values []valueEntry) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, value.Predicate+" "+spellClaimValue(value.Value))
+	}
+	return out
+}
+
+func TestRunGetReportsThePlainValuesWrittenOnIt(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "reports every plain value in predicate order and then by where each was written",
+			args:     []string{"site:S-201"},
+			expected: []string{`crs "EPSG:1234"`, `finish "Oak"`, `finish "Walnut"`, "nominal-width 3.5 m"},
+		},
+		{
+			name:     "reports the same plain values when the claims are resolved",
+			args:     []string{"site:S-201", "--claims", claimsResolved},
+			expected: []string{`crs "EPSG:1234"`, `finish "Oak"`, `finish "Walnut"`, "nominal-width 3.5 m"},
+		},
+		{
+			name:     "reports the same plain values when deprecated claims are asked for",
+			args:     []string{"site:S-201", "--deprecated"},
+			expected: []string{`crs "EPSG:1234"`, `finish "Oak"`, `finish "Walnut"`, "nominal-width 3.5 m"},
+		},
+		{
+			name: "reports none on a thing which carries none",
+			args: []string{"site:S-101"},
+		},
+		{
+			name: "reports none on a vertex which carries none",
+			args: []string{"geom:V-01"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			entity := listed[getResult](t, gotPlain(t, testCase.args...)).Entity
+
+			if testCase.expected == nil {
+				assert.Nil(t, entity.Values)
+				return
+			}
+			assert.Equal(t, testCase.expected, plainValues(entity.Values))
+		})
+	}
+}
+
+// TestRunGetWritesAPlainValueInTheShapeAClaimsValueTakes checks each plain
+// value field by field: the shape named, the text or the scalar carried where
+// that shape says, the unit beside a dimensional one, and the span of the form
+// that wrote it.
+func TestRunGetWritesAPlainValueInTheShapeAClaimsValueTakes(t *testing.T) {
+	testCases := []struct {
+		name      string
+		predicate string
+		expected  claimValue
+		written   string
+	}{
+		{
+			name:      "writes a text value as text, with no unit",
+			predicate: "crs",
+			expected:  claimValue{Shape: string(dfcad.ShapeText), Text: ptr("EPSG:1234")},
+			written:   `(crs "EPSG:1234")`,
+		},
+		{
+			name:      "writes a scalar value with the unit written beside it",
+			predicate: "nominal-width",
+			expected:  claimValue{Shape: string(dfcad.ShapeScalar), Unit: "m", Scalar: ptr(3.5)},
+			written:   "(nominal-width 3.5 m)",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			entity := listed[getResult](t, gotPlain(t, "site:S-201")).Entity
+
+			var found []valueEntry
+			for _, value := range entity.Values {
+				if value.Predicate == testCase.predicate {
+					found = append(found, value)
+				}
+			}
+			require.Len(t, found, 1)
+			assert.Equal(t, testCase.expected, found[0].Value)
+
+			// The span is the whole of the form which wrote it.
+			line := strings.Split(plainModel, "\n")[found[0].Span.Start.Line-1]
+			column := strings.Index(line, testCase.written) + 1
+			assert.Equal(t, "entities/plain.dfc", found[0].Span.Start.Path)
+			assert.Equal(t, column, found[0].Span.Start.Column)
+			assert.Equal(t, found[0].Span.Start.Line, found[0].Span.End.Line)
+			assert.Equal(t, column+len(testCase.written), found[0].Span.End.Column)
+		})
+	}
+}
+
+// ptr is a pointer to v, which is how a value's optional fields are spelled.
+func ptr[T any](v T) *T { return &v }
+
+// entityKeys is the keys of the object written under "entity", in the order
+// they were written.
+func entityKeys(t *testing.T, stdout string) []string {
+	t.Helper()
+
+	var written struct {
+		Entity json.RawMessage `json:"entity"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &written))
+
+	decoder := json.NewDecoder(bytes.NewReader(written.Entity))
+	_, err := decoder.Token()
+	require.NoError(t, err)
+
+	var keys []string
+	for decoder.More() {
+		key, err := decoder.Token()
+		require.NoError(t, err)
+		keys = append(keys, key.(string))
+
+		var skipped json.RawMessage
+		require.NoError(t, decoder.Decode(&skipped))
+	}
+	return keys
+}
+
+// TestRunGetWritesThePlainValuesImmediatelyAfterTheClaims checks where the
+// field goes and that it is not there at all where there is nothing to put in
+// it, which is what keeps every answer over a model without plain values the
+// bytes it was.
+func TestRunGetWritesThePlainValuesImmediatelyAfterTheClaims(t *testing.T) {
+	keys := entityKeys(t, gotPlain(t, "site:S-201"))
+
+	claims := slices.Index(keys, "claims")
+	require.GreaterOrEqual(t, claims, 0)
+	require.Less(t, claims+1, len(keys))
+	assert.Equal(t, "values", keys[claims+1])
+
+	assert.NotContains(t, entityKeys(t, gotPlain(t, "site:S-101")), "values")
+	assert.NotContains(t, gotPlain(t, "site:S-101"), `"values"`)
+}
+
+// TestRunGetWritesAPlainValueAsTheContractSpellsIt checks the bytes of one
+// entry against the spelling docs/machine-output.md gives it.
+func TestRunGetWritesAPlainValueAsTheContractSpellsIt(t *testing.T) {
+	stdout := gotPlain(t, "site:S-201")
+
+	assert.Contains(t, stdout,
+		`"values":[{"predicate":"crs","value":{"shape":"text","text":"EPSG:1234"},"span":"entities/plain.dfc:15:3-15:20"}`)
+}
+
+// TestRunGetLeavesPlainValuesOutOfTheClaims checks that a plain value is not
+// dressed as a claim anywhere a claim is reported: not among get's claims, not
+// in the audit view, and not as the answer resolution gives.
+func TestRunGetLeavesPlainValuesOutOfTheClaims(t *testing.T) {
+	t.Run("get reports only the claim among the claims", func(t *testing.T) {
+		entity := listed[getResult](t, gotPlain(t, "site:S-201")).Entity
+		assert.Equal(t, []string{"area"}, predicates(entity.Claims))
+	})
+
+	t.Run("claims reports only the claim", func(t *testing.T) {
+		t.Chdir(tree(t, plainTree()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run([]string{"claims", "site:S-201"}, &stdout, &stderr), stderr.String())
+
+		result := listed[claimsResult](t, stdout.String())
+		require.Len(t, result.Claims, 1)
+		assert.Equal(t, "area", result.Claims[0].Predicate)
+	})
+
+	t.Run("resolve answers unclaimed under a predicate holding only a plain value", func(t *testing.T) {
+		t.Chdir(tree(t, plainTree()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitCheck, run([]string{"resolve", "site:S-201", "crs"}, &stdout, &stderr), stderr.String())
+
+		result := listed[resolveResult](t, stdout.String())
+		assert.Equal(t, "unclaimed", result.Outcome)
+	})
+}
+
+// TestRunGetListsThePlainValuesToAPersonAfterTheClaims checks the human
+// rendering: each plain value on a line of its own, said to be one, after the
+// claims and before the assertions.
+func TestRunGetListsThePlainValuesToAPersonAfterTheClaims(t *testing.T) {
+	t.Chdir(tree(t, plainTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "site:S-201", "--format", formatHuman, "-v"}, &stdout, &stderr), stderr.String())
+
+	report := stderr.String()
+	claim := strings.Index(report, "area: 12 m2 by method:tape")
+	crs := strings.Index(report, `crs: "EPSG:1234", plain value`)
+	width := strings.Index(report, "nominal-width: 3.5 m, plain value")
+
+	require.GreaterOrEqual(t, claim, 0, report)
+	require.GreaterOrEqual(t, crs, 0, report)
+	require.GreaterOrEqual(t, width, 0, report)
+	assert.Less(t, claim, crs, "the plain values come after the claims")
+	assert.Less(t, crs, width, "in predicate order")
+}
+
+// TestTheContractDocumentsEveryFieldOfAPlainValue checks that the `get` section
+// of docs/machine-output.md has a row for entity.values and for every key one
+// of its entries carries, read out of what get wrote rather than listed here.
+func TestTheContractDocumentsEveryFieldOfAPlainValue(t *testing.T) {
+	documented := documentedFields(t)
+
+	var written struct {
+		Entity struct {
+			Values []map[string]json.RawMessage `json:"values"`
+		} `json:"entity"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(gotPlain(t, "site:S-201")), &written))
+	require.NotEmpty(t, written.Entity.Values, "get wrote the plain values")
+
+	assert.True(t, documented["entity.values"], "the get section of docs/machine-output.md has no row for entity.values")
+	for _, value := range written.Entity.Values {
+		for key := range value {
+			assert.True(t, documented["values[]."+key],
+				"get writes values[].%s and the get section of docs/machine-output.md has no row for it", key)
+		}
+	}
 }

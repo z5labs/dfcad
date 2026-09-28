@@ -406,6 +406,13 @@ type Claims struct {
 	// rather than to one claim per predicate.
 	bySubject map[ID][]*Claim
 
+	// plain is the plain values written on each subject, in written order. They
+	// are held apart from the claims because they are not claims: a plain value
+	// has no id, no source, no method, no accuracy, no date and no rank, and
+	// counting one among the claims would put a claim in the model the file
+	// never made ([0008](docs/decisions/0008-a-bare-scalar-is-a-load-error.md)).
+	plain map[ID][]PlainValue
+
 	// superseded is the claims each claim replaced, keyed by the id of the claim
 	// which replaced them and held in written order. It is the reverse of the
 	// reference a deprecated claim carries, which is written in one direction
@@ -470,6 +477,51 @@ func (c *Claims) Of(subject ID) iter.Seq[*Claim] {
 		}
 		for _, claim := range c.bySubject[subject] {
 			if !yield(claim) {
+				return
+			}
+		}
+	}
+}
+
+// PlainValue is one plain value: the spelling specification section 6.5 gives a
+// predicate the registry declares non-claim-bearing, written directly after the
+// predicate's tag with nothing after it.
+//
+// It is not a claim, and it is not a claim with its provenance left out. There
+// is no id, no source, no method, no accuracy, no date and no rank on it,
+// because the registry says the predicate carries none — which is what makes a
+// fact such as the coordinate reference system a frame is rooted at something
+// other than a measurement.
+type PlainValue struct {
+	// Predicate is the predicate it was written under.
+	Predicate string
+
+	// Value is what was written, read against the shape and the unit the
+	// predicate declares exactly as a claim's value is. Its span is where the
+	// whole form was written.
+	Value Value
+}
+
+// PlainOf iterates the plain values written on one subject, in written order.
+//
+// A plain value is read on every form a claim may be written on — a semantic
+// node, a vertex, an edge, a loop and a frame alike — and under a predicate the
+// registry declares non-claim-bearing only. A bare scalar under a claim-bearing
+// predicate is a load error rather than a plain value
+// ([0008](docs/decisions/0008-a-bare-scalar-is-a-load-error.md)), and is not
+// here; neither is a value whose shape or unit the declaration refused, since
+// the diagnostic saying so is the whole of what the model holds of it.
+//
+// None of them is counted by [Claims.Len], reached by [Claims.All] or
+// [Claims.Of], or considered by resolution. A subject with no plain value
+// yields nothing.
+func (c *Claims) PlainOf(subject ID) iter.Seq[PlainValue] {
+	return func(yield func(PlainValue) bool) {
+		if c == nil {
+			return
+		}
+		for _, value := range c.plain[subject] {
+			if !yield(value) {
 				return
 			}
 		}
@@ -547,8 +599,9 @@ var claimBearing = sync.OnceValue(func() map[string]*form {
 // registry is the only thing which knows. A claim-bearing predicate takes a
 // claim form, and a bare scalar written in that position is a load error
 // nothing downgrades; a predicate declared non-claim-bearing takes a plain
-// value, which is left where it was written because there is no provenance on
-// it for this pass to read.
+// value, which becomes no claim because there is no provenance on it for this
+// pass to read. It is recorded apart from the claims, under the subject it was
+// written on, and read back through [Claims.PlainOf].
 //
 // Whether a deprecated claim names the claim which replaced it, and whether
 // following those replacements terminates, is asked once the whole tree has
@@ -572,6 +625,7 @@ func loadClaims(sources iter.Seq[source], registry *Registry) (*Claims, []Diagno
 		claims: &Claims{
 			byID:      make(map[ID]*Claim),
 			bySubject: make(map[ID][]*Claim),
+			plain:     make(map[ID][]PlainValue),
 			definedAt: make(map[ID]Span),
 		},
 	}
@@ -703,9 +757,16 @@ func (l *claimLoader) subject(node *Node, enclosing *form, tag string) {
 		//
 		// A predicate nothing declares has no shape and no unit to judge the
 		// value against, and has already been reported once as undeclared.
+		//
+		// A value the declaration refused is not recorded: what the model holds
+		// of it is the diagnostic, and a plain value of no shape would read as
+		// one the file wrote.
 		if !asClaim {
 			if isDeclared {
-				l.value(child, written, declared, isDeclared)
+				value := l.value(child, written, declared, isDeclared)
+				if value.Shape() != "" && subject != "" {
+					l.claims.plain[subject] = append(l.claims.plain[subject], PlainValue{Predicate: written, Value: value})
+				}
 			}
 			continue
 		}
