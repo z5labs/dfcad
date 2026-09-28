@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"cmp"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -1355,16 +1356,15 @@ func TestRunClaimsOverEverySubjectIsEachSubjectInTurn(t *testing.T) {
 // by subject, then by predicate, then by where each was written. Where it was
 // written is compared by its place in the unfiltered listing, which is that
 // order already, because a span is not orderable as the string it is written as.
-func claimOrder(t *testing.T) func(a, b map[string]any) int {
+//
+// The listing is read from the tree the union is asserted over, because a span
+// names the file it is in: a place looked up by the span of another tree finds
+// nothing, and every claim under one predicate would compare equal.
+func claimOrder(t *testing.T, root string) func(a, b map[string]any) int {
 	t.Helper()
 
-	t.Chdir(tree(t, auditable()))
-
-	var stdout, stderr bytes.Buffer
-	require.Equal(t, exitSuccess, run([]string{"claims"}, &stdout, &stderr), stderr.String())
-
 	place := make(map[string]int)
-	for i, claim := range entriesOf(t, object(t, stdout.String()), "claims") {
+	for i, claim := range entriesOf(t, answerOf(t, root, "claims"), "claims") {
 		place[claim.(map[string]any)["span"].(string)] = i
 	}
 
@@ -1423,14 +1423,21 @@ func TestClaimsFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
 			first:  "occupancy",
 			second: "height",
 		},
+		{
+			name:   "lists the claims obtained by either method",
+			args:   []string{"claims"},
+			flag:   "method",
+			first:  "method:tape",
+			second: "method:scaled-from-plan",
+		},
 	}
 
 	for _, testCase := range testCases {
 		t.Run(testCase.name, func(t *testing.T) {
-			order := claimOrder(t)
+			root := tree(t, auditable())
 
-			assertFilterIsAUnion(t, tree(t, auditable()), testCase.args,
-				testCase.flag, testCase.first, testCase.second, "claims", order)
+			assertFilterIsAUnion(t, root, testCase.args,
+				testCase.flag, testCase.first, testCase.second, "claims", claimOrder(t, root))
 		})
 	}
 }
@@ -1625,4 +1632,329 @@ func subjectsOf(claims []claimRow) []string {
 		out = append(out, claim.Subject)
 	}
 	return out
+}
+
+// methods is the method each row of [everyClaim] was obtained by, which is what
+// the fixture wrote on each claim.
+var methods = map[string]string{
+	"geom:E-01 note survey:N-0002":       "method:assumed",
+	"geom:L-01 note survey:N-0003":       "method:assumed",
+	"geom:V-01 position survey:P-0001":   "method:total-station",
+	"geom:V-01 position survey:P-0002":   "method:tape",
+	"site:S-101 area survey:A-0001":      "method:scaled-from-plan",
+	"site:S-101 area survey:A-0002":      "method:total-station",
+	"site:S-101 area survey:A-0003":      "method:tape",
+	"site:S-101 height survey:H-0001":    "method:tape",
+	"site:S-101 height survey:H-0002":    "method:tape",
+	"site:S-101 note survey:N-0001":      "method:assumed",
+	"site:S-102 area survey:A-0004":      "method:scaled-from-plan",
+	"site:S-102 occupancy survey:O-0001": "method:assumed",
+	"site:S-102 occupancy survey:O-0002": "method:assumed",
+	"site:S-103 area survey:A-0005":      "method:scaled-from-plan",
+	"site:S-103 area survey:A-0006":      "method:total-station",
+	"site:S-104 area":                    "method:total-station",
+	"site:S-104 area survey:A-0007":      "method:scaled-from-plan",
+	"site:S-105 area survey:A-0008":      "method:scaled-from-plan",
+}
+
+// obtainedBy keeps the rows obtained by one of the methods.
+func obtainedBy(wanted ...string) func(string) bool {
+	return func(row string) bool {
+		fields := strings.Fields(row)
+		method, ok := methods[strings.Join(fields[:len(fields)-1], " ")]
+		return ok && slices.Contains(wanted, method)
+	}
+}
+
+func TestRunClaimsFiltersByMethod(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "lists only the claims obtained by one method",
+			args:     []string{"--method", "method:total-station"},
+			expected: only(obtainedBy("method:total-station")),
+		},
+		{
+			name:     "lists the claims obtained by either of two methods",
+			args:     []string{"--method", "method:tape", "--method", "method:assumed"},
+			expected: only(obtainedBy("method:tape", "method:assumed")),
+		},
+		{
+			name: "combines with a predicate",
+			args: []string{"--method", "method:scaled-from-plan", "--predicate", "area"},
+			expected: only(func(row string) bool {
+				return obtainedBy("method:scaled-from-plan")(row) && under("area")(row)
+			}),
+		},
+		{
+			name:     "combines with a family",
+			args:     []string{"--method", "method:tape", "--family", "vertex"},
+			expected: []string{"geom:V-01 position survey:P-0002 " + resolutionOutranked},
+		},
+		{
+			name: "combines with a type",
+			args: []string{"--method", "method:assumed", "--type", "Corridor"},
+			expected: []string{
+				"site:S-102 occupancy survey:O-0001 " + resolutionTied,
+				"site:S-102 occupancy survey:O-0002 " + resolutionTied,
+			},
+		},
+		{
+			name:     "narrows one subject's claims",
+			args:     []string{"site:S-101", "--method", "method:tape"},
+			expected: only(func(row string) bool { return writtenOn("site:S-101")(row) && obtainedBy("method:tape")(row) }),
+		},
+		{
+			name:     "narrows one subject's claims under its positional predicate",
+			args:     []string{"site:S-101", "area", "--method", "method:tape"},
+			expected: []string{"site:S-101 area survey:A-0003 " + resolutionOutranked},
+		},
+		{
+			name:     "answers nothing, without a warning, for a method the other filters exclude",
+			args:     []string{"--method", "method:assumed", "--family", "vertex"},
+			expected: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// claimed asserts that stderr is empty, which is what says a method
+			// some claim names is never warned about.
+			result := claimed(t, testCase.args...)
+
+			assert.Equal(t, testCase.expected, rows(result.Claims))
+			for _, row := range result.Claims {
+				assert.Contains(t, testCase.args, row.Method)
+			}
+		})
+	}
+}
+
+// TestRunClaimsByMethodIsTheListingNarrowed is the filter as a property: for
+// every method, the rows it lists are exactly the rows of the unfiltered
+// listing which name it, in the same order and with every field the same.
+func TestRunClaimsByMethodIsTheListingNarrowed(t *testing.T) {
+	every := claimed(t).Claims
+
+	named := make([]string, 0)
+	for _, row := range every {
+		if !slices.Contains(named, row.Method) {
+			named = append(named, row.Method)
+		}
+	}
+	require.Len(t, named, 4, "the fixture no longer writes the four methods this walks")
+
+	for _, method := range named {
+		t.Run("--method "+method+" is the listing's rows obtained by it", func(t *testing.T) {
+			expected := make([]claimRow, 0)
+			for _, row := range every {
+				if row.Method == method {
+					expected = append(expected, row)
+				}
+			}
+
+			assert.Equal(t, expected, claimed(t, "--method", method).Claims)
+		})
+	}
+
+	t.Run("without --method the listing is every claim", func(t *testing.T) {
+		assert.Equal(t, everyClaim(), rows(every))
+	})
+}
+
+// TestRunClaimsRefusesAMethodItCannotCheck walks the two ways a method can be
+// refused. A method is an id rather than a member of a known set, so what can
+// be refused is its grammar and its namespace, and nothing else.
+func TestRunClaimsRefusesAMethodItCannotCheck(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected error
+	}{
+		{
+			name:     "rejects a method which is not an id",
+			args:     []string{"--method", "total-station"},
+			expected: dfcad.MalformedIDError{Written: "total-station", Reason: dfcad.IDUnqualified},
+		},
+		{
+			name:     "rejects a second method which is not an id",
+			args:     []string{"geom:V-01", "--method", "method:tape", "--method", "method:"},
+			expected: dfcad.MalformedIDError{Written: "method:", Reason: dfcad.IDEmptyLocal},
+		},
+		{
+			name: "rejects a method in a namespace the registry does not declare",
+			args: []string{"--method", "methods:tape"},
+			expected: dfcad.UnknownAxisError{
+				Axis:      "namespace",
+				Value:     "methods",
+				Permitted: []string{"frame", "geom", "method", "site", "survey"},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, auditable()))
+
+			var stdout, stderr bytes.Buffer
+
+			require.Equal(t, exitUsage, run(append([]string{"claims"}, testCase.args...), &stdout, &stderr))
+
+			assert.Empty(t, stdout.String())
+			assert.Equal(t, "dfcad claims: "+testCase.expected.Error()+"\n", stderr.String())
+		})
+	}
+}
+
+// TestParseMethods asserts the refusal of a method which is not an id on the
+// error value, so that what a caller branches on is its type and its fields.
+func TestParseMethods(t *testing.T) {
+	t.Run("reports the first method which is not an id, with the rule it broke", func(t *testing.T) {
+		_, err := parseMethods([]string{"method:tape", "tape", "also wrong"})
+
+		var got dfcad.MalformedIDError
+		require.True(t, errors.As(err, &got), "expected MalformedIDError, got %T", err)
+		assert.Equal(t, "tape", got.Written)
+		assert.Equal(t, dfcad.IDUnqualified, got.Reason)
+	})
+
+	t.Run("keeps every method in the order written", func(t *testing.T) {
+		got, err := parseMethods([]string{"method:tape", "method:assumed"})
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"method:tape", "method:assumed"}, got)
+	})
+}
+
+// TestCheckMethodNamespaces asserts the refusal of an undeclared namespace on
+// the error value, which is the one the write path gives for the same mistake.
+func TestCheckMethodNamespaces(t *testing.T) {
+	graph, _ := dfcad.LoadGraph(tree(t, auditable()))
+
+	t.Run("reports the first namespace the registry does not declare", func(t *testing.T) {
+		err := checkMethodNamespaces(graph.Registry(), []string{"method:tape", "instrument:tape", "other:x"})
+
+		var got dfcad.UnknownAxisError
+		require.True(t, errors.As(err, &got), "expected UnknownAxisError, got %T", err)
+		assert.Equal(t, "namespace", got.Axis)
+		assert.Equal(t, "instrument", got.Value)
+		assert.Contains(t, got.Permitted, "method")
+	})
+
+	t.Run("accepts a method nothing names in a declared namespace", func(t *testing.T) {
+		assert.NoError(t, checkMethodNamespaces(graph.Registry(), []string{"method:laser-scan"}))
+	})
+}
+
+// TestRunClaimsWarnsOfAMethodNothingNames is its own function because what it
+// asserts is on stderr, in every format, and that stdout is untouched by it.
+func TestRunClaimsWarnsOfAMethodNothingNames(t *testing.T) {
+	// The answer the warning must not change: an empty listing, over the same
+	// model and of the same subject, that no method filter produced.
+	empty := func(t *testing.T, format, subject string) string {
+		t.Helper()
+
+		args := []string{"claims", "--format", format, "--predicate", "position", "--family", "node"}
+		if subject != "" {
+			args = []string{"claims", "--format", format, subject, "--family", "vertex"}
+		}
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(args, &stdout, &stderr))
+		assert.NotContains(t, stderr.String(), "warning")
+
+		return stdout.String()
+	}
+
+	testCases := []struct {
+		name   string
+		args   []string
+		warned []string
+	}{
+		{
+			name:   "warns of a method no claim names",
+			args:   []string{"--method", "method:laser-scan"},
+			warned: []string{"method:laser-scan"},
+		},
+		{
+			name:   "warns once of a method written twice",
+			args:   []string{"--method", "method:laser-scan", "--method", "method:laser-scan"},
+			warned: []string{"method:laser-scan"},
+		},
+		{
+			name:   "warns of each method no claim names, and of no other",
+			args:   []string{"--method", "method:gnss", "--method", "method:tape", "--method", "method:lidar", "--family", "loop"},
+			warned: []string{"method:gnss", "method:lidar"},
+		},
+		{
+			name:   "warns beside a subject",
+			args:   []string{"site:S-101", "--method", "method:laser-scan"},
+			warned: []string{"method:laser-scan"},
+		},
+	}
+
+	for _, format := range formats {
+		for _, testCase := range testCases {
+			t.Run(testCase.name+" under --format "+format, func(t *testing.T) {
+				t.Chdir(tree(t, auditable()))
+
+				var stdout, stderr bytes.Buffer
+				args := append([]string{"claims", "--format", format}, testCase.args...)
+				require.Equal(t, exitSuccess, run(args, &stdout, &stderr), stderr.String())
+
+				result := listed[claimsResult](t, stdout.String())
+				assert.Empty(t, result.Claims)
+				assert.Equal(t, empty(t, format, result.Subject), stdout.String())
+
+				var warnings []string
+				for _, line := range strings.Split(stderr.String(), "\n") {
+					if strings.HasPrefix(line, "dfcad claims: warning: ") {
+						warnings = append(warnings, line)
+					}
+				}
+				require.Len(t, warnings, len(testCase.warned), stderr.String())
+				for i, method := range testCase.warned {
+					assert.Contains(t, warnings[i], method)
+				}
+			})
+		}
+	}
+}
+
+// TestUnnamedMethods asserts which methods are warned of on the values
+// themselves: every claim in the model counts as naming its method, whatever
+// the listing's other filters leave.
+func TestUnnamedMethods(t *testing.T) {
+	graph, _ := dfcad.LoadGraph(tree(t, auditable()))
+
+	testCases := []struct {
+		name     string
+		methods  []string
+		expected []string
+	}{
+		{
+			name:     "names nothing when no method was asked for",
+			methods:  nil,
+			expected: nil,
+		},
+		{
+			name:     "names nothing when every method is on some claim",
+			methods:  []string{"method:tape", "method:assumed", "method:scaled-from-plan", "method:total-station"},
+			expected: nil,
+		},
+		{
+			name:     "names each method no claim names, once, in the order asked",
+			methods:  []string{"method:lidar", "method:tape", "method:gnss", "method:lidar"},
+			expected: []string{"method:lidar", "method:gnss"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, unnamedMethods(graph, testCase.methods))
+		})
+	}
 }

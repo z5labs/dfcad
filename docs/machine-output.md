@@ -203,7 +203,8 @@ Every filter follows one rule, whichever command takes it:
   whichever of a filter's values it is: the first such value, in the order they were written,
   is the one reported. A type the registry does not declare, a kind which is not one of the
   seven, a family which is not one of the three (four for `claims`, which adds `node`), a
-  frame the registry does not declare: each
+  frame the registry does not declare, a `claims --method` whose namespace the registry does
+  not declare: each
   is the error it is when written alone.
   A filter that silently dropped a value nobody declared would answer a narrower question
   than the one asked, and the answer would read as complete.
@@ -1094,17 +1095,33 @@ A walk that reaches nothing is not an error — it is an empty `results` and exi
 ### `claims`
 
 Every claim written on one thing, live and retracted alike — or, with no id, on every thing.
-It takes an optional id, a predicate after the id, and three filters.
+It takes an optional id, a predicate after the id, and four filters.
 
 | Flag | Meaning |
 |------|---------|
 | `--predicate <name>` | Only claims written under this predicate. [Repeatable](#filters). A predicate written after the id counts as one more value of this flag, and is checked first, with the id. |
 | `--type <name>` | Only claims on a node declaring this type. [Repeatable](#filters). |
 | `--family <family>` | Only claims on a thing of this family: `node`, `vertex`, `edge` or `loop`. [Repeatable](#filters). |
+| `--method <id>` | Only claims obtained by this method, matched exactly against `claims[].method`. [Repeatable](#filters). |
 
 Filters combine: a claim is listed when it satisfies every filter given, and a filter written
 more than once is satisfied by any of its values; see [Filters](#filters). They apply with an
 id as well as without one.
+
+A method is an **id**, not a member of a known set: there is no method registry, because its
+namespace is what the registry governs ([SPEC §12](../SPEC.md#12-reviewed-against-the-decision-records),
+"One open reading, resolved here"). So `--method` checks what can be checked and no more. A
+value that is not an id is a usage error, and so is an id in a namespace the registry does not
+declare — the error `add-claim --method` gives for the same mistake. A well-formed id in a
+declared namespace that no claim in the model names cannot be told from a method nobody has
+used yet, so it is answered truthfully, with `"claims": []` and exit `0`, and a warning on
+stderr names it and says no claim in the model names it. The warning is written in every
+`--format`, and stdout is the same bytes with or without it. An id some claim names, which the
+other filters happen to exclude, is not warned about.
+
+There is no `--method-not`. Every claim whose method is *not* one of a set is the complement of
+this listing — `claims --predicate position` with the rows `--method` would select taken out —
+and taking it is the caller's: one call, and no comparison operator added to the filters.
 
 `get` answers what the model says about a thing now; `claims` answers everything anybody has
 said about it and what became of each statement. Deprecated claims are therefore in the
