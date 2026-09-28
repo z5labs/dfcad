@@ -203,7 +203,7 @@ which predicate put it there.
 
 The filters are marked **Repeatable** in the flag table of each command which takes them:
 [`list-instances`](#list-instances), [`list-geometry`](#list-geometry),
-[`traverse`](#traverse), [`conflicts`](#conflicts) and [`check`](#check).
+[`traverse`](#traverse), [`plan`](#plan), [`conflicts`](#conflicts) and [`check`](#check).
 
 ## Payloads
 
@@ -1522,7 +1522,7 @@ one. That is the answer to the question rather than a failure to answer it.
 ### `plan`
 
 What a spatial node contains, as rings, with the claims written on them. It takes the id of
-the thing to plan and six flags, three of which are required — and none of which has a
+the thing to plan and eight flags, three of which are required — and none of which has a
 default.
 
 | Flag | Meaning |
@@ -1533,6 +1533,8 @@ default.
 | `--arc-centre <predicate>` | The predicate a curved edge's centre is claimed under. |
 | `--arc-through <predicate>` | The predicate the point a curved edge passes through is claimed under. |
 | `--chord <name>` | The tolerance a straight segment standing in for a curve may fall from it by. |
+| `--kind <kind>` | Only descendants that declare this kind. [Repeatable](#filters). |
+| `--type <name>` | Only descendants that declare this type. [Repeatable](#filters). |
 
 The last three are the vocabulary a curved wall is read under, exactly as
 [`tessellate`](#tessellate) reads one, and all three are needed to read one: a ring is a list
@@ -1558,6 +1560,23 @@ written on the edges bounding them, under the same envelope, digest and budget e
 answer carries, and it knows nothing about paper, scale, title blocks, text height or where a
 leader goes. Those are the consumer's, and this command is the boundary that keeps them so.
 
+**`--kind` and `--type` narrow what is reported and never what is walked**, under the
+[filter rule](#filters) exactly as [`traverse`](#traverse) has them: within one flag any of its
+values, across the two flags both. Under `--type Office` an office three levels below the
+subject is reported though nothing between it and the subject is an office. A kind that is not
+one of the seven is a usage error raising the same error `traverse` does, listing the seven,
+and a type the registry does not declare is one pointing at [`list-types`](#list-types) — exit
+`3`, with nothing on stdout. A declared type nothing instantiates is an empty `outlines` and
+exit `0`. Everything computed from the rings drawn — the survey they are read against,
+`budget`, `chord` and `deviation`, and `chorded` — is over the selected nodes alone, and a
+selected node's outline is exactly what it is in the unfiltered plan, `region` and
+`annotations` alike: a filter decides which rooms come back and never how a room is drawn. A
+plan of one type is how a sheet of the meeting rooms, or a site plan of the site nodes, is
+asked for without taking every outline in a parcel back to reach a dozen of them; a sheet of
+several types asks for them in one call by repeating `--type`. `--depth` is deliberately not
+offered: how deep a node is nested reflects how an author happened to group things, and the
+type is what a renderer already switches on.
+
 **`--annotate` is the whole of the answer to "is this dimension worth drawing".** It is worth
 drawing if the caller asked for that predicate. Nothing else in the payload encodes a drawing
 judgement, which is what keeps the engine from acquiring a drawing convention every consuming
@@ -1573,13 +1592,14 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `unit` | string, optional | That frame's linear unit. Every coordinate here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
 | `annotating` | array | The predicates the run asked for, in the order it named them and with a repeat written once. |
+| `filter` | object, optional | The filters the run was narrowed by: `kind` and `type`, each an array of the values given, in the order they were written and with a repeat written once, and each absent where its flag was not given. Absent where neither was given. It is echoed for the reason `annotating` is: a stored plan of the meeting rooms and one of the whole storey answer different questions, and the object says which. |
 | `chord` | object, optional | The tolerance the curves of the rings were drawn to: `name`, `value` and `unit`. Of the plan rather than of any outline in it. It travels with the answer because a ring that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. Absent, with `deviation`, for a plan in which no ring bent — a storey of straight walls, and a run which read no curve: nothing was approximated, so there is no tolerance it was drawn to. |
 | `deviation.value` | number | How far the worst segment of any outline actually falls from the curve it stands in for. Absent wherever `chord` is absent, and so absent wherever `chorded` is written: a curve that was not read was not drawn to anything. |
 | `deviation.unit` | string, optional | The frame's linear unit. |
 | `chorded[].edge` | string | An edge of a ring which states a curve this run did not read. Absent for a run which read every curve and for a storey which claims none. |
 | `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |
 | `chorded[].span` | object | Where that edge was written. |
-| `outlines` | array | One entry per contained node that was drawn, in id order. Empty rather than null for a subject that contains nothing drawable. |
+| `outlines` | array | One entry per contained node that was drawn — and that the filter selects, where one was given — in id order. Empty rather than null for a subject that contains nothing drawable, and for a filter that selects nothing. |
 | `outlines[].node` | string | The id of the node the rings were read from, which is what names them. |
 | `outlines[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `outlines[].kind` | string, optional | The kind it declares. |
@@ -1592,7 +1612,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
 | `outlines[].annotations[].anchor.vertices` | array, optional | The edge's two corners, in the order the edge was authored. Absent for a node anchor. |
 | `outlines[].annotations[].anchor.rings` | array, optional | The loops bounding the node, in the order it references them. Absent for an edge anchor. |
-| `undrawn` | array, optional | One entry per contained node that was **not** drawn, in id order. Absent for a subject every node of which was drawn — a key a consumer has to read to learn nothing is one that should not be there. |
+| `undrawn` | array, optional | One entry per contained node that was **not** drawn — and that the filter selects, where one was given — in id order. Absent for a subject every node of which was drawn — a key a consumer has to read to learn nothing is one that should not be there. |
 | `undrawn[].node` | string | The id of the node that was not drawn. |
 | `undrawn[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `undrawn[].kind` | string, optional | The kind it declares. |
@@ -1655,20 +1675,23 @@ impossible, because one `--position` and one `--tolerance` each carry one unit. 
 subject and every contained node are declared in one frame carries nothing and writes the
 bytes it always did.
 
-Which nodes are drawn is every descendant of the subject that references at least one loop
-this run could read, however deep: a room inside a storey and an alcove inside that room are
-both places somebody draws. So is every descendant whose declared geometry is `point` and
+Which nodes are drawn is every descendant of the subject — every one the filter selects,
+where one is given — that references at least one loop this run could read, however deep: a
+room inside a storey and an alcove inside that room are both places somebody draws. So is every descendant whose declared geometry is `point` and
 which a claim under `--position` places, read from the position claimed of the node itself:
 its outline carries `at` and no pieces, because a panel, a receptacle and a survey monument
 are each that shape, and a plan that reported them as having no boundary would leave every
 device on a floor off the sheet. The subject itself is not drawn — the question is what is in
 it.
 
-**Nothing the subject contains is dropped.** Every descendant that was not drawn comes back
-under `undrawn`, named, with what it is, why it was not drawn and the claims written on it —
-so `outlines` and `undrawn` account between them for every node the subject holds, and a
-renderer that drew every outline and listed every undrawn node has drawn or named the whole
-storey. A circuit group has no edges and is ordinary; a ring that does not close is a defect;
+**Nothing the filter selects is dropped** — and with no filter given, it selects everything the
+subject contains. Every selected descendant that was not drawn comes back under `undrawn`,
+named, with what it is, why it was not drawn and the claims written on it — so `outlines` and
+`undrawn` partition between them every node the filter selects, and a renderer that drew
+every outline and listed every undrawn node has drawn or named every one of them: under no
+filter, the whole storey. A node the filter does not select appears in neither list, because
+it was not asked about, which is a different thing from being left off a sheet it was asked
+for. A circuit group has no edges and is ordinary; a ring that does not close is a defect;
 both are things somebody put inside that storey. This is the one place the payload could omit
 an authored fact without saying so, and the failure it would cause has no downstream symptom
 at all: the sheet renders, looks complete, and is missing a door.

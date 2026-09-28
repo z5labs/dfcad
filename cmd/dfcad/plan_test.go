@@ -1750,3 +1750,334 @@ func TestRunPlanAlwaysWritesWithin(t *testing.T) {
 		assert.Contains(t, entry, "within", "every entry carries the key")
 	}
 }
+
+// filtered is the ordinary invocation of the storey narrowed by the filters
+// given, which are written ahead of the subject exactly as a caller writes them.
+func filtered(id string, filters ...string) []string {
+	return append(filters, wholeStorey(id)...)
+}
+
+func TestRunPlanReportsOnlyWhatItsFiltersSelect(t *testing.T) {
+	testCases := []struct {
+		name             string
+		args             []string
+		expectedOutlines []string
+		expectedFilter   *planFilter
+	}{
+		{
+			name:             "reports only the rooms of the type asked for",
+			args:             filtered("site:L-01", "--type", "MeetingRoom"),
+			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedFilter:   &planFilter{Type: []string{"MeetingRoom"}},
+		},
+		{
+			name:             "reports only what declares the kind asked for",
+			args:             filtered("site:L-01", "--kind", "Element"),
+			expectedOutlines: []string{"site:D-01"},
+			expectedFilter:   &planFilter{Kind: []string{"Element"}},
+		},
+		{
+			name:             "reports what satisfies both flags where both are given",
+			args:             filtered("site:L-01", "--kind", "Space", "--type", "MeetingRoom"),
+			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedFilter:   &planFilter{Kind: []string{"Space"}, Type: []string{"MeetingRoom"}},
+		},
+		{
+			name:             "reports nothing where no node satisfies both flags",
+			args:             filtered("site:L-01", "--kind", "Element", "--type", "MeetingRoom"),
+			expectedOutlines: []string{},
+			expectedFilter:   &planFilter{Kind: []string{"Element"}, Type: []string{"MeetingRoom"}},
+		},
+		{
+			name:             "reports any of a repeated flag's values",
+			args:             filtered("site:L-01", "--type", "MeetingRoom", "--type", "Doorway"),
+			expectedOutlines: []string{"site:D-01", "site:R-01", "site:R-02"},
+			expectedFilter:   &planFilter{Type: []string{"MeetingRoom", "Doorway"}},
+		},
+		{
+			name:             "echoes a value written twice once",
+			args:             filtered("site:L-01", "--type", "Doorway", "--type", "Doorway"),
+			expectedOutlines: []string{"site:D-01"},
+			expectedFilter:   &planFilter{Type: []string{"Doorway"}},
+		},
+		{
+			name:             "reports no rings for a declared type nothing in the subject instantiates",
+			args:             filtered("site:L-01", "--type", "OfficeStorey"),
+			expectedOutlines: []string{},
+			expectedFilter:   &planFilter{Type: []string{"OfficeStorey"}},
+		},
+		{
+			// The storey between the building and its rooms is not a meeting
+			// room, and the rooms are reported anyway: the filter narrows what
+			// is reported and never what is walked.
+			name:             "walks through what it does not report to reach what it does",
+			args:             filtered("site:B-01", "--type", "MeetingRoom"),
+			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedFilter:   &planFilter{Type: []string{"MeetingRoom"}},
+		},
+		{
+			name:             "echoes no filter where none was given",
+			args:             wholeStorey("site:L-01"),
+			expectedOutlines: []string{"site:D-01", "site:R-01", "site:R-02"},
+			expectedFilter:   nil,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, _ := planned(t, exitSuccess, testCase.args...)
+
+			assert.True(t, result.Planned)
+			assert.Equal(t, testCase.expectedOutlines, outlined(result))
+			assert.Equal(t, testCase.expectedFilter, result.Filter)
+			assert.Empty(t, result.Undrawn)
+		})
+	}
+}
+
+// TestRunPlanReportsTheUnionOfARepeatedFilter is its own function because it
+// asserts a relation between three answers rather than the content of one: a
+// flag repeated is any of its values, so the answer to both types is the two
+// answers to one type each, together.
+func TestRunPlanReportsTheUnionOfARepeatedFilter(t *testing.T) {
+	rooms, _ := planned(t, exitSuccess, filtered("site:L-01", "--type", "MeetingRoom")...)
+	doors, _ := planned(t, exitSuccess, filtered("site:L-01", "--type", "Doorway")...)
+	both, _ := planned(t, exitSuccess, filtered("site:L-01", "--type", "MeetingRoom", "--type", "Doorway")...)
+
+	union := append(outlined(rooms), outlined(doors)...)
+	slices.Sort(union)
+
+	assert.Equal(t, union, outlined(both))
+}
+
+// TestRunPlanRefusesAFilterValueNobodyDeclared is its own function because it
+// is about a refusal, whose shape is a usage error and an empty stdout rather
+// than an answer.
+func TestRunPlanRefusesAFilterValueNobodyDeclared(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{
+			name:     "refuses a type the registry does not declare",
+			args:     filtered("site:L-01", "--type", "MeetingRoom", "--type", "MeetingRom"),
+			expected: "MeetingRom",
+		},
+		{
+			name:     "refuses a kind which is not one of the seven",
+			args:     filtered("site:L-01", "--kind", "Room"),
+			expected: "Room",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, planFixture()))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitUsage, run(append([]string{"plan"}, testCase.args...), &stdout, &stderr), stderr.String())
+
+			assert.Empty(t, stdout.String(), "a refusal writes nothing on stdout")
+			assert.Contains(t, stderr.String(), testCase.expected)
+		})
+	}
+}
+
+// TestPlanSelectionCarriesWhatWasWrongWithIt is its own function because it
+// asserts the error values the refusals above are rendered from, by structure
+// rather than by message.
+func TestPlanSelectionCarriesWhatWasWrongWithIt(t *testing.T) {
+	graph, _ := dfcad.LoadGraph(tree(t, planFixture()))
+
+	t.Run("names the type nobody declared and every type there is", func(t *testing.T) {
+		_, err := planSelection(graph.Registry(), nil, []string{"MeetingRoom", "MeetingRom"})
+
+		var unknown UnknownTypeError
+		require.ErrorAs(t, err, &unknown)
+		assert.Equal(t, "MeetingRom", unknown.Type)
+		assert.Equal(t, graph.Registry().Names(dfcad.SortType), unknown.Declared)
+		assert.Contains(t, unknown.Error(), "list-types")
+	})
+
+	t.Run("names the kind which is not one and the seven there are", func(t *testing.T) {
+		_, err := planSelection(graph.Registry(), []string{"Room"}, nil)
+
+		var unknown UnknownKindError
+		require.ErrorAs(t, err, &unknown)
+		assert.Equal(t, "Room", unknown.Kind)
+		assert.Equal(t, dfcad.Kinds(), unknown.Known)
+		assert.Len(t, unknown.Known, 7)
+	})
+
+	t.Run("selects what every value names", func(t *testing.T) {
+		selection, err := planSelection(graph.Registry(), []string{"Space"}, []string{"MeetingRoom"})
+
+		require.NoError(t, err)
+		assert.Equal(t, dfcad.Selection{Kinds: []dfcad.Kind{"Space"}, Types: []string{"MeetingRoom"}}, selection)
+	})
+}
+
+// TestRunPlanPartitionsWhatItsFiltersSelect is its own function because it is
+// about the second list a plan comes back with, over a model holding a node
+// nothing can draw.
+func TestRunPlanPartitionsWhatItsFiltersSelect(t *testing.T) {
+	testCases := []struct {
+		name             string
+		args             []string
+		expectedOutlines []string
+		expectedUndrawn  []string
+	}{
+		{
+			name:             "names a selected node it cannot draw",
+			args:             filtered("site:L-01", "--kind", "Element"),
+			expectedOutlines: []string{"site:D-01"},
+			expectedUndrawn:  []string{"site:C-01"},
+		},
+		{
+			name:             "names no node the filter does not select, drawable or not",
+			args:             filtered("site:L-01", "--type", "MeetingRoom"),
+			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedUndrawn:  nil,
+		},
+		{
+			name:             "names a selected node it cannot draw where nothing selected draws",
+			args:             filtered("site:L-01", "--type", "CircuitGroup"),
+			expectedOutlines: []string{},
+			expectedUndrawn:  []string{"site:C-01"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, undrawableFixture()))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess,
+				run(append([]string{"plan"}, testCase.args...), &stdout, &stderr), stderr.String())
+
+			result := listed[planResult](t, stdout.String())
+
+			var undrawn []string
+			for _, entry := range result.Undrawn {
+				undrawn = append(undrawn, entry.Node)
+			}
+
+			assert.Equal(t, testCase.expectedOutlines, outlined(result))
+			assert.Equal(t, testCase.expectedUndrawn, undrawn)
+		})
+	}
+}
+
+// TestRunPlanBudgetsOnlyTheRingsItsFiltersSelect is its own function because it
+// is about what the figures of the answer are computed over rather than about
+// which nodes came back.
+func TestRunPlanBudgetsOnlyTheRingsItsFiltersSelect(t *testing.T) {
+	whole, _ := planned(t, exitSuccess, wholeStorey("site:L-01")...)
+	door, _ := planned(t, exitSuccess, filtered("site:L-01", "--type", "Doorway")...)
+
+	require.NotNil(t, whole.Budget)
+	require.NotNil(t, door.Budget)
+
+	// The doorway is three corners, each placed by one position claim. The
+	// rooms beside it are drawn in the whole plan and not on this sheet, and
+	// their corners are no part of how well this sheet's lines are known.
+	assert.Len(t, door.Budget.Terms, 3)
+	assert.Greater(t, len(whole.Budget.Terms), len(door.Budget.Terms))
+}
+
+// TestRunPlanReadsCurvesOnlyOfWhatItsFiltersSelect is its own function because
+// the curve vocabulary is read over the survey, and the survey is over the
+// selected nodes: a curve on a room nobody asked for is not one this sheet was
+// drawn through, or one it failed to draw.
+func TestRunPlanReadsCurvesOnlyOfWhatItsFiltersSelect(t *testing.T) {
+	curving := []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through", "--chord", "chord-deviation"}
+
+	t.Run("names no chorded edge of a room the filter does not select", func(t *testing.T) {
+		result, stderr := curvedPlan(t, exitSuccess, "--kind", "Element", "site:L-02")
+
+		assert.Empty(t, result.Outlines)
+		assert.Empty(t, result.Chorded)
+		assert.NotContains(t, stderr, "geom:E-42")
+	})
+
+	t.Run("carries no chord or deviation from a room the filter does not select", func(t *testing.T) {
+		result, _ := curvedPlan(t, exitSuccess, append(curving, "--kind", "Element", "site:L-02")...)
+
+		assert.Empty(t, result.Outlines)
+		assert.Nil(t, result.Chord)
+		assert.Nil(t, result.Deviation)
+	})
+
+	t.Run("carries both from a curved room the filter selects", func(t *testing.T) {
+		result, _ := curvedPlan(t, exitSuccess, append(curving, "--type", "MeetingRoom", "site:L-02")...)
+
+		require.Len(t, result.Outlines, 1)
+		require.NotNil(t, result.Chord)
+		require.NotNil(t, result.Deviation)
+	})
+}
+
+// TestRunPlanDrawsASelectedNodeAsTheWholePlanDoes is the property the filters
+// rest on: they change which rooms come back and never how a room is drawn. Each
+// outline of a filtered plan is, entry for entry, the same node's outline in the
+// unfiltered one.
+func TestRunPlanDrawsASelectedNodeAsTheWholePlanDoes(t *testing.T) {
+	whole, _ := planned(t, exitSuccess, wholeStorey("site:L-01")...)
+
+	unfiltered := make(map[string]outlineEntry, len(whole.Outlines))
+	for _, outline := range whole.Outlines {
+		unfiltered[outline.Node] = outline
+	}
+
+	filters := [][]string{
+		{"--type", "MeetingRoom"},
+		{"--type", "Doorway"},
+		{"--kind", "Element"},
+		{"--kind", "Space", "--kind", "Element"},
+		{"--type", "MeetingRoom", "--type", "Doorway"},
+	}
+
+	for _, filter := range filters {
+		t.Run(strings.Join(filter, " "), func(t *testing.T) {
+			result, _ := planned(t, exitSuccess, filtered("site:L-01", filter...)...)
+
+			require.NotEmpty(t, result.Outlines)
+			for _, outline := range result.Outlines {
+				expected, ok := unfiltered[outline.Node]
+				require.True(t, ok, "%s is drawn in the unfiltered plan too", outline.Node)
+
+				assert.Equal(t, expected.Region, outline.Region, outline.Node)
+				assert.Equal(t, expected.Annotations, outline.Annotations, outline.Node)
+				assert.Equal(t, expected, outline, outline.Node)
+			}
+		})
+	}
+}
+
+// TestRunPlanWritesTheBytesItAlwaysDidWithNoFilter is its own function because
+// it is a promise about the whole payload: a run which gave no filter, or gave
+// only empty ones, writes exactly the object an unfiltered plan wrote before
+// there were filters — with no "filter" key at all.
+func TestRunPlanWritesTheBytesItAlwaysDidWithNoFilter(t *testing.T) {
+	t.Chdir(tree(t, planFixture()))
+
+	var plain, empty, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"plan"}, wholeStorey("site:L-01")...), &plain, &stderr))
+	require.Equal(t, exitSuccess,
+		run(append([]string{"plan"}, filtered("site:L-01", "--kind", "", "--type", "")...), &empty, &stderr))
+
+	assert.Equal(t, plain.String(), empty.String())
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(plain.Bytes(), &payload))
+	assert.NotContains(t, payload, "filter")
+}
+
+// TestTheContractDocumentsThePlanFilter checks that the plan section of
+// docs/machine-output.md has a row for the echoed filter and for each flag.
+func TestTheContractDocumentsThePlanFilter(t *testing.T) {
+	assert.Contains(t, contractRow(t, "plan", "filter"), "optional")
+	assert.Contains(t, contractRow(t, "plan", "--kind <kind>"), "Repeatable")
+	assert.Contains(t, contractRow(t, "plan", "--type <name>"), "Repeatable")
+}

@@ -652,7 +652,83 @@ func (p Plan) Report() string {
 // with the same anchor, and which one a sheet prints is the caller's decision.
 // A retracted claim is never reported — resolution never considers one, and a
 // sheet printing a value somebody has withdrawn is the failure this refuses.
+//
+// It is [Graph.PlanOfSelected] with no selection: every descendant is asked
+// about.
 func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotations) (Plan, []Diagnostic) {
+	return g.PlanOfSelected(node, survey, annotations, Selection{})
+}
+
+// Selection is which of a subject's descendants a plan is asked about: those
+// declaring one of Kinds, and one of Types.
+//
+// Within one field any of its values, across the two fields both, and an empty
+// field is no narrowing at all — so the zero Selection selects every node. That
+// is the rule every filter of the command line follows, and it is any rather
+// than every within a field because a node declares one kind and one type: a
+// selection demanding two of either would select nothing by construction.
+//
+// It narrows what a plan reports and never what it walks. A room three levels
+// below the subject is selected by Types {"Office"} whether or not anything
+// between it and the subject is an office, because the question is which rooms
+// to draw, and a walk which stopped at the first node the selection refused
+// would answer "no rooms" for a model whose every room is inside a storey.
+//
+// A kind or type nobody declared is not refused here: it selects nothing,
+// exactly as a declared one nothing instantiates does. Telling those two apart is
+// a question about the registry which a caller asks before asking for a plan —
+// the command line refuses such a value as a usage error — and the answer to
+// "which of these nodes is an X" is the same whichever of the two X is.
+type Selection struct {
+	// Kinds are the kinds a selected node declares one of. Empty selects every
+	// kind.
+	Kinds []Kind
+
+	// Types are the types a selected node declares one of. Empty selects every
+	// type.
+	Types []string
+}
+
+// Selects reports whether node is one the selection asks about. A nil node is
+// never selected.
+func (s Selection) Selects(node *SemanticNode) bool {
+	if node == nil {
+		return false
+	}
+	if len(s.Kinds) > 0 && !slices.Contains(s.Kinds, node.Kind()) {
+		return false
+	}
+	if len(s.Types) > 0 && !slices.Contains(s.Types, node.Type()) {
+		return false
+	}
+	return true
+}
+
+// PlanOfSelected is [Graph.PlanOf] asked about only the descendants selection
+// selects.
+//
+// Every rule of [Graph.PlanOf] holds over what is selected. [Plan.Outlines] and
+// [Plan.Undrawn] account between them for every selected descendant, and a
+// descendant the selection does not select is in neither: it was not asked
+// about, which is a different thing from being left off a sheet it was asked
+// for. A selected node the plan cannot draw is still named under
+// [Plan.Undrawn], with its reason and its claims, exactly as it would be
+// unselected.
+//
+// Everything a plan computes from the rings it drew is over the selected nodes
+// alone: the chord tolerance and the deviation, and [Plan.Budget]. A sheet of
+// the meeting rooms carries the accuracy of the meeting rooms' corners and not
+// of every corner in the storey. What a selected node's outline says — its
+// region and its annotations — is exactly what it says in the unselected plan:
+// the selection decides which rooms come back and never how a room is drawn.
+//
+// A selection which selects nothing is an empty plan, not a refusal.
+func (g *Graph) PlanOfSelected(
+	node *SemanticNode,
+	survey Survey,
+	annotations Annotations,
+	selection Selection,
+) (Plan, []Diagnostic) {
 	if g == nil || node == nil {
 		return Plan{}, nil
 	}
@@ -667,6 +743,13 @@ func (g *Graph) PlanOf(node *SemanticNode, survey Survey, annotations Annotation
 	var diags []Diagnostic
 
 	for _, contained := range g.contained(node) {
+		// Narrowed here and not in the walk: a room is reached through a storey
+		// the selection may not select, and it is what is reported which the
+		// selection decides.
+		if !selection.Selects(contained) {
+			continue
+		}
+
 		// A node the model gives no edges raises no diagnostic. A circuit group
 		// covers no area and a warranty has no shape, and a query which
 		// complained about one would complain about most models; whether a node
@@ -866,9 +949,10 @@ func uncarriedRun(region Region, frame ID, point Point, err error) []Diagnostic 
 //
 // The walk is the containment one and reaches all the way down, so a storey's
 // rooms and the alcoves inside those rooms are both in it. Nothing is filtered
-// out: what a plan can draw is decided per node by [Graph.outlined] and by
+// out here: what a plan can draw is decided per node by [Graph.outlined] and by
 // whether its boundary read, and both answers are reported rather than used to
-// shorten this list.
+// shorten this list, and what a plan is asked about is decided per node by its
+// [Selection], after the walk rather than during it.
 //
 // The order is by id so that both lists a plan comes back with are properties of
 // what the model says rather than of which file each node happens to be written
