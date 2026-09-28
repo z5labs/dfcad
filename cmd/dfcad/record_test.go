@@ -186,6 +186,14 @@ func TestRunAddClaimReportsTheConflictItCreated(t *testing.T) {
 	assert.Equal(t, "As-built check AB-2026-009, Acme Surveys", result.Notices[0].Competing[0].Source)
 	assert.NotEmpty(t, result.Notices[0].Competing[0].Span.Start.Path)
 
+	// It is the claim object every other command writes, so it carries its
+	// accuracy combined beside the terms, exactly as get would write it.
+	require.NotEmpty(t, result.Notices[0].Competing[0].Accuracy)
+	assert.Equal(t,
+		&combinedUncertainty{Magnitude: 0.05, Unit: "m2", CoverageFactor: 1},
+		result.Notices[0].Competing[0].Combined,
+	)
+
 	assert.Contains(t, report, "conflict")
 
 	// Both claims are there. Repeating a predicate is the normal case, and the

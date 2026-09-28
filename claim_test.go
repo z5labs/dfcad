@@ -6,6 +6,8 @@
 package dfcad
 
 import (
+	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -1245,4 +1247,101 @@ func TestReaderDate(t *testing.T) {
 			assert.Equal(t, testCase.expected, got)
 		})
 	}
+}
+
+// TestClaimCombined checks the figure a claim's own accuracy reduces to: the
+// rule of specification section 6.6.5, applied to a budget of the one claim.
+func TestClaimCombined(t *testing.T) {
+	testCases := []struct {
+		name     string
+		terms    string
+		expected Uncertainty
+	}{
+		{
+			name:     "is one independent term as it was written",
+			terms:    "(independent 0.05 m)",
+			expected: Uncertainty{Magnitude: 0.05, Unit: "m", CoverageFactor: 1},
+		},
+		{
+			name:     "joins an independent and a systematic term in quadrature",
+			terms:    "(independent 0.003 m) (systematic 0.008 m control:CP-3)",
+			expected: Uncertainty{Magnitude: math.Sqrt(0.003*0.003 + 0.008*0.008), Unit: "m", CoverageFactor: 1},
+		},
+		{
+			name:     "counts a negative magnitude by its size",
+			terms:    "(independent -0.003 m) (systematic -0.008 m control:CP-3)",
+			expected: Uncertainty{Magnitude: math.Sqrt(0.003*0.003 + 0.008*0.008), Unit: "m", CoverageFactor: 1},
+		},
+		{
+			name:     "counts one term id written twice once, at the larger magnitude",
+			terms:    "(systematic 0.004 m control:CP-3) (systematic 0.008 m control:CP-3)",
+			expected: Uncertainty{Magnitude: 0.008, Unit: "m", CoverageFactor: 1},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			claims, _ := loadClaimModel(t, mixedUnitsRegistry, mixedUnitsNode("site:CDU-01", "survey:C-0309", testCase.terms))
+
+			claim, ok := claims.Claim("survey:C-0309")
+			require.True(t, ok)
+
+			got, err := claim.Combined()
+
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expected.Unit, got.Unit)
+			assert.Equal(t, testCase.expected.CoverageFactor, got.CoverageFactor)
+			assert.InDelta(t, testCase.expected.Magnitude, got.Magnitude, 1e-15)
+		})
+	}
+}
+
+// TestClaimCombinedIsTheFigureOfABudgetOfTheClaimAlone checks that the claim's
+// figure and a one-claim budget's figure are one function, exactly, over every
+// claim of the fixture model.
+func TestClaimCombinedIsTheFigureOfABudgetOfTheClaimAlone(t *testing.T) {
+	claims, _ := loadClaimFixture(t, "valid")
+
+	for claim := range claims.All() {
+		var budget Budget
+		budget.Add(claim)
+
+		expected, expectedErr := budget.Combined()
+		got, err := claim.Combined()
+
+		assert.Equal(t, expected, got)
+		assert.Equal(t, expectedErr == nil, err == nil)
+	}
+}
+
+// TestClaimCombinedReportsAClaimWithNoAccuracyUnknown checks that a claim which
+// states no accuracy has no figure, and says which claim it was.
+func TestClaimCombinedReportsAClaimWithNoAccuracyUnknown(t *testing.T) {
+	claims, _ := loadClaimModel(t, mixedUnitsRegistry, mixedUnitsNode("site:CDU-01", "survey:C-0309", ""))
+
+	claim, ok := claims.Claim("survey:C-0309")
+	require.True(t, ok)
+
+	_, err := claim.Combined()
+
+	var unknown UnknownAccuracyError
+	require.True(t, errors.As(err, &unknown), "expected UnknownAccuracyError, got %T", err)
+	assert.Equal(t, []*Claim{claim}, unknown.Claims)
+}
+
+// TestClaimCombinedReportsTermsInMixedUnits checks that terms in more than one
+// unit combine to nothing, and name their units each once in the order written.
+func TestClaimCombinedReportsTermsInMixedUnits(t *testing.T) {
+	const terms = "(independent 1.0 mm) (systematic 0.001 m control:CP-3) (independent 2.0 mm)"
+
+	claims, _ := loadClaimModel(t, mixedUnitsRegistry, mixedUnitsNode("site:CDU-01", "survey:C-0309", terms))
+
+	claim, ok := claims.Claim("survey:C-0309")
+	require.True(t, ok)
+
+	_, err := claim.Combined()
+
+	var mixed MixedUnitsError
+	require.True(t, errors.As(err, &mixed), "expected MixedUnitsError, got %T", err)
+	assert.Equal(t, []Unit{"mm", "m"}, mixed.Units)
 }

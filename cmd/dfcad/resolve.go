@@ -215,6 +215,16 @@ type resolveResult struct {
 	// to find out how good the number is would ask for it every time.
 	Accuracy []accuracyTerm `json:"accuracy,omitempty"`
 
+	// Combined is Accuracy reduced to one standard uncertainty, as a claim
+	// object carries it: the claim's own figure, the one resolution ranked it
+	// by. Under --frame it is still the claim's own; the transformed answer's
+	// is Budget's combined figure.
+	Combined *combinedUncertainty `json:"combined,omitempty"`
+
+	// Units are the units Accuracy's terms were written in, each once, where
+	// there is more than one and so Combined is absent.
+	Units []string `json:"units,omitempty"`
+
 	// ClaimID is the id of the claim the answer came from. Absent where nothing
 	// resolved, and absent where the claim wrote no id, which is the great
 	// majority of them: an id is required only of a claim something references.
@@ -422,6 +432,8 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 		value := entry.Value
 		result.Value = &value
 		result.Accuracy = entry.Accuracy
+		result.Combined = entry.Combined
+		result.Units = entry.Units
 		result.ClaimID = entry.ID
 
 		// The whole claim only where it was asked for. What is above is the
@@ -711,11 +723,7 @@ func budgetOf(budget dfcad.Budget) budgetReport {
 	combined, err := budget.Combined()
 	switch err {
 	case nil:
-		report.Combined = &combinedUncertainty{
-			Magnitude:      combined.Magnitude,
-			Unit:           string(combined.Unit),
-			CoverageFactor: combined.CoverageFactor,
-		}
+		report.Combined = uncertaintyOf(combined)
 	default:
 		// A budget which cannot be reduced to a figure still reports its terms
 		// and why it could not. An empty combined figure with no reason beside
@@ -733,6 +741,19 @@ func budgetOf(budget dfcad.Budget) budgetReport {
 	}
 
 	return report
+}
+
+// uncertaintyOf is one combined figure as the machine contract writes it.
+//
+// A budget's figure and a claim's are written by this one function, because
+// they are one thing: a claim's figure is the figure of a budget holding it
+// alone.
+func uncertaintyOf(combined dfcad.Uncertainty) *combinedUncertainty {
+	return &combinedUncertainty{
+		Magnitude:      combined.Magnitude,
+		Unit:           string(combined.Unit),
+		CoverageFactor: combined.CoverageFactor,
+	}
 }
 
 // subjects is what a set of claims is about, each thing once, in the order the

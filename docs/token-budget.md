@@ -117,8 +117,8 @@ Answering: how big is Meeting Room B on level 1, starting from nothing.
 |------|-------|-------|
 | `dfcad list-types` | 250 | 229 |
 | `dfcad list-instances MeetingRoom` | 188 | 187 |
-| `dfcad resolve site:S-111 area` | 71 | 68 |
-| **the whole path** | **509** | **484** |
+| `dfcad resolve site:S-111 area` | 90 | 86 |
+| **the whole path** | **528** | **502** |
 
 Target 500 tokens: **missed**. Regression ceiling 530 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -129,8 +129,8 @@ Answering: how big is Meeting Room B on level 1, for an agent which has already 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
 | `dfcad list-instances MeetingRoom` | 188 | 187 |
-| `dfcad resolve site:S-111 area` | 71 | 68 |
-| **the whole path** | **259** | **255** |
+| `dfcad resolve site:S-111 area` | 90 | 86 |
+| **the whole path** | **278** | **273** |
 
 Target 300 tokens: **met**. Regression ceiling 280 tokens. Claimed at 4 times cheaper than reading the model.
 
@@ -142,11 +142,11 @@ Answering: how big is Meeting Room B on level 1, retrieving the thing itself on 
 |------|-------|-------|
 | `dfcad list-types` | 250 | 229 |
 | `dfcad list-instances MeetingRoom` | 188 | 187 |
-| `dfcad get site:S-111` | 280 | 274 |
-| `dfcad resolve site:S-111 area` | 71 | 68 |
-| **the whole path** | **789** | **758** |
+| `dfcad get site:S-111` | 299 | 292 |
+| `dfcad resolve site:S-111 area` | 90 | 86 |
+| **the whole path** | **827** | **794** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 820 tokens. Claimed at 4 times cheaper than reading the model.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 830 tokens. Claimed at 4 times cheaper than reading the model.
 
 ## The cost of the same question answered from the geometry rather than from a claim
 
@@ -178,10 +178,10 @@ Answering: what level 1 looks like in plan, with the area claimed on each room.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad plan site:L-01 --annotate area` | 7918 | 7799 |
-| **the whole path** | **7918** | **7799** |
+| `dfcad plan site:L-01 --annotate area` | 8165 | 8033 |
+| **the whole path** | **8165** | **8033** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 8000 tokens. Claimed at 2 times cheaper than reading the model.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 8180 tokens. Claimed at 2 times cheaper than reading the model.
 
 ## Where the tokens go
 
@@ -194,9 +194,10 @@ from" figure differs by a token or two from the same call in the tables above.
 |-------|--------|--------|--------|
 | the descriptions `--describe` adds | `dfcad list-types --describe` | 250, down from 341 | 229, down from 320 |
 | the classifications `--classification` adds | `dfcad list-types --classification` | 250, down from 416 | 229, down from 394 |
-| the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 72, down from 180 | 68, down from 174 |
-| the spans in `get` | `dfcad get site:S-111` | 216, down from 282 | 211, down from 274 |
-| the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 51, down from 72 | 49, down from 68 |
+| the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 92, down from 220 | 86, down from 210 |
+| the spans in `get` | `dfcad get site:S-111` | 236, down from 302 | 229, down from 292 |
+| the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 71, down from 92 | 67, down from 86 |
+| the combined accuracy on each claim in `plan` | `dfcad plan site:L-01 --annotate area` | 7906, down from 8166 | 7744, down from 7978 |
 | the error budget in `measure` | `dfcad measure site:S-111` | 164, down from 494 | 162, down from 471 |
 | the claims named under each budget term in `measure` | `dfcad measure site:S-111` | 343, down from 494 | 333, down from 471 |
 
@@ -212,12 +213,12 @@ from" figure differs by a token or two from the same call in the tables above.
 | Path | Against the whole model | Against the one file |
 |------|-------------------------|----------------------|
 | discovery | 47.3×, 50.1× | 8.4×, 8.9× |
-| a dimensional question from a cold start | 40.7×, 43.0× | 7.2×, 7.6× |
-| the same question once the vocabulary is known | 80.0×, 81.7× | 14.2×, 14.4× |
-| the same question by way of a whole retrieval | 26.3×, 27.5× | 4.7×, 4.9× |
+| a dimensional question from a cold start | 39.2×, 41.5× | 6.9×, 7.3× |
+| the same question once the vocabulary is known | 74.5×, 76.3× | 13.2×, 13.5× |
+| the same question by way of a whole retrieval | 25.1×, 26.2× | 4.4×, 4.6× |
 | the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.1× |
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
-| reading a storey as an annotated plan | 2.6×, 2.7× | 0.5×, 0.5× |
+| reading a storey as an annotated plan | 2.5×, 2.6× | 0.4×, 0.5× |
 
 One figure per encoding, in the order of the table above.
 

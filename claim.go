@@ -339,17 +339,28 @@ func (c *Claim) Accuracy() (Accuracy, bool) { return c.accuracy, c.hasAccuracy }
 // become a figure either. The test is the one [Claims.Resolve] ranks by, which
 // is the arithmetic of a [Budget] holding this claim alone.
 func (c *Claim) Rankable() bool {
-	_, err := c.combined()
+	_, err := c.Combined()
 	return err == nil
 }
 
-// combined is the claim's own accuracy as one figure, by the same arithmetic a
-// derived answer's budget is combined with.
+// Combined reduces the claim's own accuracy to one standard uncertainty, by
+// exactly the rule [Budget.Combined] applies: it is the combined figure of a
+// budget holding this claim alone. Independent terms join in quadrature,
+// systematic terms add linearly with each term id counted once, the two totals
+// join in quadrature, and every magnitude counts by its absolute value
+// (specification section 6.6.5).
 //
-// Ranking a claim and budgeting an answer computed from it are one question
-// asked twice, and asking it through one [Budget] is what keeps a claim
-// unrankable in the one exactly where it could not be combined in the other.
-func (c *Claim) combined() (Uncertainty, error) {
+// It is the figure [Claims.Resolve] ranks by. Ranking a claim and budgeting an
+// answer computed from it are one question asked twice, and asking it through
+// one [Budget] is what keeps a claim unrankable in the one exactly where it
+// could not be combined in the other — and what keeps the figure a caller reads
+// here the one resolution compared.
+//
+// A claim which states no accuracy is an [UnknownAccuracyError] naming it, and
+// one whose terms are not all in one unit is a [MixedUnitsError] naming the
+// units, each once in the order written: nothing converts between them
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
+func (c *Claim) Combined() (Uncertainty, error) {
 	var budget Budget
 	budget.Add(c)
 	return budget.Combined()
@@ -981,7 +992,7 @@ func (l *claimLoader) mixedUnits(claim *Claim) {
 	}
 
 	var mixed MixedUnitsError
-	if _, err := claim.combined(); !errors.As(err, &mixed) {
+	if _, err := claim.Combined(); !errors.As(err, &mixed) {
 		return
 	}
 

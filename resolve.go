@@ -328,7 +328,7 @@ func narrow(live []*Claim) (candidates []*Claim, reason Reason) {
 		// accumulates a derived answer's budget is what keeps the two from
 		// drifting apart: a claim unrankable here is one whose accuracy could
 		// not be combined there either, for the same reason.
-		combined, err := claim.combined()
+		combined, err := claim.Combined()
 		if err != nil {
 			continue
 		}

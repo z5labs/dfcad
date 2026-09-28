@@ -572,6 +572,7 @@ which came back and so which of the fields to expect.
         "source": "As-built check AB-2026-009, Acme Surveys",
         "method": "method:total-station",
         "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+        "combined": {"magnitude": 0.05, "unit": "m2", "coverage-factor": 1},
         "date": "2026-05-06",
         "rank": "normal",
         "span": "entities/site.dfc:30:3-36:25"
@@ -615,6 +616,8 @@ number the format exists to stop:
 | `claims[].source` | string, optional | What the value is evidenced by — a report, a drawing, an instrument log. |
 | `claims[].method` | string, optional | The id naming how the value was obtained. |
 | `claims[].accuracy` | array, optional | One entry per term, each with its `kind` (`independent` or `systematic`), its one-sigma `magnitude`, its `unit`, and the `source` a systematic term is shared with. Absent when the claim carries none, which makes it unrankable rather than exact. |
+| `claims[].combined` | object, optional | The accuracy reduced to one standard uncertainty by the rule a budget is combined with — independent terms in quadrature, systematic terms of distinct ids linearly, and the two totals in quadrature, every magnitude by its absolute value ([SPEC §6.6.5](../SPEC.md#665-accuracy-terms)) — in the shape [`budget.combined`](#budget) takes: `magnitude`, `unit` and `coverage-factor`, which is `1`. `unit` is absent for a non-dimensional accuracy. It is the figure resolution ranks the claim by. Written wherever `accuracy` is and its terms combine; absent where the claim states no accuracy, which `accuracy` being absent already says, and absent where the terms are in more than one unit, which `units` says. |
+| `claims[].units` | array, optional | The units the accuracy's terms were written in, each once in the order written, where there is more than one. Nothing converts between units, so such an accuracy combines to no figure, `combined` is absent and the claim is unrankable. Absent wherever `combined` is present. |
 | `claims[].date` | string, optional | The day the value was obtained, as a full date. |
 | `claims[].rank` | string | `normal` or `deprecated`, reported whether or not it was written. |
 | `claims[].superseded-by` | string, optional | The id of the claim that replaced this one. |
@@ -693,6 +696,7 @@ known, the id of the claim it came from and which step of the rule picked that c
   "strict": false,
   "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
   "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+  "combined": {"magnitude": 0.05, "unit": "m2", "coverage-factor": 1},
   "claim-id": "survey:A-0002"
 }
 ```
@@ -711,6 +715,7 @@ wrote it down — is `--evidence`:
   "strict": false,
   "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
   "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+  "combined": {"magnitude": 0.05, "unit": "m2", "coverage-factor": 1},
   "claim-id": "survey:A-0002",
   "claim": {
     "id": "survey:A-0002",
@@ -719,6 +724,7 @@ wrote it down — is `--evidence`:
     "source": "As-built check AB-2026-009, Acme Surveys",
     "method": "method:total-station",
     "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+    "combined": {"magnitude": 0.05, "unit": "m2", "coverage-factor": 1},
     "date": "2026-05-06",
     "rank": "normal",
     "resolution": "current",
@@ -742,6 +748,8 @@ wrote it down — is `--evidence`:
 | `strict` | boolean | Whether the registry declares the predicate strict. Written whatever the outcome. |
 | `value` | object, optional | The answer, in the same shape `claims[].value` takes elsewhere. Absent where nothing resolved. |
 | `accuracy` | array, optional | How well the answer is known, term by term, as the claim it came from stated it. Absent where nothing resolved, and absent where the claim stated none — which makes the answer unrankable rather than exact, and is what `reason` says. Present on an `unranked` answer whose claim wrote terms in more than one unit: those terms never combine into a figure, because nothing converts between units, so the claim is unrankable with an accuracy beside it. |
+| `combined` | object, optional | `accuracy` reduced to one standard uncertainty, exactly as [`claims[].combined`](#get) writes it for the claim the answer came from: the figure resolution ranked it by. Under `--frame` it is still the claim's own; the transformed answer's is `budget.combined`. |
+| `units` | array, optional | The units `accuracy`'s terms were written in, each once, where there is more than one — which is the `unranked` answer whose terms never combine — and `combined` is then absent. As [`claims[].units`](#get). |
 | `claim-id` | string, optional | The id of the claim the answer came from. Absent where nothing resolved, and absent where the claim wrote no id, which is the great majority of them: an id is required only of a claim something references. |
 | `frame` | string, optional | The coordinate frame the value is expressed in. Absent for a value that is not a position, which is in no frame. |
 | `claim` | object, optional | The claim the answer came from, in the shape documented under `get`. Written under `--evidence` and absent otherwise. |
@@ -753,7 +761,9 @@ wrote it down — is `--evidence`:
 and it is drawn where it is because how good a number is belongs to the number, while who to
 argue with about it is a separate question asked far less often. It is not a trim of what
 this engine refuses to hand over: an answer never comes back as a bare figure, because
-`accuracy` is beside it whenever the claim stated one.
+`accuracy` is beside it whenever the claim stated one — and `combined` beside that, the same
+terms reduced to the one figure resolution ranked the claim by, so that a caller wanting a
+single error bar reads it rather than reimplementing the rule that produces it.
 
 The four outcomes and the four exit codes line up, because what a caller does about each is
 different:
@@ -789,7 +799,9 @@ no registry file declares, are usage errors for the same reason.
 
 Written when `--frame` moved the answer between two frames, because the accuracy of such an
 answer is not the accuracy of the claim it came from: the fits along the route are part of
-what is known about it.
+what is known about it. So an answer under `--frame` carries two combined figures, and they
+are two different things: the top-level `combined` is the claim's own accuracy, as written,
+and `budget.combined` is the transformed answer's, route and all.
 
 | Field | Type | Meaning |
 |-------|------|---------|
@@ -942,6 +954,7 @@ replaced them, so a retraction is followable forward without a second call.
       "source": "Plan set A-101, sheet 3",
       "method": "method:scaled-from-plan",
       "accuracy": [{"kind": "independent", "magnitude": 0.5, "unit": "m2"}],
+      "combined": {"magnitude": 0.5, "unit": "m2", "coverage-factor": 1},
       "date": "2026-01-09",
       "rank": "deprecated",
       "superseded-by": "survey:A-0002",
@@ -955,6 +968,7 @@ replaced them, so a retraction is followable forward without a second call.
       "source": "As-built check AB-2026-009, Acme Surveys",
       "method": "method:total-station",
       "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m2"}],
+      "combined": {"magnitude": 0.05, "unit": "m2", "coverage-factor": 1},
       "date": "2026-05-06",
       "rank": "normal",
       "resolution": "current",
@@ -1558,7 +1572,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
 
 Beside `anchor`, every annotation carries the claim object `get` writes — `id`, `predicate`,
-`value`, `source`, `method`, `accuracy`, `date`, `rank` and `span` — so a claim on a plan
+`value`, `source`, `method`, `accuracy`, `combined` or `units`, `date`, `rank` and `span` — so a claim on a plan
 reads exactly like a claim anywhere else in this contract. `resolution` is **never** written,
 because nothing here was resolved.
 

@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1009,4 +1010,175 @@ func TestRunGetReportsTheObservationFilesToAPerson(t *testing.T) {
 
 	assert.Contains(t, stderr.String(), "observed-in: observations/site-control.obs")
 	assert.Contains(t, stderr.String(), "1 observation file, 2 records")
+}
+
+// combinedRegistry is the vocabulary [withCombined] adds to a fixture's
+// registry. Every name in it is one no fixture declares already, so it can be
+// appended to any of them.
+const combinedRegistry = `
+(namespace control (description "Survey control points."))
+(namespace resurvey (description "Claim ids issued by the resurvey."))
+
+(predicate width (unit m) (shape scalar) (description "How wide the thing is."))
+(predicate depth (unit m) (shape scalar) (description "How deep the thing is."))
+(predicate seats (shape scalar) (description "How many people it seats."))
+`
+
+// combinedModel is one room whose claims say each thing a combined accuracy
+// can: one term, which is itself; an independent and a systematic term, which
+// join in quadrature; terms in two units, which combine to nothing and say so;
+// no accuracy at all, which writes neither field; and two depths tied on
+// accuracy and date, which is a conflict whose claims carry the figure too.
+//
+// Its within is formatted in, because a plan reads only what is inside the
+// storey it draws and every other command reads a node wherever it is.
+const combinedModel = `
+(node site:S-120
+  (label "Meeting Room C")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)%s
+  (width
+    (id resurvey:W-0001)
+    (value 8.5 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.05 m))
+    (date "2026-01-09"))
+  (width
+    (id resurvey:W-0002)
+    (value 8.53 m)
+    (source "As-built check AB-2026-009, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m) (systematic 0.008 m control:CP-3))
+    (date "2026-05-06"))
+  (width
+    (id resurvey:W-0003)
+    (value 8.52 m)
+    (source "Resurvey RS-2026-011")
+    (method method:total-station)
+    (accuracy (independent 1.0 mm) (systematic 0.001 m control:CP-3))
+    (date "2026-09-28"))
+  (depth
+    (id resurvey:D-0001)
+    (value 6.0 m)
+    (source "Section A-A, sheet 5")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-01"))
+  (depth
+    (id resurvey:D-0002)
+    (value 6.01 m)
+    (source "Fit-out check FC-2026-002, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-01"))
+  (seats
+    (id resurvey:S-0001)
+    (value 12.0)
+    (source "Fire strategy FS-2026-001")
+    (method method:assumed)
+    (date "2026-03-14")))
+`
+
+// withCombined is a fixture tree with [combinedModel] added to it, inside the
+// node within names where it names one.
+//
+// The model loads with one warning, for the claim whose accuracy mixes units,
+// which is why it is added by the tests about the combined figure rather than
+// written into a fixture every other test asserts loads clean.
+func withCombined(files map[string]string, within string) map[string]string {
+	clause := ""
+	if within != "" {
+		clause = "\n  (within " + within + ")"
+	}
+
+	files["registry.dfc"] += combinedRegistry
+	files["entities/combined.dfc"] = fmt.Sprintf(combinedModel, clause)
+	return files
+}
+
+// combinedClaims is what each claim of [combinedModel] carries beside its
+// accuracy, by id: the combined figure, or the units which stopped there being
+// one, or neither.
+var combinedClaims = map[string]struct {
+	combined *combinedUncertainty
+	units    []string
+}{
+	"resurvey:W-0001": {combined: &combinedUncertainty{Magnitude: 0.05, Unit: "m", CoverageFactor: 1}},
+	"resurvey:W-0002": {combined: &combinedUncertainty{Magnitude: 0.008544003745317531, Unit: "m", CoverageFactor: 1}},
+	"resurvey:W-0003": {units: []string{"mm", "m"}},
+	"resurvey:D-0001": {combined: &combinedUncertainty{Magnitude: 0.01, Unit: "m", CoverageFactor: 1}},
+	"resurvey:D-0002": {combined: &combinedUncertainty{Magnitude: 0.01, Unit: "m", CoverageFactor: 1}},
+	"resurvey:S-0001": {},
+}
+
+// assertCombined checks every claim of [combinedModel] among claims against
+// [combinedClaims], and reports how many it found.
+func assertCombined(t *testing.T, claims []claimEntry) int {
+	t.Helper()
+
+	found := 0
+	for _, claim := range claims {
+		expected, ok := combinedClaims[claim.ID]
+		if !ok {
+			continue
+		}
+		found++
+
+		assert.Equal(t, expected.combined, claim.Combined, claim.ID)
+		assert.Equal(t, expected.units, claim.Units, claim.ID)
+		if expected.combined == nil && expected.units == nil {
+			assert.Empty(t, claim.Accuracy, "%s: a claim with no accuracy says so by having none", claim.ID)
+		}
+	}
+	return found
+}
+
+// TestRunGetCarriesEachClaimsAccuracyCombined checks the figure each claim's
+// accuracy reduces to, beside the terms it was reduced from.
+func TestRunGetCarriesEachClaimsAccuracyCombined(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected int
+	}{
+		{name: "on every claim written on the thing", args: []string{"site:S-120"}, expected: 6},
+		{name: "on the claims resolution kept", args: []string{"--claims", claimsResolved, "site:S-120"}, expected: 4},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, withCombined(retrievable(), "")))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(append([]string{"get"}, testCase.args...), &stdout, &stderr), stderr.String())
+
+			result := listed[getResult](t, stdout.String())
+			require.False(t, result.Refused, stderr.String())
+
+			claims := result.Entity.Claims
+			assert.Equal(t, testCase.expected, assertCombined(t, claims), "how many of the claims were checked")
+		})
+	}
+}
+
+// TestRunGetWritesTheCombinedFigureImmediatelyAfterTheAccuracy checks where the
+// two fields sit in a claim object, which is part of the contract: beside the
+// terms they were computed from.
+func TestRunGetWritesTheCombinedFigureImmediatelyAfterTheAccuracy(t *testing.T) {
+	t.Chdir(tree(t, withCombined(retrievable(), "")))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "site:S-120"}, &stdout, &stderr), stderr.String())
+
+	written := stdout.String()
+	for _, fragment := range []string{
+		`"accuracy":[{"kind":"independent","magnitude":0.05,"unit":"m"}],"combined":{"magnitude":0.05,"unit":"m","coverage-factor":1},"date"`,
+		`"source":"control:CP-3"}],"units":["mm","m"],"date"`,
+		`"method":"method:assumed","date"`,
+	} {
+		assert.Contains(t, written, fragment)
+	}
 }

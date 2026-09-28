@@ -921,3 +921,53 @@ func TestConflictsFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
 		})
 	}
 }
+
+// TestRunClaimsAndConflictsCarryEachClaimsAccuracyCombined checks that the
+// claim objects claims and conflicts write carry the figure each accuracy
+// reduces to, exactly as get writes it: they share the claim object, so one
+// rendering of the figure is one rendering everywhere.
+func TestRunClaimsAndConflictsCarryEachClaimsAccuracyCombined(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		claims   func(t *testing.T, stdout string) []claimEntry
+		expected int
+	}{
+		{
+			name: "on every claim claims returns",
+			args: []string{"claims", "site:S-120"},
+			claims: func(t *testing.T, stdout string) []claimEntry {
+				return listed[claimsResult](t, stdout).Claims
+			},
+			expected: 6,
+		},
+		{
+			name: "on every competing claim of a conflict",
+			args: []string{"conflicts"},
+			claims: func(t *testing.T, stdout string) []claimEntry {
+				var out []claimEntry
+				for _, conflict := range listed[conflictsResult](t, stdout).Conflicts {
+					if conflict.Subject == "site:S-120" {
+						out = append(out, conflict.Claims...)
+					}
+				}
+				return out
+			},
+			expected: 5,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, withCombined(auditable(), "")))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(testCase.args, &stdout, &stderr), stderr.String())
+
+			assert.NotContains(t, stderr.String(), "error:", "the fixture loads with no more than its warning")
+
+			claims := testCase.claims(t, stdout.String())
+			assert.Equal(t, testCase.expected, assertCombined(t, claims), "how many of the claims were checked")
+		})
+	}
+}

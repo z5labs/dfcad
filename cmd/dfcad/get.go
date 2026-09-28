@@ -420,6 +420,23 @@ type claimEntry struct {
 	// the claim carries none, which makes it unrankable rather than exact.
 	Accuracy []accuracyTerm `json:"accuracy,omitempty"`
 
+	// Combined is the accuracy reduced to one standard uncertainty, by the rule
+	// a budget is combined with (specification section 6.6.5): the figure
+	// resolution ranks the claim by. It is written wherever Accuracy is and its
+	// terms combine, in exactly the shape a budget's combined figure takes,
+	// because one thing gets one rendering.
+	//
+	// Absent where the claim states no accuracy, which Accuracy being absent
+	// already says, and absent where the terms are in more than one unit,
+	// which Units says.
+	Combined *combinedUncertainty `json:"combined,omitempty"`
+
+	// Units are the units the accuracy's terms were written in, each once in
+	// the order written, where there is more than one. Nothing converts between
+	// them, so such an accuracy combines to no figure and the claim is
+	// unrankable. Absent wherever Combined is present.
+	Units []string `json:"units,omitempty"`
+
 	// Date is the day the value was obtained, as the full date it was written
 	// as.
 	Date string `json:"date,omitempty"`
@@ -858,6 +875,7 @@ func entryOf(claim *dfcad.Claim, state string) claimEntry {
 				Source:    string(term.Source),
 			})
 		}
+		entry.Combined, entry.Units = combinedOf(claim)
 	}
 	if date := claim.Date(); !date.IsZero() {
 		entry.Date = date.Format(time.DateOnly)
@@ -867,6 +885,26 @@ func entryOf(claim *dfcad.Claim, state string) claimEntry {
 	}
 
 	return entry
+}
+
+// combinedOf is a claim's own accuracy reduced to one figure, as the machine
+// contract writes it, or the units which stopped it being reduced.
+//
+// Both are nil for a claim which states no accuracy. The reason is already
+// written — the accuracy is absent — and naming the claim as its own unknown
+// would say it twice.
+func combinedOf(claim *dfcad.Claim) (*combinedUncertainty, []string) {
+	combined, err := claim.Combined()
+	if err == nil {
+		return uncertaintyOf(combined), nil
+	}
+
+	var mixed dfcad.MixedUnitsError
+	if errors.As(err, &mixed) {
+		return nil, spellings(mixed.Units)
+	}
+
+	return nil, nil
 }
 
 // valueOf is one claim's value in the shape its predicate declares.

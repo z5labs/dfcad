@@ -367,6 +367,38 @@ func ExampleClaim_Accuracy() {
 	// occupancy normal false false
 }
 
+func ExampleClaim_Combined() {
+	registry, _ := dfcad.LoadRegistry("testdata/claim/valid")
+	claims, _ := dfcad.LoadClaims("testdata/claim/valid", registry)
+
+	// A claim's accuracy is a list of terms, and the figure it reduces to is
+	// the one resolution ranks it by: independent terms in quadrature,
+	// systematic ones linearly, the two totals in quadrature. It is always one
+	// standard uncertainty, and says so.
+	for claim := range claims.Under("site:S-101", "width") {
+		combined, err := claim.Combined()
+		if err != nil {
+			fmt.Println(err)
+			continue
+		}
+		fmt.Println(claim.Source()+":", combined)
+	}
+
+	// A claim which states no accuracy has no figure at all, rather than a
+	// figure of zero.
+	for claim := range claims.Under("site:S-101", "occupancy") {
+		_, err := claim.Combined()
+
+		var unknown dfcad.UnknownAccuracyError
+		fmt.Println(errors.As(err, &unknown))
+	}
+
+	// Output:
+	// Plan set A-101, sheet 3: 0.05 m (k = 1.0, ≈ 68%)
+	// As-built check AB-2026-009, Acme Surveys: 0.008544003745317531 m (k = 1.0, ≈ 68%)
+	// true
+}
+
 func ExampleRegistry_Undeclared() {
 	const path = "entities/level-1.dfc"
 
