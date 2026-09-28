@@ -375,6 +375,55 @@ The classifications are asked for rather than given, for a related reason and a 
 reader: the caller which needs them is one mapping this model into a foreign schema, and it
 asks once. A model which declares none pays nothing for the flag either way.
 
+### `list-predicates`
+
+The claim predicates the registry declares, with the shape and the spelling each takes.
+These are the names `list-geometry --predicate`, `claims` and `resolve` accept — exactly
+`Registry.Names(dfcad.SortPredicate)` — and the only spellings a flag which names a predicate
+takes. It takes no arguments and one flag.
+
+| Flag | Meaning |
+|------|---------|
+| `--describe` | Include the one line the registry gives each predicate. |
+
+```json
+{
+  "version": 2,
+  "command": "list-predicates",
+  "refused": false,
+  "predicates": [
+    {"name": "crs", "shape": "text", "claim-bearing": false},
+    {"name": "frame-transform", "shape": "transform", "claim-bearing": true},
+    {"name": "ground-to-grid", "shape": "scalar", "claim-bearing": true},
+    {"name": "position", "shape": "coordinate", "unit": "m", "dimension": 3, "claim-bearing": true}
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `refused` | boolean | True where the load refused the model, and what follows was read through it. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
+| `predicates` | array | One entry per declared predicate, in name order. Empty rather than null when the registry declares none. |
+| `predicates[].name` | string | The predicate name, which is what `list-geometry --predicate`, `claims` and `resolve` take. |
+| `predicates[].shape` | string | The shape its values take: `scalar`, `coordinate`, `transform` or `text`. |
+| `predicates[].unit` | string, optional | The unit its values are written in. Absent for a non-dimensional predicate. |
+| `predicates[].dimension` | integer, optional | How many components a coordinate has. Written for a `coordinate` and for no other shape. |
+| `predicates[].claim-bearing` | boolean | Whether a value under the predicate is a claim rather than a plain value. **Always written**: its default is true, and an absent field reads as false to every JSON consumer. |
+| `predicates[].strict` | boolean, optional | Whether an ambiguous resolution of the predicate is a failure rather than a report. Written only where it is true, the way `absent` is on a listed type. |
+| `predicates[].description` | string, optional | The one line the registry gives the predicate. Written under `--describe`, and absent under it too when the registry wrote none. |
+
+Predicates come back in name order, so two runs over one model write the same bytes. Each
+entry's keys are written in the order the table gives them.
+
+The listing reports what was declared and singles nothing out. Which predicate carries a
+position, a coordinate reference system or a ground-to-grid factor is project data, and a
+listing which marked one would be the engine choosing. The descriptions are asked for rather
+than given, for the reason `list-types`' are.
+
+It is a command of its own rather than a flag on `list-types`, and it is on no gated path of
+[`token-budget.md`](./token-budget.md): the cold start pays nothing for it, and only the caller
+which asks for the vocabulary does.
+
 ### `list-instances`
 
 The instances of one type, or of the whole model. It takes an optional type argument and

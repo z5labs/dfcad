@@ -75,6 +75,12 @@ var commands = []command{
 		run:     runListTypes,
 	},
 	{
+		name:    "list-predicates",
+		summary: "list the claim predicates the registry declares",
+		usage:   listPredicatesUsage,
+		run:     runListPredicates,
+	},
+	{
 		name:    "list-instances",
 		summary: "list the instances of a type",
 		usage:   listInstancesUsage,

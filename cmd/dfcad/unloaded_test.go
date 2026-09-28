@@ -21,13 +21,14 @@ import (
 // code of a read". Every other command which reads the model exits 2 on such a
 // tree, as `check` does.
 var answersThrough = map[string]bool{
-	"list-types":     true,
-	"list-instances": true,
-	"list-geometry":  true,
-	"get":            true,
-	"traverse":       true,
-	"claims":         true,
-	"conflicts":      true,
+	"list-types":      true,
+	"list-predicates": true,
+	"list-instances":  true,
+	"list-geometry":   true,
+	"get":             true,
+	"traverse":        true,
+	"claims":          true,
+	"conflicts":       true,
 }
 
 // readsNoModel is every command which does not load the model beneath the

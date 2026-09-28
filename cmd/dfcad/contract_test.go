@@ -52,10 +52,11 @@ func object(t *testing.T, stdout string) map[string]any {
 var samples = map[string][]string{
 	// version reads no model, so the fixture the walks build around is beside
 	// the point for it and it takes no arguments either way.
-	"version":        {},
-	"fmt":            {},
-	"list-types":     {},
-	"list-instances": {},
+	"version":         {},
+	"fmt":             {},
+	"list-types":      {},
+	"list-predicates": {},
+	"list-instances":  {},
 	// A geometric listing is asked in the project's own words for which
 	// predicate the nodes carry, so the predicate is named rather than
 	// defaulted.
