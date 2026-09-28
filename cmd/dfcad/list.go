@@ -573,8 +573,8 @@ type listFramesResult struct {
 //
 // It is the declaration exactly as written — the unit never converted, the
 // parent and the transform named by id — and nothing written on the frame is
-// inlined: a claim or a plain value on it is that frame's retrieval, which is
-// get's.
+// inlined: a claim or a plain value on it is part of retrieving that frame,
+// which is what "dfcad get" of its id returns.
 type listedFrame struct {
 	// ID is the frame's id, which is what every --frame flag takes.
 	ID string `json:"id"`
