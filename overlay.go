@@ -176,7 +176,10 @@ type Region struct {
 	//
 	// A region an operation produced carries none, and that includes
 	// [Region.In] — except for an open run, which is nothing but these and
-	// comes back from a change of frame carrying them attributed to no edge.
+	// comes back from a change of frame carrying them attributed to no edge,
+	// and a plan's outline, which [Graph.carried] carries with each run still
+	// attributed, because a similarity maps each authored run onto exactly one
+	// carried run.
 	// The boundary of an intersection runs partly along each
 	// operand and partly along where they cross, so attributing any of it to an
 	// edge somebody wrote would be a lie the next operation would act on; and a
@@ -979,11 +982,14 @@ func (r Region) Location() (Point, bool) { return r.location, r.located }
 // stored nowhere else
 // ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
 func (r Region) Segments() []BoundarySegment {
-	// A run carried into another frame is the one derived region which keeps a
+	// A run carried into another frame is a derived region which keeps a
 	// boundary of its own. It has no pieces for one to be produced from — a
 	// chain covers nothing — and [Region.runIn] has already said, run by run,
-	// that the edges no longer produced it.
-	if r.derived && !r.run() {
+	// that the edges no longer produced it. The other is a plan's outline,
+	// which [Graph.carried] carries with each run still paired with the edge it
+	// was written as. Every other operation leaves none, and its boundary is
+	// the one it produced.
+	if r.derived && len(r.segments) == 0 {
 		return r.produced()
 	}
 

@@ -114,7 +114,8 @@ truthful answer to what it looks like in plan.
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object plan writes carries "subject", "planned" and the "digest" of the
-source tree it was read from, the "frame" and "unit" it is expressed in, the
+source tree it was read from, the "frame" every coordinate in it is in and that
+frame's "unit", the
 "tolerance" it was judged against, the "annotating" predicates it was asked
 for, one "outlines" entry per contained node which was drawn with its "region"
 and its "annotations", and the "budget": the accuracy of the rings, over the
@@ -125,19 +126,33 @@ also carries the "chord" tolerance it was drawn to and the "deviation" that
 drawing achieved, and where a curve went unread it carries "chorded": the edges
 which state one, each with the predicates it states it under.
 
+The frame is the one the subject declares, or the frame of its first boundary
+loop where it declares none, or the root frame where it has neither. An outline
+read in another frame is carried into it the way site and export-map carry a
+region: the transform's accuracy is merged into the "budget", and every run of
+"region.boundary" keeps the edge it was written as, with only its corners
+moved. Such an outline carries "declared-in", the frame it was read in, because
+its claims come back as they were written and a coordinate among them is in
+that frame rather than in the plan's. A curve is judged against --chord where
+it was drawn, before it is carried.
+
 Where something inside the subject was not drawn it also carries "undrawn": one
 entry per such node, in id order, with its id, its label, kind and type, its
 "annotations", and a "reason" — "no-boundary" for a node the model gives no
 edges, "unreadable-boundary" for one whose edges this run could not read,
-"no-position" for a node drawn as a point which nothing places.
-"outlines" and "undrawn" account between them for everything the subject
+"no-position" for a node drawn as a point which nothing places, "uncarried" for
+one whose shape could not be carried into the plan's frame — the frames are not
+related, a transform could not be applied, or the plan's frame is in a unit
+other than the tolerance's. An undrawn node read in a frame other than the
+plan's carries "declared-in" too. "outlines" and "undrawn" account between them for everything the subject
 contains, so a renderer which drew every outline and listed every undrawn node
 has drawn or named the whole storey. The key is absent for a storey every node
 of which was drawn.
 
 Exit code 1 is a plan a ring of which could not be read — a boundary which does
 not close, one which crosses itself, corners which are not in one plane, a
-tolerance the registry does not declare in the frame's unit. The other rooms
+tolerance the registry does not declare in the frame's unit — or could not be
+carried into the plan's frame. The other rooms
 are still drawn and the object still comes back, with "planned" false and the
 room named under "undrawn", so a caller reads which room to fix from that and
 from the diagnostics on stderr rather than from an empty stream.
@@ -196,9 +211,11 @@ type planResult struct {
 	// keyed by.
 	Digest string `json:"digest,omitempty"`
 
-	// Frame is the coordinate frame the subject is declared in, and Unit that
-	// frame's linear unit, which every coordinate here is in and every area in
-	// the square of.
+	// Frame is the coordinate frame every coordinate here is in, and Unit that
+	// frame's linear unit, which every area is in the square of. It is the
+	// frame the subject declares, or the frame of its first boundary loop where
+	// it declares none, or the root frame where it has neither; an outline read
+	// in another frame is carried into it.
 	Frame string `json:"frame,omitempty"`
 	Unit  string `json:"unit,omitempty"`
 
@@ -265,8 +282,13 @@ type outlineEntry struct {
 	Type  string `json:"type,omitempty"`
 
 	// Region is the area it covers, with the ring bounding each piece and the
-	// edge behind each straight run of them.
+	// edge behind each straight run of them, in the plan's frame.
 	Region regionEntry `json:"region"`
+
+	// DeclaredIn is the frame the node's shape was read in, written only where
+	// that is not the plan's frame. The region above was carried out of it;
+	// the claims below were not, and a coordinate among them is in this frame.
+	DeclaredIn string `json:"declared-in,omitempty"`
 
 	// Annotations are the claims reported on it, the node's own first and then
 	// those of each edge of its boundary. Empty rather than null for a room
@@ -291,7 +313,10 @@ type undrawnEntry struct {
 	Type  string `json:"type,omitempty"`
 
 	// Reason is why it was not drawn: `no-boundary` for a node which references
-	// no loop, `unreadable-boundary` for one whose loops the run could not read.
+	// no loop, `unreadable-boundary` for one whose loops the run could not read,
+	// `no-position` for a node drawn as a point which nothing places, and
+	// `uncarried` for one whose shape could not be carried into the plan's
+	// frame.
 	//
 	// It is a token and not a sentence. Which of the two applies is what decides
 	// whether anybody has to act — a circuit group has no edges and is ordinary,
@@ -301,6 +326,12 @@ type undrawnEntry struct {
 	// position and the size of the gap, which is where anything an author acts on
 	// belongs and where a second copy of it would be a second thing to keep true.
 	Reason string `json:"reason"`
+
+	// DeclaredIn is the frame the node's shape was read in — or, for a node
+	// with no shape, the frame it declares — written only where that is not the
+	// plan's frame, so that a claim reported whole can be read in the frame it
+	// was written in.
+	DeclaredIn string `json:"declared-in,omitempty"`
 
 	// Annotations are the claims reported on it, in the same order an outline's
 	// are. Empty rather than null, and populated whichever way the node was
@@ -525,14 +556,14 @@ func reportPlan(
 	}
 
 	for _, outline := range drawn.Outlines() {
-		result.Outlines = append(result.Outlines, outlineOf(outline))
+		result.Outlines = append(result.Outlines, outlineOf(outline, drawn.Frame()))
 	}
 
 	// Written only where something was not drawn, so that a storey every node of
 	// which drew produces exactly the object it always did. An empty list here
 	// would be a key a consumer had to read to learn nothing.
 	for _, undrawn := range drawn.Undrawn() {
-		result.Undrawn = append(result.Undrawn, undrawnOf(undrawn))
+		result.Undrawn = append(result.Undrawn, undrawnOf(undrawn, drawn.Frame()))
 	}
 
 	// A storey nobody has outlined yet accumulated nothing, and an empty budget
@@ -546,11 +577,13 @@ func reportPlan(
 	return result
 }
 
-// outlineOf is one drawn node as the machine contract writes it.
-func outlineOf(outline dfcad.Outline) outlineEntry {
+// outlineOf is one drawn node as the machine contract writes it, in a plan
+// expressed in frame.
+func outlineOf(outline dfcad.Outline, frame dfcad.ID) outlineEntry {
 	entry := outlineEntry{
 		Node:        string(outline.Subject()),
 		Region:      regionOf(outline.Region()),
+		DeclaredIn:  declaredIn(outline.DeclaredIn(), frame),
 		Annotations: make([]annotationEntry, 0, len(outline.Annotations())),
 	}
 
@@ -568,11 +601,12 @@ func outlineOf(outline dfcad.Outline) outlineEntry {
 }
 
 // undrawnOf is one node the plan could not draw, as the machine contract writes
-// it.
-func undrawnOf(undrawn dfcad.Undrawn) undrawnEntry {
+// it, in a plan expressed in frame.
+func undrawnOf(undrawn dfcad.Undrawn, frame dfcad.ID) undrawnEntry {
 	entry := undrawnEntry{
 		Node:        string(undrawn.Subject()),
 		Reason:      string(undrawn.Reason()),
+		DeclaredIn:  declaredIn(undrawn.DeclaredIn(), frame),
 		Annotations: make([]annotationEntry, 0, len(undrawn.Annotations())),
 	}
 
@@ -587,6 +621,16 @@ func undrawnOf(undrawn dfcad.Undrawn) undrawnEntry {
 	}
 
 	return entry
+}
+
+// declaredIn is the frame a node was read in as the machine contract writes it:
+// written only where it is a frame and is not the plan's own, so that a model
+// authored in one frame writes the bytes it always did.
+func declaredIn(declared, frame dfcad.ID) string {
+	if declared == "" || declared == frame {
+		return ""
+	}
+	return string(declared)
 }
 
 // annotationOf is one reported claim as the machine contract writes it.

@@ -377,8 +377,8 @@ type undrawnReason string
 
 // The reasons a shaped node is not drawn.
 //
-// The first two are the plan's own, spelled from the engine's constants rather
-// than again here, because they are the same two findings about the same
+// The first three are the plan's own, spelled from the engine's constants
+// rather than again here, because they are the same findings about the same
 // model and a caller reading both answers should not have to learn two words
 // for one. The rest are this command's: they are about putting a shape in the
 // root frame and on a plan, which is what a map does and a plan does not.
@@ -391,13 +391,14 @@ const (
 	// undrawnNoPosition is a node drawn as a point which nothing places.
 	undrawnNoPosition = undrawnReason(dfcad.UndrawnNoPosition)
 
+	// undrawnUncarried is a node drawn on a frame the chain of measured
+	// transforms does not relate to the root. A plan names a node it cannot
+	// carry into its own frame with the same word.
+	undrawnUncarried = undrawnReason(dfcad.UndrawnUncarried)
+
 	// undrawnUnrooted is a node in a model whose frames reach no root, so
 	// there are no coordinates to write it in.
 	undrawnUnrooted undrawnReason = "unrooted"
-
-	// undrawnUncarried is a node drawn on a frame the chain of measured
-	// transforms does not relate to the root.
-	undrawnUncarried undrawnReason = "uncarried"
 
 	// undrawnUnlevel is a node whose corners do not lie at one level in the
 	// root frame, which has no plan this command will draw.
