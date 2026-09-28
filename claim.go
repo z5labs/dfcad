@@ -6,6 +6,7 @@
 package dfcad
 
 import (
+	"errors"
 	"fmt"
 	"iter"
 	"slices"
@@ -329,9 +330,30 @@ func (c *Claim) Method() ID { return c.method }
 // claim exists to record.
 func (c *Claim) Accuracy() (Accuracy, bool) { return c.accuracy, c.hasAccuracy }
 
-// Rankable reports whether the claim carries an accuracy, and so whether it can
-// take part in resolution at all.
-func (c *Claim) Rankable() bool { return c.hasAccuracy }
+// Rankable reports whether the claim can take part in resolution at all: whether
+// it carries an accuracy whose terms combine into one figure.
+//
+// Two kinds of claim cannot. One with no accuracy has no figure to rank by, and
+// one whose terms are not all in one unit has terms nothing converts between
+// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)), so they never
+// become a figure either. The test is the one [Claims.Resolve] ranks by, which
+// is the arithmetic of a [Budget] holding this claim alone.
+func (c *Claim) Rankable() bool {
+	_, err := c.combined()
+	return err == nil
+}
+
+// combined is the claim's own accuracy as one figure, by the same arithmetic a
+// derived answer's budget is combined with.
+//
+// Ranking a claim and budgeting an answer computed from it are one question
+// asked twice, and asking it through one [Budget] is what keeps a claim
+// unrankable in the one exactly where it could not be combined in the other.
+func (c *Claim) combined() (Uncertainty, error) {
+	var budget Budget
+	budget.Add(c)
+	return budget.Combined()
+}
 
 // Date returns the day the value was obtained.
 func (c *Claim) Date() time.Time { return c.date }
@@ -784,6 +806,7 @@ func (l *claimLoader) declare(subject ID, form *Node, predicate string, declared
 
 	if child, ok := childForm(form, "accuracy"); ok {
 		claim.accuracy, claim.hasAccuracy = l.accuracy(child)
+		l.mixedUnits(claim)
 	}
 
 	// The value is judged against what the predicate declares. A predicate
@@ -936,6 +959,52 @@ func (l *claimLoader) accuracy(form *Node) (Accuracy, bool) {
 	}
 
 	return accuracy, len(accuracy.Terms) > 0
+}
+
+// mixedUnits warns about a claim whose accuracy terms are not all in one unit.
+//
+// Specification section 6.6.5 lets each term be any unit of the value's
+// quantity, so such a claim is valid and loads. But nothing converts between
+// units ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)), so its terms
+// never combine into a figure, and resolution ranks by that figure: the claim is
+// unrankable, exactly as one with no accuracy is. An author who wrote a
+// millimetre beside a metre almost certainly meant the claim to be ranked, which
+// is what a warning is for — and an error would stop a file loading which loads
+// today.
+//
+// The test is the claim's own [Claim.Rankable] arithmetic rather than a count of
+// the units written, so that the warning and resolution cannot come to disagree
+// about which claims it applies to.
+func (l *claimLoader) mixedUnits(claim *Claim) {
+	if !claim.hasAccuracy {
+		return
+	}
+
+	var mixed MixedUnitsError
+	if _, err := claim.combined(); !errors.As(err, &mixed) {
+		return
+	}
+
+	related := make([]RelatedLocation, 0, len(claim.accuracy.Terms))
+	for _, term := range claim.accuracy.Terms {
+		related = append(related, RelatedLocation{
+			Span:    term.Span,
+			Message: fmt.Sprintf("this %s term is in %s", term.Kind, term.Unit),
+		})
+	}
+
+	l.add(Diagnostic{
+		Severity: SeverityWarning,
+		Span:     claim.accuracy.Span,
+		Message: fmt.Sprintf(
+			"expected every term of the accuracy of %s in one unit, found %s: nothing converts between them, "+
+				"so the claim is unrankable",
+			claimName(claim), join(spellings(mixed.Units), "and"),
+		),
+		Hint: "the claim loads, but it can never win resolution until its terms agree; " +
+			"write every term in one unit, and the value's is the usual choice",
+		Related: related,
+	})
 }
 
 // value reads a claim's value, checked against the shape and the unit the

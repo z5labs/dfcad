@@ -446,7 +446,7 @@ func (b Budget) Unknown() []*Claim { return slices.Clone(b.unknown) }
 func (b Budget) Unranked() []*Claim {
 	var out []*Claim
 	for _, claim := range b.unknown {
-		if !claim.Rankable() {
+		if _, stated := claim.Accuracy(); !stated {
 			out = append(out, claim)
 		}
 	}

@@ -7,10 +7,13 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // answerRegistry is the vocabulary the model below is judged against.
@@ -859,4 +862,109 @@ func TestRunResolveReportsAFrameTheModelCannotRelate(t *testing.T) {
 	require.Equal(t, exitLoad, code, stderr.String())
 	assert.Empty(t, stdout.String())
 	assert.Contains(t, stderr.String(), "frame:annexe")
+}
+
+// mixedAccuracyModel is the fixture with two height claims whose accuracy terms
+// are in millimetres and metres at once: one standing alone on a room of its
+// own, and one beside a rankable claim it would beat were its terms combinable.
+const mixedAccuracyModel = `
+(node site:S-109
+  (label "Meeting Room J")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (height
+    (id survey:H-0109)
+    (value 2.7 m)
+    (source "Resurvey RS-2026-011")
+    (method method:total-station)
+    (accuracy (independent 1.0 mm) (systematic 0.001 m survey:CP-3))
+    (date "2026-09-28")))
+
+(node site:S-110
+  (label "Meeting Room K")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (height
+    (id survey:H-0110)
+    (value 2.7 m)
+    (source "Section A-A, sheet 5")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-01"))
+  (height
+    (id survey:H-0111)
+    (value 2.71 m)
+    (source "Resurvey RS-2026-011")
+    (method method:total-station)
+    (accuracy (independent 1.0 mm) (systematic 0.001 m survey:CP-3))
+    (date "2026-09-28")))
+`
+
+// TestRunResolveTreatsAnAccuracyInMixedUnitsAsUnrankable is its own function
+// because its fixture loads with a warning, which every other resolve test
+// asserts is absent. A claim whose accuracy terms are not all in one unit is
+// unrankable — nothing converts between them, so they never combine into the
+// figure resolution ranks by — and the answer says so rather than ranking it.
+func TestRunResolveTreatsAnAccuracyInMixedUnitsAsUnrankable(t *testing.T) {
+	resolving := func(t *testing.T, expectedCode int, args ...string) (resolveResult, string) {
+		t.Helper()
+
+		files := answerable()
+		files["entities/site.dfc"] += mixedAccuracyModel
+		t.Chdir(tree(t, files))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, expectedCode, run(append([]string{"resolve"}, args...), &stdout, &stderr), stderr.String())
+
+		return listed[resolveResult](t, stdout.String()), stderr.String()
+	}
+
+	t.Run("standing alone it is unranked, with the accuracy it wrote beside the answer", func(t *testing.T) {
+		result, report := resolving(t, exitSuccess, "site:S-109", "height")
+
+		assert.Equal(t, outcomeUnranked, result.Outcome)
+		assert.Equal(t, string(dfcad.ReasonUnranked), result.Reason)
+
+		require.Len(t, result.Accuracy, 2)
+		assert.Equal(t, "mm", result.Accuracy[0].Unit)
+		assert.Equal(t, "m", result.Accuracy[1].Unit)
+
+		// The load warning reaches a person on stderr, and is not a refusal.
+		assert.Contains(t, report, "warning")
+		assert.Contains(t, report, "mm and m")
+	})
+
+	t.Run("beside a rankable claim it is not the answer, however small its terms", func(t *testing.T) {
+		result, _ := resolving(t, exitSuccess, "site:S-110", "height")
+
+		assert.Equal(t, outcomeResolved, result.Outcome)
+		assert.Equal(t, "survey:H-0110", result.ClaimID, "the rankable claim wins although it is older and wider")
+	})
+
+	t.Run("the model still loads, and check exits as it did without the claims", func(t *testing.T) {
+		checking := func(t *testing.T, files map[string]string) (int, checkResult, string) {
+			t.Helper()
+
+			t.Chdir(tree(t, files))
+
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"check"}, &stdout, &stderr)
+
+			return code, listed[checkResult](t, stdout.String()), stderr.String()
+		}
+
+		withoutCode, _, _ := checking(t, answerable())
+
+		files := answerable()
+		files["entities/site.dfc"] += mixedAccuracyModel
+		withCode, with, report := checking(t, files)
+
+		assert.Equal(t, withoutCode, withCode)
+		assert.False(t, with.Refused, "a warning is not a refusal")
+		assert.Equal(t, 2, strings.Count(report, "warning"), "one warning for each claim whose units are mixed")
+	})
 }

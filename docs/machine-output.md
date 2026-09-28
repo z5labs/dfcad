@@ -741,7 +741,7 @@ wrote it down — is `--evidence`:
 | `reason` | string | Which step of the rule produced that outcome: `only`, `accuracy`, `recency`, `unranked`, `ambiguous` or `unclaimed`. |
 | `strict` | boolean | Whether the registry declares the predicate strict. Written whatever the outcome. |
 | `value` | object, optional | The answer, in the same shape `claims[].value` takes elsewhere. Absent where nothing resolved. |
-| `accuracy` | array, optional | How well the answer is known, term by term, as the claim it came from stated it. Absent where nothing resolved, and absent where the claim stated none — which makes the answer unrankable rather than exact, and is what `reason` says. |
+| `accuracy` | array, optional | How well the answer is known, term by term, as the claim it came from stated it. Absent where nothing resolved, and absent where the claim stated none — which makes the answer unrankable rather than exact, and is what `reason` says. Present on an `unranked` answer whose claim wrote terms in more than one unit: those terms never combine into a figure, because nothing converts between units, so the claim is unrankable with an accuracy beside it. |
 | `claim-id` | string, optional | The id of the claim the answer came from. Absent where nothing resolved, and absent where the claim wrote no id, which is the great majority of them: an id is required only of a claim something references. |
 | `frame` | string, optional | The coordinate frame the value is expressed in. Absent for a value that is not a position, which is in no frame. |
 | `claim` | object, optional | The claim the answer came from, in the shape documented under `get`. Written under `--evidence` and absent otherwise. |
@@ -761,7 +761,7 @@ different:
 | Outcome | Exit | Carries |
 |---------|------|---------|
 | `resolved` | `0` | `value`, `accuracy` and `claim-id`, and `claim` under `--evidence`. `reason` is `only`, `accuracy` or `recency`. |
-| `unranked` | `0` | The same. The one live claim under a predicate nothing rankable was said about: still what the model says, and not an answer the rule chose. There is no `accuracy`, which is why. |
+| `unranked` | `0` | The same. The one live claim under a predicate nothing rankable was said about: still what the model says, and not an answer the rule chose. Either there is no `accuracy`, which is why, or there is one whose terms are in more than one unit, which nothing converts between and so never combines into a figure to rank by. |
 | `ambiguous` | `4`, or `5` where `strict` | `candidates`, every one of them and each in full. No `value`, no `accuracy`, no `claim-id` and no `claim`. |
 | `unclaimed` | `1` | None of them. Nothing live is written under the predicate. |
 
@@ -2541,7 +2541,7 @@ same thing in all three.
 |-------|------|---------|
 | `claim` | string, optional | The id of the claim that was written. Absent where it wrote none, which is the ordinary case: an id is required only of a claim something references. |
 | `replaced` | string, optional | The id of the claim that was retracted. Absent for a change that retracted none, and absent on a supersession whose retracted claim wrote no id of its own. |
-| `rankable` | boolean | Whether the claim that was written can take part in resolution, which is whether it carries an accuracy. |
+| `rankable` | boolean | Whether the claim that was written can take part in resolution, which is whether it carries an accuracy whose terms combine into one figure. False for a claim with no accuracy, and false for one whose terms are in more than one unit, since nothing converts between them; either carries an `unrankable` notice. |
 | `notices` | array | What the change has to say about the model it produced. Empty rather than null when it had nothing to say. |
 | `notices[].kind` | string | One of `unrankable`, `conflict`, `unresolvable`. |
 | `notices[].message` | string | The notice as a sentence, which is presentation. A caller branches on the kind. |
@@ -2559,7 +2559,7 @@ in every format.
 
 | Kind | When |
 |------|------|
-| `unrankable` | The claim carries no accuracy. It loads, it can never win resolution, and it is not given a default. |
+| `unrankable` | The claim's accuracy does not combine into one figure: it carries none, or its terms are in more than one unit, which nothing converts between and which the message names. It loads, it can never win resolution, and it is not given a default. |
 | `conflict` | The claim was written on a subject and predicate the model already states. The competing claims are named. |
 | `unresolvable` | A retraction left its subject and predicate with no live claim at all, so nothing resolves under it. |
 

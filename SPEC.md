@@ -543,6 +543,10 @@ Rules:
   in a supersession chain are each a load error naming both ends.
 - A claim with no `accuracy` loads and is **unrankable**: it can never win resolution, and it
   is not given a default. It is still returned as a candidate when nothing rankable exists.
+  A claim whose `accuracy` terms are not all in one unit (§6.6.5) loads and is unrankable
+  too: nothing converts between units, so its terms never reduce to one figure to rank by. It
+  loads with a warning at its `accuracy` naming the units, because an author who wrote a
+  millimetre beside a metre meant the claim to be ranked.
 - **An unrankable claim standing alone is read.** Wherever a value is consumed — `resolve`
   answering it, a geometric answer reading a corner's position or the centre of an arc, an
   export sweeping a body through a height, a derivation applying a setback — the one live

@@ -690,3 +690,85 @@ func TestRepeatedFlagKeepsEveryValueInOrder(t *testing.T) {
 	assert.Equal(t, repeated{"independent 0.05 m2", "systematic 0.002 m2 method:total-station"}, written)
 	assert.Contains(t, written.String(), "systematic")
 }
+
+// TestClaimCommandsReportWhetherTheAccuracyCombines checks that "rankable" is
+// the test resolution applies — whether the claim's accuracy combines into one
+// figure — rather than whether any accuracy was written. An accuracy in
+// millimetres beside metres carries terms and still ranks nowhere, because
+// nothing converts between them.
+func TestClaimCommandsReportWhetherTheAccuracyCombines(t *testing.T) {
+	testCases := []struct {
+		name       string
+		command    string
+		accuracies []string
+		rankable   bool
+		units      []string
+	}{
+		{
+			name:       "add-claim reports a claim whose terms are in mm and m unrankable",
+			command:    "add-claim",
+			accuracies: []string{"independent 1.0 mm", "systematic 0.001 m method:total-station"},
+			rankable:   false,
+			units:      []string{"mm and m"},
+		},
+		{
+			name:       "add-claim reports a claim whose terms share one unit rankable",
+			command:    "add-claim",
+			accuracies: []string{"independent 1.0 mm", "systematic 1.0 mm method:total-station"},
+			rankable:   true,
+		},
+		{
+			name:       "supersede reports a claim whose terms are in m and mm unrankable",
+			command:    "supersede",
+			accuracies: []string{"independent 0.001 m", "independent 1.0 mm"},
+			rankable:   false,
+			units:      []string{"m and mm"},
+		},
+		{
+			name:       "supersede reports a claim whose terms share one unit rankable",
+			command:    "supersede",
+			accuracies: []string{"independent 0.001 m", "independent 0.002 m"},
+			rankable:   true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			args := []string{
+				testCase.command,
+				"--value", "0.001 0.0 0.0", "--unit", "m",
+				"--source", "Resurvey RS-2026-011",
+				"--method", "method:total-station",
+				"--date", "2026-09-28",
+			}
+			for _, accuracy := range testCase.accuracies {
+				args = append(args, "--accuracy", accuracy)
+			}
+			args = append(args, "geom:V-01", "position")
+
+			result, report, _ := recorded(t, args...)
+
+			assert.Equal(t, testCase.rankable, result.Rankable)
+
+			var unrankable []noticeEntry
+			for _, notice := range result.Notices {
+				if notice.Kind == string(dfcad.NoticeUnrankable) {
+					unrankable = append(unrankable, notice)
+				}
+			}
+
+			if testCase.rankable {
+				assert.Empty(t, unrankable, "a claim which ranks is owed no unrankable notice")
+				return
+			}
+
+			require.Len(t, unrankable, 1)
+			assert.Equal(t, "geom:V-01", unrankable[0].Subject)
+			assert.Equal(t, "position", unrankable[0].Predicate)
+			for _, units := range testCase.units {
+				assert.Contains(t, unrankable[0].Message, units, "the notice names the units it found")
+				assert.Contains(t, report, units, "and says so to a person, on stderr")
+			}
+		})
+	}
+}
