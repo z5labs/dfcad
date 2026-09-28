@@ -8,6 +8,7 @@ package main
 import (
 	"bytes"
 	"cmp"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -492,6 +493,11 @@ func TestTraverseOfASharedWall(t *testing.T) {
 
 		assert.Equal(t, shared(room).Classification, shared(corridor).Classification)
 		assert.Equal(t, shared(room).Backing, shared(corridor).Backing)
+	})
+
+	t.Run("names the type of that element, from both sides", func(t *testing.T) {
+		assert.Equal(t, []string{"Partition"}, shared(room).BackingTypes)
+		assert.Equal(t, []string{"Partition"}, shared(corridor).BackingTypes)
 	})
 
 	t.Run("makes the two rooms adjacent across that edge and no other", func(t *testing.T) {
@@ -1248,6 +1254,225 @@ func TestTraverseBoundsReadsTheSameAsBoundaryOf(t *testing.T) {
 		assert.Equal(t, []string{"site:S-101"}, bounds["geom:L-101"])
 		assert.Equal(t, []string{"site:S-101", "site:S-113"}, bounds["geom:E-1-A2-B2"])
 	})
+}
+
+// TestTraverseBoundaryOfNamesTheTypeOfWhatBacksAnEdge checks the type written
+// beside each backing element over the budget model, where one edge is backed by
+// a doorway and the wall it is cut into, and telling the two apart is the point.
+func TestTraverseBoundaryOfNamesTheTypeOfWhatBacksAnEdge(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name          string
+		subject       string
+		edge          string
+		expected      []string
+		expectedTypes []string
+	}{
+		{
+			name:          "names a doorway and the wall it is cut into by their types",
+			subject:       "site:S-102",
+			edge:          "geom:E-1-B2-C2",
+			expected:      []string{"site:D-101", "site:W-111"},
+			expectedTypes: []string{"Doorway", "Partition"},
+		},
+		{
+			name:          "names a wall alone by its type",
+			subject:       "site:S-102",
+			edge:          "geom:E-1-C1-C2",
+			expected:      []string{"site:W-102"},
+			expectedTypes: []string{"Partition"},
+		},
+		{
+			name:    "writes neither for a virtual edge",
+			subject: "site:S-102",
+			edge:    "geom:E-1-B1-C1",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := walkIn(t, root, queryBoundaryOf, testCase.subject)
+
+			entry, ok := resultFor(result, testCase.edge)
+			require.True(t, ok, "%s is in the boundary of %s", testCase.edge, testCase.subject)
+
+			assert.Equal(t, testCase.expected, entry.Backing)
+			assert.Equal(t, testCase.expectedTypes, entry.BackingTypes)
+		})
+	}
+}
+
+// TestTraverseBackingTypesAreTheTypesGetGives holds backing-types to get over
+// every edge of every space's boundary in the budget model: the two arrays are
+// the same length, and each type is the one get gives for the element at that
+// position. A table of expected literals would check the edges somebody thought
+// of; this checks all of them.
+func TestTraverseBackingTypesAreTheTypesGetGives(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	graph, _ := dfcad.LoadGraph(root)
+	require.NotNil(t, graph)
+
+	types := make(map[string]string)
+	backed := 0
+	for node := range graph.Nodes().All() {
+		if node.Kind() != dfcad.KindSpace {
+			continue
+		}
+
+		for _, entry := range walkIn(t, root, queryBoundaryOf, string(node.ID())).Results {
+			require.Len(t, entry.BackingTypes, len(entry.Backing), "%s of %s", entry.ID, node.ID())
+
+			for i, element := range entry.Backing {
+				if _, ok := types[element]; !ok {
+					types[element] = fetched(t, root, element).Type
+				}
+				assert.Equal(t, types[element], entry.BackingTypes[i], "%s backing %s", element, entry.ID)
+				backed++
+			}
+		}
+	}
+
+	require.NotZero(t, backed, "the budget model has walls")
+}
+
+// TestTraverseBackingTypesAreWrittenExactlyWhereBackingIs is its own function
+// because it asserts on the bytes rather than the decoded result: a field which
+// is absent and a field which is empty decode to the same nil slice, and only one
+// of them is what the contract promises. It also holds the key order, which is
+// the order the fields are declared in.
+func TestTraverseBackingTypesAreWrittenExactlyWhereBackingIs(t *testing.T) {
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		subject  string
+		refused  bool
+		expected map[string][]string
+	}{
+		{
+			name:    "writes them for a physical edge and not for a virtual one",
+			files:   traversableModel(),
+			subject: "site:S-101",
+			expected: map[string][]string{
+				"geom:E-01": nil,
+				"geom:E-02": {"Partition"},
+				"geom:E-03": nil,
+				"geom:E-04": nil,
+			},
+		},
+		{
+			name:    "writes neither for an edge whose backing element does not resolve",
+			refused: true,
+			files: map[string]string{
+				"registry.dfc": traverseRegistry,
+				"entities/site.dfc": strings.Replace(traverseModel,
+					"(backed-by site:W-01)", "(backed-by site:W-99)", 1),
+			},
+			subject: "site:S-101",
+			expected: map[string][]string{
+				"geom:E-01": nil,
+				"geom:E-02": nil,
+				"geom:E-03": nil,
+				"geom:E-04": nil,
+			},
+		},
+		{
+			// Only a model the load refused holds an element which declares no
+			// type: one with no (type ...) at all is not held, and one whose type
+			// could not be read is held without one. The answer is read through
+			// the refusal all the same.
+			name: "writes an empty type for an element which declares none, keeping the two aligned",
+			files: map[string]string{
+				"registry.dfc": traverseRegistry,
+				"entities/site.dfc": strings.Replace(traverseModel,
+					"  (type Partition)\n", "  (type \"Partition\")\n", 1),
+			},
+			refused: true,
+			subject: "site:S-101",
+			expected: map[string][]string{
+				"geom:E-01": nil,
+				"geom:E-02": {""},
+				"geom:E-03": nil,
+				"geom:E-04": nil,
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, testCase.files))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run([]string{"traverse", queryBoundaryOf, testCase.subject}, &stdout, &stderr), stderr.String())
+
+			var raw struct {
+				Refused bool              `json:"refused"`
+				Results []json.RawMessage `json:"results"`
+			}
+			require.NoError(t, json.Unmarshal(stdout.Bytes(), &raw))
+			require.Equal(t, testCase.refused, raw.Refused, stderr.String())
+			require.Len(t, raw.Results, len(testCase.expected))
+
+			for _, message := range raw.Results {
+				keys := objectKeys(t, message)
+
+				var entry traversed
+				require.NoError(t, json.Unmarshal(message, &entry))
+
+				expected, ok := testCase.expected[entry.ID]
+				require.True(t, ok, "%s is expected in the boundary", entry.ID)
+
+				assert.Equal(t, expected, entry.BackingTypes, entry.ID)
+				assert.Equal(t, slices.Contains(keys, "backing"), slices.Contains(keys, "backing-types"),
+					"%s writes backing-types exactly where it writes backing", entry.ID)
+				assert.NotContains(t, keys, "backing-kinds", entry.ID)
+
+				if expected != nil {
+					assert.Equal(t, []string{"backing", "backing-types", "span"}, keys[len(keys)-3:], entry.ID)
+				}
+			}
+		})
+	}
+}
+
+// objectKeys is the keys of one JSON object, in the order they were written.
+func objectKeys(t *testing.T, message json.RawMessage) []string {
+	t.Helper()
+
+	decoder := json.NewDecoder(bytes.NewReader(message))
+
+	open, err := decoder.Token()
+	require.NoError(t, err)
+	require.Equal(t, json.Delim('{'), open)
+
+	var keys []string
+	for decoder.More() {
+		key, err := decoder.Token()
+		require.NoError(t, err)
+		keys = append(keys, key.(string))
+
+		var skipped json.RawMessage
+		require.NoError(t, decoder.Decode(&skipped))
+	}
+
+	closing, err := decoder.Token()
+	require.NoError(t, err)
+	require.Equal(t, json.Delim('}'), closing)
+
+	return keys
+}
+
+// resultFor is the result a walk reached under one id.
+func resultFor(result traverseResult, id string) (traversed, bool) {
+	for _, entry := range result.Results {
+		if entry.ID == id {
+			return entry, true
+		}
+	}
+	return traversed{}, false
 }
 
 // fetched is what get gives for one id of the model rooted at dir.
