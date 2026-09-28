@@ -1098,7 +1098,7 @@ It takes an optional id, a predicate after the id, and three filters.
 
 | Flag | Meaning |
 |------|---------|
-| `--predicate <name>` | Only claims written under this predicate. [Repeatable](#filters). A predicate written after the id counts as one more value of this flag. |
+| `--predicate <name>` | Only claims written under this predicate. [Repeatable](#filters). A predicate written after the id counts as one more value of this flag, and is checked first, with the id. |
 | `--type <name>` | Only claims on a node declaring this type. [Repeatable](#filters). |
 | `--family <family>` | Only claims on a thing of this family: `node`, `vertex`, `edge` or `loop`. [Repeatable](#filters). |
 

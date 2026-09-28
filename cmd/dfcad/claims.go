@@ -58,7 +58,7 @@ Flags:
 Filters combine: a claim is listed when it satisfies every filter given, and a
 filter written more than once is satisfied by any of its values. They apply with
 an id as well as without one, and a predicate written after the id counts as one
-more --predicate. --type beside --family values none of which is node is refused
+more --predicate, checked before the flag's values. --type beside --family values none of which is node is refused
 rather than answered with nothing: only a node declares a type, so no claim
 satisfies both, and an empty answer would read as a model with no such claims.
 
@@ -328,7 +328,9 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	// A predicate written after the id is one more --predicate, so that the
 	// positional form and the flag are one filter rather than two which could
-	// disagree.
+	// disagree. It is checked first, with the id it follows: arguments and flags
+	// may be written in any order, and the flag package does not say where
+	// between the flag's values an argument fell.
 	predicates := filterOf(*predicateFlag)
 	if len(arguments) == 2 && arguments[1] != "" {
 		predicates = append([]string{arguments[1]}, predicates...)
@@ -375,6 +377,14 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		Claims: make([]claimRow, 0),
 	}
 
+	// One predicate is handed to the walk rather than filtered after it, so that
+	// the common --predicate X resolves that one predicate on each subject rather
+	// than every predicate written there. The order is the same either way.
+	var only string
+	if len(predicates) == 1 {
+		only = predicates[0]
+	}
+
 	for _, each := range subjects {
 		entity, _ := graph.Entity(each)
 		row := subjectOf(entity)
@@ -383,7 +393,7 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 			continue
 		}
 
-		for _, claim := range audited(graph, each, "") {
+		for _, claim := range audited(graph, each, only) {
 			if !admits(predicates, claim.Predicate) {
 				continue
 			}
