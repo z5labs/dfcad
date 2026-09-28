@@ -545,6 +545,11 @@
 // carries no vocabulary of its own (see
 // docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md).
 //
+// Which nodes come back can be narrowed too, by kind and by type, with a
+// [Selection] passed to [Graph.PlanOfSelected]. It narrows what is reported and
+// never what is walked, and it decides which rooms come back rather than how a
+// room is drawn: an outline is the same in a selected plan as in the whole one.
+//
 // Each claim comes back whole and carries its [Anchor]: an edge with its two
 // vertices in the order the edge was authored, or the node with the rings
 // bounding it. The pairing is what stops a renderer working out for itself

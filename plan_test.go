@@ -1113,3 +1113,203 @@ func pointsNear(a, b Point) bool {
 	}
 	return true
 }
+
+// selected reads the plan of one node of the fixture under the predicates
+// named, asking about only what the selection selects.
+func (f planFixture) selected(t *testing.T, id ID, selection Selection, predicates ...string) (Plan, []Diagnostic) {
+	t.Helper()
+
+	node, ok := f.graph.Node(id)
+	require.True(t, ok, "the fixture holds a node %s", id)
+
+	return f.graph.PlanOfSelected(node, f.survey, Annotations{Predicates: predicates}, selection)
+}
+
+func TestPlanOfSelected(t *testing.T) {
+	testCases := []struct {
+		name             string
+		subject          ID
+		selection        Selection
+		expectedOutlines []string
+		expectedUndrawn  []string
+	}{
+		{
+			name:             "draws every descendant for a selection which narrows nothing",
+			subject:          "site:L-01",
+			selection:        Selection{},
+			expectedOutlines: []string{"site:A-01", "site:D-01", "site:H-01", "site:P-01", "site:R-01", "site:R-02"},
+			expectedUndrawn:  []string{"site:C-01"},
+		},
+		{
+			name:             "draws only the type selected",
+			subject:          "site:L-01",
+			selection:        Selection{Types: []string{"MeetingRoom"}},
+			expectedOutlines: []string{"site:R-01", "site:R-02"},
+			expectedUndrawn:  []string{},
+		},
+		{
+			name:             "draws only the kind selected, and names what of it could not be drawn",
+			subject:          "site:L-01",
+			selection:        Selection{Kinds: []Kind{"Element"}},
+			expectedOutlines: []string{"site:D-01", "site:H-01", "site:P-01"},
+			expectedUndrawn:  []string{"site:C-01"},
+		},
+		{
+			name:             "selects what satisfies both fields",
+			subject:          "site:L-01",
+			selection:        Selection{Kinds: []Kind{"Space"}, Types: []string{"Alcove", "Doorway"}},
+			expectedOutlines: []string{"site:A-01"},
+			expectedUndrawn:  []string{},
+		},
+		{
+			name:             "selects any of one field's values",
+			subject:          "site:L-01",
+			selection:        Selection{Types: []string{"Alcove", "Doorway"}},
+			expectedOutlines: []string{"site:A-01", "site:D-01"},
+			expectedUndrawn:  []string{},
+		},
+		{
+			// The alcove is inside a room inside a storey inside the building,
+			// and none of those is an alcove: the selection narrows what is
+			// reported and never what is walked.
+			name:             "walks through what it does not select to reach what it does",
+			subject:          "site:B-01",
+			selection:        Selection{Types: []string{"Alcove"}},
+			expectedOutlines: []string{"site:A-01"},
+			expectedUndrawn:  []string{},
+		},
+		{
+			name:             "draws nothing, and refuses nothing, for a selection nothing satisfies",
+			subject:          "site:L-01",
+			selection:        Selection{Types: []string{"OfficeStorey"}},
+			expectedOutlines: []string{},
+			expectedUndrawn:  []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			plan, diags := storey(t).selected(t, testCase.subject, testCase.selection, planArea)
+
+			assert.Empty(t, diagnosticMessages(diags))
+			assert.Equal(t, testCase.expectedOutlines, drawnIDs(plan))
+			assert.Equal(t, testCase.expectedUndrawn, undrawnIDs(plan))
+		})
+	}
+}
+
+// TestPlanOfIsPlanOfSelectedWithNoSelection is its own function because it
+// asserts the relation between the two entry points rather than an answer:
+// PlanOf is what it always was, and asks with no selection.
+func TestPlanOfIsPlanOfSelectedWithNoSelection(t *testing.T) {
+	fixture := storey(t)
+
+	whole, wholeDiags := fixture.plan(t, "site:L-01", planArea, planCaption, planLength)
+	unselected, unselectedDiags := fixture.selected(t, "site:L-01", Selection{}, planArea, planCaption, planLength)
+
+	assert.Equal(t, whole, unselected)
+	assert.Equal(t, wholeDiags, unselectedDiags)
+}
+
+// TestPlanOfSelectedDrawsANodeAsTheWholePlanDoes is the property a selection
+// rests on: it changes which rooms come back and never how a room is drawn.
+// Each outline of a selected plan is, entry for entry, the same node's outline
+// in the unselected one, and so is each undrawn entry.
+func TestPlanOfSelectedDrawsANodeAsTheWholePlanDoes(t *testing.T) {
+	fixture := storey(t)
+
+	whole, _ := fixture.plan(t, "site:L-01", planArea, planCaption, planLength)
+
+	outlines := make(map[ID]Outline, len(whole.Outlines()))
+	for _, outline := range whole.Outlines() {
+		outlines[outline.Subject()] = outline
+	}
+
+	undrawn := make(map[ID]Undrawn, len(whole.Undrawn()))
+	for _, entry := range whole.Undrawn() {
+		undrawn[entry.Subject()] = entry
+	}
+
+	selections := []Selection{
+		{Types: []string{"MeetingRoom"}},
+		{Types: []string{"Alcove", "Doorway"}},
+		{Kinds: []Kind{"Element"}},
+		{Kinds: []Kind{"Space", "Element"}},
+		{Kinds: []Kind{"Space"}, Types: []string{"Alcove"}},
+	}
+
+	for _, selection := range selections {
+		t.Run(fmt.Sprintf("%v %v", selection.Kinds, selection.Types), func(t *testing.T) {
+			plan, _ := fixture.selected(t, "site:L-01", selection, planArea, planCaption, planLength)
+
+			require.NotEmpty(t, plan.Outlines())
+			for _, outline := range plan.Outlines() {
+				expected, ok := outlines[outline.Subject()]
+				require.True(t, ok, "%s is drawn in the unselected plan too", outline.Subject())
+
+				assert.Equal(t, expected.Region(), outline.Region(), outline.Subject())
+				assert.Equal(t, expected.Annotations(), outline.Annotations(), outline.Subject())
+			}
+
+			for _, entry := range plan.Undrawn() {
+				expected, ok := undrawn[entry.Subject()]
+				require.True(t, ok, "%s is undrawn in the unselected plan too", entry.Subject())
+
+				assert.Equal(t, expected, entry, entry.Subject())
+			}
+		})
+	}
+}
+
+// TestPlanOfSelectedBudgetsOnlyTheRingsItSelected is its own function because
+// it is about what the budget is over rather than about which nodes came back.
+func TestPlanOfSelectedBudgetsOnlyTheRingsItSelected(t *testing.T) {
+	fixture := storey(t)
+
+	whole, _ := fixture.plan(t, "site:L-01", planArea)
+	rooms, _ := fixture.selected(t, "site:L-01", Selection{Types: []string{"MeetingRoom"}}, planArea)
+
+	// The budget of the meeting rooms is the budget of their rings, merged,
+	// and nothing else: the alcove, the doorway and the panel are drawn on the
+	// whole storey's sheet and not on this one.
+	var expected Budget
+	for _, outline := range rooms.Outlines() {
+		expected.Merge(outline.Region().Budget())
+	}
+
+	assert.Equal(t, expected.Terms(), rooms.Budget().Terms())
+	assert.Less(t, len(rooms.Budget().Terms()), len(whole.Budget().Terms()))
+}
+
+func TestSelectionSelects(t *testing.T) {
+	fixture := storey(t)
+
+	room, ok := fixture.graph.Node("site:R-01")
+	require.True(t, ok)
+
+	testCases := []struct {
+		name      string
+		selection Selection
+		node      *SemanticNode
+		expected  bool
+	}{
+		{name: "selects any node when it narrows nothing", selection: Selection{}, node: room, expected: true},
+		{name: "selects a node of a kind it names", selection: Selection{Kinds: []Kind{"Element", "Space"}}, node: room, expected: true},
+		{name: "refuses a node of a kind it does not name", selection: Selection{Kinds: []Kind{"Element"}}, node: room, expected: false},
+		{name: "selects a node of a type it names", selection: Selection{Types: []string{"MeetingRoom"}}, node: room, expected: true},
+		{name: "refuses a node of a type it does not name", selection: Selection{Types: []string{"Alcove"}}, node: room, expected: false},
+		{
+			name:      "refuses a node satisfying one field and not the other",
+			selection: Selection{Kinds: []Kind{"Space"}, Types: []string{"Alcove"}},
+			node:      room,
+			expected:  false,
+		},
+		{name: "never selects a nil node", selection: Selection{}, node: nil, expected: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, testCase.selection.Selects(testCase.node))
+		})
+	}
+}

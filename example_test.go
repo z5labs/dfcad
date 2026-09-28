@@ -3396,6 +3396,39 @@ func ExampleGraph_PlanOf() {
 	// the rings are known to ±0.024 m
 }
 
+func ExampleGraph_PlanOfSelected() {
+	graph, _ := dfcad.LoadGraph("testdata/plan/storey")
+
+	survey := dfcad.Survey{Tolerance: "coincident", Registry: graph.Registry()}
+	for vertex := range graph.Topology().Vertices() {
+		resolution, _ := graph.Claims().Resolve(vertex.ID(), "position", graph.Registry())
+		survey.Place(vertex.ID(), resolution)
+	}
+
+	building, _ := graph.Node("site:B-01")
+
+	// A sheet of the meeting rooms asks for the meeting rooms. The storey
+	// between the building and them is not one, and they are drawn anyway: a
+	// selection narrows what comes back and never what is walked.
+	plan, _ := graph.PlanOfSelected(building, survey, dfcad.Annotations{Predicates: []string{"area"}},
+		dfcad.Selection{Types: []string{"MeetingRoom"}})
+
+	for _, outline := range plan.Outlines() {
+		fmt.Printf("%s %s covers %.1f %s²\n",
+			outline.Node().Type(), outline.Subject(), outline.Region().Area(), plan.Unit())
+	}
+
+	// Nothing the selection did not ask about is named as undrawn: the circuit
+	// group in the storey is not a meeting room, and it was not left off this
+	// sheet so much as never on it.
+	fmt.Println(len(plan.Undrawn()), "undrawn")
+
+	// Output:
+	// MeetingRoom site:R-01 covers 12.0 m²
+	// MeetingRoom site:R-02 covers 12.0 m²
+	// 0 undrawn
+}
+
 func ExampleTopology_FitWithin() {
 	root := "testdata/siting/surveyed"
 

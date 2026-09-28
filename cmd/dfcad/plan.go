@@ -54,6 +54,10 @@ Flags:
 	--arc-through <predicate>  the predicate the point a curved edge passes
 	                           through is claimed under
 	--chord <name>             the tolerance a curved edge is drawn to
+	--kind <kind>              report only what declares this kind; repeat it
+	                           for any of several
+	--type <name>              report only what declares this type; repeat it
+	                           for any of several
 
 None of the first three has a default and none of them ever will. Which
 predicate carries a position, and how close two corners have to be to be one
@@ -85,12 +89,25 @@ Nothing is resolved. Where two live claims compete under one predicate on one
 anchor, both come back with the same anchor, and which of them a sheet prints
 is the caller's decision. A retracted claim is never reported.
 
+--kind and --type narrow what is reported and never what is walked, exactly as
+they do for traverse. Under --type Office an office three levels below the
+subject is reported though nothing between it and the subject is an office.
+Filters combine: a node is reported when it satisfies every filter given, and a
+filter written more than once is satisfied by any of its values. A kind which is
+not one of the seven, or a type the registry does not declare, is a usage error;
+a declared type nothing instantiates is an empty answer and exit 0. Everything
+computed from the rings drawn — the budget, the chord and deviation, and
+"chorded" — is over the nodes the filters select, and a selected node is drawn
+exactly as it is in the unfiltered plan: the filters decide which rooms come
+back and never how a room is drawn.
+
 The subject is a place rather than a grouping. A zone holds its members by
 membership and contains nothing, so asking for the plan of one is a usage error
 rather than an empty answer.
 
-Nothing the subject contains is dropped. A node this cannot draw is reported in
-"undrawn" — its id, what it is, why it was not drawn, and the claims written on
+Nothing the subject contains is dropped — nothing, that is, which the filters
+select, and every node where no filter was given. A node this cannot draw is
+reported in "undrawn" — its id, what it is, why it was not drawn, and the claims written on
 it — rather than left out: a circuit group and a warranty have no edges and are
 ordinary, a ring which does not close is a defect, and both are things somebody
 put inside the storey. A sheet drawn from an answer which omitted one renders,
@@ -117,7 +134,7 @@ The object plan writes carries "subject", "planned" and the "digest" of the
 source tree it was read from, the "frame" every coordinate in it is in and that
 frame's "unit", the
 "tolerance" it was judged against, the "annotating" predicates it was asked
-for, one "outlines" entry per contained node which was drawn with the node it
+for, the "filter" it was narrowed by where one was given, one "outlines" entry per contained node which was drawn with the node it
 is "within", its "region" and its "annotations", and the "budget": the
 accuracy of the rings, over the position claims which put every drawn corner
 where it is. A region read from a
@@ -147,8 +164,9 @@ related, a transform could not be applied, or the plan's frame is in a unit
 other than the tolerance's. An undrawn node read in a frame other than the
 plan's carries "declared-in" too. "outlines" and "undrawn" account between
 them for everything the subject contains, so a renderer which drew every
-outline and listed every undrawn node has drawn or named the whole storey. The
-key is absent for a storey every node of which was drawn.
+outline and listed every undrawn node has drawn or named the whole storey — or,
+under a filter, everything in it the filter selects; a node the filter does not
+select is in neither. The key is absent for a storey every node of which was drawn.
 
 Exit code 1 is a plan a ring of which could not be read — a boundary which does
 not close, one which crosses itself, corners which are not in one plane, a
@@ -230,6 +248,16 @@ type planResult struct {
 	// object answers.
 	Annotating []string `json:"annotating"`
 
+	// Filter is the --kind and --type the run was narrowed by, each in the order
+	// it was written and with a repeat written once. Absent for a run which gave
+	// neither, which is a plan of everything the subject contains.
+	//
+	// It is echoed for the reason Annotating is: a stored plan of the meeting
+	// rooms and a stored plan of the whole storey are different answers, and
+	// the object has to say which question it answers rather than leave its
+	// reader to infer it from which rooms happen to be in it.
+	Filter *planFilter `json:"filter,omitempty"`
+
 	// Chord is the tolerance the curves of the rings were drawn to and
 	// Deviation how far the worst of those segments fell from the curve it
 	// stood in for, over every outline. Both are absent for a storey with
@@ -266,6 +294,18 @@ type planResult struct {
 	// every drawn corner where it is. It is the accuracy of the geometry and
 	// not of the annotations: each claim below carries its own.
 	Budget *budgetReport `json:"budget,omitempty"`
+}
+
+// planFilter is the filters a plan was narrowed by, as the machine contract
+// writes them.
+type planFilter struct {
+	// Kind is the kinds a reported node declares one of. Absent where --kind
+	// was not given.
+	Kind []string `json:"kind,omitempty"`
+
+	// Type is the types a reported node declares one of. Absent where --type
+	// was not given.
+	Type []string `json:"type,omitempty"`
 }
 
 // outlineEntry is one contained node drawn as rings, with what is written on
@@ -410,6 +450,10 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	centre := flags.String(flagArcCentre, "", "")
 	through := flags.String(flagArcThrough, "", "")
 	chord := flags.String(flagChord, "", "")
+	kindFlag := &repeated{}
+	typeFlag := &repeated{}
+	flags.Var(kindFlag, flagKind, "")
+	flags.Var(typeFlag, flagType, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -473,18 +517,33 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		}
 	}
 
+	kinds, types := filterOf(*kindFlag), filterOf(*typeFlag)
+
+	selection, err := planSelection(graph.Registry(), kinds, types)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	// One survey over every corner the plan could draw rather than one per room.
 	// A corner read against two surveys is a corner which can be in two places,
 	// and two rooms sharing a wall is where that shows up as a gap down the
 	// middle of a sheet.
+	//
+	// Over the rooms the filters select and no others, because the survey is
+	// what every figure of the answer is computed against: a curve on a wall of
+	// a room nobody asked for is not something this sheet was drawn through.
+	// The walk is the whole containment one — the filters narrow what is
+	// reported and never what is walked.
 	var rooms []dfcad.Entity
 	for contained := range graph.Descendants(node) {
-		rooms = append(rooms, contained.Node())
+		if selection.Selects(contained.Node()) {
+			rooms = append(rooms, contained.Node())
+		}
 	}
 
 	survey := bent(graph, *position, *tolerance, arcs{centre: *centre, through: *through, chord: *chord}, rooms...)
 
-	drawn, diags := graph.PlanOf(node, survey, dfcad.Annotations{Predicates: *annotate})
+	drawn, diags := graph.PlanOfSelected(node, survey, dfcad.Annotations{Predicates: *annotate}, selection)
 
 	// What the survey could not bend, over every room which could be drawn: a
 	// ring run straight through a curve looks like a wall somebody meant, and a
@@ -498,6 +557,7 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	refused := render(diags, stderr)
 
 	result := reportPlan(cmd, graph, subject, *annotate, drawn, chorded, !refused)
+	result.Filter = planFilterOf(kinds, types)
 
 	reportPlanFor(result, drawn, globals, stderr)
 
@@ -511,6 +571,45 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 	}
 
 	return exitSuccess
+}
+
+// planSelection is the selection a plan is asked with, from the --kind and
+// --type it was given.
+//
+// A value which names nothing the model has is refused exactly as `traverse`
+// refuses it, by [checkFilters]: a type nobody declared and a type nothing
+// instantiates are different answers, and a plan which answered both with no
+// outlines would leave a caller retrying a misspelling forever.
+func planSelection(registry *dfcad.Registry, kinds, types []string) (dfcad.Selection, error) {
+	if err := checkFilters(registry, types, kinds, nil); err != nil {
+		return dfcad.Selection{}, err
+	}
+
+	selection := dfcad.Selection{Types: types}
+	for _, kind := range kinds {
+		selection.Kinds = append(selection.Kinds, dfcad.Kind(kind))
+	}
+
+	return selection, nil
+}
+
+// planFilterOf is the filters a plan was narrowed by as the machine contract
+// echoes them, or nil for a run narrowed by neither — which writes no key, so
+// that an unfiltered plan is the object it always was.
+func planFilterOf(kinds, types []string) *planFilter {
+	if len(kinds) == 0 && len(types) == 0 {
+		return nil
+	}
+
+	filter := &planFilter{}
+	for _, kind := range kinds {
+		filter.Kind = appendOnce(filter.Kind, kind)
+	}
+	for _, name := range types {
+		filter.Type = appendOnce(filter.Type, name)
+	}
+
+	return filter
 }
 
 // reportPlan is the plan as the machine contract writes it.
