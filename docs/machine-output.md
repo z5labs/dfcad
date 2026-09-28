@@ -1095,7 +1095,7 @@ A walk that reaches nothing is not an error — it is an empty `results` and exi
 ### `claims`
 
 Every claim written on one thing, live and retracted alike — or, with no id, on every thing.
-It takes an optional id, a predicate after the id, and four filters.
+It takes an optional id, a predicate after the id, and five filters.
 
 | Flag | Meaning |
 |------|---------|
@@ -1103,6 +1103,7 @@ It takes an optional id, a predicate after the id, and four filters.
 | `--type <name>` | Only claims on a node declaring this type. [Repeatable](#filters). |
 | `--family <family>` | Only claims on a thing of this family: `node`, `vertex`, `edge` or `loop`. [Repeatable](#filters). |
 | `--method <id>` | Only claims obtained by this method, matched exactly against `claims[].method`. [Repeatable](#filters). |
+| `--unrankable` | Only claims resolution cannot rank: those that state no accuracy, and those whose accuracy is in more than one unit ([SPEC §6.5](../SPEC.md#65-claims)). Takes no value. |
 
 Filters combine: a claim is listed when it satisfies every filter given, and a filter written
 more than once is satisfied by any of its values; see [Filters](#filters). They apply with an
@@ -1122,6 +1123,20 @@ other filters happen to exclude, is not warned about.
 There is no `--method-not`. Every claim whose method is *not* one of a set is the complement of
 this listing — `claims --predicate position` with the rows `--method` would select taken out —
 and taking it is the caller's: one call, and no comparison operator added to the filters.
+
+`--unrankable` selects a **state**, not a missing field. [SPEC §6.5](../SPEC.md#65-claims) closes
+which children of a claim may be left out: `source`, `method` and `date` are arity `1`, so a
+claim without one does not load and is already a diagnostic with a position; `id` is `0..1`,
+and leaving it out is the ordinary case and says nothing about the claim; `accuracy` is `0..1`,
+and its absence is the only one that changes what the claim is. A field selector over that
+closed set would have one useful value. The spec's word for the state is *unrankable* —
+`resolve` reports it as `unranked`, and `plan` and `measure` as `budget.unranked` — so the flag
+names the state. It is the test resolution ranks by, so a claim whose `accuracy` terms are in
+more than one unit is listed too: it states an accuracy, but nothing reduces its terms to one
+figure, and its entry carries `units` and no `combined`. Every entry `--unrankable` lists is
+one with no `combined`. Retracted claims are listed beside live ones, each still marked with its
+`resolution`, and the flag combines with every other filter, with an id or without one. A model
+in which every claim states an accuracy answers `"claims": []` and exit `0`.
 
 `get` answers what the model says about a thing now; `claims` answers everything anybody has
 said about it and what became of each statement. Deprecated claims are therefore in the

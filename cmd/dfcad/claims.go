@@ -55,6 +55,9 @@ Flags:
 	--family <family>   only claims on a thing of this family: node, vertex,
 	                    edge or loop; repeat
 	--method <id>       only claims obtained by this method; repeat
+	--unrankable        only claims resolution cannot rank: those which state
+	                    no accuracy, and those whose accuracy is in more than
+	                    one unit
 
 Filters combine: a claim is listed when it satisfies every filter given, and a
 filter written more than once is satisfied by any of its values. They apply with
@@ -71,6 +74,17 @@ names is answered with an empty list, and a warning on stderr says that nothing
 names it, in every format: it may be misspelt, and it may be a method nobody has
 used yet, and nothing here can tell which. Every claim whose method is not one
 of a set is the complement of this listing, which is the caller's to take.
+
+--unrankable selects a state, not a missing field. Of the children a claim may
+leave out (specification section 6.5), source, method and date may not be, so a
+claim without one does not load, and an id left out says nothing about the
+claim. Accuracy is the one whose absence changes what a claim is: it loads and
+is unrankable, which is what resolve reports as "unranked" and plan and measure
+as budget.unranked. A claim whose accuracy terms are in more than one unit is
+unrankable for the same reason, since nothing reduces them to one figure, and is
+listed too, carrying its "units". Retracted claims are listed beside live ones,
+each still marked with its resolution. A model in which every claim states an
+accuracy answers an empty list.
 
 Claims come back in subject id order, then in predicate order and then in the
 order they were written, so two runs over one model diff against each other and
@@ -320,6 +334,7 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	flags.Var(typeFlag, "type", "")
 	flags.Var(familyFlag, flagFamily, "")
 	flags.Var(methodFlag, flagMethod, "")
+	unrankable := flags.Bool("unrankable", false, "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -424,6 +439,9 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 			if !admits(predicates, claim.Predicate) || !admits(methods, claim.Method) {
 				continue
 			}
+			if *unrankable && ranked(claim) {
+				continue
+			}
 			row.claimEntry = claim
 			result.Claims = append(result.Claims, row)
 		}
@@ -438,6 +456,19 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	}
 
 	return exitSuccess
+}
+
+// ranked reports whether resolution can rank a claim, read off the entry the
+// listing writes for it.
+//
+// Combined is written exactly where the claim's accuracy reduces to one figure,
+// which is the test [dfcad.Claim.Rankable] makes: absent for a claim which
+// states no accuracy and for one whose terms are in more than one unit, and
+// present otherwise. Reading it off the row keeps --unrankable the filter of
+// what the row says rather than a second reading of the claim which could
+// disagree with it.
+func ranked(claim claimEntry) bool {
+	return claim.Combined != nil
 }
 
 // parseMethods is the --method values as ids, in the order they were written,
