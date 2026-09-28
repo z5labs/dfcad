@@ -1958,3 +1958,286 @@ func TestUnnamedMethods(t *testing.T) {
 		})
 	}
 }
+
+// stateNoAccuracy is the rows of [everyClaim] whose claim states no accuracy,
+// which in the audit fixture is every claim resolution cannot rank: the notes
+// on room A, the edge and the loop, and the corridor's two occupancy claims.
+var stateNoAccuracy = []string{
+	"geom:E-01 note survey:N-0002",
+	"geom:L-01 note survey:N-0003",
+	"site:S-101 note survey:N-0001",
+	"site:S-102 occupancy survey:O-0001",
+	"site:S-102 occupancy survey:O-0002",
+}
+
+// unrankable keeps the rows whose claim states no accuracy.
+func unrankable(row string) bool {
+	fields := strings.Fields(row)
+	return slices.Contains(stateNoAccuracy, strings.Join(fields[:len(fields)-1], " "))
+}
+
+func TestRunClaimsFiltersUnrankable(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "lists only the claims which state no accuracy",
+			args:     []string{"--unrankable"},
+			expected: only(unrankable),
+		},
+		{
+			name: "combines with a predicate",
+			args: []string{"--unrankable", "--predicate", "occupancy"},
+			expected: []string{
+				"site:S-102 occupancy survey:O-0001 " + resolutionTied,
+				"site:S-102 occupancy survey:O-0002 " + resolutionTied,
+			},
+		},
+		{
+			name:     "combines with a predicate every claim under which is rankable",
+			args:     []string{"--unrankable", "--predicate", "area"},
+			expected: []string{},
+		},
+		{
+			name:     "combines with a family",
+			args:     []string{"--unrankable", "--family", "edge", "--family", "loop"},
+			expected: only(func(row string) bool { return unrankable(row) && writtenOn("geom:E-01", "geom:L-01")(row) }),
+		},
+		{
+			name:     "combines with the node family",
+			args:     []string{"--family", "node", "--unrankable"},
+			expected: only(func(row string) bool { return unrankable(row) && strings.HasPrefix(row, "site:") }),
+		},
+		{
+			name:     "combines with a type",
+			args:     []string{"--unrankable", "--type", "MeetingRoom"},
+			expected: []string{"site:S-101 note survey:N-0001 " + resolutionUnranked},
+		},
+		{
+			name:     "combines with a method",
+			args:     []string{"--unrankable", "--method", "method:assumed"},
+			expected: only(unrankable),
+		},
+		{
+			name:     "combines with a method no unrankable claim was obtained by",
+			args:     []string{"--unrankable", "--method", "method:tape"},
+			expected: []string{},
+		},
+		{
+			name:     "narrows one subject's claims",
+			args:     []string{"site:S-101", "--unrankable"},
+			expected: []string{"site:S-101 note survey:N-0001 " + resolutionUnranked},
+		},
+		{
+			name:     "narrows one subject's claims under its positional predicate",
+			args:     []string{"site:S-102", "occupancy", "--unrankable"},
+			expected: only(func(row string) bool { return unrankable(row) && writtenOn("site:S-102")(row) }),
+		},
+		{
+			name:     "answers nothing for a subject whose every claim states an accuracy",
+			args:     []string{"geom:V-01", "--unrankable"},
+			expected: []string{},
+		},
+		{
+			name:     "answers nothing for a subject nothing is claimed about",
+			args:     []string{"site:Z-01", "--unrankable"},
+			expected: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := claimed(t, testCase.args...)
+
+			assert.Equal(t, testCase.expected, rows(result.Claims))
+			for _, row := range result.Claims {
+				assert.Empty(t, row.Accuracy)
+				assert.Nil(t, row.Combined)
+			}
+		})
+	}
+}
+
+// TestRunClaimsUnrankableIsTheListingNarrowed is the filter as a property: the
+// rows --unrankable lists are exactly the rows of the unfiltered listing which
+// carry no accuracy, in the same order and with every field the same.
+func TestRunClaimsUnrankableIsTheListingNarrowed(t *testing.T) {
+	every := claimed(t).Claims
+
+	t.Run("--unrankable is the listing's rows with no accuracy", func(t *testing.T) {
+		expected := make([]claimRow, 0)
+		for _, row := range every {
+			if len(row.Accuracy) == 0 {
+				expected = append(expected, row)
+			}
+		}
+		require.NotEmpty(t, expected, "the fixture no longer writes a claim with no accuracy")
+
+		assert.Equal(t, expected, claimed(t, "--unrankable").Claims)
+	})
+
+	t.Run("each subject's --unrankable is that subject's rows with no accuracy", func(t *testing.T) {
+		for _, subject := range subjectsOf(every) {
+			expected := make([]claimRow, 0)
+			for _, row := range claimed(t, subject).Claims {
+				if len(row.Accuracy) == 0 {
+					expected = append(expected, row)
+				}
+			}
+
+			assert.Equal(t, expected, claimed(t, subject, "--unrankable").Claims, subject)
+		}
+	})
+
+	t.Run("without --unrankable the listing is every claim", func(t *testing.T) {
+		assert.Equal(t, everyClaim(), rows(every))
+	})
+}
+
+// retractedUnrankable is a room whose height was first written with no
+// accuracy, then retracted in favour of one which states one.
+const retractedUnrankable = `
+(node site:S-106
+  (label "Meeting Room E")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (height
+    (id survey:H-0106)
+    (value 2.6 m)
+    (source "Facilities handbook, 2026 edition")
+    (method method:assumed)
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:H-0107))
+  (height
+    (id survey:H-0107)
+    (value 2.65 m)
+    (source "Section A-A, sheet 5")
+    (method method:tape)
+    (accuracy (independent 0.01 m))
+    (date "2026-04-01")))
+`
+
+// TestRunClaimsUnrankableListsARetractedClaim is its own function because it
+// runs over the audit fixture with a room added, which every other listing
+// test would have to account for: the unrankable claim here is retracted, and
+// it is listed, marked as the retraction it is.
+func TestRunClaimsUnrankableListsARetractedClaim(t *testing.T) {
+	files := auditable()
+	files["entities/site.dfc"] += retractedUnrankable
+	t.Chdir(tree(t, files))
+
+	listing := func(t *testing.T, args ...string) []claimRow {
+		t.Helper()
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(append([]string{"claims"}, args...), &stdout, &stderr), stderr.String())
+		require.Empty(t, stderr.String())
+
+		return listed[claimsResult](t, stdout.String()).Claims
+	}
+
+	t.Run("lists the retracted claim, marked retracted, and not its rankable replacement", func(t *testing.T) {
+		claims := listing(t, "site:S-106", "--unrankable")
+
+		require.Len(t, claims, 1)
+		assert.Equal(t, "survey:H-0106", claims[0].ID)
+		assert.Equal(t, resolutionRetracted, claims[0].Resolution)
+		assert.Equal(t, string(dfcad.RankDeprecated), claims[0].Rank)
+		assert.Equal(t, "survey:H-0107", claims[0].SupersededBy)
+	})
+
+	t.Run("lists it among the live unrankable claims of the whole model", func(t *testing.T) {
+		assert.Equal(t, []string{
+			"geom:E-01 note survey:N-0002 " + resolutionUnranked,
+			"geom:L-01 note survey:N-0003 " + resolutionUnranked,
+			"site:S-101 note survey:N-0001 " + resolutionUnranked,
+			"site:S-102 occupancy survey:O-0001 " + resolutionTied,
+			"site:S-102 occupancy survey:O-0002 " + resolutionTied,
+			"site:S-106 height survey:H-0106 " + resolutionRetracted,
+		}, rows(listing(t, "--unrankable")))
+	})
+}
+
+// TestRunClaimsUnrankableListsAnAccuracyInMixedUnits is its own function
+// because its fixture loads with a warning, which [claimed] asserts is absent.
+// A claim whose accuracy terms are not all in one unit states an accuracy and
+// is still unrankable (specification section 6.5): the flag selects the state
+// resolution reports, and that claim is in it.
+func TestRunClaimsUnrankableListsAnAccuracyInMixedUnits(t *testing.T) {
+	files := auditable()
+	files["entities/site.dfc"] += mixedAccuracyModel
+	t.Chdir(tree(t, files))
+
+	listing := func(t *testing.T, args ...string) []claimRow {
+		t.Helper()
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(append([]string{"claims"}, args...), &stdout, &stderr), stderr.String())
+
+		return listed[claimsResult](t, stdout.String()).Claims
+	}
+
+	t.Run("lists the claims whose terms are in more than one unit, with their units", func(t *testing.T) {
+		claims := listing(t, "--unrankable", "--predicate", "height")
+
+		assert.Equal(t, []string{
+			"site:S-109 height survey:H-0109 " + resolutionUnranked,
+			"site:S-110 height survey:H-0111 " + resolutionOutranked,
+		}, rows(claims))
+		for _, claim := range claims {
+			assert.NotEmpty(t, claim.Accuracy)
+			assert.Nil(t, claim.Combined)
+			assert.Equal(t, []string{"mm", "m"}, claim.Units)
+		}
+	})
+
+	t.Run("is exactly the listing's rows with no combined figure", func(t *testing.T) {
+		expected := make([]claimRow, 0)
+		for _, row := range listing(t) {
+			if row.Combined == nil {
+				expected = append(expected, row)
+			}
+		}
+
+		assert.Equal(t, expected, listing(t, "--unrankable"))
+	})
+}
+
+// TestRunClaimsUnrankableOverAModelWhereEveryClaimStatesAnAccuracy is its own
+// function because it runs over a model of its own: nothing in it is
+// unrankable, and that is an empty answer rather than a failure.
+func TestRunClaimsUnrankableOverAModelWhereEveryClaimStatesAnAccuracy(t *testing.T) {
+	t.Chdir(tree(t, map[string]string{
+		"registry.dfc": auditRegistry,
+		"entities/site.dfc": `(node site:S-103
+  (label "Meeting Room B")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (area
+    (id survey:A-0006)
+    (value 18.4 m2)
+    (source "As-built check AB-2026-010, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.05 m2))
+    (date "2026-05-06")))
+`,
+	}))
+
+	for _, args := range [][]string{{"claims", "--unrankable"}, {"claims", "site:S-103", "--unrankable"}} {
+		t.Run(strings.Join(args, " ")+" answers an empty list", func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(args, &stdout, &stderr), stderr.String())
+
+			result := object(t, stdout.String())
+			assert.Equal(t, []any{}, result["claims"])
+			assert.EqualValues(t, outputVersion, result["version"])
+		})
+	}
+}
