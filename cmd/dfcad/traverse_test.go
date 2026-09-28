@@ -507,6 +507,7 @@ func TestTraverseOfASharedWall(t *testing.T) {
 		require.Len(t, neighbours.Results, 1)
 		assert.Equal(t, "site:S-102", neighbours.Results[0].ID)
 		assert.Equal(t, string(dfcad.RelationAdjacency), neighbours.Results[0].Relation)
+		assert.Equal(t, "site:S-101", neighbours.Results[0].From)
 		assert.Equal(t, []string{"geom:E-02"}, neighbours.Results[0].Via)
 
 		// And the wall itself is adjacent to nothing. It is what backs an edge
@@ -968,6 +969,13 @@ func TestEveryResultSaysWhichRelationReachedIt(t *testing.T) {
 					assert.Positive(t, entry.Depth, "a result is at least one step from what was asked about")
 					assert.NotEmpty(t, entry.Family)
 					assert.NotEqual(t, subject, entry.ID, "nothing is its own relative")
+
+					// Only an adjacent result names what it was reached from.
+					if entry.Relation == string(dfcad.RelationAdjacency) {
+						assert.NotEmpty(t, entry.From)
+					} else {
+						assert.Empty(t, entry.From)
+					}
 				}
 			})
 		}
@@ -1653,4 +1661,131 @@ func withoutSpans(t *testing.T, stdout string) string {
 	require.Regexp(t, spanOf, stdout, "the answer carries spans to remove")
 
 	return spanOf.ReplaceAllString(stdout, "")
+}
+
+// TestTraverseAdjacentToNamesWhereEachResultWasReachedFrom reads from over the
+// budget model, where a room two steps away could be reached through more than
+// one room a step nearer and the one it names is what makes its via checkable.
+func TestTraverseAdjacentToNamesWhereEachResultWasReachedFrom(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name         string
+		subject      string
+		reached      string
+		depth        int
+		expectedFrom string
+		expectedVia  []string
+	}{
+		{
+			name:         "names the subject for a room on the other side of its walls",
+			subject:      "site:S-102",
+			reached:      "site:S-103",
+			depth:        1,
+			expectedFrom: "site:S-102",
+			expectedVia:  []string{"geom:E-1-C1-C2"},
+		},
+		{
+			name:         "names the room a step nearer for a room two steps away",
+			subject:      "site:S-102",
+			reached:      "site:S-104",
+			depth:        2,
+			expectedFrom: "site:S-103",
+			expectedVia:  []string{"geom:E-1-D1-D2"},
+		},
+		{
+			name:         "names the room with the smallest id where two rooms a step nearer border it",
+			subject:      "site:S-101",
+			reached:      "site:S-104",
+			depth:        2,
+			expectedFrom: "site:S-113",
+			expectedVia:  []string{"geom:E-1-D2-E2"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(root)
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(
+				[]string{"traverse", queryAdjacentTo, "--depth", depthAll, testCase.subject}, &stdout, &stderr,
+			), stderr.String())
+
+			entry, ok := resultFor(listed[traverseResult](t, stdout.String()), testCase.reached)
+			require.True(t, ok, "%s reaches %s", testCase.subject, testCase.reached)
+
+			assert.Equal(t, testCase.depth, entry.Depth)
+			assert.Equal(t, testCase.expectedFrom, entry.From)
+			assert.Equal(t, testCase.expectedVia, entry.Via)
+
+			// Written before via, which is what it is the other end of.
+			assert.Contains(t, stdout.String(), `"from":"`+testCase.expectedFrom+`","via":[`)
+		})
+	}
+}
+
+// TestTraverseAdjacentToFromIsAShortestPath is the property from promises, over
+// every space of the budget model walked with no bound: following from from any
+// result reaches the subject in exactly as many steps as the result's depth,
+// through results one step nearer each time, and every edge a result's via names
+// is in the boundary of both the result and the thing it was reached from. A
+// table of expected literals would check the paths somebody thought of; this
+// checks all of them.
+func TestTraverseAdjacentToFromIsAShortestPath(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	graph, _ := dfcad.LoadGraph(root)
+	require.NotNil(t, graph)
+
+	boundaryOf := make(map[string][]string)
+	boundary := func(t *testing.T, id string) []string {
+		t.Helper()
+
+		if edges, ok := boundaryOf[id]; ok {
+			return edges
+		}
+		boundaryOf[id] = reachedIDs(walkIn(t, root, queryBoundaryOf, id))
+		return boundaryOf[id]
+	}
+
+	walked := 0
+	for node := range graph.OfKind(dfcad.KindSpace) {
+		walked++
+
+		subject := string(node.ID())
+		t.Run("from "+subject, func(t *testing.T) {
+			result := walkIn(t, root, queryAdjacentTo, "--depth", depthAll, subject)
+
+			byID := make(map[string]traversed, len(result.Results))
+			for _, entry := range result.Results {
+				byID[entry.ID] = entry
+			}
+
+			for _, entry := range result.Results {
+				require.NotEmpty(t, entry.From, "%s names what it was reached from", entry.ID)
+
+				// Every edge it was reached through is one both ends reach.
+				for _, edge := range entry.Via {
+					assert.Contains(t, boundary(t, entry.ID), edge, "%s is in the boundary of %s", edge, entry.ID)
+					assert.Contains(t, boundary(t, entry.From), edge, "%s is in the boundary of %s", edge, entry.From)
+				}
+
+				// And the chain of from leads back to the subject a step at a
+				// time, in exactly as many steps as it is deep.
+				at := entry
+				for step := entry.Depth; step > 1; step-- {
+					nearer, ok := byID[at.From]
+					require.True(t, ok, "%s, which %s was reached from, is a result", at.From, at.ID)
+					require.Equal(t, step-1, nearer.Depth, "%s is a step nearer than %s", nearer.ID, at.ID)
+					at = nearer
+				}
+				assert.Equal(t, subject, at.From, "the path from %s ends at the subject", entry.ID)
+			}
+		})
+	}
+
+	require.NotZero(t, walked, "the budget model has spaces")
 }

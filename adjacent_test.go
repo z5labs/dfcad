@@ -17,7 +17,8 @@ import (
 )
 
 // neighbour is one result of an adjacency walk flattened for comparison: the
-// region reached, how far away it is, and the edges it was reached through.
+// region reached, how far away it is, the region it was reached from, and the
+// edges it was reached through.
 //
 // Ids rather than pointers, for the reason the classification tests use them:
 // what is asserted is which things the walk reached, and a fixture loaded twice
@@ -25,6 +26,7 @@ import (
 type neighbour struct {
 	node  ID
 	depth int
+	from  ID
 	via   []ID
 }
 
@@ -42,13 +44,14 @@ func bordering(t *testing.T, results iter.Seq[Adjacent]) []neighbour {
 	for result := range results {
 		assert.Equal(t, RelationAdjacency, result.Relation())
 		require.NotNil(t, result.Node())
+		require.NotNil(t, result.From(), "every result names the region it was reached from")
 
 		var via []ID
 		for _, edge := range result.Via() {
 			via = append(via, edge.ID())
 		}
 
-		out = append(out, neighbour{node: result.Node().ID(), depth: result.Depth(), via: via})
+		out = append(out, neighbour{node: result.Node().ID(), depth: result.Depth(), from: result.From().ID(), via: via})
 	}
 
 	return out
@@ -68,20 +71,20 @@ func TestBoundariesAdjacent(t *testing.T) {
 			// room, and reporting it twice would be counting the ways in.
 			name:     "gives the region on the other side of every edge, once, with the edges it shares",
 			region:   "site:S-A",
-			expected: []neighbour{{node: "site:S-B", depth: 1, via: []ID{"geom:E-02", "geom:E-03"}}},
+			expected: []neighbour{{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02", "geom:E-03"}}},
 		},
 		{
 			name:   "gives both neighbours of a region between two others, in boundary order",
 			region: "site:S-B",
 			expected: []neighbour{
-				{node: "site:S-C", depth: 1, via: []ID{"geom:E-07"}},
-				{node: "site:S-A", depth: 1, via: []ID{"geom:E-03", "geom:E-02"}},
+				{node: "site:S-C", depth: 1, from: "site:S-B", via: []ID{"geom:E-07"}},
+				{node: "site:S-A", depth: 1, from: "site:S-B", via: []ID{"geom:E-03", "geom:E-02"}},
 			},
 		},
 		{
 			name:     "gives one neighbour for a region at the end of the row",
 			region:   "site:S-C",
-			expected: []neighbour{{node: "site:S-B", depth: 1, via: []ID{"geom:E-07"}}},
+			expected: []neighbour{{node: "site:S-B", depth: 1, from: "site:S-C", via: []ID{"geom:E-07"}}},
 		},
 		{
 			name:   "gives nothing for a node with no boundary of its own",
@@ -126,15 +129,15 @@ func TestBoundariesAdjacentTo(t *testing.T) {
 			name:     "gives what borders the region at one step",
 			region:   "site:S-A",
 			depth:    1,
-			expected: []neighbour{{node: "site:S-B", depth: 1, via: []ID{"geom:E-02", "geom:E-03"}}},
+			expected: []neighbour{{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02", "geom:E-03"}}},
 		},
 		{
 			name:   "adds what borders that at two",
 			region: "site:S-A",
 			depth:  2,
 			expected: []neighbour{
-				{node: "site:S-B", depth: 1, via: []ID{"geom:E-02", "geom:E-03"}},
-				{node: "site:S-C", depth: 2, via: []ID{"geom:E-07"}},
+				{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02", "geom:E-03"}},
+				{node: "site:S-C", depth: 2, from: "site:S-B", via: []ID{"geom:E-07"}},
 			},
 		},
 		{
@@ -144,8 +147,8 @@ func TestBoundariesAdjacentTo(t *testing.T) {
 			region: "site:S-A",
 			depth:  Unbounded,
 			expected: []neighbour{
-				{node: "site:S-B", depth: 1, via: []ID{"geom:E-02", "geom:E-03"}},
-				{node: "site:S-C", depth: 2, via: []ID{"geom:E-07"}},
+				{node: "site:S-B", depth: 1, from: "site:S-A", via: []ID{"geom:E-02", "geom:E-03"}},
+				{node: "site:S-C", depth: 2, from: "site:S-B", via: []ID{"geom:E-07"}},
 			},
 		},
 		{
@@ -153,8 +156,8 @@ func TestBoundariesAdjacentTo(t *testing.T) {
 			region: "site:S-C",
 			depth:  Unbounded,
 			expected: []neighbour{
-				{node: "site:S-B", depth: 1, via: []ID{"geom:E-07"}},
-				{node: "site:S-A", depth: 2, via: []ID{"geom:E-03", "geom:E-02"}},
+				{node: "site:S-B", depth: 1, from: "site:S-C", via: []ID{"geom:E-07"}},
+				{node: "site:S-A", depth: 2, from: "site:S-B", via: []ID{"geom:E-03", "geom:E-02"}},
 			},
 		},
 	}
@@ -334,9 +337,9 @@ func TestAdjacencyDoesNotDependOnWhichFileANodeIsIn(t *testing.T) {
 	// Room C is reached from room A, the neighbour with the smaller id, and so
 	// through the edge it shares with room A.
 	expected := []neighbour{
-		{node: "site:R-A", depth: 1, via: []ID{"geom:E-1"}},
-		{node: "site:R-B", depth: 1, via: []ID{"geom:E-1"}},
-		{node: "site:R-C", depth: 2, via: []ID{"geom:E-AC"}},
+		{node: "site:R-A", depth: 1, from: "site:R-S", via: []ID{"geom:E-1"}},
+		{node: "site:R-B", depth: 1, from: "site:R-S", via: []ID{"geom:E-1"}},
+		{node: "site:R-C", depth: 2, from: "site:R-A", via: []ID{"geom:E-AC"}},
 	}
 
 	for _, layout := range layouts {
