@@ -75,12 +75,12 @@ const traverseRegistry = `(project
 `
 
 // traverseModel is one hierarchy four levels deep, three zones which overlap
-// it, and two rooms which share a wall.
+// it, two rooms which share a wall, and a loop and an edge nothing names.
 //
 // Every case a traversal has to keep apart is written here once: a wall which is
 // inside one thing and a member of three, a room reachable from the site only
 // through the two levels between them, a zone which is a member of another zone,
-// and one edge which two rooms both reach.
+// one edge which two rooms both reach, and a shape which bounds nothing.
 const traverseModel = `(node site:S-01
   (label "Riverside parcel")
   (kind Site)
@@ -200,6 +200,13 @@ const traverseModel = `(node site:S-01
   (label "East Corridor boundary")
   (frame frame:building)
   (edges geom:E-05 geom:E-06 geom:E-07 geom:E-02))
+
+(edge geom:E-08 (label "Setting-out line, bounding nothing") (frame frame:building) (vertices geom:V-01 geom:V-05))
+
+(loop geom:L-03
+  (label "Meeting Room B, a second ring nothing names")
+  (frame frame:building)
+  (edges geom:E-01 geom:E-02 geom:E-03 geom:E-04))
 `
 
 // traversable is the fixture tree traverse is run against.
@@ -358,6 +365,41 @@ func TestRunTraverse(t *testing.T) {
 				"geom:E-03 boundary +",
 				"geom:E-04 boundary +",
 			},
+		},
+		{
+			name:     "gives the node which names a loop as its boundary",
+			args:     []string{queryBounds, "geom:L-01"},
+			expected: []string{"site:S-101 boundary +"},
+		},
+		{
+			name:     "gives both rooms either side of a shared edge, in id order",
+			args:     []string{queryBounds, "geom:E-02"},
+			expected: []string{"site:S-101 boundary +", "site:S-102 boundary +"},
+		},
+		{
+			name:     "gives the one room an unshared edge bounds",
+			args:     []string{queryBounds, "geom:E-01"},
+			expected: []string{"site:S-101 boundary +"},
+		},
+		{
+			name:     "gives nothing for a loop no node names",
+			args:     []string{queryBounds, "geom:L-03"},
+			expected: []string{},
+		},
+		{
+			name:     "gives nothing for an edge no named loop reaches",
+			args:     []string{queryBounds, "geom:E-08"},
+			expected: []string{},
+		},
+		{
+			name:     "narrows what an edge bounds to one kind",
+			args:     []string{queryBounds, "--kind", "Space", "geom:E-02"},
+			expected: []string{"site:S-101 boundary +", "site:S-102 boundary +"},
+		},
+		{
+			name:     "narrows what an edge bounds to one type",
+			args:     []string{queryBounds, "--type", "Corridor", "geom:E-02"},
+			expected: []string{"site:S-102 boundary +"},
 		},
 		{
 			name:     "gives the room on the other side of a shared wall",
@@ -743,6 +785,26 @@ func TestTraverseUsageErrors(t *testing.T) {
 			expected: "geom:L-01",
 		},
 		{
+			name:     "reports a node asked what it bounds",
+			args:     []string{"traverse", queryBounds, "site:S-101"},
+			expected: "bounds takes a loop or an edge",
+		},
+		{
+			name:     "reports a vertex asked what it bounds",
+			args:     []string{"traverse", queryBounds, "geom:V-01"},
+			expected: "geom:V-01",
+		},
+		{
+			name:     "refuses a depth beside the query which is one step from a shape by definition",
+			args:     []string{"traverse", queryBounds, "--depth", "2", "geom:L-01"},
+			expected: "--depth says nothing under bounds",
+		},
+		{
+			name:     "refuses every depth beside it, all included",
+			args:     []string{"traverse", queryBounds, "--depth", depthAll, "geom:E-02"},
+			expected: "--depth says nothing under bounds",
+		},
+		{
 			name:     "reports a kind which is none of the kinds",
 			args:     []string{"traverse", queryContains, "--kind", "Storeys", "site:S-01"},
 			expected: "Storeys",
@@ -837,7 +899,7 @@ func TestUnknownQueryNamesWhatItWanted(t *testing.T) {
 
 	assert.Equal(t, queryNames(), err.Known)
 	assert.Equal(t, []string{
-		queryContains, queryContainedBy, queryMembersOf, queryMembers, queryBoundaryOf, queryAdjacentTo,
+		queryContains, queryContainedBy, queryMembersOf, queryMembers, queryBoundaryOf, queryBounds, queryAdjacentTo,
 	}, err.Known)
 
 	for _, name := range queryNames() {
@@ -860,11 +922,31 @@ func TestEveryResultSaysWhichRelationReachedIt(t *testing.T) {
 		string(dfcad.RelationAdjacency),
 	}
 
-	// Three subjects, because no one thing is in every relation: the room has an
+	// Five subjects, because no one thing is in every relation: the room has an
 	// outline and a neighbour, the wall which separates it is what the zones are
-	// written on, and the zone is what the wall is a member of.
-	for _, subject := range []string{"site:S-101", "site:W-01", "site:Z-therm"} {
-		for _, asked := range queries {
+	// written on, the zone is what the wall is a member of, and the loop and the
+	// shared edge are what the room's outline is assembled from.
+	subjects := []struct {
+		id     string
+		family string
+	}{
+		{id: "site:S-101", family: familyNode},
+		{id: "site:W-01", family: familyNode},
+		{id: "site:Z-therm", family: familyNode},
+		{id: "geom:L-01", family: familyLoop},
+		{id: "geom:E-02", family: familyEdge},
+	}
+
+	for _, asked := range queries {
+		ran := 0
+
+		for _, walked := range subjects {
+			if !slices.Contains(asked.takes, walked.family) {
+				continue
+			}
+			ran++
+
+			subject := walked.id
 			t.Run(asked.name+" of "+subject+" says which relation reached each result", func(t *testing.T) {
 				args := []string{asked.name, subject}
 				if asked.deep {
@@ -882,6 +964,8 @@ func TestEveryResultSaysWhichRelationReachedIt(t *testing.T) {
 				}
 			})
 		}
+
+		assert.Positive(t, ran, "%s is asked of at least one subject it takes", asked.name)
 	}
 }
 
@@ -925,15 +1009,36 @@ func TestFlagNotApplicableCarriesWhichAndWhy(t *testing.T) {
 		})
 	}
 
-	// Every other query honours all three, and none of them is refused when it
-	// was not written.
+	t.Run("refuses a depth beside bounds and honours both filters", func(t *testing.T) {
+		bounds, ok := queryNamed(queryBounds)
+		require.True(t, ok)
+
+		var refused FlagNotApplicableError
+		require.ErrorAs(t, checkFlags(bounds, map[string]bool{flagDepth: true}), &refused)
+		assert.Equal(t, flagDepth, refused.Flag)
+		assert.Equal(t, queryBounds, refused.Query)
+		assert.Equal(t, depthNotApplicable, refused.Reason, "for the reason boundary-of gives")
+
+		assert.NoError(t, checkFlags(bounds, map[string]bool{flagKind: true, flagType: true}))
+	})
+
+	// Every query refuses exactly what it declares it cannot honour, and none of
+	// them is refused when it was not written.
 	for _, asked := range queries {
 		assert.NoError(t, checkFlags(asked, nil))
 
-		if asked.name == queryBoundaryOf {
-			continue
+		if asked.deep {
+			assert.NoError(t, checkFlags(asked, map[string]bool{flagDepth: true}), asked.name)
+		} else {
+			assert.Error(t, checkFlags(asked, map[string]bool{flagDepth: true}), asked.name)
 		}
-		assert.NoError(t, checkFlags(asked, map[string]bool{flagDepth: true, flagKind: true, flagType: true}))
+
+		if asked.grouped {
+			assert.NoError(t, checkFlags(asked, map[string]bool{flagKind: true, flagType: true}), asked.name)
+		} else {
+			assert.Error(t, checkFlags(asked, map[string]bool{flagKind: true}), asked.name)
+			assert.Error(t, checkFlags(asked, map[string]bool{flagType: true}), asked.name)
+		}
 	}
 }
 
@@ -990,46 +1095,69 @@ func TestTraversalDepthRejectsWhatIsNotADepth(t *testing.T) {
 	}
 }
 
-// TestNotTraversableNamesTheFamily checks that an id which names a shape is
-// reported as what it is rather than as an id nothing holds, which is a
-// different mistake with a different fix.
+// TestNotTraversableNamesTheFamily checks that an id of a family the query does
+// not walk from is reported as what it is, and as what the query takes, rather
+// than as an id nothing holds, which is a different mistake with a different fix.
 func TestNotTraversableNamesTheFamily(t *testing.T) {
 	t.Chdir(tree(t, traversableModel()))
 
 	graph, _ := dfcad.LoadGraph(".")
 
-	testCases := []struct {
-		name           string
-		id             dfcad.ID
-		expectedFamily string
+	// One id of each family, so that every query is asked of every family and
+	// the rule each query declares is checked by walking the list.
+	subjects := []struct {
+		id     dfcad.ID
+		family string
 	}{
-		{
-			name:           "reports a vertex",
-			id:             "geom:V-01",
-			expectedFamily: familyVertex,
-		},
-		{
-			name:           "reports an edge",
-			id:             "geom:E-01",
-			expectedFamily: familyEdge,
-		},
-		{
-			name:           "reports a loop",
-			id:             "geom:L-01",
-			expectedFamily: familyLoop,
-		},
+		{id: "site:S-101", family: familyNode},
+		{id: "geom:V-01", family: familyVertex},
+		{id: "geom:E-01", family: familyEdge},
+		{id: "geom:L-01", family: familyLoop},
 	}
 
-	for _, testCase := range testCases {
-		t.Run(testCase.name, func(t *testing.T) {
-			_, err := traversable(graph, testCase.id)
+	for _, asked := range queries {
+		for _, subject := range subjects {
+			takes := slices.Contains(asked.takes, subject.family)
 
-			var refused NotTraversableError
-			require.ErrorAs(t, err, &refused)
-			assert.Equal(t, string(testCase.id), refused.ID)
-			assert.Equal(t, testCase.expectedFamily, refused.Family)
-		})
+			name := asked.name + " refuses " + article(subject.family) + " " + subject.family
+			if takes {
+				name = asked.name + " walks from " + article(subject.family) + " " + subject.family
+			}
+
+			t.Run(name, func(t *testing.T) {
+				entity, err := walkable(graph, subject.id, asked)
+
+				if takes {
+					require.NoError(t, err)
+					assert.Equal(t, subject.id, entity.ID())
+					return
+				}
+
+				var refused NotTraversableError
+				require.ErrorAs(t, err, &refused)
+				assert.Equal(t, string(subject.id), refused.ID)
+				assert.Equal(t, subject.family, refused.Family)
+				assert.Equal(t, asked.name, refused.Query)
+				assert.Equal(t, asked.takes, refused.Takes)
+			})
+		}
 	}
+
+	t.Run("bounds takes a loop and an edge and nothing else", func(t *testing.T) {
+		bounds, ok := queryNamed(queryBounds)
+		require.True(t, ok)
+
+		assert.ElementsMatch(t, []string{familyLoop, familyEdge}, bounds.takes)
+	})
+
+	t.Run("every other query takes a semantic node and nothing else", func(t *testing.T) {
+		for _, asked := range queries {
+			if asked.name == queryBounds {
+				continue
+			}
+			assert.Equal(t, []string{familyNode}, asked.takes, asked.name)
+		}
+	})
 
 	t.Run("reports an id nothing holds as an unknown id rather than as a family", func(t *testing.T) {
 		_, err := traversable(graph, "site:S-999")
@@ -1039,6 +1167,17 @@ func TestNotTraversableNamesTheFamily(t *testing.T) {
 		assert.False(t, errors.As(err, &NotTraversableError{}))
 	})
 
+	t.Run("reports a shape given to a command which walks from a node, naming no query", func(t *testing.T) {
+		_, err := traversable(graph, "geom:L-01")
+
+		var refused NotTraversableError
+		require.ErrorAs(t, err, &refused)
+		assert.Equal(t, "geom:L-01", refused.ID)
+		assert.Equal(t, familyLoop, refused.Family)
+		assert.Empty(t, refused.Query)
+		assert.Equal(t, []string{familyNode}, refused.Takes)
+	})
+
 	t.Run("gives the node itself for an id a semantic node holds", func(t *testing.T) {
 		node, err := traversable(graph, "site:S-101")
 
@@ -1046,6 +1185,81 @@ func TestNotTraversableNamesTheFamily(t *testing.T) {
 		require.NotNil(t, node)
 		assert.Equal(t, dfcad.ID("site:S-101"), node.ID())
 	})
+}
+
+// TestTraverseBoundsReadsTheSameAsBoundaryOf holds bounds to the two
+// directions it reverses, over every node, edge and loop of the budget model: an
+// edge is in boundary-of a node exactly when that node is in bounds of the edge,
+// and a loop is among the boundaries get gives for a node exactly when that node
+// is in bounds of the loop. A table of expected literals would check the pairs
+// somebody thought of; this checks all of them.
+func TestTraverseBoundsReadsTheSameAsBoundaryOf(t *testing.T) {
+	root, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	graph, _ := dfcad.LoadGraph(root)
+	require.NotNil(t, graph)
+
+	boundaryOf := make(map[string][]string)
+	boundaries := make(map[string][]string)
+	for node := range graph.Nodes().All() {
+		id := string(node.ID())
+		boundaryOf[id] = reachedIDs(walkIn(t, root, queryBoundaryOf, id))
+		boundaries[id] = fetched(t, root, id).Boundaries
+	}
+
+	bounds := make(map[string][]string)
+	for edge := range graph.Topology().Edges() {
+		id := string(edge.ID())
+		bounds[id] = reachedIDs(walkIn(t, root, queryBounds, id))
+	}
+	for loop := range graph.Topology().Loops() {
+		id := string(loop.ID())
+		bounds[id] = reachedIDs(walkIn(t, root, queryBounds, id))
+	}
+
+	t.Run("gives every node whose boundary reaches an edge, and no other", func(t *testing.T) {
+		for edge := range graph.Topology().Edges() {
+			shape := string(edge.ID())
+			for node, edges := range boundaryOf {
+				assert.Equal(t,
+					slices.Contains(edges, shape),
+					slices.Contains(bounds[shape], node),
+					"%s in the boundary of %s, and %s among what %s bounds", shape, node, node, shape,
+				)
+			}
+		}
+	})
+
+	t.Run("gives every node which names a loop, and no other", func(t *testing.T) {
+		for loop := range graph.Topology().Loops() {
+			shape := string(loop.ID())
+			for node, loops := range boundaries {
+				assert.Equal(t,
+					slices.Contains(loops, shape),
+					slices.Contains(bounds[shape], node),
+					"%s among the boundaries of %s, and %s among what %s bounds", shape, node, node, shape,
+				)
+			}
+		}
+	})
+
+	t.Run("reads the answer the story measured", func(t *testing.T) {
+		assert.Equal(t, []string{"site:S-101"}, bounds["geom:L-101"])
+		assert.Equal(t, []string{"site:S-101", "site:S-113"}, bounds["geom:E-1-A2-B2"])
+	})
+}
+
+// fetched is what get gives for one id of the model rooted at dir.
+func fetched(t *testing.T, dir, id string) getEntity {
+	t.Helper()
+
+	t.Chdir(dir)
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", id}, &stdout, &stderr), stderr.String())
+
+	return listed[getResult](t, stdout.String()).Entity
 }
 
 // TestTraverseRendersForAPerson checks that the human rendering says what was
