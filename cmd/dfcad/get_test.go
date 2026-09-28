@@ -1918,3 +1918,484 @@ func TestTheContractDocumentsEveryFieldOfAPlainValue(t *testing.T) {
 		}
 	}
 }
+
+// frameRegistry is a registry modelled on testdata/checks/grid/affirmed: a root
+// frame carrying a coordinate reference system as a plain value and its
+// ground-to-grid factor as claims, and a child fitted to it by a transform.
+//
+// The root carries more than the fixture does. Two live factors say the same
+// thing with the same evidence behind neither, so resolution cannot choose, and
+// a third is deprecated in favour of one of them, which is what a retrieval
+// leaves out until it is asked for it.
+const frameRegistry = `(project
+  (label "Frame retrieval fixture")
+  (globalid-namespace "https://example.org/models/get-frames"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace survey (description "Claim ids issued by Acme Surveys."))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+
+(predicate crs
+  (shape text)
+  (claim-bearing #f)
+  (description "The projected coordinate reference system the chain is rooted at."))
+
+(predicate ground-to-grid
+  (shape scalar)
+  (description "The combined ground-to-grid factor."))
+
+(frame frame:survey-grid
+  (label "Site survey grid")
+  (unit m)
+  (crs "EPSG:25831")
+  (ground-to-grid
+    (id survey:C-0009)
+    (value 1.0002)
+    (source "Desk estimate, Acme Surveys")
+    (method method:assumed)
+    (date "2025-11-02")
+    (rank deprecated)
+    (superseded-by survey:C-0010))
+  (ground-to-grid
+    (id survey:C-0010)
+    (value 1.0)
+    (source "Georeferencing report GR-2026-002, Acme Surveys, section 4: combined factor")
+    (method method:gnss-static)
+    (date "2026-02-11"))
+  (ground-to-grid
+    (id survey:C-0011)
+    (value 0.99996)
+    (source "Georeferencing report GR-2026-002, Acme Surveys, section 5: check factor")
+    (method method:gnss-static)
+    (date "2026-02-11")))
+
+(frame frame:site
+  (label "Site setting-out grid")
+  (unit m)
+  (parent frame:survey-grid)
+  (transform survey:C-0001)
+  (frame-transform
+    (id survey:C-0001)
+    (value
+      (transform
+        (translation 100.0 200.0 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Georeferencing report GR-2026-002, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.012 m))
+    (date "2026-02-11")))
+`
+
+// bareFrameRegistry is a registry whose one frame carries nothing but its
+// unit: no label, no parent, no claim and no plain value.
+const bareFrameRegistry = `(project
+  (label "Bare frame fixture")
+  (globalid-namespace "https://example.org/models/get-bare-frame"))
+
+(namespace frame (description "Coordinate frames declared by this model."))
+
+(frame frame:bare (unit ft))
+`
+
+// framesTree is the frame fixture as a model tree.
+func framesTree() map[string]string {
+	return map[string]string{"registry.dfc": frameRegistry}
+}
+
+// gotFrame runs get over files and returns what reached stdout, requiring a
+// clean load and a success.
+func gotFrame(t *testing.T, files map[string]string, args ...string) string {
+	t.Helper()
+
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"get"}, args...), &stdout, &stderr), stderr.String())
+	require.Empty(t, stderr.String(), "the fixture loads clean")
+
+	return stdout.String()
+}
+
+// resolvedPredicates is each claim as "predicate id resolution", which says
+// which came back, in which order, and what resolution left each as.
+func resolvedPredicates(claims []claimEntry) []string {
+	out := make([]string, 0, len(claims))
+	for _, claim := range claims {
+		out = append(out, strings.TrimSpace(claim.Predicate+" "+claim.ID+" "+claim.Resolution))
+	}
+	return out
+}
+
+func TestRunGetAnswersAFrameID(t *testing.T) {
+	testCases := []struct {
+		name      string
+		files     map[string]string
+		args      []string
+		label     string
+		unit      string
+		parent    string
+		transform string
+		claims    []string
+		values    []string
+	}{
+		{
+			name:   "answers the root frame with its unit, its live claims and its plain values",
+			files:  framesTree(),
+			args:   []string{"frame:survey-grid"},
+			label:  "Site survey grid",
+			unit:   "m",
+			claims: []string{"ground-to-grid survey:C-0010", "ground-to-grid survey:C-0011"},
+			values: []string{`crs "EPSG:25831"`},
+		},
+		{
+			name:      "answers a child frame with its parent and the id of its transform claim",
+			files:     framesTree(),
+			args:      []string{"frame:site"},
+			label:     "Site setting-out grid",
+			unit:      "m",
+			parent:    "frame:survey-grid",
+			transform: "survey:C-0001",
+			claims:    []string{"frame-transform survey:C-0001"},
+		},
+		{
+			name:   "resolves the claims on a frame as on any other family",
+			files:  framesTree(),
+			args:   []string{"frame:survey-grid", "--claims", claimsResolved},
+			label:  "Site survey grid",
+			unit:   "m",
+			claims: []string{"ground-to-grid survey:C-0010 tied", "ground-to-grid survey:C-0011 tied"},
+			values: []string{`crs "EPSG:25831"`},
+		},
+		{
+			name:  "includes the deprecated claims on a frame when they are asked for",
+			files: framesTree(),
+			args:  []string{"frame:survey-grid", "--deprecated"},
+			label: "Site survey grid",
+			unit:  "m",
+			claims: []string{
+				"ground-to-grid survey:C-0009", "ground-to-grid survey:C-0010", "ground-to-grid survey:C-0011",
+			},
+			values: []string{`crs "EPSG:25831"`},
+		},
+		{
+			name:   "answers a frame carrying nothing but its unit",
+			files:  map[string]string{"registry.dfc": bareFrameRegistry},
+			args:   []string{"frame:bare"},
+			unit:   "ft",
+			claims: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			entity := listed[getResult](t, gotFrame(t, testCase.files, testCase.args...)).Entity
+
+			assert.Equal(t, familyFrame, entity.Family)
+			assert.Equal(t, testCase.args[0], entity.ID)
+			assert.Equal(t, testCase.label, entity.Label)
+			assert.Equal(t, testCase.unit, entity.Unit)
+			assert.Equal(t, testCase.parent, entity.Parent)
+			assert.Equal(t, testCase.transform, entity.Transform)
+			assert.Equal(t, testCase.claims, resolvedPredicates(entity.Claims))
+			assert.Equal(t, []assertionEntry{}, entity.Assertions, "a frame form carries no assertion")
+			assert.Nil(t, entity.Records, "no observation record was asked for")
+
+			if testCase.values == nil {
+				assert.Nil(t, entity.Values)
+				return
+			}
+			assert.Equal(t, testCase.values, plainValues(entity.Values))
+		})
+	}
+}
+
+// TestRunGetWritesAFrameAsTheContractSpellsIt checks the bytes of the answer
+// against the fixture the issue quotes, run from the parent of the model root
+// so that the spans read as they do there.
+func TestRunGetWritesAFrameAsTheContractSpellsIt(t *testing.T) {
+	testCases := []struct {
+		name     string
+		id       string
+		expected string
+	}{
+		{
+			name: "writes the root frame, its claim and its plain value",
+			id:   "frame:survey-grid",
+			expected: `{"version":2,"command":"get","refused":false,"entity":{"id":"frame:survey-grid","family":"frame",` +
+				`"label":"Site survey grid","unit":"m","span":"affirmed/registry.dfc:51:1-60:26","claims":[` +
+				`{"id":"survey:C-0010","predicate":"ground-to-grid","value":{"shape":"scalar","scalar":1},` +
+				`"source":"Georeferencing report GR-2026-002, Acme Surveys, section 4: combined factor",` +
+				`"method":"method:gnss-static","date":"2026-02-11","rank":"normal","span":"affirmed/registry.dfc:55:3-60:25"}],` +
+				`"values":[{"predicate":"crs","value":{"shape":"text","text":"EPSG:25831"},"span":"affirmed/registry.dfc:54:3-54:21"}],` +
+				`"assertions":[]}}`,
+		},
+		{
+			name: "writes the child frame with its parent, its transform and the claim holding it",
+			id:   "frame:site",
+			expected: `{"version":2,"command":"get","refused":false,"entity":{"id":"frame:site","family":"frame",` +
+				`"label":"Site setting-out grid","unit":"m","parent":"frame:survey-grid","transform":"survey:C-0001",` +
+				`"span":"affirmed/registry.dfc:65:1-80:26","claims":[` +
+				`{"id":"survey:C-0001","predicate":"frame-transform","value":{"shape":"transform","transform":` +
+				`{"translation":[100,200,0],"rotation":[1,0,0,0,1,0,0,0,1],"scale":1}},` +
+				`"source":"Georeferencing report GR-2026-002, Acme Surveys","method":"method:gnss-static",` +
+				`"accuracy":[{"kind":"independent","magnitude":0.012,"unit":"m"}],` +
+				`"combined":{"magnitude":0.012,"unit":"m","coverage-factor":1},"date":"2026-02-11","rank":"normal",` +
+				`"span":"affirmed/registry.dfc:70:3-80:25"}],"assertions":[]}}`,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir("../../testdata/checks/grid")
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run([]string{"get", "--root", "affirmed", testCase.id}, &stdout, &stderr), stderr.String())
+
+			assert.Empty(t, stderr.String())
+			assert.JSONEq(t, testCase.expected, stdout.String())
+			assert.Equal(t, testCase.expected, strings.TrimSpace(stdout.String()), "the keys are in the order the contract gives")
+
+			// The transform's scale is read where the claim holding it is.
+			entity := listed[getResult](t, stdout.String()).Entity
+			for _, claim := range entity.Claims {
+				if claim.Value.Transform != nil {
+					assert.Equal(t, 1.0, claim.Value.Transform.Scale)
+				}
+			}
+		})
+	}
+}
+
+// TestRunGetWritesTheFrameFieldsBetweenTheEdgesAndTheObservations checks where
+// unit, parent and transform go, and that they are written on a frame alone.
+func TestRunGetWritesTheFrameFieldsBetweenTheEdgesAndTheObservations(t *testing.T) {
+	assert.Equal(t,
+		[]string{"id", "family", "label", "unit", "parent", "transform", "observation-records", "span", "claims", "assertions"},
+		entityKeys(t, gotFrame(t, framesTree(), "frame:site", "--observations")))
+
+	for _, id := range []string{"site:S-101", "geom:V-01", "geom:E-01", "geom:L-01"} {
+		keys := entityKeys(t, gotFrame(t, retrievable(), id))
+		assert.NotContains(t, keys, "unit", id)
+		assert.NotContains(t, keys, "parent", id)
+		assert.NotContains(t, keys, "transform", id)
+	}
+}
+
+// TestRunGetReportsNoObservationRecordsOnAFrame checks that asking for the
+// records behind a frame is answered, and answered with none: a frame links no
+// observation file.
+func TestRunGetReportsNoObservationRecordsOnAFrame(t *testing.T) {
+	stdout := gotFrame(t, framesTree(), "frame:survey-grid", "--observations")
+
+	assert.Contains(t, stdout, `"observation-records":[]`)
+
+	entity := listed[getResult](t, stdout).Entity
+	require.NotNil(t, entity.Records)
+	assert.Empty(t, *entity.Records)
+	assert.Nil(t, entity.Observations)
+}
+
+// TestRunGetRendersAFrameToAPerson checks the human rendering of a frame: its
+// unit, parent and transform, then its claims, then its values, all on stderr.
+func TestRunGetRendersAFrameToAPerson(t *testing.T) {
+	testCases := []struct {
+		name     string
+		id       string
+		expected []string
+	}{
+		{
+			name: "renders the root frame's unit, then its claims, then its plain values",
+			id:   "frame:survey-grid",
+			expected: []string{
+				"unit: m",
+				"ground-to-grid: 1 by method:gnss-static on 2026-02-11",
+				`crs: "EPSG:25831", plain value`,
+				"frame frame:survey-grid at registry.dfc:",
+			},
+		},
+		{
+			name: "renders the child frame's unit, parent and transform, then its claims",
+			id:   "frame:site",
+			expected: []string{
+				"unit: m",
+				"parent: frame:survey-grid",
+				"transform: survey:C-0001",
+				"frame-transform: (100 200 0) by method:gnss-static on 2026-02-11",
+				"frame frame:site at registry.dfc:",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, framesTree()))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess,
+				run([]string{"get", testCase.id, "--format", formatHuman, "-v"}, &stdout, &stderr), stderr.String())
+
+			report := stderr.String()
+			last := -1
+			for _, line := range testCase.expected {
+				at := strings.Index(report, line)
+				require.GreaterOrEqual(t, at, 0, "%q is rendered in\n%s", line, report)
+				assert.Greater(t, at, last, "%q is rendered in order in\n%s", line, report)
+				last = at
+			}
+
+			assert.Equal(t, gotFrame(t, framesTree(), testCase.id), stdout.String(), "stdout is the same in every format")
+		})
+	}
+}
+
+// TestRunGetRendersAFramesDeclarationAtEveryVerbosity checks that the unit,
+// parent and transform are rendered without -v, where the claims are not.
+func TestRunGetRendersAFramesDeclarationAtEveryVerbosity(t *testing.T) {
+	t.Chdir(tree(t, framesTree()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", "frame:site", "--format", formatHuman}, &stdout, &stderr), stderr.String())
+
+	assert.Contains(t, stderr.String(), "unit: m\nparent: frame:survey-grid\ntransform: survey:C-0001\n")
+}
+
+// TestRunGetStillRefusesAnIDNeitherAnEntityNorAFrameHolds checks that the
+// frames are consulted as well as the graph, and not in place of refusing.
+func TestRunGetStillRefusesAnIDNeitherAnEntityNorAFrameHolds(t *testing.T) {
+	testCases := []struct {
+		name           string
+		args           []string
+		written        string
+		expectedStderr string
+	}{
+		{
+			name:           "refuses an id in the frame namespace nothing declares",
+			args:           []string{"get", "other:nothing-like-it"},
+			expectedStderr: "dfcad get: " + UnknownIDError{ID: "other:nothing-like-it"}.Error() + "\n",
+		},
+		{
+			name:           "refuses the id of a claim written on a frame",
+			args:           []string{"get", "survey:C-0010"},
+			expectedStderr: "dfcad get: " + UnknownIDError{ID: "survey:C-0010"}.Error() + "\n",
+		},
+		{
+			name:           "refuses a batch naming a frame nothing declares beside one it does",
+			args:           []string{"get", "-"},
+			written:        "frame:site other:nothing-like-it",
+			expectedStderr: "dfcad get: " + UnknownIDError{ID: "other:nothing-like-it"}.Error() + "\n",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			stdout, stderr := piped(t, exitUsage, tree(t, framesTree()), testCase.written, testCase.args...)
+
+			assert.Empty(t, stdout)
+			assert.Equal(t, testCase.expectedStderr, stderr)
+		})
+	}
+}
+
+// TestRunGetManyAnswersAFrameBesideTheOtherFamilies checks the batch form: a
+// frame id read from standard input is answered with exactly the object get of
+// that id alone writes, in id order among the rest.
+func TestRunGetManyAnswersAFrameBesideTheOtherFamilies(t *testing.T) {
+	root := tree(t, retrievable())
+
+	stdout, stderr := piped(t, exitSuccess, root, "site:S-101\nframe:building\ngeom:V-01\n", "get", "-")
+	assert.Empty(t, stderr)
+
+	result := listed[getBatchResult](t, stdout)
+	assert.Equal(t, []string{"frame:building", "geom:V-01", "site:S-101"}, entityIDs(result.Entities))
+
+	written, _ := invoke(t, exitSuccess, root, "get", "frame:building")
+	alone := listed[getResult](t, written).Entity
+	assert.Equal(t, alone, result.Entities[0])
+	assert.Equal(t, familyFrame, alone.Family)
+	assert.Equal(t, "m", alone.Unit)
+}
+
+// TestRunGetAnswersEveryDeclaredFrameAsDeclared is the property: for every
+// frame the registry declares, get of its id succeeds and says what the
+// declaration says.
+func TestRunGetAnswersEveryDeclaredFrameAsDeclared(t *testing.T) {
+	testCases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{name: "answers every frame of the frame fixture", files: framesTree()},
+		{name: "answers every frame of the bare fixture", files: map[string]string{"registry.dfc": bareFrameRegistry}},
+		{name: "answers every frame of the retrieval fixture", files: retrievable()},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, testCase.files)
+
+			registry, diags := dfcad.LoadRegistry(root)
+			require.Empty(t, diags)
+
+			var declared int
+			for frame := range registry.Frames() {
+				declared++
+
+				stdout, stderr := invoke(t, exitSuccess, root, "get", string(frame.ID))
+				assert.Empty(t, stderr)
+
+				entity := listed[getResult](t, stdout).Entity
+				assert.Equal(t, familyFrame, entity.Family)
+				assert.Equal(t, string(frame.ID), entity.ID)
+				assert.Equal(t, frame.Label, entity.Label)
+				assert.Equal(t, string(frame.Unit), entity.Unit)
+				assert.Equal(t, string(frame.Parent), entity.Parent)
+				assert.Equal(t, string(frame.Transform), entity.Transform)
+				// A span is written as a string of lines and columns, so it is
+				// those which are compared.
+				assert.Equal(t, frame.Form.Start.Line, entity.Span.Start.Line)
+				assert.Equal(t, frame.Form.Start.Column, entity.Span.Start.Column)
+				assert.Equal(t, frame.Form.End.Line, entity.Span.End.Line)
+				assert.Equal(t, frame.Form.End.Column, entity.Span.End.Column)
+			}
+			require.Positive(t, declared, "the fixture declares a frame")
+		})
+	}
+}
+
+// TestGetLeavesTheOtherCommandsLookupAlone checks that a frame id is answered
+// by get and by nothing else which looks an id up: the graph holds no frame, so
+// traverse refuses one exactly as it did.
+func TestGetLeavesTheOtherCommandsLookupAlone(t *testing.T) {
+	root := tree(t, framesTree())
+
+	graph, _ := dfcad.LoadGraph(root)
+	_, ok := graph.Entity("frame:site")
+	assert.False(t, ok, "the graph holds no frame")
+
+	stdout, _ := invoke(t, exitUsage, root, "traverse", "contains", "frame:site")
+	assert.Empty(t, stdout)
+}
+
+// TestTheContractDocumentsEveryFieldGetWritesOnAFrame checks that the `get`
+// section of docs/machine-output.md has a row for every key get writes on a
+// frame, and names the family.
+func TestTheContractDocumentsEveryFieldGetWritesOnAFrame(t *testing.T) {
+	documented := documentedFields(t)
+	section := contractSection(t, "get")
+
+	var written struct {
+		Entity map[string]json.RawMessage `json:"entity"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(gotFrame(t, framesTree(), "frame:site", "--observations")), &written))
+
+	for key := range written.Entity {
+		assert.True(t, documented["entity."+key],
+			"get writes entity.%s on a frame and the get section of docs/machine-output.md has no row for it", key)
+	}
+
+	assert.Contains(t, section, "`frame`", "the family is named")
+}

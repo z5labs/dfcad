@@ -467,8 +467,14 @@ type Frame struct {
 	// declares, is the claim layer's question and not this one's.
 	Claims []*Node
 
-	// Span is where the declaration was written.
+	// Span is where the declaration was written: the frame's id, which is what
+	// a diagnostic about the declaration points at.
 	Span Span
+
+	// Form is the whole of the frame form, from its opening parenthesis to its
+	// closing one — the span a node's form is reported by, which is what a
+	// retrieval of the frame as a node reports it by too.
+	Form Span
 }
 
 // Plain returns the plain values written on the frame under predicate, in the

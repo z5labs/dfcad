@@ -271,6 +271,13 @@ func TestRegistryDeclarations(t *testing.T) {
 		assert.Equal(t, ID("survey:C-0031"), building.Transform)
 		assert.Len(t, building.Claims, 1)
 
+		// The span is the id, which a diagnostic points at, and the form is
+		// the whole declaration, which begins before it and ends after it.
+		assert.Equal(t, building.Span.Start.Path, building.Form.Start.Path)
+		assert.Less(t, building.Form.Start.Offset, building.Span.Start.Offset)
+		assert.Greater(t, building.Form.End.Offset, building.Span.End.Offset)
+		assert.Equal(t, 1, building.Form.Start.Column, "the frame form opens a line of its own")
+
 		root, ok := registry.Frame("frame:survey-grid")
 
 		require.True(t, ok)
