@@ -562,3 +562,291 @@ func TestAdjacencyDoesNotDependOnWhichFileANodeIsIn(t *testing.T) {
 		})
 	}
 }
+
+// The lot model: two rooms which share no edge, and a lot whose outline is drawn
+// along the outside of both. Every edge is virtual — nothing backs any of them —
+// so crossing virtual edges crosses all of them.
+//
+// A walk which may enter anything steps from room A onto the lot and from the lot
+// into room B, which is how a site, zone or storey outline drawn with the same
+// edges as the rooms along its side joins rooms that are not next to each other.
+const (
+	lotRegistry = `; registry.dfc
+(project (label "Leak fixture") (globalid-namespace "https://example.org/models/leak"))
+(namespace frame (description "Frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace site (description "Semantic nodes."))
+(frame frame:b (label "Grid") (unit m))
+(type Room (kind Space) (geometry area) (description "A room."))
+(type Lot (kind Site) (geometry area) (description "The land the house stands on."))
+`
+
+	lotModel = `; entities/model.dfc
+(node site:LOT (label "Lot") (kind Site) (type Lot) (geometry area) (frame frame:b) (boundary geom:L-LOT))
+(node site:R-A (label "Room A") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-A))
+(node site:R-B (label "Room B") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-B))
+(vertex geom:V-1 (frame frame:b))
+(vertex geom:V-2 (frame frame:b))
+(edge geom:E-A-OUT (frame frame:b) (vertices geom:V-1 geom:V-2))
+(edge geom:E-A-IN (frame frame:b) (vertices geom:V-2 geom:V-1))
+(edge geom:E-B-OUT (frame frame:b) (vertices geom:V-1 geom:V-2))
+(edge geom:E-B-IN (frame frame:b) (vertices geom:V-2 geom:V-1))
+(loop geom:L-A (frame frame:b) (edges geom:E-A-OUT geom:E-A-IN))
+(loop geom:L-B (frame frame:b) (edges geom:E-B-OUT geom:E-B-IN))
+(loop geom:L-LOT (frame frame:b) (edges geom:E-A-OUT geom:E-B-OUT))
+`
+
+	// lotHallType and lotHall add a hall of a type of its own between the two
+	// rooms, sharing one edge with each, so that a walk which enters only spaces
+	// still has somewhere to go.
+	lotHallType = `(type Hall (kind Space) (geometry area) (description "A hall."))
+`
+	lotHall = `(node site:R-H (label "Hall") (kind Space) (type Hall) (geometry area) (frame frame:b) (boundary geom:L-H))
+(loop geom:L-H (frame frame:b) (edges geom:E-A-IN geom:E-B-IN))
+`
+)
+
+// lotFiles is the lot model as the issue reproducing the leak writes it.
+func lotFiles() map[string]string {
+	return map[string]string{"registry.dfc": lotRegistry, "entities/model.dfc": lotModel}
+}
+
+// lotWithHallFiles is the lot model with a hall between the two rooms.
+func lotWithHallFiles() map[string]string {
+	return map[string]string{
+		"registry.dfc":       lotRegistry + lotHallType,
+		"entities/model.dfc": lotModel,
+		"entities/hall.dfc":  lotHall,
+	}
+}
+
+// joinTree loads the model a tree of files holds and joins its boundaries,
+// requiring every stage to be clean.
+func joinTree(t *testing.T, files map[string]string) (*Nodes, *Boundaries) {
+	t.Helper()
+
+	root := tree(t, files)
+
+	registry, diags := LoadRegistry(root)
+	require.Empty(t, diags)
+
+	nodes, diags := LoadNodes(root, registry)
+	require.Empty(t, diags)
+
+	topology, diags := LoadTopology(root, registry)
+	require.Empty(t, diags)
+
+	boundaries, diags := ResolveBoundaries(nodes, topology)
+	require.Empty(t, diags)
+
+	return nodes, boundaries
+}
+
+// TestBoundariesAdjacentWalkEntersOnlyWhatItWasTold walks adjacency into only the
+// regions a filter's walk fields allow, one filter per case.
+func TestBoundariesAdjacentWalkEntersOnlyWhatItWasTold(t *testing.T) {
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		region   ID
+		filter   AdjacencyFilter
+		expected []neighbour
+	}{
+		{
+			name:   "walks through the lot into the room past it when no walk field is given",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{},
+			expected: []neighbour{
+				{node: "site:LOT", depth: 1, from: "site:R-A", via: []ID{"geom:E-A-OUT"}},
+				{node: "site:R-B", depth: 2, from: "site:LOT", via: []ID{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			name:   "does not walk through the lot when it enters only spaces",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace}},
+		},
+		{
+			name:     "enters the lot and not the room past it when it enters only sites",
+			files:    lotFiles(),
+			region:   "site:R-A",
+			filter:   AdjacencyFilter{WalkKinds: []Kind{KindSite}},
+			expected: []neighbour{{node: "site:LOT", depth: 1, from: "site:R-A", via: []ID{"geom:E-A-OUT"}}},
+		},
+		{
+			name:   "enters what any of several kinds allows",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace, KindSite}},
+			expected: []neighbour{
+				{node: "site:LOT", depth: 1, from: "site:R-A", via: []ID{"geom:E-A-OUT"}},
+				{node: "site:R-B", depth: 2, from: "site:LOT", via: []ID{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			name:     "enters only regions of a type it names",
+			files:    lotFiles(),
+			region:   "site:R-A",
+			filter:   AdjacencyFilter{WalkTypes: []string{"Lot"}},
+			expected: []neighbour{{node: "site:LOT", depth: 1, from: "site:R-A", via: []ID{"geom:E-A-OUT"}}},
+		},
+		{
+			name:   "does not walk through the lot when it enters only rooms",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{WalkTypes: []string{"Room"}},
+		},
+		{
+			// The lot is a site and not a room, and the room past it is never
+			// reached: every walk field given has to be satisfied, not one.
+			name:   "enters only a region which satisfies every walk field given",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{WalkKinds: []Kind{KindSite}, WalkTypes: []string{"Room"}},
+		},
+		{
+			name:   "starts from the subject whatever the subject declares",
+			files:  lotFiles(),
+			region: "site:LOT",
+			filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace}},
+			expected: []neighbour{
+				{node: "site:R-A", depth: 1, from: "site:LOT", via: []ID{"geom:E-A-OUT"}},
+				{node: "site:R-B", depth: 1, from: "site:LOT", via: []ID{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			name:   "does not walk through the lot across edges nothing backs when it enters only spaces",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{CrossVirtual: true, WalkKinds: []Kind{KindSpace}},
+		},
+		{
+			name:   "walks through the lot across edges nothing backs when no walk field is given",
+			files:  lotFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{CrossVirtual: true},
+			expected: []neighbour{
+				{node: "site:LOT", depth: 1, from: "site:R-A", via: []ID{"geom:E-A-OUT"}},
+				{node: "site:R-B", depth: 2, from: "site:LOT", via: []ID{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			name:   "walks on through the spaces it enters",
+			files:  lotWithHallFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{CrossVirtual: true, WalkKinds: []Kind{KindSpace}},
+			expected: []neighbour{
+				{node: "site:R-H", depth: 1, from: "site:R-A", via: []ID{"geom:E-A-IN"}},
+				{node: "site:R-B", depth: 2, from: "site:R-H", via: []ID{"geom:E-B-IN"}},
+			},
+		},
+		{
+			name:   "does not walk through a space of a type it does not name",
+			files:  lotWithHallFiles(),
+			region: "site:R-A",
+			filter: AdjacencyFilter{WalkTypes: []string{"Room"}},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			nodes, boundaries := joinTree(t, testCase.files)
+
+			region, ok := nodes.Node(testCase.region)
+			require.True(t, ok)
+
+			got := bordering(t, boundaries.AdjacentWalk(region, Unbounded, testCase.filter))
+			slices.SortStableFunc(got, func(x, y neighbour) int {
+				return cmp.Or(cmp.Compare(x.depth, y.depth), strings.Compare(string(x.node), string(y.node)))
+			})
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestAdjacencyFilterEnters decides one region at a time.
+func TestAdjacencyFilterEnters(t *testing.T) {
+	room := &SemanticNode{id: "site:R-A", kind: KindSpace, declaredType: "Room"}
+	lot := &SemanticNode{id: "site:LOT", kind: KindSite, declaredType: "Lot"}
+
+	testCases := []struct {
+		name     string
+		filter   AdjacencyFilter
+		region   *SemanticNode
+		expected bool
+	}{
+		{name: "an empty filter enters any region", filter: AdjacencyFilter{}, region: lot, expected: true},
+		{name: "a crossing filter enters any region", filter: AdjacencyFilter{CrossVirtual: true, CrossTypes: []string{"Doorway"}}, region: lot, expected: true},
+		{name: "enters a region of a named kind", filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace}}, region: room, expected: true},
+		{name: "does not enter a region of a kind it does not name", filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace}}, region: lot, expected: false},
+		{name: "enters a region of any of several named kinds", filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace, KindSite}}, region: lot, expected: true},
+		{name: "enters a region of a named type", filter: AdjacencyFilter{WalkTypes: []string{"Lot"}}, region: lot, expected: true},
+		{name: "does not enter a region of a type it does not name", filter: AdjacencyFilter{WalkTypes: []string{"Lot"}}, region: room, expected: false},
+		{name: "enters a region which satisfies both walk fields", filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace}, WalkTypes: []string{"Room"}}, region: room, expected: true},
+		{name: "does not enter a region which satisfies only the kind", filter: AdjacencyFilter{WalkKinds: []Kind{KindSpace}, WalkTypes: []string{"Lot"}}, region: room, expected: false},
+		{name: "does not enter a region which satisfies only the type", filter: AdjacencyFilter{WalkKinds: []Kind{KindSite}, WalkTypes: []string{"Room"}}, region: room, expected: false},
+		{name: "never enters no region at all", filter: AdjacencyFilter{}, region: nil, expected: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, testCase.filter.Enters(testCase.region))
+		})
+	}
+}
+
+// TestWalkFieldsDoNotDecideCrossing is the other half of the table above: the walk
+// fields say which regions are entered, and a filter given only them still
+// crosses every edge.
+func TestWalkFieldsDoNotDecideCrossing(t *testing.T) {
+	partition := &SemanticNode{id: "site:W-01", kind: KindElement, declaredType: "Partition"}
+
+	virtual := BoundaryEdge{edge: &Edge{}}
+	wall := BoundaryEdge{edge: &Edge{backing: []ID{"site:W-01"}}, backing: []*SemanticNode{partition}}
+	unresolved := BoundaryEdge{edge: &Edge{backing: []ID{"site:W-99"}}}
+
+	filter := AdjacencyFilter{WalkKinds: []Kind{KindSpace}, WalkTypes: []string{"Room"}}
+
+	for _, edge := range []BoundaryEdge{virtual, wall, unresolved} {
+		assert.True(t, filter.Matches(edge), "%s may be crossed", edge.Classification())
+	}
+}
+
+// TestAdjacentWalkEntersOnlyWhatItWasTold is the property the walk fields
+// promise, over every region of both lot models and every filter the table uses:
+// every result, and every region a result was reached from other than the one the
+// walk started from, satisfies the walk fields.
+func TestAdjacentWalkEntersOnlyWhatItWasTold(t *testing.T) {
+	filters := []AdjacencyFilter{
+		{WalkKinds: []Kind{KindSpace}},
+		{WalkKinds: []Kind{KindSite}},
+		{WalkKinds: []Kind{KindSpace, KindSite}},
+		{WalkTypes: []string{"Room"}},
+		{WalkTypes: []string{"Room", "Hall"}},
+		{WalkKinds: []Kind{KindSpace}, WalkTypes: []string{"Hall"}},
+		{CrossVirtual: true, WalkKinds: []Kind{KindSpace}},
+	}
+
+	walked := 0
+	for _, files := range []map[string]string{lotFiles(), lotWithHallFiles()} {
+		nodes, boundaries := joinTree(t, files)
+
+		for region := range nodes.All() {
+			for _, filter := range filters {
+				for result := range boundaries.AdjacentWalk(region, Unbounded, filter) {
+					walked++
+
+					assert.True(t, filter.Enters(result.Node()), "%s is entered under %+v", result.Node().ID(), filter)
+					if result.From() != region {
+						assert.True(t, filter.Enters(result.From()), "%s is entered under %+v", result.From().ID(), filter)
+					}
+				}
+			}
+		}
+	}
+
+	require.NotZero(t, walked, "the filters reach something")
+}

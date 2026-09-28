@@ -53,6 +53,12 @@ Flags:
 	--cross-type <name>
 	               adjacent-to only: an edge may be crossed when an element
 	               backing it declares this type; repeat for more
+	--walk-kind <kind>
+	               adjacent-to only: enter, and walk through, only things
+	               which declare this kind; repeat for more
+	--walk-type <name>
+	               adjacent-to only: enter, and walk through, only things
+	               which declare this type; repeat for more
 
 Every result says which relation produced it — containment, membership,
 boundary or adjacency — and how many steps away it was found. Containment and
@@ -95,6 +101,28 @@ are compared with what the backing elements declare and mean nothing more. Unlik
 reported. A --cross-type the registry does not declare is a usage error, and so
 is one whose type does not permit kind Element, since nothing of it can back an
 edge. Either flag beside any other query is a usage error.
+
+What adjacent-to may enter is everything which shares a crossable edge, unless
+it is told otherwise. With --walk-kind or --walk-type written, a thing is entered
+— reported, and walked through — only when it satisfies each walk flag given: its
+kind is one of the --walk-kind values, and its type is one of the --walk-type
+values. A thing which is not entered is neither reported nor walked through, so a
+lot, zone or storey outline drawn along the outside of two rooms does not join
+them under --walk-kind Space. The walk starts from the subject whatever the
+subject declares, and every from is a thing which was entered. They sit beside
+--kind and --type, which still narrow only what is reported. A --walk-kind naming
+none of the kinds and a --walk-type the registry does not declare are usage
+errors, as they are for --kind and --type, and either flag beside any other query
+is a usage error.
+
+Which spaces can be reached from the entrance through a door or across open floor
+is then two calls: list-instances --kind Space for every space there is, and
+
+	dfcad traverse adjacent-to --depth all --cross-virtual \
+	  --cross-type <door type> --walk-kind Space <entrance>
+
+for every space reached. A space in the first and not the second is one nothing
+reaches.
 
 Results come back in depth order and then in id order, so two runs over one
 model diff against each other and moving a node between files changes nothing.
@@ -156,6 +184,8 @@ const (
 	flagType         = "type"
 	flagCrossVirtual = "cross-virtual"
 	flagCrossType    = "cross-type"
+	flagWalkKind     = "walk-kind"
+	flagWalkType     = "walk-type"
 )
 
 // depthAll is the --depth which follows a relation as far as the model goes.
@@ -187,6 +217,12 @@ type query struct {
 	// relation is written as a reference and followed whatever backs an edge.
 	crosses bool
 
+	// enters says whether it chooses which things it walks through, which is
+	// what --walk-kind and --walk-type decide. It is true for adjacency alone:
+	// every other relation is followed through whatever the model says it
+	// reaches.
+	enters bool
+
 	// takes are the families of the subject it walks from, spelled the way
 	// [familyOf] spells them. Every query but bounds takes a semantic node, and
 	// bounds takes the two shapes a boundary is assembled from.
@@ -197,14 +233,16 @@ type query struct {
 	walk func(graph *dfcad.Graph, subject dfcad.Entity, how walking) []traversed
 }
 
-// walking is how far a walk goes and what it may cross on the way there.
+// walking is how far a walk goes, what it may cross on the way there and what
+// it may enter.
 type walking struct {
 	// depth is how many steps of the relation to follow, or [dfcad.Unbounded].
 	depth int
 
-	// crossing is which shared edges an adjacency walk may cross. It is empty,
-	// crossing everything, for every query which does not cross edges.
-	crossing dfcad.AdjacencyFilter
+	// adjacency is which shared edges an adjacency walk may cross and which
+	// things it may enter. It is empty, crossing and entering everything, for
+	// every query which is not an adjacency walk.
+	adjacency dfcad.AdjacencyFilter
 }
 
 // takesNode is what every query which walks from a semantic node takes.
@@ -302,10 +340,11 @@ var queries = []query{
 		deep:    true,
 		grouped: true,
 		crosses: true,
+		enters:  true,
 		takes:   takesNode,
 		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, how walking) []traversed {
 			var out []traversed
-			for neighbour := range graph.AdjacentWalk(subject, how.depth, how.crossing) {
+			for neighbour := range graph.AdjacentWalk(subject, how.depth, how.adjacency) {
 				entry := nodeResult(neighbour.Node(), neighbour.Relation(), neighbour.Depth())
 				entry.From = string(neighbour.From().ID())
 				for _, edge := range neighbour.Via() {
@@ -406,6 +445,9 @@ const (
 
 	crossingNotApplicable = "only an adjacency walk crosses edges; every other query follows a relation " +
 		"the model writes as a reference, whatever backs the edges around it"
+
+	enteringNotApplicable = "only an adjacency walk chooses what it walks through; every other query follows a " +
+		"relation the model writes as a reference, to whatever it reaches, and --kind and --type narrow what it reports"
 )
 
 // NotABackingTypeError is a --cross-type naming a type which does not permit
@@ -654,6 +696,11 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	crossTypeFlag := &repeated{}
 	flags.Var(crossTypeFlag, flagCrossType, "")
 
+	walkKindFlag := &repeated{}
+	walkTypeFlag := &repeated{}
+	flags.Var(walkKindFlag, flagWalkKind, "")
+	flags.Var(walkTypeFlag, flagWalkType, "")
+
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
 		return exit
@@ -698,6 +745,14 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		return usageError(cmd, err, stderr, false)
 	}
 
+	// As written, for the reason the crossing types are: a walk filter decides
+	// what is walked, so an empty value dropped here would leave a walk told to
+	// enter only some things entering all of them.
+	walkKinds, walkTypes := []string(*walkKindFlag), []string(*walkTypeFlag)
+	if err := checkWalkFilters(graph.Registry(), walkKinds, walkTypes); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	subject, err := walkable(graph, id, asked)
 	if err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -710,8 +765,13 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		Query:     asked.name,
 		Depth:     int(depth),
 		Results: narrow(asked.walk(graph, subject, walking{
-			depth:    int(depth),
-			crossing: dfcad.AdjacencyFilter{CrossVirtual: *crossVirtual, CrossTypes: crossTypes},
+			depth: int(depth),
+			adjacency: dfcad.AdjacencyFilter{
+				CrossVirtual: *crossVirtual,
+				CrossTypes:   crossTypes,
+				WalkKinds:    kindsOf(walkKinds),
+				WalkTypes:    walkTypes,
+			},
 		}), kinds, types),
 	}
 
@@ -768,7 +828,37 @@ func checkFlags(asked query, given map[string]bool) error {
 		}
 	}
 
+	for _, entering := range []string{flagWalkKind, flagWalkType} {
+		if given[entering] && !asked.enters {
+			return FlagNotApplicableError{Flag: entering, Query: asked.name, Reason: enteringNotApplicable}
+		}
+	}
+
 	return nil
+}
+
+// checkWalkFilters reports a --walk-kind naming none of the kinds and a
+// --walk-type the registry does not declare, exactly as --kind and --type are
+// reported: the kinds first, then the types, each in the order written.
+//
+// A walk filter naming nothing is refused rather than answered with a walk which
+// enters nothing, for the reason a narrowing filter is: a misspelling would read
+// as "nothing is reachable from here", which is a statement about the model.
+func checkWalkFilters(registry *dfcad.Registry, kinds, types []string) error {
+	if err := checkFilters(registry, nil, kinds, nil); err != nil {
+		return err
+	}
+	return checkFilters(registry, types, nil, nil)
+}
+
+// kindsOf is the kinds a --walk-kind was written with, as the library spells
+// them. It is only ever handed names [checkFilters] has accepted.
+func kindsOf(names []string) []dfcad.Kind {
+	out := make([]dfcad.Kind, 0, len(names))
+	for _, name := range names {
+		out = append(out, dfcad.Kind(name))
+	}
+	return out
 }
 
 // checkCrossTypes reports a --cross-type the registry does not declare, and one
