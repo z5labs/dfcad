@@ -59,6 +59,45 @@ whether an instance may omit its geometry, and its instance count. Under
 registry wrote them, each a system and a code.
 `
 
+const listPredicatesUsage = `dfcad list-predicates — list the claim predicates the registry declares.
+
+Usage:
+
+	dfcad list-predicates [flags]
+
+Every predicate the registry declares, with the shape its values take, the unit
+they are written in, and whether a value under it is a claim. These are the
+names "dfcad list-geometry --predicate", "dfcad claims" and "dfcad resolve"
+accept, and the ones a flag naming a predicate is spelled with. It takes no
+arguments: the answer is the whole of that sort of the registry.
+
+The listing reports what was declared and singles nothing out. Which predicate
+carries a position, a coordinate reference system or a setback is something the
+project wrote down, and a listing which marked one would be the engine choosing.
+
+Flags:
+
+	--describe       include the one line the registry gives each predicate
+
+The descriptions are left out unless they are asked for, for the reason
+"dfcad list-types" leaves them out: they are prose about the vocabulary rather
+than about this model, and whoever is checking a name pays for them on every
+run and reads them on almost none.
+
+Predicates come back in name order, so two runs over one model produce the same
+list and a diff between them means something.
+
+A model which declares no predicate at all lists nothing and succeeds. That is
+an empty registry rather than a failure.
+
+` + globalFlagsHelp + `
+` + outputContractHelp + `
+The object list-predicates writes carries "predicates": one entry per declared
+predicate, in name order, each with its name, its shape, its unit where it has
+one, its dimension where it is a coordinate, whether it takes a claim, and
+whether an ambiguous resolution of it is a failure where it is.
+`
+
 const listInstancesUsage = `dfcad list-instances — list the instances of a type.
 
 Usage:
@@ -368,6 +407,54 @@ type listedClassification struct {
 	Code string `json:"code"`
 }
 
+// listPredicatesResult is the object list-predicates writes to stdout.
+type listPredicatesResult struct {
+	envelope
+	loadState
+
+	// Predicates is one entry per declared predicate, in name order.
+	Predicates []listedPredicate `json:"predicates"`
+}
+
+// listedPredicate is one declared predicate as the discovery path reports it.
+//
+// It is the declaration's axes, in the spelling a caller passes back, and not
+// the span it was written at: what a caller is deciding from this is which name
+// to pass and what shape of value comes back under it.
+type listedPredicate struct {
+	// Name is the predicate name, which is what list-geometry --predicate,
+	// claims and resolve take.
+	Name string `json:"name"`
+
+	// Shape is the shape its values take.
+	Shape string `json:"shape"`
+
+	// Unit is the unit its values are written in. Absent for a non-dimensional
+	// predicate.
+	Unit string `json:"unit,omitempty"`
+
+	// Dimension is how many components a coordinate has. Written for a
+	// coordinate and for nothing else, where it would always be zero.
+	Dimension int `json:"dimension,omitempty"`
+
+	// ClaimBearing reports whether a value under the predicate is a claim.
+	//
+	// It is written on every entry, unlike Strict. Its default is true, and an
+	// absent boolean reads as false to every JSON consumer, so omitting it on
+	// the ordinary case would report every predicate as the exception.
+	ClaimBearing bool `json:"claim-bearing"`
+
+	// Strict reports whether an ambiguous resolution is a failure. Written only
+	// where it holds, the way Absent is on a listed type: its default is false,
+	// which is what an absent field reads as.
+	Strict bool `json:"strict,omitempty"`
+
+	// Description is the one line the registry gives the predicate. Written
+	// under --describe and absent otherwise, and absent under it too when the
+	// registry wrote none.
+	Description string `json:"description,omitempty"`
+}
+
 // listInstancesResult is the object list-instances writes to stdout.
 type listInstancesResult struct {
 	envelope
@@ -541,6 +628,60 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	}
 
 	reportTypes(result.Types, globals, stderr)
+
+	if err := emit(stdout, result); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	return exitSuccess
+}
+
+// runListPredicates is the list-predicates command.
+func runListPredicates(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	describing := flags.Bool("describe", false, "")
+
+	extra, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	if len(extra) > 0 {
+		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
+	}
+
+	graph, loaded := loadModel(cmd, globals, stderr)
+
+	result := listPredicatesResult{
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+
+		// Made rather than declared, as list-types' is, so that a registry
+		// declaring nothing writes an empty list rather than a null.
+		Predicates: make([]listedPredicate, 0),
+	}
+	for declared := range graph.Registry().Predicates() {
+		entry := listedPredicate{
+			Name:         declared.Name,
+			Shape:        string(declared.Shape),
+			Unit:         string(declared.Unit),
+			ClaimBearing: declared.ClaimBearing,
+			Strict:       declared.Strict,
+		}
+		if declared.Shape == dfcad.ShapeCoordinate {
+			entry.Dimension = declared.Dimension
+		}
+		if *describing {
+			entry.Description = declared.Description
+		}
+
+		result.Predicates = append(result.Predicates, entry)
+	}
+
+	reportPredicates(result.Predicates, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
@@ -1155,6 +1296,47 @@ func classifiedAs(declared listedType) string {
 	}
 
 	return ", " + join(spelled)
+}
+
+// reportPredicates renders a list-predicates result for a person, on stderr:
+// one line per predicate, then how many there were.
+//
+// The lines are not behind the verbosity flag, as list-types' are. A person
+// asking which predicates there are is asking for the names, and a count on its
+// own answers nothing they asked.
+func reportPredicates(predicates []listedPredicate, globals *globals, stderr io.Writer) {
+	if !globals.human() {
+		return
+	}
+
+	for _, declared := range predicates {
+		_, _ = fmt.Fprintf(stderr, "%s: %s\n", declared.Name, join(spelledPredicate(declared)))
+	}
+
+	_, _ = fmt.Fprintf(stderr, "%s\n", plural(len(predicates), "predicate"))
+}
+
+// spelledPredicate is what a predicate declares, spelled for a person: its
+// shape, its unit, and the two opt-outs of the defaults where it wrote them.
+func spelledPredicate(declared listedPredicate) []string {
+	shape := declared.Shape
+	if declared.Dimension > 0 {
+		shape = fmt.Sprintf("%s in %d dimensions", shape, declared.Dimension)
+	}
+
+	unit := declared.Unit
+	if unit == "" {
+		unit = "no unit"
+	}
+
+	out := []string{shape, unit}
+	if !declared.ClaimBearing {
+		out = append(out, "plain")
+	}
+	if declared.Strict {
+		out = append(out, "strict")
+	}
+	return out
 }
 
 // reportInstances renders a list-instances result for a person, on stderr.

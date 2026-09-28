@@ -852,6 +852,12 @@ func TestRunListRejectsWhatTheModelDoesNotDeclare(t *testing.T) {
 			expectedStderr: "dfcad list-types: " +
 				UnexpectedArgumentsError{Extra: []string{"MeetingRoom"}}.Error() + "\n\n" + listTypesUsage,
 		},
+		{
+			name: "rejects an argument to list-predicates, which takes none",
+			args: []string{"list-predicates", "position"},
+			expectedStderr: "dfcad list-predicates: " +
+				UnexpectedArgumentsError{Extra: []string{"position"}}.Error() + "\n\n" + listPredicatesUsage,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1007,6 +1013,7 @@ func TestRunListStillAnswersOnAModelWithDiagnostics(t *testing.T) {
 
 	for _, args := range [][]string{
 		{"list-types"},
+		{"list-predicates"},
 		{"list-instances"},
 		{"list-geometry", "--predicate", "position"},
 	} {
@@ -1138,6 +1145,11 @@ func TestRunListUsage(t *testing.T) {
 			expectedStderr: listTypesUsage,
 		},
 		{
+			name:           "prints the list-predicates usage to stderr and succeeds",
+			args:           []string{"list-predicates", "-h"},
+			expectedStderr: listPredicatesUsage,
+		},
+		{
 			name:           "prints the list-instances usage to stderr and succeeds",
 			args:           []string{"list-instances", "-h"},
 			expectedStderr: listInstancesUsage,
@@ -1163,6 +1175,7 @@ func TestRunListUsage(t *testing.T) {
 func TestListErrorsAreNotSwallowed(t *testing.T) {
 	for _, args := range [][]string{
 		{"list-types"},
+		{"list-predicates"},
 		{"list-instances"},
 		{"list-geometry", "--predicate", "position"},
 	} {
@@ -2435,4 +2448,242 @@ func TestRunListGeometryNearAgreesWithScaffoldLoop(t *testing.T) {
 		assert.Contains(t, nearest, snap.Vertex, "corner %d", index+1)
 		assert.InDelta(t, snap.Distance, smallest, 1e-12, "corner %d", index+1)
 	}
+}
+
+// predicatesRegistry declares a predicate of each of the four shapes, one of
+// them non-dimensional, one which opts out of being claim-bearing and one which
+// opts in to being strict — every axis a listed predicate reports, each on an
+// entry of its own so that one entry's default cannot pass for another's.
+//
+// They are written out of name order, which is what says whether the listing
+// orders them or reports the order somebody typed them in.
+const predicatesRegistry = `(project (globalid-namespace "https://example.org/models/predicates"))
+
+(predicate position
+  (unit m)
+  (shape coordinate)
+  (dimension 2)
+  (description "The location of a vertex in its frame."))
+
+(predicate area
+  (unit m2)
+  (shape scalar)
+  (strict #t)
+  (description "How much floor a space has."))
+
+(predicate crs
+  (shape text)
+  (claim-bearing #f))
+
+(predicate frame-transform
+  (shape transform)
+  (description "The rigid transform from a frame to its parent."))
+`
+
+// listPredicatesOf runs list-predicates over files and decodes its answer.
+func listPredicatesOf(t *testing.T, files map[string]string, args ...string) listPredicatesResult {
+	t.Helper()
+
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"list-predicates"}, args...), &stdout, &stderr), stderr.String())
+
+	return listed[listPredicatesResult](t, stdout.String())
+}
+
+func TestRunListPredicates(t *testing.T) {
+	testCases := []struct {
+		name               string
+		files              map[string]string
+		expectedPredicates []listedPredicate
+	}{
+		{
+			name:  "reports every declared predicate with its shape, unit and the defaults it opted out of",
+			files: map[string]string{"registry.dfc": predicatesRegistry},
+			expectedPredicates: []listedPredicate{
+				{Name: "area", Shape: "scalar", Unit: "m2", ClaimBearing: true, Strict: true},
+				{Name: "crs", Shape: "text", ClaimBearing: false},
+				{Name: "frame-transform", Shape: "transform", ClaimBearing: true},
+				{Name: "position", Shape: "coordinate", Unit: "m", Dimension: 2, ClaimBearing: true},
+			},
+		},
+		{
+			name:               "reports a registry which declares no predicate as no predicates at all",
+			files:              map[string]string{"registry.dfc": "(project (globalid-namespace \"https://example.org/e\"))\n"},
+			expectedPredicates: []listedPredicate{},
+		},
+		{
+			name:               "reports an empty model as no predicates at all",
+			files:              map[string]string{"notes.md": "nothing to see"},
+			expectedPredicates: []listedPredicate{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := listPredicatesOf(t, testCase.files)
+
+			assert.Equal(t, outputVersion, result.Version)
+			assert.Equal(t, "list-predicates", result.Command)
+			assert.Equal(t, testCase.expectedPredicates, result.Predicates)
+		})
+	}
+}
+
+// TestRunListPredicatesAnswersTheGridFixtureExactly is its own function because
+// it asserts the bytes a caller reads rather than the values they decode to:
+// the key order, which fields are written and which are left out.
+func TestRunListPredicatesAnswersTheGridFixtureExactly(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "checks", "grid", "affirmed"))
+	require.NoError(t, err)
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-predicates", "--root", root}, &stdout, &stderr), stderr.String())
+
+	assert.Equal(t, `{"version":2,"command":"list-predicates","refused":false,"predicates":[`+
+		`{"name":"crs","shape":"text","claim-bearing":false},`+
+		`{"name":"frame-transform","shape":"transform","claim-bearing":true},`+
+		`{"name":"ground-to-grid","shape":"scalar","claim-bearing":true},`+
+		`{"name":"position","shape":"coordinate","unit":"m","dimension":3,"claim-bearing":true}]}`+"\n",
+		stdout.String())
+}
+
+// TestRunListPredicatesWritesEachFieldOnlyWhereItSays is its own function
+// because it is about which keys reach stdout rather than about what they
+// decode to: an absent claim-bearing reads as false to every JSON consumer, so
+// it is written on every entry, and the other optional fields are written only
+// where they hold.
+func TestRunListPredicatesWritesEachFieldOnlyWhereItSays(t *testing.T) {
+	t.Chdir(tree(t, map[string]string{"registry.dfc": predicatesRegistry}))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-predicates"}, &stdout, &stderr), stderr.String())
+
+	answer := object(t, stdout.String())
+	entries := entriesOf(t, answer, "predicates")
+	require.Len(t, entries, 4)
+
+	keys := make(map[string][]string, len(entries))
+	for _, entry := range entries {
+		fields, ok := entry.(map[string]any)
+		require.True(t, ok)
+
+		name, _ := fields["name"].(string)
+		keys[name] = slices.Sorted(maps.Keys(fields))
+	}
+
+	assert.Equal(t, map[string][]string{
+		"area":            {"claim-bearing", "name", "shape", "strict", "unit"},
+		"crs":             {"claim-bearing", "name", "shape"},
+		"frame-transform": {"claim-bearing", "name", "shape"},
+		"position":        {"claim-bearing", "dimension", "name", "shape", "unit"},
+	}, keys)
+}
+
+// TestRunListPredicatesDescribesOnlyWhenAsked is its own function for the
+// reason list-types' is: the descriptions are prose about the vocabulary, and a
+// caller checking a name pays for them on every run and reads them on almost
+// none. See docs/decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md.
+func TestRunListPredicatesDescribesOnlyWhenAsked(t *testing.T) {
+	t.Run("leaves the registry's prose out", func(t *testing.T) {
+		result := listPredicatesOf(t, map[string]string{"registry.dfc": predicatesRegistry})
+
+		for _, declared := range result.Predicates {
+			assert.Empty(t, declared.Description, declared.Name)
+		}
+	})
+
+	t.Run("reports it when it is asked for, and nothing where none was written", func(t *testing.T) {
+		result := listPredicatesOf(t, map[string]string{"registry.dfc": predicatesRegistry}, "--describe")
+
+		described := make(map[string]string, len(result.Predicates))
+		for _, declared := range result.Predicates {
+			described[declared.Name] = declared.Description
+		}
+
+		assert.Equal(t, map[string]string{
+			"area":            "How much floor a space has.",
+			"crs":             "",
+			"frame-transform": "The rigid transform from a frame to its parent.",
+			"position":        "The location of a vertex in its frame.",
+		}, described)
+	})
+}
+
+// TestRunListPredicatesRendersOneLinePerPredicateForAPerson is its own function
+// because it is about stderr, and about stdout not changing with it.
+func TestRunListPredicatesRendersOneLinePerPredicateForAPerson(t *testing.T) {
+	listing := func(t *testing.T, args ...string) (string, string) {
+		t.Helper()
+
+		t.Chdir(tree(t, map[string]string{"registry.dfc": predicatesRegistry}))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(append([]string{"list-predicates"}, args...), &stdout, &stderr), stderr.String())
+
+		return stdout.String(), stderr.String()
+	}
+
+	machine, machineReport := listing(t)
+	human, humanReport := listing(t, "--format", formatHuman)
+	loud, _ := listing(t, "--format", formatHuman, "-v")
+
+	assert.Equal(t, machine, human)
+	assert.Equal(t, machine, loud)
+
+	assert.Empty(t, machineReport)
+	assert.Equal(t, "area: scalar, m2, strict\n"+
+		"crs: text, no unit, plain\n"+
+		"frame-transform: transform, no unit\n"+
+		"position: coordinate in 2 dimensions, m\n"+
+		"4 predicates\n", humanReport)
+}
+
+// TestRunListPredicatesListsWhatTheOtherCommandsAccept is the property the
+// command exists for: the names it lists are exactly the set every command
+// taking a predicate accepts, so a caller which checks a name against the
+// listing is checking it against what list-geometry, claims and resolve will
+// take.
+func TestRunListPredicatesListsWhatTheOtherCommandsAccept(t *testing.T) {
+	files := model()
+
+	result := listPredicatesOf(t, files)
+
+	listedNames := make([]string, 0, len(result.Predicates))
+	for _, declared := range result.Predicates {
+		listedNames = append(listedNames, declared.Name)
+	}
+
+	graph, _ := dfcad.LoadGraph(".")
+	require.Equal(t, graph.Registry().Names(dfcad.SortPredicate), listedNames)
+	require.NotEmpty(t, listedNames)
+
+	for _, name := range listedNames {
+		t.Run("list-geometry accepts "+name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			assert.Equal(t, exitSuccess, run([]string{"list-geometry", "--predicate", name}, &stdout, &stderr), stderr.String())
+		})
+	}
+
+	t.Run("list-geometry refuses a name outside it", func(t *testing.T) {
+		const outside = "not-a-listed-predicate"
+		require.NotContains(t, listedNames, outside)
+
+		var stdout, stderr bytes.Buffer
+		assert.Equal(t, exitUsage, run([]string{"list-geometry", "--predicate", outside}, &stdout, &stderr))
+		assert.Empty(t, stdout.String())
+		assert.Equal(t, "dfcad list-geometry: "+
+			UnknownPredicateError{Predicate: outside, Declared: listedNames}.Error()+"\n", stderr.String())
+	})
+}
+
+// TestRunListPredicatesAnswersThroughARefusedLoad is its own function because
+// it is about the load rather than the listing: a discovery read answers over a
+// model the load refused, and says so in its object rather than its exit code.
+func TestRunListPredicatesAnswersThroughARefusedLoad(t *testing.T) {
+	result := listPredicatesOf(t, unloadable(t))
+
+	assert.True(t, result.Refused)
+	assert.NotEmpty(t, result.Predicates)
 }
