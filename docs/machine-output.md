@@ -434,13 +434,15 @@ list either.
 ### `list-geometry`
 
 The geometric nodes — vertices, edges and loops — which carry a claim under one predicate.
-It takes no arguments and three flags.
+It takes no arguments and five flags.
 
 | Flag | Meaning |
 |------|---------|
 | `--predicate <name>` | The predicate the node carries. **Required**, and it has no default. Written once: it names what is listed rather than filtering it. |
 | `--family <family>` | Only nodes of this family: `vertex`, `edge` or `loop`. [Repeatable](#filters). |
 | `--frame <id>` | Only nodes expressed in this coordinate frame. [Repeatable](#filters). |
+| `--near "<x> <y> …"` | Only the vertices within `--tolerance` of this point, in the shape `--predicate` declares. Needs exactly one `--frame` and a `--tolerance`. See [Vertices at a point](#vertices-at-a-point). |
+| `--tolerance <name>` | The declared tolerance a vertex has to be within of the `--near` point. Read only beside `--near`. |
 
 `--family` and `--frame` are filters. They combine: a node is listed when it satisfies every
 filter given, and a filter written more than once is satisfied by any of its values; see
@@ -516,6 +518,9 @@ A vertex and a loop carry the same shape without `start` and `end`:
 | `nodes[].start` | string, optional | The vertex an edge runs **from**. Absent for a vertex and for a loop. |
 | `nodes[].end` | string, optional | The vertex an edge runs **to**. Absent for a vertex and for a loop. |
 | `nodes[].span` | string | Where it was written, as `path:line:col-line:col`. |
+| `near` | object, optional | Under `--near` only: the query, as `{"at": [...], "tolerance": {"name", "value", "unit"}}` — the point, component by component, and the declared tolerance a vertex had to be within of it. |
+| `nodes[].at` | array, optional | Under `--near` only: where the vertex's position resolves, component by component, in the frame's unit. |
+| `nodes[].distance` | number, optional | Under `--near` only: how far that position is from the point, in the frame's unit. `0` for a vertex exactly at it. |
 
 An edge names its two vertices **in the order they were authored**. The order is the data —
 an edge is directed, and the region on the other side of it traverses it the other way — so
@@ -541,6 +546,59 @@ stdout — naming the flag and every value it was given, in the order they were 
 not a filter: it names what the listing is of, and `predicate` in the answer is one string.
 A caller wanting two predicates' nodes asks twice, and gets two answers each saying which
 question it answers. See [Filters](#filters).
+
+#### Vertices at a point
+
+`--near` answers "which vertex is at this coordinate?" without writing anything. A vertex is
+listed when both hold: its position resolves under `--predicate`, in the unit of the one
+`--frame`, and that position lies within the value of `--tolerance` of the point. **The match
+is [`scaffold-loop`](#scaffold-loop)'s** — the two commands call one function for it — so the
+vertex a scaffold reuses at a corner is always the one listed with the smallest `distance` at
+that point, and a lookup made first says what the scaffold will do.
+
+Against `testdata/siting/surveyed`:
+
+```console
+$ dfcad list-geometry --predicate position --frame frame:building \
+    --near "10.002 0 0" --tolerance boundary-closure
+```
+
+```json
+{
+  "version": 2,
+  "command": "list-geometry",
+  "refused": false,
+  "predicate": "position",
+  "near": {"at": [10.002, 0, 0], "tolerance": {"name": "boundary-closure", "value": 0.005, "unit": "m"}},
+  "nodes": [
+    {
+      "id": "geom:V-12",
+      "family": "vertex",
+      "label": "Block A footprint, south-east corner",
+      "frame": "frame:building",
+      "span": "model.dfc:140:1-149:26",
+      "at": [10, 0, 0],
+      "distance": 0.002000000000000668
+    }
+  ]
+}
+```
+
+Vertices still come in id order, which is the listing's order; `distance` is what picks the
+nearest. A vertex whose position does not resolve is not listed, because nobody can say where
+it is. Nothing within the tolerance is an **empty `nodes` and exit `0`**.
+
+Each of these is a **usage error** — exit `3`, with nothing on stdout:
+
+- `--near` without a `--frame` or without a `--tolerance`, and `--tolerance` without `--near`.
+- `--near` beside more than one `--frame`: the point is a coordinate in one frame.
+- `--family edge` or `--family loop` beside `--near`: only a vertex is at a point.
+  `--family vertex` is accepted.
+- A predicate which does not declare a coordinate.
+- A point whose number of components is not the predicate's `dimension`, or one of whose
+  components is not a number. It is read exactly as a `scaffold-loop` corner is.
+- A tolerance declared in a unit other than the frame's, which `scaffold-loop` refuses in the
+  same way.
 
 ### `get`
 
@@ -2557,6 +2615,11 @@ result.
 Under `--dry-run` every field above is what it would have been, which is the whole point of
 running one first: the ids, the reuses and the tolerance that decided them are what an author
 is checking before committing to them.
+
+To ask which vertex a single point lands on — without a closed list of four corners, the
+evidence flags or a route — use [`list-geometry --near`](#vertices-at-a-point). It applies
+this command's rule through the same function, so it lists the vertex a corner here would
+snap to, with its distance.
 
 ### `relate`
 

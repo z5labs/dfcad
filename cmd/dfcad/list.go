@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/z5labs/dfcad"
@@ -123,6 +124,11 @@ Flags:
 	                     repeat for more
 	--frame <id>         only nodes expressed in this coordinate frame; repeat
 	                     for more
+	--near "<x> <y> …"   only the vertices within --tolerance of this point, in
+	                     the shape --predicate declares; needs one --frame and
+	                     --tolerance
+	--tolerance <name>   the declared tolerance a vertex has to be within of the
+	                     --near point; read only beside --near
 
 --family and --frame are filters. They combine: a node is listed when it
 satisfies every filter given, and a filter written more than once is satisfied
@@ -149,6 +155,19 @@ the other way — so it is reported as written and is never sorted.
 Nodes come back in id order, so the list does not change when a node moves
 between files, and two runs over one model diff against each other.
 
+--near asks which vertex is at a coordinate, without writing anything. A
+vertex is listed when its position resolves under --predicate, in the unit of
+the one --frame, and lies within the --tolerance of the point. That is the rule
+"dfcad scaffold-loop" snaps a corner to an existing vertex by, and the two share
+it, so the vertex a scaffold would reuse at a corner is the one listed nearest
+to it here. Each vertex listed carries "at", where its position resolves, and
+"distance", how far that is from the point in the frame's unit; they still come
+in id order, and the distance is what picks the nearest. Only a vertex is at a
+point, so --family edge or loop beside --near is a usage error. The predicate
+has to declare a coordinate, the point has to have the number of components it
+declares, and the tolerance has to be declared in the frame's unit, as it does
+for scaffold-loop. Nothing within the tolerance is an empty list and exit zero.
+
 A predicate no geometric node carries is an empty list and exit zero. A model
 which records no spans is an ordinary model, and answering it with a failure
 would make a caller parse a message to tell nothing-there from something-wrong.
@@ -166,6 +185,8 @@ The object list-geometry writes carries "predicate", the predicate it was asked
 about, and "nodes": one entry per geometric node carrying a live claim under it,
 in id order, each with its id, its family, its frame, the span it was written
 at, and — for an edge — the two vertices it runs between, in the authored order.
+Under --near it also carries "near", the point and the tolerance it was asked
+with, and each vertex carries "at" and "distance".
 `
 
 // The flags list-geometry takes beyond the global ones, named here because the
@@ -402,6 +423,10 @@ type listGeometryResult struct {
 	// exactly the object it most needs that of.
 	Predicate string `json:"predicate"`
 
+	// Near is the point the listing was narrowed to and the tolerance a vertex
+	// had to be within of it. Absent where --near was not written.
+	Near *nearEntry `json:"near,omitempty"`
+
 	// Nodes is one entry per geometric node carrying a live claim under it, in
 	// id order. Empty rather than null when nothing does.
 	Nodes []listedGeometry `json:"nodes"`
@@ -457,6 +482,16 @@ type listedGeometry struct {
 	// came back from a query nobody could have guessed is one whose next
 	// question is where it is written.
 	Span dfcad.Span `json:"span"`
+
+	// At is where a vertex's position resolves to, component by component, in
+	// the frame's unit. Present only under --near, which is the listing that
+	// read it.
+	At []float64 `json:"at,omitempty"`
+
+	// Distance is how far the vertex is from the --near point, in the frame's
+	// unit. Present only under --near, and a pointer so that a vertex exactly at
+	// the point says 0 rather than leaving the field out.
+	Distance *float64 `json:"distance,omitempty"`
 }
 
 // runListTypes is the list-types command.
@@ -615,10 +650,14 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	predicateFlag := &repeated{}
 	familyFlag := &repeated{}
 	frameFlag := &repeated{}
+	nearFlag := &repeated{}
+	toleranceFlag := &repeated{}
 
 	flags.Var(predicateFlag, flagPredicate, "")
 	flags.Var(familyFlag, flagFamily, "")
 	flags.Var(frameFlag, flagFrame, "")
+	flags.Var(nearFlag, flagNear, "")
+	flags.Var(toleranceFlag, flagTolerance, "")
 
 	extra, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -658,6 +697,33 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		}
 	}
 
+	// A point and a tolerance each name one thing, so a second of either is a
+	// second question rather than a wider one, as a second predicate is.
+	point, err := once(flagNear, *nearFlag)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	tolerance, err := once(flagTolerance, *toleranceFlag)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	near := nearAsked{
+		point:     point,
+		tolerance: tolerance,
+		predicate: predicate,
+		frames:    filterOf(*frameFlag),
+		families:  wantedFamilies,
+	}
+
+	// Which flags a lookup needs beside it, and that only a vertex is at a
+	// point, are settled before the load for the reason a family is: nothing in
+	// the tree changes either.
+	if err := near.check(); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
 	// The predicate, in contrast, is registry data, and the registry is the
 	// model. Its diagnostics reach stderr either way, so a predicate which is
 	// unknown because a registry file did not parse is reported beside the
@@ -687,6 +753,24 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		Nodes: make([]listedGeometry, 0),
 	}
 
+	// The vertices at the point, by the rule scaffold-loop snaps a corner by,
+	// and nil where no point was asked about.
+	var nearby map[dfcad.ID]dfcad.Nearby
+
+	if near.asked() {
+		found, err := near.lookup(graph)
+		if err != nil {
+			return usageError(cmd, err, stderr, false)
+		}
+
+		result.Near = &nearEntry{At: found.Point, Tolerance: declared(found.Tolerance)}
+
+		nearby = make(map[dfcad.ID]dfcad.Nearby, len(found.Vertices))
+		for _, vertex := range found.Vertices {
+			nearby[vertex.Vertex] = vertex
+		}
+	}
+
 	topology := graph.Topology()
 
 	if admits(wantedFamilies, familyVertex) {
@@ -695,17 +779,31 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 				continue
 			}
 
-			result.Nodes = append(result.Nodes, listedGeometry{
+			listed := listedGeometry{
 				ID:     string(vertex.ID()),
 				Family: familyVertex,
 				Label:  vertex.Label(),
 				Frame:  string(vertex.Frame()),
 				Span:   vertex.Span(),
-			})
+			}
+
+			if nearby != nil {
+				found, ok := nearby[vertex.ID()]
+				if !ok {
+					continue
+				}
+
+				distance := found.Distance
+				listed.At, listed.Distance = found.At, &distance
+			}
+
+			result.Nodes = append(result.Nodes, listed)
 		}
 	}
 
-	if admits(wantedFamilies, familyEdge) {
+	// Only a vertex is at a point, so a lookup lists no edge and no loop even
+	// where no family was named.
+	if admits(wantedFamilies, familyEdge) && nearby == nil {
 		for edge := range topology.Edges() {
 			if !admits(wantedFrames, string(edge.Frame())) || !carries(graph, edge.ID(), predicate) {
 				continue
@@ -725,7 +823,7 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 		}
 	}
 
-	if admits(wantedFamilies, familyLoop) {
+	if admits(wantedFamilies, familyLoop) && nearby == nil {
 		for loop := range topology.Loops() {
 			if !admits(wantedFrames, string(loop.Frame())) || !carries(graph, loop.ID(), predicate) {
 				continue
@@ -1098,7 +1196,7 @@ func reportGeometry(result listGeometryResult, globals *globals, stderr io.Write
 		// The nodes themselves are already the result, on stdout, so the reading
 		// of them is progress rather than result.
 		if globals.Verbosity >= verbosityProgress {
-			_, _ = fmt.Fprintf(stderr, "%s: %s%s in %s\n", node.ID, node.Family, between(node), node.Frame)
+			_, _ = fmt.Fprintf(stderr, "%s: %s%s in %s%s\n", node.ID, node.Family, between(node), node.Frame, away(node, result.Near))
 		}
 	}
 
@@ -1107,8 +1205,36 @@ func reportGeometry(result listGeometryResult, globals *globals, stderr io.Write
 		spread = append(spread, pluralOf(counted[family], family, familyPlurals[family]))
 	}
 
-	_, _ = fmt.Fprintf(stderr, "%s under %s: %s\n",
-		plural(len(result.Nodes), "geometric node"), result.Predicate, join(spread))
+	_, _ = fmt.Fprintf(stderr, "%s under %s%s: %s\n",
+		plural(len(result.Nodes), "geometric node"), result.Predicate, within(result.Near), join(spread))
+}
+
+// within is the point a listing was narrowed to, for a person, and nothing for
+// a listing which was not.
+func within(near *nearEntry) string {
+	if near == nil {
+		return ""
+	}
+	return fmt.Sprintf(" within %s (%g %s) of %s",
+		near.Tolerance.Name, near.Tolerance.Value, near.Tolerance.Unit, components(near.At))
+}
+
+// away is how far a listed vertex is from the point, for a person, and nothing
+// for a listing which asked about no point.
+func away(node listedGeometry, near *nearEntry) string {
+	if near == nil || node.Distance == nil {
+		return ""
+	}
+	return fmt.Sprintf(", at %s, %g %s away", components(node.At), *node.Distance, near.Tolerance.Unit)
+}
+
+// components is a coordinate for a person, as it is written on a command line.
+func components(at []float64) string {
+	out := make([]string, 0, len(at))
+	for _, component := range at {
+		out = append(out, strconv.FormatFloat(component, 'g', -1, 64))
+	}
+	return "(" + strings.Join(out, " ") + ")"
 }
 
 // between is the ends of an edge for a person, and nothing at all for a family
