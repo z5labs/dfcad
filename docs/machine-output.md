@@ -1029,6 +1029,7 @@ takes a query, an id, and three flags.
       "kind": "Space",
       "type": "Corridor",
       "frame": "frame:building",
+      "from": "site:S-101",
       "via": ["geom:E-02"],
       "span": "entities/site.dfc:41:1-48:25"
     }
@@ -1053,6 +1054,7 @@ takes a query, an id, and three flags.
 | `results[].classification` | string, optional | What an edge of a boundary separates the region by: `physical`, `virtual`, or `unresolved` where it names a backing element the model does not hold. Absent for a result that is not an edge. |
 | `results[].backing` | array, optional | The ids of the elements that physically realise an edge, in the order the edge named them. Absent for a virtual edge, which names none. |
 | `results[].backing-types` | array, optional | The type each element in `backing` declares, at the same position, so that `backing-types[i]` is the type of `backing[i]` and a wall is told from a door without a second call and a join on id. Absent exactly where `backing` is: for a virtual edge and for an unresolved one. Over a model the load refused, an element which declares no type — one whose `(type …)` could not be read — contributes `""`, so the two arrays stay aligned. There is no `backing-kinds`: an edge is backed only by a node of kind `Element`, so the kind of every backing element is `Element` and a field carrying it would be a constant. |
+| `results[].from` | string, optional | The id of the thing an adjacent thing was reached from, which is the thing `via` names the shared edges with. At depth 1 that is the subject, and it is written there too, so a result's shape does not depend on its depth. Past it, it is a result one step nearer: where more than one thing a step nearer shares an edge with it, the one with the smallest id. The walk is breadth first, so following `from` from any result reaches the subject in exactly `depth` steps, and that chain is a shortest path. Written under `adjacent-to` and absent otherwise. |
 | `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. At depth 1 that is the subject. Past it, where more than one thing a step nearer shares an edge with it, it was reached from the one with the smallest id, so `via` does not move when a node moves between files and can be checked against `boundary-of`. Written under `adjacent-to` and absent otherwise. |
 | `results[].span` | span | Where it was written. |
 
@@ -1067,6 +1069,11 @@ fact about the model rather than a comparison of two outlines — two boundaries
 the same line with two edges are not adjacent. A doorway and the wall it is cut into are two
 shared edges between the same pair of rooms, so the neighbour is reported once carrying
 both, and `boundary-of` is what says which of them is a wall.
+
+Each adjacent result names the thing it was reached from as `from`, and its `via` is the
+edges it shares with that one. The walk is breadth first and reports each thing at the
+fewest steps it can be reached in, so the chain of `from` is a shortest path back to the
+subject: a path can be rebuilt from one walk, without walking again from each room on it.
 
 Depth is bounded by default, because a traversal of a model nobody has read should not be
 able to return the whole of it by accident; `--depth all` is how a caller asks for that on

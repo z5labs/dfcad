@@ -27,10 +27,15 @@ import (
 // the answer cannot drift away from what the model says
 // ([0009](docs/decisions/0009-derived-values-are-never-written-back.md)).
 //
-// The zero value holds no node and no edges, which no traversal yields.
+// The zero value holds no node, no region it was reached from and no edges,
+// which no traversal yields.
 type Adjacent struct {
 	// node is the region which was reached.
 	node *SemanticNode
+
+	// from is the region it was reached from: the subject at the first step,
+	// and a region one step nearer past it.
+	from *SemanticNode
 
 	// via are the edges it shares with the region it was reached from, in the
 	// order that region's boundary traverses them.
@@ -42,6 +47,22 @@ type Adjacent struct {
 
 // Node returns the region the traversal reached.
 func (a Adjacent) Node() *SemanticNode { return a.node }
+
+// From returns the region this one was reached from, which is the region
+// [Adjacent.Via] names the edges shared with. At a depth of one it is the region
+// the walk started from.
+//
+// The walk is breadth first and reports each region once, at the fewest steps it
+// can be reached in, so one region reached-from per result is a shortest-path
+// tree: following From from any result reaches the region the walk started from
+// in exactly [Adjacent.Depth] steps, and every region on the way is itself a
+// result of the same walk. Where more than one region a step nearer borders this
+// one, it is the one with the smallest id, for the reason Via explains.
+//
+// It is written at every depth rather than only past the first, where it could
+// only ever be the subject, so that a result has one shape whichever step it was
+// found at.
+func (a Adjacent) From() *SemanticNode { return a.from }
 
 // Via returns the edges this region shares with the one it was reached from, in
 // the order that region's boundary traverses them.
@@ -107,7 +128,7 @@ func (b *Boundaries) Adjacent(region *SemanticNode) iter.Seq[Adjacent] {
 // Every result at the first step is reached from region itself. Past it, a
 // result is reached from the region one step nearer which has the smallest id
 // among those it shares an edge with, and that is the region its
-// [Adjacent.Via] names the edges shared with. Each step is expanded in id
+// [Adjacent.From] names and its [Adjacent.Via] names the edges shared with. Each step is expanded in id
 // order to make it so: expanding in the order regions were discovered would
 // choose by the order the files were read in, and moving a region between
 // files would change the answer.
@@ -138,6 +159,7 @@ func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjace
 					}
 					seen[neighbour.node] = true
 
+					neighbour.from = from
 					neighbour.depth = level
 					if !yield(neighbour) {
 						return

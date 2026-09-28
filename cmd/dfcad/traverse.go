@@ -78,10 +78,15 @@ satisfied by any of its values.
 Results come back in depth order and then in id order, so two runs over one
 model diff against each other and moving a node between files changes nothing.
 The edges of a boundary are the exception: they come back in the order the
-loops traverse them, because that order is the model's own. The same holds for
-which thing an adjacent result was reached from: past the first step, where
-several things a step nearer share an edge with it, it is the one with the
-smallest id, and its via names the edges shared with that one.
+loops traverse them, because that order is the model's own.
+
+Each adjacent result names the thing it was reached from, as from, and its via
+names the edges it shares with that one. At the first step that is the subject.
+The walk is breadth first, so the chain of from leads back to the subject in as
+many steps as the result's depth, and is a shortest path to it. Past the first
+step, where several things a step nearer share an edge with a result, it was
+reached from the one with the smallest id, so neither from nor via moves when a
+node moves between files.
 
 An id nothing in the model holds is a usage error naming it, and naming the
 nearest id there is, exactly as ` + "`dfcad get`" + ` reports one. Every query but
@@ -261,6 +266,7 @@ var queries = []query{
 			var out []traversed
 			for neighbour := range graph.AdjacentTo(subject, depth) {
 				entry := nodeResult(neighbour.Node(), neighbour.Relation(), neighbour.Depth())
+				entry.From = string(neighbour.From().ID())
 				for _, edge := range neighbour.Via() {
 					entry.Via = append(entry.Via, string(edge.ID()))
 				}
@@ -499,6 +505,14 @@ type traversed struct {
 	// kind Element, so the kind of every backing element is the same and a field
 	// carrying it would be a constant.
 	BackingTypes []string `json:"backing-types,omitempty"`
+
+	// From is the id of the thing an adjacent thing was reached from: the
+	// subject at a depth of one, and a result one step nearer past it, so that
+	// following it from any result walks a shortest path back to the subject.
+	// It is written at every depth, including the first where it could only be
+	// the subject, so that a result's shape does not depend on how far away it
+	// is. Absent for every relation but adjacency.
+	From string `json:"from,omitempty"`
 
 	// Via are the ids of the edges an adjacent thing shares with the thing it
 	// was reached from, in the order that boundary traverses them. Absent for
