@@ -178,10 +178,10 @@ Answering: what level 1 looks like in plan, with the area claimed on each room.
 
 | Call | `o200k_base` | `cl100k_base` |
 |------|-------|-------|
-| `dfcad plan site:L-01 --annotate area` | 8165 | 8033 |
-| **the whole path** | **8165** | **8033** |
+| `dfcad plan site:L-01 --annotate area` | 8368 | 8236 |
+| **the whole path** | **8368** | **8236** |
 
-No target: nothing asked this path to cost anything in particular. Regression ceiling 8180 tokens. Claimed at 2 times cheaper than reading the model.
+No target: nothing asked this path to cost anything in particular. Regression ceiling 8400 tokens. Claimed at 2 times cheaper than reading the model.
 
 ## Where the tokens go
 
@@ -197,7 +197,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | the whole claim `--evidence` adds | `dfcad resolve site:S-111 area --evidence` | 92, down from 220 | 86, down from 210 |
 | the spans in `get` | `dfcad get site:S-111` | 236, down from 302 | 229, down from 292 |
 | the accuracy beside the value in `resolve` | `dfcad resolve site:S-111 area` | 71, down from 92 | 67, down from 86 |
-| the combined accuracy on each claim in `plan` | `dfcad plan site:L-01 --annotate area` | 7906, down from 8166 | 7744, down from 7978 |
+| the combined accuracy on each claim in `plan` | `dfcad plan site:L-01 --annotate area` | 8109, down from 8369 | 7947, down from 8181 |
 | the error budget in `measure` | `dfcad measure site:S-111` | 164, down from 494 | 162, down from 471 |
 | the claims named under each budget term in `measure` | `dfcad measure site:S-111` | 343, down from 494 | 333, down from 471 |
 
@@ -218,7 +218,7 @@ from" figure differs by a token or two from the same call in the tables above.
 | the same question by way of a whole retrieval | 25.1×, 26.2× | 4.4×, 4.6× |
 | the same question answered from the geometry rather than from a claim | 22.2×, 23.4× | 3.9×, 4.1× |
 | finding the geometry which carries a measurement | 8.5×, 8.8× | 1.5×, 1.6× |
-| reading a storey as an annotated plan | 2.5×, 2.6× | 0.4×, 0.5× |
+| reading a storey as an annotated plan | 2.5×, 2.5× | 0.4×, 0.4× |
 
 One figure per encoding, in the order of the table above.
 
