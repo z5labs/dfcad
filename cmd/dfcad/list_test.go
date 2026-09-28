@@ -858,6 +858,12 @@ func TestRunListRejectsWhatTheModelDoesNotDeclare(t *testing.T) {
 			expectedStderr: "dfcad list-predicates: " +
 				UnexpectedArgumentsError{Extra: []string{"position"}}.Error() + "\n\n" + listPredicatesUsage,
 		},
+		{
+			name: "rejects an argument to list-tolerances, which takes none",
+			args: []string{"list-tolerances", "coincident"},
+			expectedStderr: "dfcad list-tolerances: " +
+				UnexpectedArgumentsError{Extra: []string{"coincident"}}.Error() + "\n\n" + listTolerancesUsage,
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -1014,6 +1020,7 @@ func TestRunListStillAnswersOnAModelWithDiagnostics(t *testing.T) {
 	for _, args := range [][]string{
 		{"list-types"},
 		{"list-predicates"},
+		{"list-tolerances"},
 		{"list-instances"},
 		{"list-geometry", "--predicate", "position"},
 	} {
@@ -1150,6 +1157,11 @@ func TestRunListUsage(t *testing.T) {
 			expectedStderr: listPredicatesUsage,
 		},
 		{
+			name:           "prints the list-tolerances usage to stderr and succeeds",
+			args:           []string{"list-tolerances", "-h"},
+			expectedStderr: listTolerancesUsage,
+		},
+		{
 			name:           "prints the list-instances usage to stderr and succeeds",
 			args:           []string{"list-instances", "-h"},
 			expectedStderr: listInstancesUsage,
@@ -1176,6 +1188,7 @@ func TestListErrorsAreNotSwallowed(t *testing.T) {
 	for _, args := range [][]string{
 		{"list-types"},
 		{"list-predicates"},
+		{"list-tolerances"},
 		{"list-instances"},
 		{"list-geometry", "--predicate", "position"},
 	} {
@@ -2686,4 +2699,220 @@ func TestRunListPredicatesAnswersThroughARefusedLoad(t *testing.T) {
 
 	assert.True(t, result.Refused)
 	assert.NotEmpty(t, result.Predicates)
+}
+
+// tolerancesRegistry declares tolerances in two different units, one with a
+// description and one without, so that the listing is seen to report each unit
+// as it was written rather than converting one into the other, and to write a
+// description only where the registry wrote one.
+//
+// They are written out of name order, which is what says whether the listing
+// orders them or reports the order somebody typed them in.
+const tolerancesRegistry = `(project (globalid-namespace "https://example.org/models/tolerances"))
+
+(tolerance setting-out
+  (value 5.0 mm))
+
+(tolerance coincident
+  (value 0.005 m)
+  (description "How far apart two corners may be and still be one point."))
+`
+
+// listTolerancesOf runs list-tolerances over files and decodes its answer.
+func listTolerancesOf(t *testing.T, files map[string]string, args ...string) listTolerancesResult {
+	t.Helper()
+
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"list-tolerances"}, args...), &stdout, &stderr), stderr.String())
+
+	return listed[listTolerancesResult](t, stdout.String())
+}
+
+func TestRunListTolerances(t *testing.T) {
+	testCases := []struct {
+		name               string
+		files              map[string]string
+		args               []string
+		expectedTolerances []listedTolerance
+	}{
+		{
+			name:  "reports every declared tolerance with its value in the unit it was declared in",
+			files: map[string]string{"registry.dfc": tolerancesRegistry},
+			expectedTolerances: []listedTolerance{
+				{Name: "coincident", Value: 0.005, Unit: "m"},
+				{Name: "setting-out", Value: 5, Unit: "mm"},
+			},
+		},
+		{
+			name:  "adds the descriptions under --describe, and none where the registry wrote none",
+			files: map[string]string{"registry.dfc": tolerancesRegistry},
+			args:  []string{"--describe"},
+			expectedTolerances: []listedTolerance{
+				{Name: "coincident", Value: 0.005, Unit: "m", Description: "How far apart two corners may be and still be one point."},
+				{Name: "setting-out", Value: 5, Unit: "mm"},
+			},
+		},
+		{
+			name:               "reports a registry which declares no tolerance as no tolerances at all",
+			files:              map[string]string{"registry.dfc": "(project (globalid-namespace \"https://example.org/e\"))\n"},
+			expectedTolerances: []listedTolerance{},
+		},
+		{
+			name:               "reports an empty model as no tolerances at all",
+			files:              map[string]string{"notes.md": "nothing to see"},
+			expectedTolerances: []listedTolerance{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := listTolerancesOf(t, testCase.files, testCase.args...)
+
+			assert.Equal(t, outputVersion, result.Version)
+			assert.Equal(t, "list-tolerances", result.Command)
+			assert.Equal(t, testCase.expectedTolerances, result.Tolerances)
+		})
+	}
+}
+
+// TestRunListTolerancesAnswersTheSurveyedFixtureExactly is its own function
+// because it asserts the bytes a caller reads rather than the values they
+// decode to: the key order, which fields are written and which are left out.
+func TestRunListTolerancesAnswersTheSurveyedFixtureExactly(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "siting", "surveyed"))
+	require.NoError(t, err)
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-tolerances", "--root", root}, &stdout, &stderr), stderr.String())
+
+	assert.Equal(t, `{"version":2,"command":"list-tolerances","refused":false,"tolerances":[`+
+		`{"name":"boundary-closure","value":0.005,"unit":"m"}]}`+"\n",
+		stdout.String())
+}
+
+// TestRunListTolerancesWritesTheDescriptionOnlyWhereItSays is its own function
+// because it is about which keys reach stdout rather than about what they
+// decode to: an empty description and an absent one decode alike.
+func TestRunListTolerancesWritesTheDescriptionOnlyWhereItSays(t *testing.T) {
+	testCases := []struct {
+		name         string
+		args         []string
+		expectedKeys map[string][]string
+	}{
+		{
+			name: "writes no description without --describe",
+			expectedKeys: map[string][]string{
+				"coincident":  {"name", "unit", "value"},
+				"setting-out": {"name", "unit", "value"},
+			},
+		},
+		{
+			name: "writes a description under --describe only where one was written",
+			args: []string{"--describe"},
+			expectedKeys: map[string][]string{
+				"coincident":  {"description", "name", "unit", "value"},
+				"setting-out": {"name", "unit", "value"},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, map[string]string{"registry.dfc": tolerancesRegistry}))
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitSuccess, run(append([]string{"list-tolerances"}, testCase.args...), &stdout, &stderr), stderr.String())
+
+			entries := entriesOf(t, object(t, stdout.String()), "tolerances")
+			require.Len(t, entries, 2)
+
+			keys := make(map[string][]string, len(entries))
+			for _, entry := range entries {
+				fields, ok := entry.(map[string]any)
+				require.True(t, ok)
+
+				name, _ := fields["name"].(string)
+				keys[name] = slices.Sorted(maps.Keys(fields))
+			}
+
+			assert.Equal(t, testCase.expectedKeys, keys)
+		})
+	}
+}
+
+// TestRunListTolerancesRendersOneLinePerToleranceForAPerson is its own
+// function because it is about stderr, and about stdout not changing with it.
+func TestRunListTolerancesRendersOneLinePerToleranceForAPerson(t *testing.T) {
+	listing := func(t *testing.T, args ...string) (string, string) {
+		t.Helper()
+
+		t.Chdir(tree(t, map[string]string{"registry.dfc": tolerancesRegistry}))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(append([]string{"list-tolerances"}, args...), &stdout, &stderr), stderr.String())
+
+		return stdout.String(), stderr.String()
+	}
+
+	machine, machineReport := listing(t)
+	human, humanReport := listing(t, "--format", formatHuman)
+	loud, _ := listing(t, "--format", formatHuman, "-v")
+
+	assert.Equal(t, machine, human)
+	assert.Equal(t, machine, loud)
+
+	assert.Empty(t, machineReport)
+	assert.Equal(t, "coincident: 0.005 m\n"+
+		"setting-out: 5 mm\n"+
+		"2 tolerances\n", humanReport)
+}
+
+// TestRunListTolerancesListsWhatTheRegistryDeclares is the property the
+// command exists for: the names it lists are exactly the set the
+// undeclared-tolerance hint prints, and each entry's value and unit are the
+// declaration's, so a caller which checks a flag against the listing is
+// checking it against what every derivation will accept.
+func TestRunListTolerancesListsWhatTheRegistryDeclares(t *testing.T) {
+	result := listTolerancesOf(t, model())
+
+	listedNames := make([]string, 0, len(result.Tolerances))
+	for _, declared := range result.Tolerances {
+		listedNames = append(listedNames, declared.Name)
+	}
+
+	graph, _ := dfcad.LoadGraph(".")
+	registry := graph.Registry()
+
+	require.Equal(t, registry.Names(dfcad.SortTolerance), listedNames)
+	require.NotEmpty(t, listedNames)
+
+	for _, entry := range result.Tolerances {
+		declared, ok := registry.Tolerance(entry.Name)
+		require.True(t, ok, entry.Name)
+
+		assert.Equal(t, declared.Value, entry.Value, entry.Name)
+		assert.Equal(t, string(declared.Unit), entry.Unit, entry.Name)
+	}
+
+	t.Run("the undeclared-tolerance hint names the same set", func(t *testing.T) {
+		const outside = "zzzzzzzzzzzzzzzzzzzz"
+		require.NotContains(t, listedNames, outside)
+
+		hint := registry.Undeclared(dfcad.SortTolerance, outside, dfcad.Span{}).Hint
+		for _, name := range listedNames {
+			assert.Contains(t, hint, name)
+		}
+	})
+}
+
+// TestRunListTolerancesAnswersThroughARefusedLoad is its own function because
+// it is about the load rather than the listing: a discovery read answers over a
+// model the load refused, and says so in its object rather than its exit code.
+func TestRunListTolerancesAnswersThroughARefusedLoad(t *testing.T) {
+	result := listTolerancesOf(t, unloadable(t))
+
+	assert.True(t, result.Refused)
+	assert.NotEmpty(t, result.Tolerances)
 }

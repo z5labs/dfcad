@@ -56,6 +56,7 @@ var samples = map[string][]string{
 	"fmt":             {},
 	"list-types":      {},
 	"list-predicates": {},
+	"list-tolerances": {},
 	"list-instances":  {},
 	// A geometric listing is asked in the project's own words for which
 	// predicate the nodes carry, so the predicate is named rather than

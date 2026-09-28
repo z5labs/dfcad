@@ -424,6 +424,51 @@ It is a command of its own rather than a flag on `list-types`, and it is on no g
 [`token-budget.md`](./token-budget.md): the cold start pays nothing for it, and only the caller
 which asks for the vocabulary does.
 
+### `list-tolerances`
+
+The named tolerances the registry declares, with the value and the unit each was declared
+in. These are the names `--tolerance`, `--chord` and every other flag naming a tolerance
+accept — exactly `Registry.Names(dfcad.SortTolerance)`, the set the undeclared-tolerance
+hint prints — and the only spellings those flags take. It takes no arguments and one flag.
+
+| Flag | Meaning |
+|------|---------|
+| `--describe` | Include the one line the registry gives each tolerance. |
+
+```json
+{
+  "version": 2,
+  "command": "list-tolerances",
+  "refused": false,
+  "tolerances": [
+    {"name": "boundary-closure", "value": 0.005, "unit": "m"}
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `refused` | boolean | True where the load refused the model, and what follows was read through it. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
+| `tolerances` | array | One entry per declared tolerance, in name order. Empty rather than null when the registry declares none. |
+| `tolerances[].name` | string | The tolerance name, which is what every flag naming a tolerance takes. |
+| `tolerances[].value` | number | The declared magnitude. |
+| `tolerances[].unit` | string | The unit the magnitude was declared in. Never converted: a tolerance declared in `mm` is listed in `mm`. |
+| `tolerances[].description` | string, optional | The one line the registry gives the tolerance. Written under `--describe`, and absent under it too when the registry wrote none. |
+
+Tolerances come back in name order, so two runs over one model write the same bytes. Each
+entry's keys are written in the order the table gives them.
+
+A tolerance is registry data with a value and a unit and nothing else
+([0012](./decisions/0012-tolerances-are-registry-data.md)), and its unit is the one it was
+declared in ([0005](./decisions/0005-one-linear-unit-per-frame.md)). The listing reports
+both exactly as written, and suggests no tolerance for any operation: which one a check or
+a derivation uses is the caller's to name. The descriptions are asked for rather than
+given, for the reason `list-types`' are.
+
+It is a command of its own rather than a flag on `list-types`, and it is on no gated path of
+[`token-budget.md`](./token-budget.md): the cold start pays nothing for it, and only the caller
+which asks for the vocabulary does.
+
 ### `list-instances`
 
 The instances of one type, or of the whole model. It takes an optional type argument and
