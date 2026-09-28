@@ -1182,3 +1182,104 @@ func TestRunGetWritesTheCombinedFigureImmediatelyAfterTheAccuracy(t *testing.T) 
 		assert.Contains(t, written, fragment)
 	}
 }
+
+// documentedFields is every field the `get` section of docs/machine-output.md
+// names in the first column of one of its tables.
+//
+// A row may name more than one field — `entity.start` and `entity.end` share
+// one — so each backquoted name in the first cell counts.
+func documentedFields(t testing.TB) map[string]bool {
+	t.Helper()
+
+	fields := make(map[string]bool)
+	for line := range strings.SplitSeq(contractSection(t, "get"), "\n") {
+		cells := strings.Split(line, "|")
+		if !strings.HasPrefix(line, "| `") || len(cells) < 3 {
+			continue
+		}
+
+		names := strings.Split(cells[1], "`")
+		for i := 1; i < len(names); i += 2 {
+			fields[names[i]] = true
+		}
+	}
+	return fields
+}
+
+// writtenByGet runs get over the retrieval fixture for one id and returns what
+// reached stdout, undecoded, so that a test can read the keys it actually wrote
+// rather than the ones a Go type happens to declare.
+func writtenByGet(t *testing.T, id string) []byte {
+	t.Helper()
+
+	t.Chdir(tree(t, retrievable()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"get", id}, &stdout, &stderr), stderr.String())
+	return stdout.Bytes()
+}
+
+// TestTheContractDocumentsEveryFieldGetWritesOnTheEntity checks that the `get`
+// section of docs/machine-output.md has a row for every key get writes on
+// "entity", read out of what reached stdout rather than listed here.
+//
+// It is what holds the contract page to the emitter: "assertions" was written
+// on every answer from the day instance-level assertions landed while the page
+// a caller programs against never mentioned it, and nothing noticed.
+func TestTheContractDocumentsEveryFieldGetWritesOnTheEntity(t *testing.T) {
+	documented := documentedFields(t)
+
+	testCases := []struct {
+		name string
+		id   string
+	}{
+		{name: "documents every field of a node carrying assertions", id: "site:S-101"},
+		{name: "documents every field of a vertex", id: "geom:V-01"},
+		{name: "documents every field of an edge", id: "geom:E-01"},
+		{name: "documents every field of a loop", id: "geom:L-01"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var written struct {
+				Entity map[string]json.RawMessage `json:"entity"`
+			}
+			require.NoError(t, json.Unmarshal(writtenByGet(t, testCase.id), &written))
+			require.NotEmpty(t, written.Entity, "get wrote an entity")
+
+			for key := range written.Entity {
+				assert.True(t, documented["entity."+key],
+					"get writes entity.%s on %s and the get section of docs/machine-output.md has no row for it", key, testCase.id)
+			}
+		})
+	}
+}
+
+// TestTheContractDocumentsEveryFieldOfAnAssertion checks that the `get` section
+// of docs/machine-output.md has a row for every key an assertion carries, read
+// out of what get wrote for a node whose assertions between them carry every
+// optional field.
+func TestTheContractDocumentsEveryFieldOfAnAssertion(t *testing.T) {
+	documented := documentedFields(t)
+
+	var written struct {
+		Entity struct {
+			Assertions []map[string]json.RawMessage `json:"assertions"`
+		} `json:"entity"`
+	}
+	require.NoError(t, json.Unmarshal(writtenByGet(t, "site:S-101"), &written))
+	require.NotEmpty(t, written.Entity.Assertions, "the fixture node carries assertions")
+
+	keys := make(map[string]bool)
+	for _, assertion := range written.Entity.Assertions {
+		for key := range assertion {
+			keys[key] = true
+		}
+	}
+	require.True(t, keys["parameters"], "one of the fixture's assertions supplies parameters, so the optional field is exercised")
+
+	for key := range keys {
+		assert.True(t, documented["assertions[]."+key],
+			"get writes assertions[].%s and the get section of docs/machine-output.md has no row for it", key)
+	}
+}

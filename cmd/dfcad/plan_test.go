@@ -1177,6 +1177,23 @@ func TestTheContractNamesEveryReasonAPlanLeavesANodeUndrawn(t *testing.T) {
 func contractRow(t testing.TB, command, field string) string {
 	t.Helper()
 
+	prefix := "| `" + field + "` |"
+	for line := range strings.SplitSeq(contractSection(t, command), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return line
+		}
+	}
+
+	require.Failf(t, "no row for the field", "the %s section of docs/machine-output.md has no row for %s", command, field)
+	return ""
+}
+
+// contractSection is the whole of a command's section of
+// docs/machine-output.md, from under its heading to the next heading of the
+// same level, subsections included.
+func contractSection(t testing.TB, command string) string {
+	t.Helper()
+
 	src, err := os.ReadFile(machineOutput)
 	require.NoError(t, err)
 
@@ -1188,16 +1205,7 @@ func contractRow(t testing.TB, command, field string) string {
 	if end := strings.Index(section, "\n### "); end >= 0 {
 		section = section[:end]
 	}
-
-	prefix := "| `" + field + "` |"
-	for line := range strings.SplitSeq(section, "\n") {
-		if strings.HasPrefix(line, prefix) {
-			return line
-		}
-	}
-
-	require.Failf(t, "no row for the field", "the %s section of docs/machine-output.md has no row for %s", command, field)
-	return ""
+	return section
 }
 
 // undrawnReasons is every constant of type dfcad.UndrawnReason the engine

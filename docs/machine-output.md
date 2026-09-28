@@ -613,7 +613,7 @@ Each of these is a **usage error** — exit `3`, with nothing on stdout:
 
 ### `get`
 
-One thing, by its id, with the claims written on it. It takes one id argument and three
+One thing, by its id, with the claims and the assertions written on it. It takes one id argument and three
 flags.
 
 | Flag | Meaning |
@@ -656,6 +656,13 @@ which came back and so which of the fields to expect.
         "rank": "normal",
         "span": "entities/site.dfc:30:3-36:25"
       }
+    ],
+    "assertions": [
+      {
+        "check": "boundary-loops-close",
+        "parameters": ["(tolerance boundary-closure)"],
+        "span": "entities/site.dfc:51:3-51:61"
+      }
     ]
   }
 }
@@ -683,6 +690,7 @@ which came back and so which of the fields to expect.
 | `entity.retired` | object, optional | How a semantic node stopped existing: `date`, `reason`, and `superseded-by` where something stands in its place. Absent for a node that was not retired. |
 | `entity.span` | span | Where it was written: the file, and the line and column of both ends of the form. |
 | `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
+| `entity.assertions` | array | The assertions written on it, in the order they were written. Empty rather than null when nothing constrains it. |
 
 Every claim carries the evidence for its value, because a value without it is the bare
 number the format exists to stop:
@@ -702,6 +710,23 @@ number the format exists to stop:
 | `claims[].superseded-by` | string, optional | The id of the claim that replaced this one. |
 | `claims[].resolution` | string, optional | What the rule left this claim as: `current`, `tied` or `unranked`. Written under `--claims resolved` and absent otherwise, because under `--claims full` nothing has been resolved. |
 | `claims[].span` | span | Where the claim was written. |
+
+Each assertion is what was written on the thing, rather than what the check registry makes
+of it:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `assertions[].check` | string | The name of the check the assertion names. |
+| `assertions[].parameters` | array, optional | The parameters it supplies, each rendered the way it was written — `(tolerance boundary-closure)` rather than the value the tolerance stands for. Absent when the check takes none. |
+| `assertions[].span` | span | Where the assertion was written, which is inside the form of the thing it constrains. |
+
+The claims are what is known about the thing; the assertions are what has to hold of it.
+They come back together because retrieving a thing is how somebody finds out about it, and
+what it may not stop measuring is half of that. **The invariants of its type are not here:**
+those are stated on the type, and this call is about this thing. An assertion naming a
+check nothing registers is a load error, reported on stderr like any other diagnostic, and
+is **still reported here** — a retrieval that quietly dropped it would read as though
+nobody had written it.
 
 Each record of `entity.observation-records` is one shot, in log order across every file the
 thing links to:
