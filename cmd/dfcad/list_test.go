@@ -114,6 +114,14 @@ const listRegistry = `(project
   (value 0.01 m)
   (description "How far a straight segment standing in for a curve may fall from it."))
 
+(tolerance wall-reach
+  (value 2.5 m)
+  (description "Wide enough that the midpoint of a wall is near both of its ends."))
+
+(tolerance setting-out
+  (value 5.0 mm)
+  (description "Declared in a unit no frame of this model is in."))
+
 (route buildings
   (kind Building)
   (type OfficeBuilding)
@@ -2075,5 +2083,356 @@ func TestOnceRefusesASecondValue(t *testing.T) {
 			assert.Equal(t, flagPredicate, repeatedFlag.Flag)
 			assert.Equal(t, []string(testCase.written), repeatedFlag.Values)
 		})
+	}
+}
+
+// nearby is one vertex a --near lookup listed, as "id at distance", which is
+// every field the lookup adds in one comparable value.
+type nearby struct {
+	id       string
+	at       []float64
+	distance float64
+}
+
+// nearbyOf is the vertices a --near listing carries, in the order it carries
+// them, requiring each to have said where it is and how far away.
+func nearbyOf(t *testing.T, result listGeometryResult) []nearby {
+	t.Helper()
+
+	out := make([]nearby, 0, len(result.Nodes))
+	for _, node := range result.Nodes {
+		require.Equal(t, familyVertex, node.Family, "only a vertex is at a point")
+		require.NotNil(t, node.Distance, "%s carries no distance", node.ID)
+
+		out = append(out, nearby{id: node.ID, at: node.At, distance: *node.Distance})
+	}
+	return out
+}
+
+func TestRunListGeometryNear(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []nearby
+	}{
+		{
+			name: "lists the vertex exactly at the point",
+			args: []string{"--near", "0 0 0", "--tolerance", "coincident", "--frame", "frame:building"},
+			expected: []nearby{
+				{id: "geom:V-01", at: []float64{0, 0, 0}, distance: 0},
+			},
+		},
+		{
+			name: "lists a vertex inside the tolerance with how far it is",
+			args: []string{"--near", "20 0.003 0", "--tolerance", "coincident", "--frame", "frame:building"},
+			expected: []nearby{
+				{id: "geom:V-11", at: []float64{20, 0, 0}, distance: 0.003},
+			},
+		},
+		{
+			// The midpoint of Room B's north wall is two metres from both of its
+			// ends, so both are listed, in id order rather than nearest first.
+			name: "lists two vertices within the tolerance in id order",
+			args: []string{"--near", "2 0 0", "--tolerance", "wall-reach", "--frame", "frame:building"},
+			expected: []nearby{
+				{id: "geom:V-01", at: []float64{0, 0, 0}, distance: 2},
+				{id: "geom:V-02", at: []float64{4, 0, 0}, distance: 2},
+			},
+		},
+		{
+			name:     "lists nothing when no vertex is within the tolerance",
+			args:     []string{"--near", "7 7 0", "--tolerance", "coincident", "--frame", "frame:building"},
+			expected: []nearby{},
+		},
+		{
+			// The building frame puts Room B's north-west corner at the origin,
+			// and the site grid has nothing there: the lookup is in the one
+			// frame it was asked in, and nothing is carried between frames.
+			name:     "looks only in the frame it was asked in",
+			args:     []string{"--near", "0 0 0", "--tolerance", "coincident", "--frame", "frame:site-grid"},
+			expected: []nearby{},
+		},
+		{
+			name: "accepts the vertex family beside a point",
+			args: []string{
+				"--near", "125 209.004 0", "--tolerance", "coincident", "--frame", "frame:site-grid",
+				"--family", "vertex",
+			},
+			expected: []nearby{
+				{id: "geom:V-24", at: []float64{125, 209, 0}, distance: 209.004 - 209},
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := listGeometryOf(t, append([]string{"--predicate", "position"}, testCase.args...)...)
+
+			got := nearbyOf(t, result)
+			require.Len(t, got, len(testCase.expected))
+
+			for i, expected := range testCase.expected {
+				assert.Equal(t, expected.id, got[i].id)
+				assert.Equal(t, expected.at, got[i].at)
+				assert.InDelta(t, expected.distance, got[i].distance, 1e-9)
+			}
+		})
+	}
+}
+
+// TestRunListGeometryNearEchoesTheQuery is its own function because it is about
+// the object's "near" field rather than about which vertices were listed: an
+// answer which is an empty list means nothing without the point and the
+// tolerance it was asked with.
+func TestRunListGeometryNearEchoesTheQuery(t *testing.T) {
+	result := listGeometryOf(t,
+		"--predicate", "position", "--frame", "frame:building",
+		"--near", "7 7 0", "--tolerance", "coincident",
+	)
+
+	require.NotNil(t, result.Near)
+	assert.Equal(t, []float64{7, 7, 0}, result.Near.At)
+	assert.Equal(t, toleranceEntry{Name: "coincident", Value: 0.005, Unit: "m"}, result.Near.Tolerance)
+	assert.Empty(t, result.Nodes)
+}
+
+// TestRunListGeometryNearWritesAnExactHitAsZero is its own function because it
+// asserts about the bytes: a vertex exactly at the point carries a distance of
+// 0 rather than leaving the field out, which is what an omitted zero would look
+// like to a caller.
+func TestRunListGeometryNearWritesAnExactHitAsZero(t *testing.T) {
+	t.Chdir(tree(t, model()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{
+		"list-geometry", "--predicate", "position", "--frame", "frame:building",
+		"--near", "0 0 0", "--tolerance", "coincident",
+	}, &stdout, &stderr), stderr.String())
+
+	assert.Contains(t, stdout.String(), `"at":[0,0,0],"distance":0}`)
+}
+
+// TestRunListGeometryWithoutNearIsUnchanged checks that a listing which asks
+// about no point writes none of the fields a lookup adds.
+func TestRunListGeometryWithoutNearIsUnchanged(t *testing.T) {
+	t.Chdir(tree(t, model()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-geometry", "--predicate", "position"}, &stdout, &stderr), stderr.String())
+
+	answer := listed[map[string]any](t, stdout.String())
+	assert.NotContains(t, answer, "near")
+
+	for _, entry := range entriesOf(t, answer, "nodes") {
+		node, ok := entry.(map[string]any)
+		require.True(t, ok)
+		assert.NotContains(t, node, "at")
+		assert.NotContains(t, node, "distance")
+	}
+}
+
+func TestRunListGeometryNearRefusesWhatItCannotAsk(t *testing.T) {
+	testCases := []struct {
+		name   string
+		args   []string
+		asked  nearAsked
+		expect func(t *testing.T, err error)
+	}{
+		{
+			name:  "refuses a point without a frame",
+			args:  []string{"--near", "0 0 0", "--tolerance", "coincident"},
+			asked: nearAsked{point: "0 0 0", tolerance: "coincident", predicate: "position"},
+			expect: func(t *testing.T, err error) {
+				var got RequiredFlagError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, flagNear, got.Flag)
+				assert.Equal(t, []string{flagFrame}, got.Requires)
+			},
+		},
+		{
+			name:  "refuses a point without a tolerance",
+			args:  []string{"--near", "0 0 0", "--frame", "frame:building"},
+			asked: nearAsked{point: "0 0 0", predicate: "position", frames: []string{"frame:building"}},
+			expect: func(t *testing.T, err error) {
+				var got RequiredFlagError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, flagNear, got.Flag)
+				assert.Equal(t, []string{flagTolerance}, got.Requires)
+			},
+		},
+		{
+			name:  "refuses a tolerance without a point",
+			args:  []string{"--tolerance", "coincident", "--frame", "frame:building"},
+			asked: nearAsked{tolerance: "coincident", predicate: "position", frames: []string{"frame:building"}},
+			expect: func(t *testing.T, err error) {
+				var got RequiredFlagError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, flagTolerance, got.Flag)
+				assert.Equal(t, []string{flagNear}, got.Requires)
+			},
+		},
+		{
+			name: "refuses a point in two frames",
+			args: []string{
+				"--near", "0 0 0", "--tolerance", "coincident",
+				"--frame", "frame:building", "--frame", "frame:site-grid",
+			},
+			asked: nearAsked{
+				point: "0 0 0", tolerance: "coincident", predicate: "position",
+				frames: []string{"frame:building", "frame:site-grid"},
+			},
+			expect: func(t *testing.T, err error) {
+				var got RepeatedFlagError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, flagFrame, got.Flag)
+			},
+		},
+		{
+			name: "refuses the edge family beside a point",
+			args: []string{"--near", "0 0 0", "--tolerance", "coincident", "--frame", "frame:building", "--family", "edge"},
+			asked: nearAsked{
+				point: "0 0 0", tolerance: "coincident", predicate: "position",
+				frames: []string{"frame:building"}, families: []string{familyEdge},
+			},
+			expect: func(t *testing.T, err error) {
+				var got NearFamilyError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, familyEdge, got.Family)
+			},
+		},
+		{
+			name: "refuses the loop family beside a point",
+			args: []string{
+				"--near", "0 0 0", "--tolerance", "coincident", "--frame", "frame:building",
+				"--family", "vertex", "--family", "loop",
+			},
+			asked: nearAsked{
+				point: "0 0 0", tolerance: "coincident", predicate: "position",
+				frames: []string{"frame:building"}, families: []string{familyVertex, familyLoop},
+			},
+			expect: func(t *testing.T, err error) {
+				var got NearFamilyError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, familyLoop, got.Family)
+			},
+		},
+		{
+			name:  "refuses a point with fewer components than the predicate declares",
+			args:  []string{"--near", "0 0", "--tolerance", "coincident", "--frame", "frame:building"},
+			asked: nearAsked{point: "0 0", tolerance: "coincident", predicate: "position", frames: []string{"frame:building"}},
+			expect: func(t *testing.T, err error) {
+				var got dfcad.MalformedValueError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, dfcad.ValueWrongCount, got.Reason)
+				assert.Equal(t, "0 0", got.Written)
+			},
+		},
+		{
+			name:  "refuses a point with a component which is not a number",
+			args:  []string{"--near", "0 north 0", "--tolerance", "coincident", "--frame", "frame:building"},
+			asked: nearAsked{point: "0 north 0", tolerance: "coincident", predicate: "position", frames: []string{"frame:building"}},
+			expect: func(t *testing.T, err error) {
+				var got dfcad.MalformedValueError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, dfcad.ValueNotANumber, got.Reason)
+				assert.Equal(t, "0 north 0", got.Written)
+			},
+		},
+		{
+			name:  "refuses a predicate which declares no coordinate",
+			args:  []string{"--near", "0 0 0", "--tolerance", "coincident", "--frame", "frame:building"},
+			asked: nearAsked{point: "0 0 0", tolerance: "coincident", predicate: "setback", frames: []string{"frame:building"}},
+			expect: func(t *testing.T, err error) {
+				var got dfcad.NotCoordinateError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, "setback", got.Predicate)
+				assert.Equal(t, dfcad.ShapeScalar, got.Shape)
+			},
+		},
+		{
+			name:  "refuses a tolerance declared in a unit other than the frame's",
+			args:  []string{"--near", "0 0 0", "--tolerance", "setting-out", "--frame", "frame:building"},
+			asked: nearAsked{point: "0 0 0", tolerance: "setting-out", predicate: "position", frames: []string{"frame:building"}},
+			expect: func(t *testing.T, err error) {
+				var got dfcad.ToleranceUnitError
+				require.ErrorAs(t, err, &got)
+				assert.Equal(t, dfcad.Unit("m"), got.Want)
+				assert.Equal(t, dfcad.ID("frame:building"), got.Frame)
+				assert.Equal(t, "setting-out", got.Tolerance.Name)
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, model())
+
+			predicate := testCase.asked.predicate
+			args := append([]string{"list-geometry", "--root", root, "--predicate", predicate}, testCase.args...)
+
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitUsage, run(args, &stdout, &stderr), stderr.String())
+			assert.Empty(t, stdout.String())
+
+			// The same refusal, as a value: the check the command makes before the
+			// load, and the lookup it makes after it.
+			err := testCase.asked.check()
+			if err == nil {
+				graph, _ := dfcad.LoadGraph(root)
+				_, err = testCase.asked.lookup(graph)
+			}
+			testCase.expect(t, err)
+		})
+	}
+}
+
+// TestRunListGeometryNearAgreesWithScaffoldLoop is the property the lookup is
+// for: at every corner of a scaffold, the vertex scaffold-loop snaps to is one
+// of the vertices --near lists nearest to that corner, at the distance the
+// scaffold reported, and a corner the scaffold snapped nowhere is one where
+// --near lists nothing.
+func TestRunListGeometryNearAgreesWithScaffoldLoop(t *testing.T) {
+	corners := []string{"0.003 0 0", "4 0.002 0", "4 3 0", "0.001 3.004 0", "0 1.5 0"}
+
+	root := tree(t, model())
+
+	stdout, _ := invoke(t, exitSuccess, root, append(scaffold(corners...), "--dry-run")...)
+	scaffolded := listed[scaffoldResult](t, stdout)
+
+	snapped := map[int]snapEntry{}
+	for _, snap := range scaffolded.Snaps {
+		snapped[snap.Corner] = snap
+	}
+	require.Len(t, snapped, 4, "the fixture corners are near four existing vertices and one is not")
+
+	for index, corner := range corners {
+		stdout, _ := invoke(t, exitSuccess, root,
+			"list-geometry", "--predicate", "position", "--frame", "frame:building",
+			"--near", corner, "--tolerance", "coincident",
+		)
+		found := nearbyOf(t, listed[listGeometryResult](t, stdout))
+
+		snap, ok := snapped[index+1]
+		if !ok {
+			assert.Empty(t, found, "corner %d snapped to nothing, and --near listed %v", index+1, found)
+			continue
+		}
+
+		require.NotEmpty(t, found, "corner %d snapped to %s, and --near listed nothing", index+1, snap.Vertex)
+
+		smallest := found[0].distance
+		for _, near := range found {
+			smallest = min(smallest, near.distance)
+		}
+
+		var nearest []string
+		for _, near := range found {
+			if near.distance == smallest {
+				nearest = append(nearest, near.id)
+			}
+		}
+
+		assert.Contains(t, nearest, snap.Vertex, "corner %d", index+1)
+		assert.InDelta(t, snap.Distance, smallest, 1e-12, "corner %d", index+1)
 	}
 }

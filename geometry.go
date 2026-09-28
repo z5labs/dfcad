@@ -903,14 +903,11 @@ type scaffolder struct {
 	edgeOf   string
 	loopOf   string
 
-	// at is where each candidate vertex is: every vertex of the model written
-	// in this frame whose position resolves, plus every vertex this run has
-	// minted.
-	at map[ID][]float64
-
-	// order is the ids of at, in the order they became candidates, so that two
-	// runs over one model pick the same vertex where two are equally near.
-	order []ID
+	// index is where each candidate vertex is: every vertex of the model
+	// written in this frame whose position resolves, plus every vertex this run
+	// has minted. It is read by the rule [Graph.VerticesNear] reads by, so a
+	// lookup and a scaffold agree about which vertex a corner lands on.
+	index *vertexIndex
 
 	// read is where each corner of the list settled, in corner order.
 	//
@@ -1039,7 +1036,6 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 		vertexOf:  vertexOf,
 		edgeOf:    edgeOf,
 		loopOf:    loopOf,
-		at:        map[ID][]float64{},
 		built:     Scaffolding{Snaps: []Snap{}, Tolerance: tolerance, Bounds: spec.Bounds},
 	}
 
@@ -1048,52 +1044,15 @@ func (tx *Tx) scaffolder(spec ScaffoldSpec, override string) (*scaffolder, error
 	return builder, nil
 }
 
-// candidates reads where every vertex of the model written in this frame is.
-//
-// A vertex whose position does not resolve is not a candidate. That is a state
-// and not a failure — nothing was claimed about it, or the claims tie and the tie
-// is unbroken — and a corner cannot be said to land on a vertex nobody can say
-// the whereabouts of. One whose only position states no accuracy is a
-// candidate: it is unranked rather than unknown, and is read wherever the model
-// is, by the rule [currentClaim] states.
+// candidates reads where every vertex of the model written in this frame is,
+// by the rule [indexVertices] states.
 func (s *scaffolder) candidates() {
-	registry := s.tx.graph.Registry()
-
-	for vertex := range s.tx.graph.Topology().Vertices() {
-		if vertex.Frame() != s.spec.Frame {
-			continue
-		}
-
-		resolution, err := s.tx.graph.Claims().Resolve(vertex.ID(), s.spec.Predicate, registry)
-		if err != nil {
-			continue
-		}
-
-		claim, ok := currentClaim(resolution)
-		if !ok {
-			continue
-		}
-
-		value := claim.Value()
-		if value.Unit() != s.unit {
-			continue
-		}
-
-		components, ok := value.Coordinate()
-		if !ok {
-			continue
-		}
-
-		s.record(vertex.ID(), components)
-	}
+	s.index = indexVertices(s.tx.graph, s.spec.Frame, s.spec.Predicate, s.unit)
 }
 
 // record adds a vertex to the candidates a corner may land on.
 func (s *scaffolder) record(id ID, components []float64) {
-	if _, held := s.at[id]; !held {
-		s.order = append(s.order, id)
-	}
-	s.at[id] = components
+	s.index.record(id, components)
 }
 
 // corners reads the corner list into the ring the loop will traverse.
@@ -1260,23 +1219,7 @@ func (s *scaffolder) revisited(index int, components []float64) error {
 // order rather than an arbitrary choice so that two runs over one model reuse the
 // same vertex.
 func (s *scaffolder) nearest(components []float64) (ID, float64, bool) {
-	var (
-		found   ID
-		nearest float64
-	)
-
-	for _, id := range s.order {
-		gap, ok := distanceBetween(s.at[id], components)
-		if !ok || gap > s.tolerance.Value {
-			continue
-		}
-
-		if found == "" || gap < nearest {
-			found, nearest = id, gap
-		}
-	}
-
-	return found, nearest, found != ""
+	return s.index.nearest(components, s.tolerance.Value)
 }
 
 // write settles the ring's edges, writes the loop over them, and says what the

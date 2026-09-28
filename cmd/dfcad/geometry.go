@@ -196,7 +196,9 @@ twice.
 
 --dry-run reports every node which would be created and every snap which would
 happen, which is what makes it worth running first: the ids, the reuses and the
-tolerance which decided them are the whole of what is being checked.
+tolerance which decided them are the whole of what is being checked. To ask
+which vertex one point lands on without a whole closed list, and without the
+evidence flags, "dfcad list-geometry --near" answers by the same rule.
 
 ` + geometryFlagsHelp + `
 ` + globalFlagsHelp + `
