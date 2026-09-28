@@ -6,7 +6,10 @@
 package dfcad
 
 import (
+	"cmp"
 	"iter"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -257,4 +260,114 @@ func edgesOf(boundaries *Boundaries, region *SemanticNode) []*Edge {
 		out = append(out, edge)
 	}
 	return out
+}
+
+// tieRegistry, tieGeometry and the tie rooms are a plan in which a room two
+// steps from the subject is bordered by two rooms one step from it. Room C
+// shares geom:E-AC with room A and geom:E-BC with room B, and A and B both
+// share geom:E-1 with the start room, so either could be the one C is reached
+// from.
+const (
+	tieRegistry = `(project (label "Tie fixture") (globalid-namespace "https://example.org/models/tie"))
+(namespace frame (description "Frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace site (description "Semantic nodes."))
+(frame frame:b (label "Grid") (unit m))
+(type Room (kind Space) (geometry area) (description "A room."))
+`
+
+	tieGeometry = `(vertex geom:V-1 (frame frame:b))
+(vertex geom:V-2 (frame frame:b))
+(edge geom:E-1 (frame frame:b) (vertices geom:V-1 geom:V-2))
+(edge geom:E-S (frame frame:b) (vertices geom:V-2 geom:V-1))
+(edge geom:E-AC (frame frame:b) (vertices geom:V-2 geom:V-1))
+(edge geom:E-BC (frame frame:b) (vertices geom:V-2 geom:V-1))
+(loop geom:L-S (frame frame:b) (edges geom:E-1 geom:E-S))
+(loop geom:L-A (frame frame:b) (edges geom:E-1 geom:E-AC))
+(loop geom:L-B (frame frame:b) (edges geom:E-1 geom:E-BC))
+(loop geom:L-C (frame frame:b) (edges geom:E-AC geom:E-BC))
+`
+
+	tieStart = `(node site:R-S (label "Start") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-S))
+`
+	tieFar = `(node site:R-C (label "Far") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-C))
+`
+	tieA = `(node site:R-A (label "A") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-A))
+`
+	tieB = `(node site:R-B (label "B") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-B))
+`
+)
+
+// TestAdjacencyDoesNotDependOnWhichFileANodeIsIn is its own function because it
+// asserts across two models rather than within one: the same rooms written into
+// different files are the same plan, and a walk over them reaches every room
+// from the same neighbour through the same edges.
+//
+// Moving room A into a file read after room B's is what used to change the
+// answer, because the walk expanded rooms in the order it had read them.
+func TestAdjacencyDoesNotDependOnWhichFileANodeIsIn(t *testing.T) {
+	layouts := []struct {
+		name  string
+		files map[string]string
+	}{
+		{
+			name: "with room A read before room B",
+			files: map[string]string{
+				"registry.dfc":          tieRegistry,
+				"entities/geometry.dfc": tieGeometry,
+				"entities/a.dfc":        tieStart + tieFar + tieA,
+				"entities/b.dfc":        tieB,
+			},
+		},
+		{
+			name: "with room A read after room B",
+			files: map[string]string{
+				"registry.dfc":          tieRegistry,
+				"entities/geometry.dfc": tieGeometry,
+				"entities/a.dfc":        tieStart + tieFar,
+				"entities/b.dfc":        tieB,
+				"entities/z.dfc":        tieA,
+			},
+		},
+	}
+
+	// Room C is reached from room A, the neighbour with the smaller id, and so
+	// through the edge it shares with room A.
+	expected := []neighbour{
+		{node: "site:R-A", depth: 1, via: []ID{"geom:E-1"}},
+		{node: "site:R-B", depth: 1, via: []ID{"geom:E-1"}},
+		{node: "site:R-C", depth: 2, via: []ID{"geom:E-AC"}},
+	}
+
+	for _, layout := range layouts {
+		t.Run("reaches a room from the neighbour with the smallest id "+layout.name, func(t *testing.T) {
+			root := tree(t, layout.files)
+
+			registry, diags := LoadRegistry(root)
+			require.Empty(t, diags)
+
+			nodes, diags := LoadNodes(root, registry)
+			require.Empty(t, diags)
+
+			topology, diags := LoadTopology(root, registry)
+			require.Empty(t, diags)
+
+			boundaries, diags := ResolveBoundaries(nodes, topology)
+			require.Empty(t, diags)
+
+			start, ok := nodes.Node("site:R-S")
+			require.True(t, ok)
+
+			// Compared in depth and then id order, the order the answer is
+			// reported in. The order the walk yields a level in is the order
+			// it discovers it, which is not what this asserts: which node a
+			// result was reached from, and so its via, is.
+			got := bordering(t, boundaries.AdjacentTo(start, Unbounded))
+			slices.SortStableFunc(got, func(x, y neighbour) int {
+				return cmp.Or(cmp.Compare(x.depth, y.depth), strings.Compare(string(x.node), string(y.node)))
+			})
+
+			assert.Equal(t, expected, got)
+		})
+	}
 }

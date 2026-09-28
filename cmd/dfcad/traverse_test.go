@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1570,4 +1571,86 @@ func TestTraverseFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
 				testCase.flag, testCase.first, testCase.second, "results", traversalOrder)
 		})
 	}
+}
+
+// tieFiles is a plan in which a room two steps from site:R-S is bordered by two
+// rooms one step from it, with room A written in whichever file is named. Room
+// C shares geom:E-AC with room A and geom:E-BC with room B.
+func tieFiles(roomAIn string) map[string]string {
+	files := map[string]string{
+		"registry.dfc": `(project (label "Tie fixture") (globalid-namespace "https://example.org/models/tie"))
+(namespace frame (description "Frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace site (description "Semantic nodes."))
+(frame frame:b (label "Grid") (unit m))
+(type Room (kind Space) (geometry area) (description "A room."))
+`,
+		"entities/geometry.dfc": `(vertex geom:V-1 (frame frame:b))
+(vertex geom:V-2 (frame frame:b))
+(edge geom:E-1 (frame frame:b) (vertices geom:V-1 geom:V-2))
+(edge geom:E-S (frame frame:b) (vertices geom:V-2 geom:V-1))
+(edge geom:E-AC (frame frame:b) (vertices geom:V-2 geom:V-1))
+(edge geom:E-BC (frame frame:b) (vertices geom:V-2 geom:V-1))
+(loop geom:L-S (frame frame:b) (edges geom:E-1 geom:E-S))
+(loop geom:L-A (frame frame:b) (edges geom:E-1 geom:E-AC))
+(loop geom:L-B (frame frame:b) (edges geom:E-1 geom:E-BC))
+(loop geom:L-C (frame frame:b) (edges geom:E-AC geom:E-BC))
+`,
+		"entities/a.dfc": `(node site:R-S (label "Start") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-S))
+(node site:R-C (label "Far") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-C))
+`,
+		"entities/b.dfc": `(node site:R-B (label "B") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-B))
+`,
+	}
+
+	files[roomAIn] += `(node site:R-A (label "A") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-A))
+`
+
+	return files
+}
+
+// TestTraverseAdjacencyIsTheSameWhicheverFileANodeIsIn is its own function
+// because it compares two models rather than asserting one: moving a room into
+// another file changes nothing about the plan, so it changes nothing about the
+// bytes an adjacency walk writes — including which neighbour a room two steps
+// away was reached from, and so the edges its via names.
+func TestTraverseAdjacencyIsTheSameWhicheverFileANodeIsIn(t *testing.T) {
+	once := func(t *testing.T, roomAIn string) string {
+		t.Helper()
+
+		t.Chdir(tree(t, tieFiles(roomAIn)))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(
+			[]string{"traverse", queryAdjacentTo, "--depth", depthAll, "site:R-S"}, &stdout, &stderr,
+		), stderr.String())
+
+		return stdout.String()
+	}
+
+	before := once(t, "entities/a.dfc")
+	after := once(t, "entities/z.dfc")
+
+	// Every byte but the moved room's span, which says where it is written and
+	// so is the one thing that is meant to move with it.
+	assert.Equal(t, withoutSpans(t, before), withoutSpans(t, after))
+
+	far, ok := resultFor(listed[traverseResult](t, before), "site:R-C")
+	require.True(t, ok)
+	assert.Equal(t, []string{"geom:E-AC"}, far.Via, "reached from site:R-A, the nearer room with the smaller id")
+}
+
+// spanOf is a span as traverse writes one, with the comma which separates it
+// from the key before it.
+var spanOf = regexp.MustCompile(`,"span":"[^"]*"`)
+
+// withoutSpans is what traverse wrote with every span removed and every other
+// byte left where it was, so two of them are equal exactly when everything
+// around the spans is.
+func withoutSpans(t *testing.T, stdout string) string {
+	t.Helper()
+
+	require.Regexp(t, spanOf, stdout, "the answer carries spans to remove")
+
+	return spanOf.ReplaceAllString(stdout, "")
 }

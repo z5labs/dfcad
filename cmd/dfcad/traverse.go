@@ -78,7 +78,10 @@ satisfied by any of its values.
 Results come back in depth order and then in id order, so two runs over one
 model diff against each other and moving a node between files changes nothing.
 The edges of a boundary are the exception: they come back in the order the
-loops traverse them, because that order is the model's own.
+loops traverse them, because that order is the model's own. The same holds for
+which thing an adjacent result was reached from: past the first step, where
+several things a step nearer share an edge with it, it is the one with the
+smallest id, and its via names the edges shared with that one.
 
 An id nothing in the model holds is a usage error naming it, and naming the
 nearest id there is, exactly as ` + "`dfcad get`" + ` reports one. Every query but
