@@ -994,7 +994,7 @@ without the flag answers.
 ### `traverse`
 
 A walk of the model: what contains what, what belongs to what, and what borders what. It
-takes a query, an id, and five flags.
+takes a query, an id, and seven flags.
 
 | Flag | Meaning |
 |------|---------|
@@ -1003,6 +1003,8 @@ takes a query, an id, and five flags.
 | `--type <name>` | Only results that declare this type. [Repeatable](#filters). |
 | `--cross-virtual` | `adjacent-to` only. An edge nothing backs may be crossed. |
 | `--cross-type <name>` | `adjacent-to` only. An edge may be crossed when at least one element backing it declares this type. Repeatable, and any of its values allows a crossing. Unlike a [filter](#filters), it decides what is walked and not only what is reported. |
+| `--walk-kind <kind>` | `adjacent-to` only. Enter — report, and walk through — only things that declare this kind. Repeatable, and any of its values will do. Unlike a [filter](#filters), it decides what is walked and not only what is reported. |
+| `--walk-type <name>` | `adjacent-to` only. Enter — report, and walk through — only things that declare this type. Repeatable, and any of its values will do. Unlike a [filter](#filters), it decides what is walked and not only what is reported. |
 
 | Query | Answers | Relation |
 |-------|---------|----------|
@@ -1111,17 +1113,49 @@ edge, so nothing of that type can back one and the walk could never cross anythi
 Either flag written beside any query but `adjacent-to` is a usage error, because only an
 adjacency walk crosses edges.
 
-The reachability question — which rooms can be reached from the entrance through a door or
-an open floor — is one call:
+What `adjacent-to` may enter is everything that shares a crossable edge, unless it is told
+otherwise. With neither `--walk-kind` nor `--walk-type` written, the answer is the one above.
+With either written, a thing is **entered** — reported, and walked through — only when it
+satisfies each walk flag given:
+
+- its `kind` is one of the `--walk-kind` values, where `--walk-kind` was written, and
+- its `type` is one of the `--walk-type` values, where `--walk-type` was written.
+
+A thing that is not entered is neither reported nor walked through. That is what the crossing
+flags cannot say on their own: a site, zone or storey whose outline is drawn with the same
+edges as the rooms along its side shares an edge with each of them, so a walk which may enter
+it steps from one room onto the site and from the site into a room on its far side, and
+reports two rooms which share no edge as reachable from each other. When those outside edges
+are virtual, `--cross-virtual` crosses them. `--walk-kind Space` does not step onto the site
+at all.
+
+The walk starts from the subject whatever the subject declares, so a walk from a site with
+`--walk-kind Space` reports the rooms along its outline. `from` is always a thing that was
+entered, or the subject. `--kind` and `--type` sit beside the walk flags and still narrow only
+what is reported: `--walk-kind Space --type Bedroom` walks through every space and reports the
+bedrooms.
+
+A `--walk-kind` naming none of the seven kinds is a usage error, exactly as it is for
+`--kind`, and so is a `--walk-type` the registry does not declare, exactly as it is for
+`--type`. Either flag written beside any query but `adjacent-to` is a usage error, because only
+an adjacency walk chooses what it walks through.
+
+The reachability question — which spaces can be reached from the entrance through a door or
+across open floor — is two calls. One lists every space there is, the other every space
+reached:
 
 ```sh
-dfcad traverse adjacent-to --depth all --cross-virtual --cross-type Doorway site:S-113 \
-  | jq -r '.results[].id'
+dfcad list-instances --kind Space | jq -r '.instances[].id' | sort > spaces
+dfcad traverse adjacent-to --depth all --cross-virtual --cross-type Doorway --walk-kind Space site:S-113 \
+  | jq -r '.results[].id, .subject' | sort > reached
+comm -23 spaces reached
 ```
 
-A space in the model that is missing from that list is one nothing reaches through a door or
-across an open line, which is a closet drawn with no opening or a room sealed off when it was
-redrawn.
+A space in the first list that is missing from the second is one nothing reaches through a
+door or across an open line, which is a closet drawn with no opening or a room sealed off when
+it was redrawn. Without `--walk-kind Space`, a site or storey outline sharing virtual edges
+with the rooms along its side would carry the walk around the outside of the building and
+hide exactly those.
 
 Depth is bounded by default, because a traversal of a model nobody has read should not be
 able to return the whole of it by accident; `--depth all` is how a caller asks for that on

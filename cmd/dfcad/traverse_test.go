@@ -897,6 +897,36 @@ func TestTraverseUsageErrors(t *testing.T) {
 			expected: "--cross-type says nothing under bounds",
 		},
 		{
+			name:     "reports a kind to walk through which names none of the kinds",
+			args:     []string{"traverse", queryAdjacentTo, "--walk-kind", "Room", "site:S-101"},
+			expected: "unknown kind Room",
+		},
+		{
+			name:     "reports a second kind to walk through which names none of the kinds",
+			args:     []string{"traverse", queryAdjacentTo, "--walk-kind", "Space", "--walk-kind", "Rooms", "site:S-101"},
+			expected: "unknown kind Rooms",
+		},
+		{
+			name:     "reports a type to walk through which the registry does not declare",
+			args:     []string{"traverse", queryAdjacentTo, "--walk-type", "Lobby", "site:S-101"},
+			expected: "unknown type Lobby",
+		},
+		{
+			name:     "refuses a kind to walk through beside a query which is not an adjacency walk",
+			args:     []string{"traverse", queryContains, "--walk-kind", "Space", "site:S-01"},
+			expected: "--walk-kind says nothing under contains",
+		},
+		{
+			name:     "refuses a type to walk through beside the query whose results are edges",
+			args:     []string{"traverse", queryBoundaryOf, "--walk-type", "MeetingRoom", "site:S-101"},
+			expected: "--walk-type says nothing under boundary-of",
+		},
+		{
+			name:     "refuses a type to walk through beside the query which walks from a shape",
+			args:     []string{"traverse", queryBounds, "--walk-type", "MeetingRoom", "geom:E-02"},
+			expected: "--walk-type says nothing under bounds",
+		},
+		{
 			name: "refuses a type written twice beside the query whose results declare none",
 			args: []string{
 				"traverse", queryBoundaryOf, "--type", "MeetingRoom", "--type", "MeetingRoom", "site:S-101",
@@ -1088,10 +1118,36 @@ func TestFlagNotApplicableCarriesWhichAndWhy(t *testing.T) {
 		}
 	})
 
+	t.Run("refuses a walk filter beside every query but adjacent-to, saying why", func(t *testing.T) {
+		for _, asked := range queries {
+			for _, entering := range []string{flagWalkKind, flagWalkType} {
+				err := checkFlags(asked, map[string]bool{entering: true})
+
+				if asked.name == queryAdjacentTo {
+					assert.NoError(t, err, "%s honours --%s", asked.name, entering)
+					continue
+				}
+
+				var refused FlagNotApplicableError
+				require.ErrorAs(t, err, &refused, "%s refuses --%s", asked.name, entering)
+				assert.Equal(t, entering, refused.Flag)
+				assert.Equal(t, asked.name, refused.Query)
+				assert.Equal(t, enteringNotApplicable, refused.Reason)
+			}
+		}
+	})
+
 	// Every query refuses exactly what it declares it cannot honour, and none of
 	// them is refused when it was not written.
 	for _, asked := range queries {
 		assert.NoError(t, checkFlags(asked, nil))
+
+		if asked.enters {
+			assert.NoError(t, checkFlags(asked, map[string]bool{flagWalkKind: true, flagWalkType: true}), asked.name)
+		} else {
+			assert.Error(t, checkFlags(asked, map[string]bool{flagWalkKind: true}), asked.name)
+			assert.Error(t, checkFlags(asked, map[string]bool{flagWalkType: true}), asked.name)
+		}
 
 		if asked.crosses {
 			assert.NoError(t, checkFlags(asked, map[string]bool{flagCrossVirtual: true, flagCrossType: true}), asked.name)
@@ -2095,4 +2151,317 @@ func TestCrossTypeRefusalsCarryWhatWasWrong(t *testing.T) {
 			assert.Empty(t, stdout.String(), name)
 		}
 	})
+}
+
+// The lot model: two rooms which share no edge, and a lot whose outline is drawn
+// along the outside of both, every edge of it virtual. A walk which may enter
+// anything steps from room A onto the lot and from there into room B.
+const (
+	lotRegistry = `; registry.dfc
+(project (label "Leak fixture") (globalid-namespace "https://example.org/models/leak"))
+(namespace frame (description "Frames."))
+(namespace geom (description "Geometric nodes."))
+(namespace site (description "Semantic nodes."))
+(frame frame:b (label "Grid") (unit m))
+(type Room (kind Space) (geometry area) (description "A room."))
+(type Lot (kind Site) (geometry area) (description "The land the house stands on."))
+`
+
+	lotModel = `; entities/model.dfc
+(node site:LOT (label "Lot") (kind Site) (type Lot) (geometry area) (frame frame:b) (boundary geom:L-LOT))
+(node site:R-A (label "Room A") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-A))
+(node site:R-B (label "Room B") (kind Space) (type Room) (geometry area) (frame frame:b) (boundary geom:L-B))
+(vertex geom:V-1 (frame frame:b))
+(vertex geom:V-2 (frame frame:b))
+(edge geom:E-A-OUT (frame frame:b) (vertices geom:V-1 geom:V-2))
+(edge geom:E-A-IN (frame frame:b) (vertices geom:V-2 geom:V-1))
+(edge geom:E-B-OUT (frame frame:b) (vertices geom:V-1 geom:V-2))
+(edge geom:E-B-IN (frame frame:b) (vertices geom:V-2 geom:V-1))
+(loop geom:L-A (frame frame:b) (edges geom:E-A-OUT geom:E-A-IN))
+(loop geom:L-B (frame frame:b) (edges geom:E-B-OUT geom:E-B-IN))
+(loop geom:L-LOT (frame frame:b) (edges geom:E-A-OUT geom:E-B-OUT))
+`
+
+	// lotHallType and lotHall add a hall of a type of its own between the two
+	// rooms, sharing one edge with each, so that a walk which enters only spaces
+	// still has somewhere to go.
+	lotHallType = `(type Hall (kind Space) (geometry area) (description "A hall."))
+`
+	lotHall = `(node site:R-H (label "Hall") (kind Space) (type Hall) (geometry area) (frame frame:b) (boundary geom:L-H))
+(loop geom:L-H (frame frame:b) (edges geom:E-A-IN geom:E-B-IN))
+`
+)
+
+// lotFiles is the lot model as the issue reproducing the leak writes it.
+func lotFiles() map[string]string {
+	return map[string]string{"registry.dfc": lotRegistry, "entities/model.dfc": lotModel}
+}
+
+// lotWithHallFiles is the lot model with a hall between the two rooms.
+func lotWithHallFiles() map[string]string {
+	return map[string]string{
+		"registry.dfc":       lotRegistry + lotHallType,
+		"entities/model.dfc": lotModel,
+		"entities/hall.dfc":  lotHall,
+	}
+}
+
+// TestTraverseAdjacentToEntersOnlyWhatItIsTold walks adjacency into only the
+// things the walk flags allow, over the lot model.
+func TestTraverseAdjacentToEntersOnlyWhatItIsTold(t *testing.T) {
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		args     []string
+		expected []crossing
+	}{
+		{
+			name:  "walks through the lot into the room past it when no walk flag is written",
+			files: lotFiles(),
+			args:  []string{"--depth", depthAll, "site:R-A"},
+			expected: []crossing{
+				{id: "site:LOT", depth: 1, from: "site:R-A", via: []string{"geom:E-A-OUT"}},
+				{id: "site:R-B", depth: 2, from: "site:LOT", via: []string{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			// --kind narrows the report and not the walk, which is why it is not
+			// the answer to the leak.
+			name:     "still reports the room past the lot under a narrowing kind",
+			files:    lotFiles(),
+			args:     []string{"--depth", depthAll, "--kind", "Space", "site:R-A"},
+			expected: []crossing{{id: "site:R-B", depth: 2, from: "site:LOT", via: []string{"geom:E-B-OUT"}}},
+		},
+		{
+			name:     "reaches nothing when it walks only through spaces",
+			files:    lotFiles(),
+			args:     []string{"--depth", depthAll, "--walk-kind", "Space", "site:R-A"},
+			expected: []crossing{},
+		},
+		{
+			name:     "reaches nothing across edges nothing backs when it walks only through spaces",
+			files:    lotFiles(),
+			args:     []string{"--depth", depthAll, "--cross-virtual", "--walk-kind", "Space", "site:R-A"},
+			expected: []crossing{},
+		},
+		{
+			name:     "enters the lot and not the room past it when it walks only through sites",
+			files:    lotFiles(),
+			args:     []string{"--depth", depthAll, "--walk-kind", "Site", "site:R-A"},
+			expected: []crossing{{id: "site:LOT", depth: 1, from: "site:R-A", via: []string{"geom:E-A-OUT"}}},
+		},
+		{
+			name:  "enters what any of several kinds allows",
+			files: lotFiles(),
+			args:  []string{"--depth", depthAll, "--walk-kind", "Space", "--walk-kind", "Site", "site:R-A"},
+			expected: []crossing{
+				{id: "site:LOT", depth: 1, from: "site:R-A", via: []string{"geom:E-A-OUT"}},
+				{id: "site:R-B", depth: 2, from: "site:LOT", via: []string{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			name:     "enters only things of a type it names",
+			files:    lotFiles(),
+			args:     []string{"--depth", depthAll, "--walk-type", "Lot", "site:R-A"},
+			expected: []crossing{{id: "site:LOT", depth: 1, from: "site:R-A", via: []string{"geom:E-A-OUT"}}},
+		},
+		{
+			name:     "enters only a thing which satisfies every walk flag written",
+			files:    lotFiles(),
+			args:     []string{"--depth", depthAll, "--walk-kind", "Site", "--walk-type", "Room", "site:R-A"},
+			expected: []crossing{},
+		},
+		{
+			name:  "starts from the subject whatever the subject declares",
+			files: lotFiles(),
+			args:  []string{"--depth", depthAll, "--walk-kind", "Space", "site:LOT"},
+			expected: []crossing{
+				{id: "site:R-A", depth: 1, from: "site:LOT", via: []string{"geom:E-A-OUT"}},
+				{id: "site:R-B", depth: 1, from: "site:LOT", via: []string{"geom:E-B-OUT"}},
+			},
+		},
+		{
+			name:  "walks on through the spaces it enters, across edges nothing backs",
+			files: lotWithHallFiles(),
+			args:  []string{"--depth", depthAll, "--cross-virtual", "--walk-kind", "Space", "site:R-A"},
+			expected: []crossing{
+				{id: "site:R-H", depth: 1, from: "site:R-A", via: []string{"geom:E-A-IN"}},
+				{id: "site:R-B", depth: 2, from: "site:R-H", via: []string{"geom:E-B-IN"}},
+			},
+		},
+		{
+			name:     "still narrows only what is reported beside a walk flag",
+			files:    lotWithHallFiles(),
+			args:     []string{"--depth", depthAll, "--walk-kind", "Space", "--type", "Room", "site:R-A"},
+			expected: []crossing{{id: "site:R-B", depth: 2, from: "site:R-H", via: []string{"geom:E-B-IN"}}},
+		},
+		{
+			name:     "does not walk through a space of a type it does not name",
+			files:    lotWithHallFiles(),
+			args:     []string{"--depth", depthAll, "--walk-type", "Room", "site:R-A"},
+			expected: []crossing{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := walkIn(t, tree(t, testCase.files), append([]string{queryAdjacentTo}, testCase.args...)...)
+
+			assert.Equal(t, testCase.expected, walkedAcross(result))
+		})
+	}
+}
+
+// TestTraverseWalkFiltersAreHonouredEverywhere is the property the walk flags
+// promise, over every space and site of the lot models and the budget model
+// walked with no bound: every result, and every from, is a thing whose kind and
+// type the walk flags admit — the subject being the one from which need not be.
+func TestTraverseWalkFiltersAreHonouredEverywhere(t *testing.T) {
+	budget, err := filepath.Abs(budgetRoot)
+	require.NoError(t, err)
+
+	roots := map[string]func(t *testing.T) string{
+		"the lot model":           func(t *testing.T) string { return tree(t, lotFiles()) },
+		"the lot model with hall": func(t *testing.T) string { return tree(t, lotWithHallFiles()) },
+		"the budget model":        func(t *testing.T) string { return budget },
+	}
+
+	walks := []struct {
+		kinds []string
+		types []string
+	}{
+		{kinds: []string{"Space"}},
+		{kinds: []string{"Space", "Site"}},
+		{types: []string{"Room"}},
+		{kinds: []string{"Space"}, types: []string{"Room", "Hall"}},
+	}
+
+	walked := 0
+	for name, rooted := range roots {
+		root := rooted(t)
+
+		graph, _ := dfcad.LoadGraph(root)
+		require.NotNil(t, graph, name)
+
+		declared := make(map[string][2]string)
+		for node := range graph.Nodes().All() {
+			declared[string(node.ID())] = [2]string{string(node.Kind()), node.Type()}
+		}
+
+		// Only the walk flags whose types the model declares: an undeclared one
+		// is a usage error, which a test of its own covers.
+		for _, flags := range walks {
+			known := true
+			for _, typeName := range flags.types {
+				known = known && graph.Registry().Declares(dfcad.SortType, typeName)
+			}
+			if !known {
+				continue
+			}
+
+			for _, kind := range []dfcad.Kind{dfcad.KindSpace, dfcad.KindSite} {
+				for subject := range graph.OfKind(kind) {
+					args := []string{queryAdjacentTo, "--depth", depthAll, "--cross-virtual"}
+					for _, value := range flags.kinds {
+						args = append(args, "--walk-kind", value)
+					}
+					for _, value := range flags.types {
+						args = append(args, "--walk-type", value)
+					}
+					args = append(args, string(subject.ID()))
+
+					// Once with the crossing filter and once without, so the
+					// property is seen to hold beside it and on its own.
+					for _, written := range [][]string{args, slices.Delete(slices.Clone(args), 3, 4)} {
+						for _, entry := range walkIn(t, root, written...).Results {
+							walked++
+
+							for _, id := range []string{entry.ID, entry.From} {
+								if id == string(subject.ID()) {
+									continue
+								}
+
+								kindType := declared[id]
+								assert.True(t, admits(flags.kinds, kindType[0]), "%s declares a kind in %v", id, flags.kinds)
+								assert.True(t, admits(flags.types, kindType[1]), "%s declares a type in %v", id, flags.types)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	require.NotZero(t, walked, "the walks reach something")
+}
+
+// TestWalkFilterRefusalsCarryWhatWasWrong checks the two refusals of a walk flag
+// in a form a caller can branch on rather than only in a message.
+func TestWalkFilterRefusalsCarryWhatWasWrong(t *testing.T) {
+	graph, _ := dfcad.LoadGraph(tree(t, lotFiles()))
+	require.NotNil(t, graph)
+
+	t.Run("names a kind which is none of the kinds", func(t *testing.T) {
+		var unknown UnknownKindError
+		require.ErrorAs(t, checkWalkFilters(graph.Registry(), []string{"Space", "Room"}, nil), &unknown)
+		assert.Equal(t, "Room", unknown.Kind)
+		assert.Equal(t, dfcad.Kinds(), unknown.Known)
+	})
+
+	t.Run("names a type the registry does not declare", func(t *testing.T) {
+		var unknown UnknownTypeError
+		require.ErrorAs(t, checkWalkFilters(graph.Registry(), nil, []string{"Room", "Hall"}), &unknown)
+		assert.Equal(t, "Hall", unknown.Type)
+		assert.Equal(t, []string{"Lot", "Room"}, unknown.Declared)
+	})
+
+	t.Run("refuses an empty kind rather than entering everything", func(t *testing.T) {
+		var unknown UnknownKindError
+		require.ErrorAs(t, checkWalkFilters(graph.Registry(), []string{""}, nil), &unknown)
+		assert.Empty(t, unknown.Kind)
+	})
+
+	t.Run("accepts the kinds there are and the types the registry declares", func(t *testing.T) {
+		assert.NoError(t, checkWalkFilters(graph.Registry(), []string{"Space", "Site"}, []string{"Room", "Lot"}))
+		assert.NoError(t, checkWalkFilters(graph.Registry(), nil, nil))
+	})
+}
+
+// TestTraverseWalkFilterRefusalsExitAsUsageErrors runs the refusals end to end
+// against the lot model: exit 3, nothing on stdout, and the name on stderr.
+func TestTraverseWalkFilterRefusalsExitAsUsageErrors(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected string
+	}{
+		{
+			name:     "a kind to walk through which names none of the kinds",
+			args:     []string{"traverse", queryAdjacentTo, "--walk-kind", "Room", "site:R-A"},
+			expected: "unknown kind Room",
+		},
+		{
+			name:     "a type to walk through which the registry does not declare",
+			args:     []string{"traverse", queryAdjacentTo, "--walk-type", "Hall", "site:R-A"},
+			expected: "unknown type Hall",
+		},
+		{
+			name:     "a walk flag beside a query which is not an adjacency walk",
+			args:     []string{"traverse", queryContainedBy, "--walk-kind", "Space", "site:R-A"},
+			expected: "--walk-kind says nothing under contained-by",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run("refuses "+testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, lotFiles()))
+
+			var stdout, stderr bytes.Buffer
+
+			require.Equal(t, exitUsage, run(testCase.args, &stdout, &stderr))
+			assert.Equal(t, 3, exitUsage)
+			assert.Empty(t, stdout.String())
+			assert.Contains(t, stderr.String(), testCase.expected)
+		})
+	}
 }

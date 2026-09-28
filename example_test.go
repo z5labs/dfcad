@@ -1265,6 +1265,32 @@ func ExampleBoundaries_AdjacentWalk() {
 	// site:S-A reaches site:S-B through geom:E-03
 }
 
+// ExampleAdjacencyFilter_walkTypes walks only through the regions it is told to
+// enter, rather than through everything which shares an edge.
+func ExampleAdjacencyFilter_walkTypes() {
+	root := "testdata/boundary/adjacent"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+	topology, _ := dfcad.LoadTopology(root, registry)
+
+	boundaries, _ := dfcad.ResolveBoundaries(nodes, topology)
+
+	room, _ := nodes.Node("site:S-A")
+
+	// Room C is on the far side of the corridor. A walk which enters only
+	// corridors reaches the corridor and does not pass through it into room C,
+	// because room C is a meeting room.
+	corridors := dfcad.AdjacencyFilter{WalkTypes: []string{"Corridor"}}
+
+	for neighbour := range boundaries.AdjacentWalk(room, dfcad.Unbounded, corridors) {
+		fmt.Printf("%s reaches %s at depth %d\n", neighbour.From().ID(), neighbour.Node().ID(), neighbour.Depth())
+	}
+
+	// Output:
+	// site:S-A reaches site:S-B at depth 1
+}
+
 // ExampleNodes_DescendantsTo walks containment with a bound, which is what makes
 // a traversal of a model nobody has read an answer of a known size.
 func ExampleNodes_DescendantsTo() {

@@ -594,7 +594,8 @@ func (g *Graph) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjacent] {
 }
 
 // AdjacentWalk iterates the regions reachable from region across the shared
-// edges filter allows to be crossed, to at most depth steps.
+// edges filter allows to be crossed, through the regions it allows to be
+// entered, to at most depth steps.
 func (g *Graph) AdjacentWalk(region *SemanticNode, depth int, filter AdjacencyFilter) iter.Seq[Adjacent] {
 	return g.Boundaries().AdjacentWalk(region, depth, filter)
 }

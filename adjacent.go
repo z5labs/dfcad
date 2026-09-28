@@ -144,17 +144,28 @@ func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjace
 	return b.AdjacentWalk(region, depth, AdjacencyFilter{})
 }
 
-// AdjacencyFilter says which shared edges an adjacency walk may cross.
+// AdjacencyFilter says which shared edges an adjacency walk may cross, and which
+// regions it may enter on the other side of them.
 //
-// It follows the convention [RuleFilter] sets: a filter left empty matches
-// everything, so the zero value crosses every shared edge and a walk with it is
-// [Boundaries.AdjacentTo]. Within one field the values are alternatives. The two
-// fields are alternatives too, because each names a way through: an edge may be
-// crossed when either of them allows it.
+// It follows the convention [RuleFilter] sets: a field left empty matches
+// everything, so the zero value crosses every shared edge into every region and
+// a walk with it is [Boundaries.AdjacentTo]. Within one field the values are
+// alternatives.
 //
-// Which types count as a way through is the caller's to say. The engine compares
-// the names it is handed with the types the backing elements declare and attaches
-// no meaning to either
+// The crossing fields, [AdjacencyFilter.CrossVirtual] and
+// [AdjacencyFilter.CrossTypes], are alternatives to each other too, because each
+// names a way through: an edge may be crossed when either of them allows it.
+//
+// The walk fields, [AdjacencyFilter.WalkKinds] and [AdjacencyFilter.WalkTypes],
+// are not, because each says something a region has to be: a region is entered
+// only when it satisfies every walk field given. A region the walk does not enter
+// is neither reported nor walked through, which is what keeps a site or a storey
+// outline drawn along the outside of two rooms from joining rooms that share no
+// edge with each other.
+//
+// Which types count as a way through, or as somewhere to go, is the caller's to
+// say. The engine compares the names it is handed with the types the model
+// declares and attaches no meaning to either
 // ([0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)): a
 // Doorway is a passage in one registry and a word nobody declared in another.
 type AdjacencyFilter struct {
@@ -168,25 +179,35 @@ type AdjacencyFilter struct {
 	// declare one of them, rather than all of them, because a doorway is cut into
 	// a wall and the model says so by backing one edge with both.
 	CrossTypes []string
+
+	// WalkKinds are the kinds a region may declare for the walk to enter it.
+	// Every region but the one the walk starts from has to declare one of them.
+	WalkKinds []Kind
+
+	// WalkTypes are the types a region may declare for the walk to enter it.
+	// Every region but the one the walk starts from has to declare one of them.
+	WalkTypes []string
 }
 
-// empty reports whether the filter was given nothing, in which case every edge
-// may be crossed.
-func (f AdjacencyFilter) empty() bool {
+// crossesEverything reports whether the filter was given no crossing field, in
+// which case every edge may be crossed.
+func (f AdjacencyFilter) crossesEverything() bool {
 	return !f.CrossVirtual && len(f.CrossTypes) == 0
 }
 
 // Matches reports whether the edge may be crossed.
 //
-// An empty filter matches every edge. Otherwise an edge matches in two cases: it
-// is virtual and [AdjacencyFilter.CrossVirtual] is set, or at least one of the
-// elements backing it declares a type in [AdjacencyFilter.CrossTypes]. An
-// unresolved edge — one which names backing elements the model does not hold —
-// never matches a filter which was given, because nothing is known about what
-// realises it: calling it virtual would be the silent reclassification its load
-// error exists to prevent, and it has no element to declare a type.
+// Only the crossing fields decide it; the walk fields decide which regions are
+// entered, not which edges. A filter given no crossing field matches every edge.
+// Otherwise an edge matches in two cases: it is virtual and
+// [AdjacencyFilter.CrossVirtual] is set, or at least one of the elements backing
+// it declares a type in [AdjacencyFilter.CrossTypes]. An unresolved edge — one
+// which names backing elements the model does not hold — never matches a
+// crossing field which was given, because nothing is known about what realises
+// it: calling it virtual would be the silent reclassification its load error
+// exists to prevent, and it has no element to declare a type.
 func (f AdjacencyFilter) Matches(edge BoundaryEdge) bool {
-	if f.empty() {
+	if f.crossesEverything() {
 		return true
 	}
 
@@ -204,8 +225,34 @@ func (f AdjacencyFilter) Matches(edge BoundaryEdge) bool {
 	return false
 }
 
+// Enters reports whether a walk may enter the region: report it, and walk on
+// through it.
+//
+// Only the walk fields decide it. A region is entered when its kind is one of
+// [AdjacencyFilter.WalkKinds] and its type is one of [AdjacencyFilter.WalkTypes],
+// where a field left empty admits every region. A nil region is never entered.
+//
+// The region a walk starts from is not asked: it is where the walk is, whatever
+// it declares.
+func (f AdjacencyFilter) Enters(region *SemanticNode) bool {
+	if region == nil {
+		return false
+	}
+
+	if len(f.WalkKinds) > 0 && !slices.Contains(f.WalkKinds, region.Kind()) {
+		return false
+	}
+
+	if len(f.WalkTypes) > 0 && !slices.Contains(f.WalkTypes, region.Type()) {
+		return false
+	}
+
+	return true
+}
+
 // AdjacentWalk iterates the regions reachable from region across the shared
-// edges filter allows to be crossed, stopping after depth steps.
+// edges filter allows to be crossed, through the regions it allows to be
+// entered, stopping after depth steps.
 //
 // It is [Boundaries.AdjacentTo] with a say in which edges are ways through. A
 // walk from a corridor with a filter naming only doorways reaches the rooms whose
@@ -214,14 +261,20 @@ func (f AdjacencyFilter) Matches(edge BoundaryEdge) bool {
 // region which shares only edges the filter refuses is not reached across them,
 // though it may still be reached another way.
 //
+// A region the filter does not enter is neither reported nor walked through, so
+// a walk which enters only spaces cannot step from one room onto the lot both
+// border and from there into a room on its far side. The walk starts from
+// region whatever region declares, and every result, and every region a result
+// is reached from past the first step, is one the filter enters.
+//
 // [Adjacent.Via] names only the edges crossed — the crossable edges the result
 // shares with the region it was reached from — so under a filter it answers "how
 // do you get between them" rather than "what separates them". [Adjacent.From] is
 // the region one step nearer with the smallest id among those which share a
 // crossable edge with it.
 //
-// An empty filter crosses every shared edge and answers exactly what
-// [Boundaries.AdjacentTo] does.
+// An empty filter crosses every shared edge into every region and answers
+// exactly what [Boundaries.AdjacentTo] does.
 func (b *Boundaries) AdjacentWalk(region *SemanticNode, depth int, filter AdjacencyFilter) iter.Seq[Adjacent] {
 	return func(yield func(Adjacent) bool) {
 		if region == nil || depth == 0 {
@@ -264,9 +317,9 @@ func (b *Boundaries) AdjacentWalk(region *SemanticNode, depth int, filter Adjace
 	}
 }
 
-// neighbours is the regions which share an edge filter allows to be crossed with
-// region, in the order its boundary reaches them and each with every such edge
-// it shares.
+// neighbours is the regions filter enters which share an edge filter allows to
+// be crossed with region, in the order its boundary reaches them and each with
+// every such edge it shares.
 //
 // It is a slice rather than a sequence because a neighbour reached through two
 // edges is one neighbour: the edges have to be collected before the first result
@@ -282,7 +335,7 @@ func (b *Boundaries) neighbours(region *SemanticNode, filter AdjacencyFilter) []
 		}
 
 		for _, neighbour := range b.regions[edge] {
-			if neighbour == region {
+			if neighbour == region || !filter.Enters(neighbour) {
 				continue
 			}
 
