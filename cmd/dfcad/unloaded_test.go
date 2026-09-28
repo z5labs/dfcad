@@ -23,6 +23,7 @@ import (
 var answersThrough = map[string]bool{
 	"list-types":      true,
 	"list-predicates": true,
+	"list-tolerances": true,
 	"list-instances":  true,
 	"list-geometry":   true,
 	"get":             true,

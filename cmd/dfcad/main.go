@@ -81,6 +81,12 @@ var commands = []command{
 		run:     runListPredicates,
 	},
 	{
+		name:    "list-tolerances",
+		summary: "list the named tolerances the registry declares",
+		usage:   listTolerancesUsage,
+		run:     runListTolerances,
+	},
+	{
 		name:    "list-instances",
 		summary: "list the instances of a type",
 		usage:   listInstancesUsage,

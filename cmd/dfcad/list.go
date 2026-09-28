@@ -98,6 +98,43 @@ one, its dimension where it is a coordinate, whether it takes a claim, and
 whether an ambiguous resolution of it is a failure where it is.
 `
 
+const listTolerancesUsage = `dfcad list-tolerances — list the named tolerances the registry declares.
+
+Usage:
+
+	dfcad list-tolerances [flags]
+
+Every named tolerance the registry declares, with its value and the unit that
+value was declared in. These are the names "--tolerance", "--chord" and every
+other flag which takes a tolerance accept, and the only spellings they take. It
+takes no arguments: the answer is the whole of that sort of the registry.
+
+The listing reports what was declared and converts nothing: a tolerance written
+in millimetres is listed in millimetres. Nor does it suggest a tolerance for any
+operation. Which one a check or a derivation uses is the caller's to name, and a
+listing which chose one would be the engine choosing.
+
+Flags:
+
+	--describe       include the one line the registry gives each tolerance
+
+The descriptions are left out unless they are asked for, for the reason
+"dfcad list-types" leaves them out: they are prose about the vocabulary rather
+than about this model, and whoever is checking a name pays for them on every
+run and reads them on almost none.
+
+Tolerances come back in name order, so two runs over one model produce the same
+list and a diff between them means something.
+
+A model which declares no tolerance at all lists nothing and succeeds. That is
+an empty registry rather than a failure.
+
+` + globalFlagsHelp + `
+` + outputContractHelp + `
+The object list-tolerances writes carries "tolerances": one entry per declared
+tolerance, in name order, each with its name, its value and its unit.
+`
+
 const listInstancesUsage = `dfcad list-instances — list the instances of a type.
 
 Usage:
@@ -455,6 +492,38 @@ type listedPredicate struct {
 	Description string `json:"description,omitempty"`
 }
 
+// listTolerancesResult is the object list-tolerances writes to stdout.
+type listTolerancesResult struct {
+	envelope
+	loadState
+
+	// Tolerances is one entry per declared tolerance, in name order.
+	Tolerances []listedTolerance `json:"tolerances"`
+}
+
+// listedTolerance is one declared named tolerance as the discovery path
+// reports it.
+//
+// It is the declaration exactly as written — the magnitude in the unit it was
+// declared in, never converted — and not the span it was written at: what a
+// caller is deciding from this is which name to pass as a flag.
+type listedTolerance struct {
+	// Name is the tolerance name, which is what every flag naming a tolerance
+	// takes.
+	Name string `json:"name"`
+
+	// Value is the declared magnitude.
+	Value float64 `json:"value"`
+
+	// Unit is the unit the magnitude was declared in.
+	Unit string `json:"unit"`
+
+	// Description is the one line the registry gives the tolerance. Written
+	// under --describe and absent otherwise, and absent under it too when the
+	// registry wrote none.
+	Description string `json:"description,omitempty"`
+}
+
 // listInstancesResult is the object list-instances writes to stdout.
 type listInstancesResult struct {
 	envelope
@@ -682,6 +751,55 @@ func runListPredicates(cmd command, args []string, _ io.Reader, stdout, stderr i
 	}
 
 	reportPredicates(result.Predicates, globals, stderr)
+
+	if err := emit(stdout, result); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	return exitSuccess
+}
+
+// runListTolerances is the list-tolerances command.
+func runListTolerances(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	describing := flags.Bool("describe", false, "")
+
+	extra, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	if len(extra) > 0 {
+		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
+	}
+
+	graph, loaded := loadModel(cmd, globals, stderr)
+
+	result := listTolerancesResult{
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+
+		// Made rather than declared, as list-types' is, so that a registry
+		// declaring nothing writes an empty list rather than a null.
+		Tolerances: make([]listedTolerance, 0),
+	}
+	for declared := range graph.Registry().Tolerances() {
+		entry := listedTolerance{
+			Name:  declared.Name,
+			Value: declared.Value,
+			Unit:  string(declared.Unit),
+		}
+		if *describing {
+			entry.Description = declared.Description
+		}
+
+		result.Tolerances = append(result.Tolerances, entry)
+	}
+
+	reportTolerances(result.Tolerances, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
@@ -1337,6 +1455,24 @@ func spelledPredicate(declared listedPredicate) []string {
 		out = append(out, "strict")
 	}
 	return out
+}
+
+// reportTolerances renders a list-tolerances result for a person, on stderr:
+// one line per tolerance, then how many there were.
+//
+// The lines are not behind the verbosity flag, for the reason list-predicates'
+// are not: a person asking which tolerances there are is asking for the names,
+// and a count on its own answers nothing they asked.
+func reportTolerances(tolerances []listedTolerance, globals *globals, stderr io.Writer) {
+	if !globals.human() {
+		return
+	}
+
+	for _, declared := range tolerances {
+		_, _ = fmt.Fprintf(stderr, "%s: %s %s\n", declared.Name, number(declared.Value), declared.Unit)
+	}
+
+	_, _ = fmt.Fprintf(stderr, "%s\n", plural(len(tolerances), "tolerance"))
 }
 
 // reportInstances renders a list-instances result for a person, on stderr.
