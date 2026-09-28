@@ -202,7 +202,8 @@ Every filter follows one rule, whichever command takes it:
 - **A value nobody declared is a usage error naming it** — exit `3`, with nothing on stdout —
   whichever of a filter's values it is: the first such value, in the order they were written,
   is the one reported. A type the registry does not declare, a kind which is not one of the
-  seven, a family which is not one of the three, a frame the registry does not declare: each
+  seven, a family which is not one of the three (four for `claims`, which adds `node`), a
+  frame the registry does not declare: each
   is the error it is when written alone.
   A filter that silently dropped a value nobody declared would answer a narrower question
   than the one asked, and the answer would read as complete.
@@ -215,7 +216,8 @@ which predicate put it there.
 
 The filters are marked **Repeatable** in the flag table of each command which takes them:
 [`list-instances`](#list-instances), [`list-geometry`](#list-geometry),
-[`traverse`](#traverse), [`plan`](#plan), [`conflicts`](#conflicts) and [`check`](#check).
+[`traverse`](#traverse), [`plan`](#plan), [`claims`](#claims), [`conflicts`](#conflicts) and
+[`check`](#check).
 
 ## Payloads
 
@@ -1091,8 +1093,18 @@ A walk that reaches nothing is not an error — it is an empty `results` and exi
 
 ### `claims`
 
-Every claim written on one thing, live and retracted alike. It takes an id and an optional
-predicate, and no flags of its own.
+Every claim written on one thing, live and retracted alike — or, with no id, on every thing.
+It takes an optional id, a predicate after the id, and three filters.
+
+| Flag | Meaning |
+|------|---------|
+| `--predicate <name>` | Only claims written under this predicate. [Repeatable](#filters). A predicate written after the id counts as one more value of this flag. |
+| `--type <name>` | Only claims on a node declaring this type. [Repeatable](#filters). |
+| `--family <family>` | Only claims on a thing of this family: `node`, `vertex`, `edge` or `loop`. [Repeatable](#filters). |
+
+Filters combine: a claim is listed when it satisfies every filter given, and a filter written
+more than once is satisfied by any of its values; see [Filters](#filters). They apply with an
+id as well as without one.
 
 `get` answers what the model says about a thing now; `claims` answers everything anybody has
 said about it and what became of each statement. Deprecated claims are therefore in the
@@ -1103,9 +1115,13 @@ replaced them, so a retraction is followable forward without a second call.
 {
   "version": 2,
   "command": "claims",
+  "refused": false,
   "subject": "site:S-101",
   "claims": [
     {
+      "subject": "site:S-101",
+      "family": "node",
+      "type": "MeetingRoom",
       "id": "survey:A-0001",
       "predicate": "area",
       "value": {"shape": "scalar", "unit": "m2", "scalar": 23.0},
@@ -1120,6 +1136,9 @@ replaced them, so a retraction is followable forward without a second call.
       "span": "entities/site.dfc:20:3-28:34"
     },
     {
+      "subject": "site:S-101",
+      "family": "node",
+      "type": "MeetingRoom",
       "id": "survey:A-0002",
       "predicate": "area",
       "value": {"shape": "scalar", "unit": "m2", "scalar": 24.2},
@@ -1139,8 +1158,65 @@ replaced them, so a retraction is followable forward without a second call.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
-| `subject` | string | The id the claims below are written on, which is the id that was asked for. |
-| `claims` | array | Every claim written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. Each entry is the claim object `get` writes, documented above. |
+| `subject` | string, optional | The id the claims below are written on, which is the id that was asked for. Absent when no id was, and the claims are every subject's. |
+| `claims` | array | Every claim written on it, in predicate order and then by where each was written — or, with no id, every claim on every subject, in subject id order first. Empty rather than null when nothing is claimed. Each entry is the claim object `get` writes, documented above, with the four fields below beside it. |
+| `claims[].subject` | string | The id of the thing the claim is written on. Written whether or not an id was asked about, so that an entry has one shape whatever narrowed the listing. |
+| `claims[].family` | string | Which family holds that thing: `node`, `vertex`, `edge` or `loop`. |
+| `claims[].type` | string, optional | The type the thing declares, where it is a node. Absent for a vertex, an edge or a loop, which declare none. |
+| `claims[].retired` | boolean, optional | `true` where the thing is a node which has been retired. Absent otherwise: a retired node's claims are still claims the model holds, and the audit view lists them. |
+
+With no id, `claims` is the audit view of the whole model: exactly what `claims <id>` answers
+for each node, vertex, edge and loop, one after another in id order. Rows come in subject id
+order, then predicate order, then the order each was written, so "every live position claim,
+with its method and its accuracy" is one call rather than a listing followed by one call per
+corner:
+
+```sh
+dfcad claims --predicate position --family vertex
+```
+
+```json
+{
+  "version": 2,
+  "command": "claims",
+  "refused": false,
+  "claims": [
+    {
+      "subject": "geom:V-01",
+      "family": "vertex",
+      "id": "survey:P-0001",
+      "predicate": "position",
+      "value": {"shape": "coordinate", "unit": "m", "coordinate": [0, 0, 0]},
+      "source": "Boundary survey BS-2026-011, Acme Surveys",
+      "method": "method:total-station",
+      "accuracy": [
+        {"kind": "independent", "magnitude": 0.004, "unit": "m"},
+        {"kind": "systematic", "magnitude": 0.008, "unit": "m", "source": "control:CP-1"}
+      ],
+      "combined": {"magnitude": 0.008944271909999158, "unit": "m", "coverage-factor": 1},
+      "date": "2026-03-11",
+      "rank": "normal",
+      "resolution": "current",
+      "span": "model.dfc:25:3-31:25"
+    },
+    {
+      "subject": "geom:V-02",
+      "family": "vertex",
+      "id": "survey:P-0002",
+      "predicate": "position",
+      "value": {"shape": "coordinate", "unit": "m", "coordinate": [30, 0, 0]},
+      "rank": "normal",
+      "resolution": "current",
+      "span": "model.dfc:36:3-42:25"
+    }
+  ]
+}
+```
+
+A claim written on something `claims <id>` cannot be asked about by id is not listed. Today
+that is a claim written on a frame — the transform placing a frame in its parent — since
+`claims frame:building` is refused as an unknown id. Were frames to become answerable by id,
+their claims would join this listing as an addition.
 
 `resolution` is written on **every** claim here, rather than only under a flag as it is in
 `get`, and it takes two values `get` never writes, because this view reports every claim
@@ -1169,8 +1245,12 @@ An id nothing in the model holds is a **usage error** — exit `3`, with nothing
 naming it, and naming the nearest id there is, exactly as `get` does. A predicate the
 registry does not declare is a usage error for the same reason a filter naming an undeclared
 type is: a predicate nobody declared and a predicate nothing is claimed under are different
-answers. A predicate that *is* declared and that nothing on this subject is claimed under is
-an empty list and exit `0`.
+answers. So is a type the registry does not declare and a family which is none of the four,
+whichever of a filter's values it is. `--type` beside `--family` values none of which is
+`node` is a usage error too, rather than an empty list, for the reason `conflicts` refuses
+`--ambiguous` beside `--resolved`: only a node declares a type, so no claim satisfies both,
+and an empty answer would read as a model with none. A predicate that *is* declared and that
+nothing is claimed under, and a model with no claims at all, are an empty list and exit `0`.
 
 ### `conflicts`
 

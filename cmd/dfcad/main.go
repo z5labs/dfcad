@@ -106,7 +106,7 @@ var commands = []command{
 	},
 	{
 		name:    "claims",
-		summary: "list every claim written on one thing",
+		summary: "list every claim written on one thing, or on every thing",
 		usage:   claimsUsage,
 		run:     runClaims,
 	},
