@@ -463,6 +463,94 @@ func TestNodesZonesTo(t *testing.T) {
 	}
 }
 
+// TestNodesMembersTo follows membership inwards, from a zone to what it groups,
+// as far as it nests.
+//
+// The thermal zone groups the partition directly and again through the
+// maintenance round, which is itself a member of it. That is the diamond from
+// the other end: the partition is one member either way.
+func TestNodesMembersTo(t *testing.T) {
+	testCases := []struct {
+		name     string
+		zone     ID
+		depth    int
+		expected []step
+	}{
+		{
+			name:     "gives the nodes which named a zone at one step",
+			zone:     "site:Z-fire",
+			depth:    1,
+			expected: []step{{node: "site:E-01", depth: 1}},
+		},
+		{
+			name:  "gives a zone grouped into a zone as a member of it",
+			zone:  "site:Z-therm",
+			depth: 1,
+			expected: []step{
+				{node: "site:E-01", depth: 1},
+				{node: "site:Z-maint", depth: 1},
+			},
+		},
+		{
+			name:  "gives a member reached two ways once, at the fewer steps",
+			zone:  "site:Z-therm",
+			depth: Unbounded,
+			expected: []step{
+				{node: "site:E-01", depth: 1},
+				{node: "site:Z-maint", depth: 1},
+			},
+		},
+		{
+			name:  "gives nothing for a zone nothing names",
+			zone:  "site:C-01",
+			depth: Unbounded,
+		},
+		{
+			// Membership never reaches through containment, at any depth. The
+			// storey holds the partition and names no zone, and nothing names it.
+			name:  "gives nothing for a node which holds members but groups none",
+			zone:  "site:L-01",
+			depth: Unbounded,
+		},
+	}
+
+	nodes := relatedNodes(t)
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			members := nodes.MembersTo(nodeOf(t, nodes, testCase.zone), testCase.depth)
+
+			assert.Equal(t, testCase.expected, walked(t, members, RelationMembership))
+		})
+	}
+}
+
+// TestNodesMembersToIsZonesToReversed holds the two directions of membership to
+// each other at one step: a zone is among the zones of a node exactly when that
+// node is among the members of the zone. It is a property of every pair in the
+// model rather than of the few a table would name.
+func TestNodesMembersToIsZonesToReversed(t *testing.T) {
+	nodes := relatedNodes(t)
+
+	for node := range nodes.All() {
+		for other := range nodes.All() {
+			zoneOf := slices.ContainsFunc(stepsOf(nodes.ZonesTo(node, 1)), func(s step) bool { return s.node == other.ID() })
+			memberOf := slices.ContainsFunc(stepsOf(nodes.MembersTo(other, 1)), func(s step) bool { return s.node == node.ID() })
+
+			assert.Equal(t, zoneOf, memberOf, "%s in the zones of %s, and %s in the members of %s", other.ID(), node.ID(), node.ID(), other.ID())
+		}
+	}
+}
+
+// stepsOf collects a bounded traversal without asserting on its relation.
+func stepsOf(results iter.Seq[Related]) []step {
+	var out []step
+	for result := range results {
+		out = append(out, step{node: result.Node().ID(), depth: result.Depth()})
+	}
+	return out
+}
+
 // TestBoundedTraversalOfACycleTerminates is its own function because the model
 // it is asked of is one which does not load clean: a containment which returns
 // to where it started is a load error, and a traversal which spun on it would

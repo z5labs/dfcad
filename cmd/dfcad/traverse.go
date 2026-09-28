@@ -32,6 +32,8 @@ Queries:
 	contained-by   what holds the thing, outward towards the root
 	members-of     the zones the thing is a member of, and the zones those are
 	               members of where membership nests
+	members        what a zone groups, whatever its type, and what those group
+	               where they are zones themselves
 	boundary-of    the edges the thing's outline is assembled from, each
 	               classified by what physically realises it
 	adjacent-to    the things which share a boundary edge with it
@@ -95,10 +97,15 @@ realises it.
 // They are spelled the way the format spells the references they follow, read
 // with the subject first: `members-of <id>` answers what that thing is a member
 // of, the way `(member-of <zone-id>)` is written on the member.
+//
+// They pair the way the relations do: the bare word walks towards what the
+// subject holds or groups — `contains`, `members` — and the suffixed one walks
+// away from it, towards what holds or groups the subject.
 const (
 	queryContains    = "contains"
 	queryContainedBy = "contained-by"
 	queryMembersOf   = "members-of"
+	queryMembers     = "members"
 	queryBoundaryOf  = "boundary-of"
 	queryAdjacentTo  = "adjacent-to"
 )
@@ -163,6 +170,14 @@ var queries = []query{
 		grouped: true,
 		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
 			return related(graph.ZonesTo(subject, depth))
+		},
+	},
+	{
+		name:    queryMembers,
+		deep:    true,
+		grouped: true,
+		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+			return related(graph.MembersTo(subject, depth))
 		},
 	},
 	{

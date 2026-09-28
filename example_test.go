@@ -1267,6 +1267,33 @@ func ExampleNodes_DescendantsTo() {
 	// membership site:Z-maint at 1
 }
 
+// ExampleNodes_MembersTo walks membership inwards, from a zone to what it
+// groups, which is the direction nothing in the model is written in.
+func ExampleNodes_MembersTo() {
+	root := "testdata/node/containment"
+
+	registry, _ := dfcad.LoadRegistry(root)
+	nodes, _ := dfcad.LoadNodes(root, registry)
+
+	thermal, ok := nodes.Node("site:Z-therm")
+	if !ok {
+		fmt.Println("no such node")
+		return
+	}
+
+	// Every node which wrote `(member-of site:Z-therm)`, whatever its type: the
+	// partition, and the maintenance round, which is a zone grouped into this
+	// one. The partition is also a member of the maintenance round, and it is
+	// reported once, at the fewer steps.
+	for member := range nodes.MembersTo(thermal, dfcad.Unbounded) {
+		fmt.Printf("%s %s at %d\n", member.Relation(), member.Node().ID(), member.Depth())
+	}
+
+	// Output:
+	// membership site:E-01 at 1
+	// membership site:Z-maint at 1
+}
+
 // ExampleTopology_Assemble reads a loop as the ring its edges traverse and says
 // whether it closes, against a tolerance the registry declares by name.
 //
