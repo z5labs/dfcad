@@ -196,7 +196,7 @@ var ErrTypeNeedsNodeFamily = errors.New(
 )
 
 // flagMethod is the filter on how a claim was obtained, named here because the
-// warning about a method nothing names names it.
+// warning about an unused method spells the flag.
 const flagMethod = "method"
 
 // claimFamilies are the four families a subject of a claim can belong to, in
@@ -490,14 +490,22 @@ func unnamedMethods(graph *dfcad.Graph, methods []string) []string {
 		return nil
 	}
 
-	named := make(map[string]struct{})
+	// Only the methods asked for are tracked, and the walk stops once each has
+	// been seen: the question is whether each is named at all, not by what.
+	unseen := make(map[string]struct{}, len(methods))
+	for _, method := range methods {
+		unseen[method] = struct{}{}
+	}
 	for claim := range graph.Claims().All() {
-		named[string(claim.Method())] = struct{}{}
+		delete(unseen, string(claim.Method()))
+		if len(unseen) == 0 {
+			return nil
+		}
 	}
 
 	var out []string
 	for _, method := range methods {
-		if _, ok := named[method]; ok || slices.Contains(out, method) {
+		if _, ok := unseen[method]; !ok || slices.Contains(out, method) {
 			continue
 		}
 		out = append(out, method)

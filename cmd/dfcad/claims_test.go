@@ -1853,13 +1853,17 @@ func TestCheckMethodNamespaces(t *testing.T) {
 // asserts is on stderr, in every format, and that stdout is untouched by it.
 func TestRunClaimsWarnsOfAMethodNothingNames(t *testing.T) {
 	// The answer the warning must not change: an empty listing, over the same
-	// model, that no method filter produced.
-	empty := func(t *testing.T, format string) string {
+	// model and of the same subject, that no method filter produced.
+	empty := func(t *testing.T, format, subject string) string {
 		t.Helper()
 
+		args := []string{"claims", "--format", format, "--predicate", "position", "--family", "node"}
+		if subject != "" {
+			args = []string{"claims", "--format", format, subject, "--family", "vertex"}
+		}
+
 		var stdout, stderr bytes.Buffer
-		require.Equal(t, exitSuccess,
-			run([]string{"claims", "--format", format, "--predicate", "position", "--family", "node"}, &stdout, &stderr))
+		require.Equal(t, exitSuccess, run(args, &stdout, &stderr))
 		assert.NotContains(t, stderr.String(), "warning")
 
 		return stdout.String()
@@ -1903,9 +1907,7 @@ func TestRunClaimsWarnsOfAMethodNothingNames(t *testing.T) {
 
 				result := listed[claimsResult](t, stdout.String())
 				assert.Empty(t, result.Claims)
-				if result.Subject == "" {
-					assert.Equal(t, empty(t, format), stdout.String())
-				}
+				assert.Equal(t, empty(t, format, result.Subject), stdout.String())
 
 				var warnings []string
 				for _, line := range strings.Split(stderr.String(), "\n") {
