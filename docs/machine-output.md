@@ -795,13 +795,13 @@ what is known about it.
 |-------|------|---------|
 | `budget.from` | string, optional | The frame the value was written in. Absent for a budget that is a computation rather than a route between two frames — `buildable` writes one. |
 | `budget.to` | string, optional | The frame it was expressed in. Absent for the same reason. |
-| `budget.terms[].kind` | string | `independent` or `systematic`, which is how it combines: independent terms in quadrature, systematic terms linearly. |
+| `budget.terms[].kind` | string | `independent` or `systematic`, which is how it combines: independent terms in quadrature, systematic terms of distinct ids linearly, and the two totals in quadrature ([SPEC §6.6.5](../SPEC.md#665-accuracy-terms)). |
 | `budget.terms[].name` | string | The id a systematic error is shared with, or the name of the claim an independent one came from. |
 | `budget.terms[].magnitude` | number | The one-sigma figure, as it was written. |
 | `budget.terms[].unit` | string | The unit that figure is expressed in. |
 | `budget.terms[].source` | string, optional | The id a systematic error is shared with. Absent for an independent term. |
 | `budget.terms[].contributors` | array | The claims that carried the term, each once. More than one is a shared term counted once. |
-| `budget.combined` | object, optional | The terms reduced to one standard uncertainty: `magnitude`, `unit` and `coverage-factor`, which is `1` for everything the engine produces. |
+| `budget.combined` | object, optional | The terms reduced to one standard uncertainty, `u = √( Σ uᵢ² + ( Σ \|sⱼ\| )² )` ([SPEC §6.6.5](../SPEC.md#665-accuracy-terms)): `magnitude`, `unit` and `coverage-factor`, which is `1` for everything the engine produces. |
 | `budget.unknown` | array, optional | The claims the answer was computed from that stated no accuracy. One of them taints the whole budget, and `combined` is then absent: an unstated accuracy is unknown rather than zero. |
 | `budget.unranked` | array, optional | The things — a vertex, a node, an edge — the answer read a claim of that stated no accuracy at all, each once. Such a claim is unrankable and is still read where nothing rankable was said ([SPEC §6.5](../SPEC.md#65-claims)): a corner nobody gave an accuracy to is where the model says it is, and this names it rather than folding it into the budget as though it carried one. Each such claim is also in `unknown`. |
 | `budget.units` | array, optional | The units the terms were written in where they disagree. Nothing converts between them, so `combined` is absent rather than reconciled. |
@@ -1188,9 +1188,11 @@ measurement rather than one per figure. How much an area moves when a corner doe
 per-corner quantity, and a single number standing in for all of them would be exactly the
 plausible-looking answer the rest of this refuses to give. What the budget does say is what
 the answer rests on: which claims, which shared terms among them were counted once, and
-whether any corner stated no accuracy at all. Independent terms combine in quadrature and
-systematic ones linearly, and a term reached through four corners appears once with all four
-named under it ([0006](decisions/0006-accuracy-is-one-sigma.md)).
+whether any corner stated no accuracy at all. Independent terms combine in quadrature,
+systematic ones of distinct ids linearly, and the two totals in quadrature, and a term
+reached through four corners appears once with all four named under it
+([SPEC §6.6.5](../SPEC.md#665-accuracy-terms),
+[0006](decisions/0006-accuracy-is-one-sigma.md)).
 
 That budget grows with the shape while the figures do not — one term per corner — which makes
 this the most expensive call on the dimensional path. What it costs, and what each part of it
@@ -1429,11 +1431,14 @@ halves of one answer. Nothing is written back
 
 **The budget is the point.** The georeference is one transform applied to every fact declared
 indoors, so its residual does not cancel between two indoor points and does not average away
-against an outdoor one. Systematic terms add linearly and each is counted once however many
-inputs contributed it — which matters most in exactly this query, because a control point
-behind the interior corners is routinely behind the boundary survey and the georeference as
-well. Combining everything in quadrature reports a narrower answer than the evidence
-supports, which is the direction nobody investigates.
+against an outdoor one. Each systematic term is counted once however many inputs
+contributed it — which matters most in exactly this query, because a control point behind
+the interior corners is routinely behind the boundary survey and the georeference as well —
+and terms of distinct ids add linearly, because nothing states how far two sources
+correlate and full correlation is the bound. That total joins the independent terms' total
+in quadrature, since an independent error correlates with nothing
+([SPEC §6.6.5](../SPEC.md#665-accuracy-terms)). Combining everything in quadrature reports
+a narrower answer than the evidence supports, which is the direction nobody investigates.
 [The worked example](siting-worked-example.md) runs one query end to end, from the claims
 involved to the final budget.
 

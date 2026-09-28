@@ -662,9 +662,30 @@ a date like any other.
   are the same term when their term ids are byte-equal — not when their magnitudes happen to
   match — and a term contributing to two inputs of one derivation is counted once. The
   namespace of a term id must be registered; the id need not name a node.
-- Independent terms combine in quadrature, systematic terms add linearly, and no widened
-  figure is ever stored. Any output presenting an uncertainty at other than 1σ states its
-  coverage factor.
+- **The terms reduce to one figure in three steps.** Independent terms combine in
+  quadrature; systematic terms of distinct term ids add linearly; and the two totals combine
+  in quadrature:
+
+  ```
+  u = √( Σ uᵢ² + ( Σ |sⱼ| )² )
+  ```
+
+  Every magnitude is read as its absolute value. A term id reached more than once — through
+  two inputs, or written twice in one claim — is counted once, at the larger of its
+  magnitudes, so the linear sum runs over distinct term ids only. The totals join in
+  quadrature because an independent term correlates with nothing, the systematic terms
+  included, so the variances of the two totals add; adding the totals instead would describe
+  a correlation the classification rules out, and would not be a standard uncertainty.
+  Distinct term ids add linearly because the format cannot state how far two sources
+  correlate, and full correlation is the bound. The result is the largest standard
+  uncertainty consistent with how the terms are classified — conservative, and still 1σ
+  ([0006](./docs/decisions/0006-accuracy-is-one-sigma.md)).
+- **Three things produce no figure**, and none is assumed in their place: an unknown
+  accuracy — a claim that states none, or one read only in part — which is unknown rather
+  than zero ([6.5](#65-claims)); terms in more than one unit, `mm` and `m` included, because
+  nothing converts ([4.5](#45-units)); and no term at all.
+- No widened figure is ever stored. Any output presenting an uncertainty at other than 1σ
+  states its coverage factor.
 
 ### 6.7 `retired`
 

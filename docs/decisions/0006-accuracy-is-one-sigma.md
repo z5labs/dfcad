@@ -45,9 +45,21 @@ about how the measurement was made and cannot be inferred from the number.
 **Independent terms combine in quadrature.** For independent standard uncertainties
 `u₁ … uₙ`, the combined contribution is `√(u₁² + … + uₙ²)`.
 
-**Systematic terms shared between inputs combine linearly.** For shared terms `s₁ … sₘ`,
-the contribution is `|s₁| + … + |sₘ|`, added to the quadrature result rather than folded
-into it.
+**Systematic terms shared between inputs combine linearly.** For systematic terms
+`s₁ … sₘ` of distinct term ids, the contribution is `|s₁| + … + |sₘ|`, and that total
+joins the independent total in quadrature:
+
+```
+u = √( u₁² + … + uₙ² + ( |s₁| + … + |sₘ| )² )
+```
+
+The two totals join in quadrature because an independent term is an error that correlates
+with no other — the systematic terms included — so the variances of the two totals add.
+Adding the totals instead, `√(u₁² + … + uₙ²) + (|s₁| + … + |sₘ|)`, would be the standard
+deviation of their sum only if the independent errors were fully correlated with the
+systematic ones, which is the one thing the classification rules out. Whenever both totals
+are non-zero it is larger than any standard deviation the classification admits, so it is
+not a standard uncertainty, and reporting it as 1σ would mislabel it.
 
 **A shared term is counted once.** When two inputs to a derivation carry the same
 systematic term — the same control point, the same datum realisation, the same instrument
@@ -84,10 +96,15 @@ Classification is a judgement someone has to make, per term, and the engine cann
 it. A systematic term recorded as independent produces a budget that is too narrow, and
 nothing detects it — the arithmetic is only as good as the honesty of the input.
 
-Linear addition of systematic terms is deliberately conservative. It is the right answer
-when terms are fully correlated and an overestimate when they are only partly correlated,
-and this model has no way to express partial correlation. Budgets will sometimes be wider
-than a full covariance treatment would give.
+Linear addition of systematic terms is deliberately conservative. The sum runs over
+distinct term ids — a term shared by several inputs is already counted once, and that is
+where sharing is handled — and it adds them because this model has no way to say how far
+two different sources correlate: two control points of one network share its adjustment.
+Full correlation is the bound, `σ(S₁ + … + Sₘ) ≤ σ(S₁) + … + σ(Sₘ)`, so the linear sum is the
+right answer when distinct terms are fully correlated and an overestimate when they are only
+partly correlated. Budgets will sometimes be wider than a full covariance treatment would
+give. The result is still the largest standard uncertainty consistent with how the terms are
+classified, and so still 1σ.
 
 Quoting at 1σ is unfamiliar to some of the professions the data comes from. Survey and
 instrument specifications are frequently published at 95%, so the conversion at the point

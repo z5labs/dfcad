@@ -705,8 +705,15 @@
 // an error is shared is a fact about how the measurement was made and cannot be
 // inferred from the number. Independent terms combine in quadrature. A
 // systematic term — a georeference fit applied to every indoor fact alike —
-// does not partially cancel and does not average away, so it adds linearly, and
-// a term reached through two inputs of one computation is counted once.
+// does not partially cancel and does not average away, so a term reached
+// through two inputs of one computation is counted once. Systematic terms of
+// distinct term ids add linearly, because the format cannot state how far two
+// sources correlate and full correlation is the bound. The two totals then
+// combine in quadrature, because an independent error correlates with nothing,
+// the systematic ones included:
+//
+//	u = √( Σ uᵢ² + ( Σ |sⱼ| )² )
+//
 // [Budget] is where that arithmetic lives, [Uncertainty] is what comes out of
 // it, and a figure widened past 1σ always states the coverage factor it was
 // widened by. Nothing widened is ever stored.
