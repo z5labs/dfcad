@@ -574,6 +574,13 @@
 // the rest of the storey is drawn whichever way it was undrawable, and whether
 // the *run* succeeded is the separate question the diagnostics answer.
 //
+// A measurement written as an edge which bounds nothing — a dimension string
+// across a room, a span between two jambs — comes back in [Plan.Measured] as a
+// [MeasuredEdge] when both its ends are corners the plan drew and it carries a
+// claim the caller asked for. The corners place it rather than its frame, which
+// is not a place, and its ends are those corners exactly as the outlines drew
+// them.
+//
 // # Derived geometry, and where it is kept
 //
 // Everything above is computed on demand and none of it is stored in the model.

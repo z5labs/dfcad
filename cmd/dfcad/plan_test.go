@@ -14,6 +14,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -2083,4 +2084,351 @@ func TestTheContractDocumentsThePlanFilter(t *testing.T) {
 	assert.Contains(t, contractRow(t, "plan", "filter"), "optional")
 	assert.Contains(t, contractRow(t, "plan", "--kind <kind>"), "Repeatable")
 	assert.Contains(t, contractRow(t, "plan", "--type <name>"), "Repeatable")
+}
+
+// planMeasuredGeometry is the storey's fixture extended with edges which bound
+// nothing: measurements written between corners, and one which is not.
+//
+// Each is an ordinary edge in no loop, which is how a dimension string across a
+// room or a span between two jambs is written.
+const planMeasuredGeometry = `
+; The diagonal of Meeting Room A, between two of its corners.
+(edge geom:E-91 (label "Room A diagonal") (frame frame:building) (vertices geom:V-01 geom:V-03)
+  (wall-length (value 5.0 m) (source "Check measurement CM-2026-003") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-04")))
+
+; The other diagonal, which nobody has written anything on.
+(edge geom:E-92 (frame frame:building) (vertices geom:V-04 geom:V-02))
+
+; From a corner to a point in the middle of the room which no outline has.
+(vertex geom:V-99 (frame frame:building)
+  (position (value (2.0 1.5 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(edge geom:E-93 (frame frame:building) (vertices geom:V-01 geom:V-99)
+  (wall-length (value 2.5 m) (source "Check measurement CM-2026-003") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-04")))
+
+; Across both rooms, from a corner of the first to a corner of the second.
+(edge geom:E-94 (frame frame:building) (vertices geom:V-01 geom:V-05)
+  (wall-length (value 8.0 m) (source "Check measurement CM-2026-003") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-04")))
+
+; The span between the two jambs of the doorway, whose corners are the ends of
+; its open run.
+(edge geom:E-95 (frame frame:building) (vertices geom:V-21 geom:V-23)
+  (wall-length (value 1.6 m) (source "Door schedule DS-2026-001") (method method:schedule)
+    (accuracy (independent 0.005 m)) (date "2026-03-01")))
+`
+
+// measuredPlanFixture is the storey with those edges added.
+func measuredPlanFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          planRegistry,
+		"entities/model.dfc":    planEntities,
+		"entities/geometry.dfc": planGeometry + planMeasuredGeometry,
+	}
+}
+
+// measuredPlan runs plan over the measured fixture with the arguments given,
+// requiring it to succeed.
+func measuredPlan(t *testing.T, args ...string) planResult {
+	t.Helper()
+
+	t.Chdir(tree(t, measuredPlanFixture()))
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, args...)...)
+	return listed[planResult](t, stdout)
+}
+
+// measuredEdges is the id of each measured edge of a plan, in the order it was
+// written.
+func measuredEdges(result planResult) []string {
+	out := make([]string, 0, len(result.Measured))
+	for _, entry := range result.Measured {
+		out = append(out, entry.Edge)
+	}
+	return out
+}
+
+func TestRunPlanReportsTheEdgesMeasuredBetweenItsCorners(t *testing.T) {
+	captionsOnly := []string{
+		"--annotate", "caption",
+		"--position", "position",
+		"--tolerance", "coincident",
+		"site:L-01",
+	}
+
+	testCases := []struct {
+		name          string
+		args          []string
+		edge          string
+		expectedTimes int
+	}{
+		{
+			name:          "reports an edge between two corners of one room which carries an annotated claim",
+			args:          wholeStorey("site:L-01"),
+			edge:          "geom:E-91",
+			expectedTimes: 1,
+		},
+		{
+			name:          "does not report that edge where no claim on it is annotated",
+			args:          captionsOnly,
+			edge:          "geom:E-91",
+			expectedTimes: 0,
+		},
+		{
+			name:          "does not report an edge between two corners which carries no claim",
+			args:          wholeStorey("site:L-01"),
+			edge:          "geom:E-92",
+			expectedTimes: 0,
+		},
+		{
+			name:          "does not report an edge from a corner to a vertex no outline has",
+			args:          wholeStorey("site:L-01"),
+			edge:          "geom:E-93",
+			expectedTimes: 0,
+		},
+		{
+			name:          "reports an edge between corners of two different rooms once",
+			args:          wholeStorey("site:L-01"),
+			edge:          "geom:E-94",
+			expectedTimes: 1,
+		},
+		{
+			name:          "reports a span between the two ends of an open run",
+			args:          wholeStorey("site:L-01"),
+			edge:          "geom:E-95",
+			expectedTimes: 1,
+		},
+		{
+			name:          "does not report an edge which bounds a drawn outline",
+			args:          wholeStorey("site:L-01"),
+			edge:          "geom:E-01",
+			expectedTimes: 0,
+		},
+		{
+			name:          "does not report an edge whose ends belong to a room the type filter left out",
+			args:          filtered("site:L-01", "--type", "Doorway"),
+			edge:          "geom:E-91",
+			expectedTimes: 0,
+		},
+		{
+			name:          "does not report a span whose ends belong to a doorway the type filter left out",
+			args:          filtered("site:L-01", "--type", "MeetingRoom"),
+			edge:          "geom:E-95",
+			expectedTimes: 0,
+		},
+		{
+			name:          "reports a span whose ends belong to what the type filter selected",
+			args:          filtered("site:L-01", "--type", "Doorway"),
+			edge:          "geom:E-95",
+			expectedTimes: 1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := measuredPlan(t, testCase.args...)
+
+			assert.True(t, result.Planned)
+
+			var times int
+			for _, edge := range measuredEdges(result) {
+				if edge == testCase.edge {
+					times++
+				}
+			}
+			assert.Equal(t, testCase.expectedTimes, times, "%s among %v", testCase.edge, measuredEdges(result))
+		})
+	}
+}
+
+// TestRunPlanWritesEachMeasuredEdgeWhole is its own function because it asserts
+// the shape of one entry rather than which edges are reported.
+func TestRunPlanWritesEachMeasuredEdgeWhole(t *testing.T) {
+	result := measuredPlan(t, wholeStorey("site:L-01")...)
+
+	assert.Equal(t, []string{"geom:E-91", "geom:E-94", "geom:E-95"}, measuredEdges(result), "in edge id order")
+
+	entry := result.Measured[0]
+	assert.Equal(t, "Room A diagonal", entry.Label)
+	assert.Equal(t, []string{"geom:V-01", "geom:V-03"}, entry.Vertices, "in the order the edge was authored")
+	assert.Equal(t, []float64{0, 0, 0}, entry.From)
+	assert.Equal(t, []float64{4, 3, 0}, entry.To)
+	assert.Empty(t, entry.DeclaredIn, "written on the plan's own frame")
+
+	require.Len(t, entry.Annotations, 1)
+	annotation := entry.Annotations[0]
+	assert.Equal(t, anchorEntry{Kind: "edge", ID: "geom:E-91", Vertices: []string{"geom:V-01", "geom:V-03"}}, annotation.Anchor)
+	assert.Equal(t, "wall-length", annotation.Predicate)
+	assert.Equal(t, "Check measurement CM-2026-003", annotation.Source, "the claim comes back whole")
+
+	// The edge bounding a room is on the room rather than in "measured", with
+	// its claim where it always was.
+	assert.Contains(t, anchored(result, "site:R-01"), "wall-length @ edge geom:E-01")
+	assert.NotContains(t, measuredEdges(result), "geom:E-01")
+
+	// Nothing else moved: the rooms, the budget and what was not drawn are what
+	// the storey without the measurements writes.
+	plain, _ := planned(t, exitSuccess, wholeStorey("site:L-01")...)
+	assert.Equal(t, plain.Outlines, result.Outlines)
+	assert.Equal(t, plain.Undrawn, result.Undrawn)
+	require.NotNil(t, plain.Budget)
+	require.NotNil(t, result.Budget)
+	assert.Equal(t, plain.Budget.Combined, result.Budget.Combined, "the ends are drawn corners, already budgeted")
+}
+
+func TestRunPlanWritesNoMeasuredKeyWhereNothingWasMeasured(t *testing.T) {
+	t.Chdir(tree(t, planFixture()))
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, wholeStorey("site:L-01")...)...)
+
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal([]byte(stdout), &payload))
+	assert.NotContains(t, payload, "measured")
+}
+
+// carriedMeasuredGeometry is the carried fixture's room with the diagonal of
+// the issue measured across it, on the building grid.
+const carriedMeasuredGeometry = `
+(edge geom:E-90 (frame frame:building) (vertices geom:V-11 geom:V-13)
+  (wall-length (value 12.806 m) (source "Check measurement CM-2026-003") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-04")))
+`
+
+// TestRunPlanPutsAMeasuredEdgeWhereItsCornersAre is the property which keeps a
+// measured edge on the sheet it is drawn on: each end is the `from` of every
+// boundary run leaving that corner, and is where resolve says that corner is in
+// the plan's frame.
+func TestRunPlanPutsAMeasuredEdgeWhereItsCornersAre(t *testing.T) {
+	fixture := carriedPlanFixture()
+	fixture["entities/geometry.dfc"] += carriedMeasuredGeometry
+
+	root := tree(t, fixture)
+	t.Chdir(root)
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, carriedInvocation("plan:P-01")...)...)
+	result := listed[planResult](t, stdout)
+
+	require.Equal(t, "frame:site", result.Frame)
+	require.Equal(t, []string{"geom:E-90"}, measuredEdges(result))
+
+	entry := result.Measured[0]
+	assert.Equal(t, "frame:building", entry.DeclaredIn, "the edge was written on the building grid")
+
+	graph, diags := dfcad.LoadGraph(root)
+	require.Empty(t, diags)
+
+	// Where each boundary run leaves a corner, over every outline drawn.
+	leaving := make(map[string][][]float64)
+	for _, outline := range result.Outlines {
+		for _, segment := range outline.Region.Boundary {
+			edge, ok := graph.Topology().Edge(dfcad.ID(segment.Edge))
+			require.True(t, ok)
+
+			leaves, arrives := edge.Vertices()
+			if segment.Reversed {
+				leaves = arrives
+			}
+			leaving[string(leaves)] = append(leaving[string(leaves)], segment.From)
+		}
+	}
+
+	ends := map[string][]float64{entry.Vertices[0]: entry.From, entry.Vertices[1]: entry.To}
+	for vertex, at := range ends {
+		require.NotEmpty(t, leaving[vertex], "a run of a drawn outline leaves %s", vertex)
+		for _, from := range leaving[vertex] {
+			assert.Equal(t, from, at, "%s is where the boundary drew it", vertex)
+		}
+
+		stdout, _ := runIn(t, exitSuccess, "resolve", vertex, "position", "--frame", result.Frame)
+		answer := listed[resolveResult](t, stdout)
+		require.NotNil(t, answer.Value)
+		assert.InDeltaSlice(t, answer.Value.Coordinate, at, 1e-9, "%s is where resolve puts it", vertex)
+	}
+}
+
+// curvedMeasuredGeometry is an edge across the bay room of the curved fixture,
+// from one corner to the opposite one, which claims a curve.
+const curvedMeasuredGeometry = `
+(edge geom:E-49 (frame frame:building) (vertices geom:V-41 geom:V-43)
+  (arc-centre
+    (value (14.0 2.0 0.0) m)
+    (source "Check measurement CM-2026-003")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-04"))
+  (arc-through
+    (value (14.0 -0.8284271247461903 0.0) m)
+    (source "Check measurement CM-2026-003")
+    (method method:total-station)
+    (accuracy (independent 0.004 m))
+    (date "2026-03-04")))
+`
+
+// TestRunPlanDrawsNoCurveOnAMeasuredEdge is its own function because it is about
+// the curve vocabulary, which none of the cases above name.
+func TestRunPlanDrawsNoCurveOnAMeasuredEdge(t *testing.T) {
+	testCases := []struct {
+		name            string
+		args            []string
+		expectedChorded []string
+	}{
+		{
+			name:            "lists no measured edge in chorded where the curves were not read",
+			args:            nil,
+			expectedChorded: []string{"geom:E-42"},
+		},
+		{
+			name:            "draws no curve on a measured edge where the curves were read",
+			args:            []string{"--arc-centre", "arc-centre", "--arc-through", "arc-through", "--chord", "chord-deviation"},
+			expectedChorded: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture := curved()
+			fixture["entities/measured.dfc"] = curvedMeasuredGeometry
+
+			stdout, _ := invoke(t, exitSuccess, tree(t, fixture), slices.Concat([]string{
+				"plan",
+				"--annotate", "arc-centre",
+				"--position", "position",
+				"--tolerance", "coincident",
+			}, testCase.args, []string{"site:L-02"})...)
+			result := listed[planResult](t, stdout)
+
+			chorded := make([]string, 0, len(result.Chorded))
+			for _, entry := range result.Chorded {
+				chorded = append(chorded, entry.Edge)
+			}
+			assert.Equal(t, testCase.expectedChorded, chorded)
+
+			require.Equal(t, []string{"geom:E-49"}, measuredEdges(result))
+			entry := result.Measured[0]
+			assert.Equal(t, []float64{12, 0, 0}, entry.From, "a measurement runs between its two ends")
+			assert.Equal(t, []float64{16, 4, 0}, entry.To)
+		})
+	}
+}
+
+// TestTheContractDocumentsEveryMeasuredField checks that the plan section of
+// docs/machine-output.md has a row for every field a measured edge writes, read
+// out of the type rather than listed here, and that the usage text says the
+// same rule.
+func TestTheContractDocumentsEveryMeasuredField(t *testing.T) {
+	assert.Contains(t, contractRow(t, "plan", "measured"), "optional")
+
+	fields := reflect.TypeFor[measuredEntry]()
+	for i := range fields.NumField() {
+		name, _, _ := strings.Cut(fields.Field(i).Tag.Get("json"), ",")
+		t.Run("documents measured[]."+name, func(t *testing.T) {
+			assert.NotEmpty(t, contractRow(t, "plan", "measured[]."+name))
+		})
+	}
+
+	for _, phrase := range []string{`"measured"`, "list-geometry", "chorded"} {
+		assert.Contains(t, planUsage, phrase)
+	}
 }

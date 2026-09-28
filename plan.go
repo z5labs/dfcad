@@ -387,6 +387,114 @@ func (u Undrawn) String() string {
 	)
 }
 
+// MeasuredEdge is an edge which bounds nothing the plan drew and runs between
+// two corners it did, with the claims written on it.
+//
+// It is how a dimension string across a room, or a span between two jambs,
+// reaches a sheet. A measurement between two corners is an ordinary edge
+// carrying a claim, and nothing requires that edge to be in any loop — so a plan
+// which reported only what bounds its outlines would leave exactly those
+// measurements off the answer a sheet is drawn from.
+//
+// What places it on this plan is its two ends, and not its frame and not any
+// containment. An edge has no `within`, so containment cannot place it; and a
+// frame is not a place — two storeys may share one, and a plan of a parcel would
+// otherwise pull in every edge on the site grid whether or not anything it drew
+// meets it. A measured edge between two corners of a storey's rings is about that
+// storey, structurally. An edge running to a corner no drawn outline has is not
+// on the plan, and is still reachable through [Topology.Edges] and the
+// `list-geometry` listing built on it.
+//
+// It is reported only where it carries a live claim under a predicate the
+// invocation annotates with, which keeps [Annotations] the whole of the answer
+// to what is worth drawing.
+//
+// A curve claimed on it is not drawn. A measurement runs between two points, so
+// its ends are what it carries, and it is never a chorded edge of the plan.
+//
+// The zero MeasuredEdge names no edge, and every method below works on it.
+type MeasuredEdge struct {
+	// edge is the edge the claims are written on.
+	edge *Edge
+
+	// from and to are the coordinates of its first and second vertex, in the
+	// order the edge was written, in the plan's frame. They are the corners the
+	// outlines drew, taken from those outlines, so that the two cannot disagree.
+	from Point
+	to   Point
+
+	// annotations are the live claims on it under the predicates asked for, in
+	// the order an outline's edge annotations take.
+	annotations []Annotation
+}
+
+// Edge returns the edge the claims are written on.
+func (m MeasuredEdge) Edge() *Edge { return m.edge }
+
+// ID returns the id of that edge.
+func (m MeasuredEdge) ID() ID {
+	if m.edge == nil {
+		return ""
+	}
+	return m.edge.ID()
+}
+
+// Label returns what the edge is called, which is empty where it is called
+// nothing.
+func (m MeasuredEdge) Label() string {
+	if m.edge == nil {
+		return ""
+	}
+	return m.edge.Label()
+}
+
+// Vertices returns the edge's two vertices in the order it was authored, which
+// is the order [Anchor.Vertices] gives them in.
+func (m MeasuredEdge) Vertices() (start, end ID) {
+	if m.edge == nil {
+		return "", ""
+	}
+	return m.edge.Vertices()
+}
+
+// From returns where the first of its vertices is, in [Plan.Frame].
+//
+// It is the coordinate that corner has on the outlines the plan drew, and so is
+// exactly the `from` of every boundary run leaving it.
+func (m MeasuredEdge) From() Point { return m.from }
+
+// To returns where the second of its vertices is, in [Plan.Frame].
+func (m MeasuredEdge) To() Point { return m.to }
+
+// DeclaredIn returns the frame the edge was written in, which is the frame a
+// coordinate-valued claim on it is in. It is empty for the zero MeasuredEdge.
+func (m MeasuredEdge) DeclaredIn() ID {
+	if m.edge == nil {
+		return ""
+	}
+	return m.edge.Frame()
+}
+
+// Annotations returns the claims reported on it, each anchored to the edge.
+func (m MeasuredEdge) Annotations() []Annotation { return slices.Clone(m.annotations) }
+
+// String renders it as a person reads it: which edge, which corners it runs
+// between and how much is written on it.
+func (m MeasuredEdge) String() string {
+	if m.edge == nil {
+		return "nothing"
+	}
+
+	name := string(m.edge.ID())
+	if label := m.edge.Label(); label != "" {
+		name = fmt.Sprintf("%s (%s)", name, label)
+	}
+
+	start, end := m.edge.Vertices()
+
+	return fmt.Sprintf("%s: measured, %s to %s, %s", name, start, end, plural(len(m.annotations), "claim"))
+}
+
 // Plan is a spatial node's contents drawn as rings, with the claims the
 // invocation asked for anchored to what they are written on.
 //
@@ -433,6 +541,10 @@ type Plan struct {
 	// the absence is exactly what a consumer cannot see: a node dropped from the
 	// answer looks identical to a node the model does not hold.
 	undrawn []Undrawn
+
+	// measured are the edges which bound nothing drawn and run between two
+	// corners that were, carrying a claim asked for, in edge id order.
+	measured []MeasuredEdge
 
 	// chord is the declared chord tolerance the rings which bend were drawn
 	// to, and deviation how far the worst of those segments falls from the
@@ -503,6 +615,17 @@ func (p Plan) Outlines() []Outline { return slices.Clone(p.outlines) }
 // sheet is not a difference anybody notices downstream.
 func (p Plan) Undrawn() []Undrawn { return slices.Clone(p.undrawn) }
 
+// Measured returns the edges which bound no outline the plan drew, run between
+// two corners it did, and carry at least one live claim under a predicate it
+// was asked to annotate with — in edge id order.
+//
+// A corner is a vertex of an edge in the boundary of a drawn outline, ring or
+// open run alike, so under a [Selection] the corners are those of the outlines
+// it selected: a measurement across a room nobody asked for is not on a sheet of
+// the rooms somebody did. The ends were drawn, so the position claims behind them
+// are already in [Plan.Budget].
+func (p Plan) Measured() []MeasuredEdge { return slices.Clone(p.measured) }
+
 // Empty reports whether nothing the subject contains was drawn.
 //
 // It is a state of the answer and not a failure. A storey nobody has outlined
@@ -524,6 +647,9 @@ func (p Plan) Annotations() int {
 	}
 	for _, undrawn := range p.undrawn {
 		count += len(undrawn.annotations)
+	}
+	for _, measured := range p.measured {
+		count += len(measured.annotations)
 	}
 	return count
 }
@@ -549,11 +675,15 @@ func (p Plan) String() string {
 		return fmt.Sprintf("%s contains nothing with an outline", p.subject)
 	}
 
-	summary := fmt.Sprintf("%s: %s, %s",
-		p.subject,
-		plural(len(p.outlines), "outline"),
-		plural(p.Annotations(), "claim"),
-	)
+	summary := fmt.Sprintf("%s: %s", p.subject, plural(len(p.outlines), "outline"))
+
+	// Said only where there is something to say, so that a storey nobody
+	// measured across reads exactly as it always did.
+	if len(p.measured) > 0 {
+		summary += ", " + plural(len(p.measured), "measured edge")
+	}
+
+	summary += ", " + plural(p.Annotations(), "claim")
 
 	// Said only where there is something to say, so that a storey every node of
 	// which drew reads exactly as it always did.
@@ -564,9 +694,9 @@ func (p Plan) String() string {
 	return summary
 }
 
-// Report renders the plan with each outline under it and then everything it
-// could not draw, which is the detail somebody reading a terminal asked for
-// rather than the summary.
+// Report renders the plan with each outline under it, then each measured edge,
+// and then everything it could not draw, which is the detail somebody reading a
+// terminal asked for rather than the summary.
 //
 // What was not drawn comes last rather than in id order among the outlines,
 // because it is a different answer: the outlines are the sheet, and this is the
@@ -579,6 +709,15 @@ func (p Plan) Report() string {
 		out.WriteString("\n  ")
 		out.WriteString(outline.String())
 		for _, annotation := range outline.annotations {
+			out.WriteString("\n    ")
+			out.WriteString(annotation.String())
+		}
+	}
+
+	for _, measured := range p.measured {
+		out.WriteString("\n  ")
+		out.WriteString(measured.String())
+		for _, annotation := range measured.annotations {
 			out.WriteString("\n    ")
 			out.WriteString(annotation.String())
 		}
@@ -838,6 +977,10 @@ func (g *Graph) PlanOfSelected(
 		plan.budget.Merge(carried.Budget())
 	}
 
+	// After every outline, because what places a measured edge is the corners
+	// the outlines drew — and under a selection, only those it selected.
+	plan.measured = g.measured(plan.outlines, predicates)
+
 	return plan, diags
 }
 
@@ -981,6 +1124,115 @@ func (g *Graph) outlined(node *SemanticNode) bool {
 		return true
 	}
 	return false
+}
+
+// measured is every edge which bounds none of outlines, runs between two of
+// their corners and carries a live claim under predicates, in edge id order.
+//
+// The coordinates are taken from the outlines rather than resolved again, so an
+// end is exactly where the sheet already put that corner: in the plan's frame,
+// carried by the transform its outline was, and read against the one survey the
+// outlines were. A second read could only agree or be wrong.
+func (g *Graph) measured(outlines []Outline, predicates []string) []MeasuredEdge {
+	if len(outlines) == 0 || len(predicates) == 0 {
+		return nil
+	}
+
+	bounding := make(map[ID]struct{})
+	for _, outline := range outlines {
+		for edge := range g.Boundaries().Edges(outline.node) {
+			bounding[edge.ID()] = struct{}{}
+		}
+	}
+
+	corners := cornersOf(outlines)
+
+	var out []MeasuredEdge
+
+	for edge := range g.Topology().Edges() {
+		if _, bounds := bounding[edge.ID()]; bounds {
+			continue
+		}
+
+		start, end := edge.Vertices()
+
+		from, drawn := corners[start]
+		if !drawn {
+			continue
+		}
+
+		to, drawn := corners[end]
+		if !drawn {
+			continue
+		}
+
+		annotations := g.written(Anchor{kind: AnchorEdge, id: edge.ID(), start: start, end: end}, predicates)
+		if len(annotations) == 0 {
+			continue
+		}
+
+		out = append(out, MeasuredEdge{edge: edge, from: from, to: to, annotations: annotations})
+	}
+
+	slices.SortFunc(out, func(a, b MeasuredEdge) int {
+		return strings.Compare(string(a.edge.ID()), string(b.edge.ID()))
+	})
+
+	return out
+}
+
+// cornersOf is where each corner of outlines is, as their boundaries drew it.
+//
+// A corner is placed by the run which leaves it — the first run a step of the
+// traversal drew, which for a curve is its first chord and not a later one — so
+// that it is exactly the `from` a consumer reads off the boundary. The end of an
+// open run is left by nothing, and is placed by the run arriving at it instead.
+// Where two outlines draw one corner the first, in id order, places it; both are
+// read against one survey and carried into one frame, so they agree.
+func cornersOf(outlines []Outline) map[ID]Point {
+	corners := make(map[ID]Point)
+	arrived := make(map[ID]Point)
+
+	for _, outline := range outlines {
+		segments := outline.region.segments
+
+		for i, segment := range segments {
+			if segment.edge == nil {
+				continue
+			}
+
+			leaves, arrives := segment.edge.Vertices()
+			if segment.reversed {
+				leaves, arrives = arrives, leaves
+			}
+
+			if i == 0 || !sameStep(segments[i-1], segment) {
+				if _, placed := corners[leaves]; !placed {
+					corners[leaves] = segment.from
+				}
+			}
+
+			if i == len(segments)-1 || !sameStep(segments[i+1], segment) {
+				if _, placed := arrived[arrives]; !placed {
+					arrived[arrives] = segment.to
+				}
+			}
+		}
+	}
+
+	for vertex, point := range arrived {
+		if _, placed := corners[vertex]; !placed {
+			corners[vertex] = point
+		}
+	}
+
+	return corners
+}
+
+// sameStep reports whether two adjacent runs were drawn for one step of a
+// traversal: one edge, in one ring. Only the chords of a curve share one.
+func sameStep(a, b BoundarySegment) bool {
+	return a.edge == b.edge && a.ring == b.ring
 }
 
 // annotated is the claims reported on one contained node: those written on the

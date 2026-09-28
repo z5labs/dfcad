@@ -1612,6 +1612,14 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
 | `outlines[].annotations[].anchor.vertices` | array, optional | The edge's two corners, in the order the edge was authored. Absent for a node anchor. |
 | `outlines[].annotations[].anchor.rings` | array, optional | The loops bounding the node, in the order it references them. Absent for an edge anchor. |
+| `measured` | array, optional | One entry per edge that bounds no outline the plan drew, both of whose vertices are corners of the outlines it drew, and that carries at least one live claim under an `--annotate` predicate — in edge id order. Absent where there is none, so a model nobody measured across writes the bytes it always did. The rule is set out below the table. |
+| `measured[].edge` | string | The id of the edge. |
+| `measured[].label` | string, optional | What the edge is called. Absent where it is called nothing. |
+| `measured[].vertices` | array | The edge's two vertices in the order it was authored, exactly as `anchor.vertices` gives them. |
+| `measured[].from` | array | Where the first of those vertices is, in `frame`: identical to the coordinate that corner has in `outlines[].region.boundary`, which is where it is taken from. |
+| `measured[].to` | array | Where the second is, on the same terms. |
+| `measured[].declared-in` | string, optional | The frame the edge was written in, written only where it is not `frame`, as an outline's is: a coordinate-valued claim on it is in this frame. |
+| `measured[].annotations` | array | The live claims on it under the annotated predicates, each with an `edge` anchor, in the shape and the order an outline's annotations take. |
 | `undrawn` | array, optional | One entry per contained node that was **not** drawn — and that the filter selects, where one was given — in id order. Absent for a subject every node of which was drawn — a key a consumer has to read to learn nothing is one that should not be there. |
 | `undrawn[].node` | string | The id of the node that was not drawn. |
 | `undrawn[].label` | string, optional | What it is called. Absent where it is called nothing. |
@@ -1674,6 +1682,32 @@ reported, and the diagnostic saying why goes to stderr; planning across a unit b
 impossible, because one `--position` and one `--tolerance` each carry one unit. A model whose
 subject and every contained node are declared in one frame carries nothing and writes the
 bytes it always did.
+
+**A measured edge is on the plan when both its ends are corners the plan drew.** A
+measurement between two corners is an ordinary edge carrying a claim, and nothing requires that
+edge to be in any loop: a dimension string across a room, a span between two jambs. Such an
+edge bounds nothing, so it is on no outline, and `measured` is where it comes back. A corner is
+a vertex of an edge in the boundary of a drawn outline, a ring or an open run alike; the edge
+must itself bound no drawn outline, and must carry a live claim under an `--annotate`
+predicate, which keeps `--annotate` the whole of the answer to what is worth drawing. An edge
+that bounds a drawn outline is not in `measured`, and its claims stay on that outline.
+
+The corners place it because they are structural: a measured edge between two corners of a
+storey's rings is about that storey. Containment cannot place it — an edge has no `within` —
+and **its frame is deliberately not used**. The frame is what a consumer filtering edges by
+hand would reach for, but a frame is not a place: two storeys may share one, and a plan of a
+parcel would pull in every edge on the site grid whether or not anything drawn meets it. Under
+`--kind` or `--type` the corners are those of the outlines the plan reported, so a measurement
+across a room the filter did not select is not on a sheet of those it did. **An edge running to
+a vertex no drawn outline has is not on the plan**, and stays with
+[`list-geometry`](#list-geometry), which finds every edge carrying a claim whatever it bounds.
+
+`from` and `to` are the corners as the outlines drew them — in `frame`, carried as those
+outlines were — and so equal the `from` of the `region.boundary` runs leaving those vertices,
+and what [`resolve`](#resolve) says of each vertex in `frame`. The ends were drawn, so their
+position claims are already in `budget`, which a measured edge leaves unchanged. **A curve
+claimed on a measured edge is not drawn**: a measurement runs between two points, so `from`
+and `to` are its ends, and the edge is never listed in `chorded`.
 
 Which nodes are drawn is every descendant of the subject — every one the filter selects,
 where one is given — that references at least one loop this run could read, however deep: a
