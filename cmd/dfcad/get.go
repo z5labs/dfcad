@@ -6,11 +6,11 @@
 package main
 
 import (
+	"bufio"
 	"cmp"
 	"errors"
 	"fmt"
 	"io"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -699,7 +699,7 @@ func (r retrieval) describe(graph *dfcad.Graph, entity dfcad.Entity) (getEntity,
 // getMany is get given -: every id on standard input, retrieved against one
 // load of the model and answered in one object.
 func getMany(cmd command, globals *globals, asked retrieval, stdin io.Reader, stdout, stderr io.Writer) int {
-	written, err := io.ReadAll(stdin)
+	written, err := readIDs(stdin)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: reading ids from standard input: %v\n", cmd.name, err)
 		return exitLoad
@@ -707,7 +707,7 @@ func getMany(cmd command, globals *globals, asked retrieval, stdin io.Reader, st
 
 	graph, loaded := loadModel(cmd, globals, stderr)
 
-	entities, err := retrieveAll(graph, strings.Fields(string(written)))
+	entities, err := retrieveAll(graph, written)
 	if err != nil {
 		// Each on a line of its own, in the words a get of that id alone would
 		// have used, so that fixing a batch reads the same as fixing one id.
@@ -751,6 +751,21 @@ func getMany(cmd command, globals *globals, asked retrieval, stdin io.Reader, st
 	}
 
 	return exitSuccess
+}
+
+// readIDs is every whitespace-separated word on stdin, read a word at a time
+// rather than whole, so that what is held is the ids and not the input they
+// were written in.
+func readIDs(stdin io.Reader) ([]string, error) {
+	scanner := bufio.NewScanner(stdin)
+	scanner.Split(bufio.ScanWords)
+
+	var out []string
+	for scanner.Scan() {
+		out = append(out, scanner.Text())
+	}
+
+	return out, scanner.Err()
 }
 
 // retrieveAll is every entity the written ids name, in id order and each once.
@@ -808,13 +823,23 @@ func retrieveAll(graph *dfcad.Graph, written []string) ([]dfcad.Entity, error) {
 func appendUnseen(diags []dfcad.Diagnostic, found ...dfcad.Diagnostic) []dfcad.Diagnostic {
 	for _, diagnostic := range found {
 		seen := slices.ContainsFunc(diags, func(already dfcad.Diagnostic) bool {
-			return reflect.DeepEqual(already, diagnostic)
+			return sameDiagnostic(already, diagnostic)
 		})
 		if !seen {
 			diags = append(diags, diagnostic)
 		}
 	}
 	return diags
+}
+
+// sameDiagnostic reports whether two diagnostics say the same thing about the
+// same place, which is every field of the one being every field of the other.
+func sameDiagnostic(a, b dfcad.Diagnostic) bool {
+	return a.Severity == b.Severity &&
+		a.Span == b.Span &&
+		a.Message == b.Message &&
+		a.Hint == b.Hint &&
+		slices.Equal(a.Related, b.Related)
 }
 
 // checkClaims reports a --claims which names no way of reporting them, and a
