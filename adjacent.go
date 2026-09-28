@@ -8,6 +8,7 @@ package dfcad
 import (
 	"iter"
 	"slices"
+	"strings"
 )
 
 // Adjacent is one region which shares boundary with another, and the edges the
@@ -53,7 +54,11 @@ func (a Adjacent) Node() *SemanticNode { return a.node }
 //
 // A result reached at a depth past the first shares its edges with the region
 // which reached it rather than with the region the question was asked about, for
-// the reason it is a step further away: nothing joins them directly.
+// the reason it is a step further away: nothing joins them directly. Where more
+// than one region a step nearer borders it, the one it was reached from is the
+// one with the smallest id — never the one read first — so which edges these are
+// is decided by the model and not by which file each region is written in, and
+// can be checked against the boundaries of the regions a step nearer.
 func (a Adjacent) Via() []*Edge { return slices.Clone(a.via) }
 
 // Depth returns how many steps of adjacency the traversal took to reach it: one
@@ -98,6 +103,14 @@ func (b *Boundaries) Adjacent(region *SemanticNode) iter.Seq[Adjacent] {
 // Each region comes back once, at the fewest steps it can be reached in, so a
 // ring of rooms terminates and a room reachable two ways is one result. A depth
 // of zero takes no step and yields nothing.
+//
+// Every result at the first step is reached from region itself. Past it, a
+// result is reached from the region one step nearer which has the smallest id
+// among those it shares an edge with, and that is the region its
+// [Adjacent.Via] names the edges shared with. Each step is expanded in id
+// order to make it so: expanding in the order regions were discovered would
+// choose by the order the files were read in, and moving a region between
+// files would change the answer.
 func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjacent] {
 	return func(yield func(Adjacent) bool) {
 		if region == nil || depth == 0 {
@@ -110,6 +123,12 @@ func (b *Boundaries) AdjacentTo(region *SemanticNode, depth int) iter.Seq[Adjace
 		frontier := []*SemanticNode{region}
 
 		for level := 1; len(frontier) > 0 && (depth < 0 || level <= depth); level++ {
+			// The region a result is reached from is the first of the frontier
+			// to border it, so the frontier's order is what chooses it.
+			slices.SortFunc(frontier, func(x, y *SemanticNode) int {
+				return strings.Compare(string(x.ID()), string(y.ID()))
+			})
+
 			var next []*SemanticNode
 
 			for _, from := range frontier {
