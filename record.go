@@ -797,7 +797,9 @@ const (
 	// NoticeUnrankable is a claim whose accuracy does not combine into one
 	// figure, which can never win resolution. That is a claim written with no
 	// accuracy, or one whose accuracy terms are not all in one unit — nothing
-	// converts between them, and [Notice.Units] names the units it found.
+	// converts between them, and [Notice.Units] names the units it found. A
+	// term the arithmetic cannot use at all, such as a magnitude which is not a
+	// finite number, stops the combination too, and [Notice.Unusable] says so.
 	NoticeUnrankable NoticeKind = "unrankable"
 
 	// NoticeConflict is a claim written on a subject and predicate the model
@@ -845,6 +847,12 @@ type Notice struct {
 	// a claim whose accuracy is unrankable because its terms are in more than
 	// one unit.
 	Units []Unit
+
+	// Unusable reports that an unrankable claim did write accuracy terms, and
+	// that one of them is not a term the arithmetic can use — a magnitude which
+	// is not a finite number. It is false for every other notice, including one
+	// about a claim which wrote no accuracy at all.
+	Unusable bool
 }
 
 // Message is the notice as a sentence, for a person reading a terminal.
@@ -856,6 +864,14 @@ func (n Notice) Message() string {
 				"the %s of %s carries an accuracy in %s, and nothing converts between them, so it is unrankable: "+
 					"it can never win resolution until its terms are in one unit",
 				n.Predicate, n.Subject, join(spellings(n.Units), "and"),
+			)
+		}
+
+		if n.Unusable {
+			return fmt.Sprintf(
+				"the %s of %s carries an accuracy term which is not a finite number, so its accuracy combines "+
+					"to no figure and it is unrankable: it can never win resolution",
+				n.Predicate, n.Subject,
 			)
 		}
 
@@ -1282,8 +1298,11 @@ func unrankable(spec ClaimSpec) (Notice, bool) {
 	}
 
 	var mixed MixedUnitsError
-	if errors.As(err, &mixed) {
+	switch {
+	case errors.As(err, &mixed):
 		notice.Units = mixed.Units
+	case claim.hasAccuracy:
+		notice.Unusable = true
 	}
 
 	return notice, true

@@ -2559,7 +2559,7 @@ in every format.
 
 | Kind | When |
 |------|------|
-| `unrankable` | The claim's accuracy does not combine into one figure: it carries none, or its terms are in more than one unit, which nothing converts between and which the message names. It loads, it can never win resolution, and it is not given a default. |
+| `unrankable` | The claim's accuracy does not combine into one figure: it carries none, or its terms are in more than one unit, which nothing converts between and which the message names, or a term's magnitude is not a finite number. It loads, it can never win resolution, and it is not given a default. |
 | `conflict` | The claim was written on a subject and predicate the model already states. The competing claims are named. |
 | `unresolvable` | A retraction left its subject and predicate with no live claim at all, so nothing resolves under it. |
 
