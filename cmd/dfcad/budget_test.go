@@ -364,7 +364,16 @@ var (
 		// the one resolution ranks each claim by, and a consumer drawing a
 		// plan otherwise reimplements it — wrongly, three times over, in the one
 		// consumer measured.
-		ceiling: 8180,
+		//
+		// It was 8180 until every outline and every undrawn entry began naming
+		// the node it is directly within (#313), which is about seven tokens on
+		// each of the twenty-nine entries this storey holds and took it to 8368.
+		// It is raised because the field was asked for by a real consumer
+		// (discussion #305): without it a renderer grouping rooms by storey, or
+		// drawing an alcove inside its room, has to call `get` once per outline
+		// to learn a nesting the model already holds, and `traverse` cannot
+		// stand in for that because its results carry depth and no parent.
+		ceiling: 8400,
 		// Two rather than the standing four, because the standing claim would be
 		// a comparison between two different questions. Every other path answers
 		// about one named thing, and reading the whole model is the only other

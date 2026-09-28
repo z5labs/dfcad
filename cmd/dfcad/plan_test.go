@@ -14,6 +14,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1557,4 +1558,195 @@ func TestRunPlanWritesNoDeclaredInForOneFrame(t *testing.T) {
 	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, wholeStorey("site:L-01")...)...)
 
 	assert.NotContains(t, stdout, `"declared-in"`, "a model authored in one frame carries nothing")
+}
+
+// planNestedTypes is what the fixture below adds to the registry: a recess of a
+// room, which is a space of its own, and a thing inside the room with no shape.
+const planNestedTypes = `
+(type Alcove (kind Space) (geometry area) (description "A recess opening off a room."))
+(type CircuitGroup (kind Element) (geometry absent) (description "Outlets served by one circuit."))
+`
+
+// planNestedGeometry is the alcove's ring, a metre square inside Meeting Room A.
+const planNestedGeometry = `
+(vertex geom:V-41 (frame frame:building)
+  (position (value (0.5 0.5 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-42 (frame frame:building)
+  (position (value (1.5 0.5 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-43 (frame frame:building)
+  (position (value (1.5 1.5 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(vertex geom:V-44 (frame frame:building)
+  (position (value (0.5 1.5 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+
+(edge geom:E-41 (frame frame:building) (vertices geom:V-41 geom:V-42))
+(edge geom:E-42 (frame frame:building) (vertices geom:V-42 geom:V-43))
+(edge geom:E-43 (frame frame:building) (vertices geom:V-43 geom:V-44))
+(edge geom:E-44 (frame frame:building) (vertices geom:V-44 geom:V-41))
+
+(loop geom:L-41 (frame frame:building) (edges geom:E-41 geom:E-42 geom:E-43 geom:E-44))
+`
+
+// planNestedEntities is an alcove within Meeting Room A — a space within a
+// space, which containment allows (SPEC §6.9.1) — and a circuit group within the
+// same room, which nothing can draw.
+const planNestedEntities = `
+(node site:A-01
+  (label "Alcove off Meeting Room A")
+  (kind Space)
+  (type Alcove)
+  (geometry area)
+  (frame frame:building)
+  (within site:R-01)
+  (boundary geom:L-41))
+
+(node site:C-02
+  (label "Meeting Room A sockets")
+  (kind Element)
+  (type CircuitGroup)
+  (frame frame:building)
+  (within site:R-01))
+`
+
+// nestedPlanFixture is the storey with something inside one of its rooms, drawn
+// and undrawn, which is the tree a flat list has to say the nesting of.
+func nestedPlanFixture() map[string]string {
+	return map[string]string{
+		"registry.dfc":          planRegistry + planNestedTypes,
+		"entities/model.dfc":    planEntities + planNestedEntities,
+		"entities/geometry.dfc": planGeometry + planNestedGeometry,
+	}
+}
+
+// withins is the within of every entry of a plan, outlines and undrawn alike,
+// keyed by the node the entry names.
+func withins(result planResult) map[string]string {
+	out := make(map[string]string, len(result.Outlines)+len(result.Undrawn))
+	for _, outline := range result.Outlines {
+		out[outline.Node] = outline.Within
+	}
+	for _, undrawn := range result.Undrawn {
+		out[undrawn.Node] = undrawn.Within
+	}
+	return out
+}
+
+func TestRunPlanNamesWhatEachEntryIsWithin(t *testing.T) {
+	testCases := []struct {
+		name           string
+		subject        string
+		node           string
+		expectedDrawn  bool
+		expectedWithin string
+	}{
+		{
+			name:           "a room names the storey it is within",
+			subject:        "site:L-01",
+			node:           "site:R-01",
+			expectedDrawn:  true,
+			expectedWithin: "site:L-01",
+		},
+		{
+			name:           "an alcove names the room it is within rather than the storey",
+			subject:        "site:L-01",
+			node:           "site:A-01",
+			expectedDrawn:  true,
+			expectedWithin: "site:R-01",
+		},
+		{
+			name:           "an undrawn entry names the room it is within",
+			subject:        "site:L-01",
+			node:           "site:C-02",
+			expectedWithin: "site:R-01",
+		},
+		{
+			name:           "a room reached through the building still names its storey",
+			subject:        "site:B-01",
+			node:           "site:R-01",
+			expectedDrawn:  true,
+			expectedWithin: "site:L-01",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, nestedPlanFixture()))
+
+			stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, wholeStorey(testCase.subject)...)...)
+			result := listed[planResult](t, stdout)
+
+			got, found := withins(result)[testCase.node]
+			require.True(t, found, "%s is in neither outlines nor undrawn", testCase.node)
+			assert.Equal(t, testCase.expectedWithin, got)
+			assert.Equal(t, testCase.expectedDrawn, slices.Contains(outlined(result), testCase.node))
+		})
+	}
+}
+
+// TestRunPlanWithinAgreesWithGet is the property the field is defined by: for
+// every entry of a plan, drawn or not, within is what get reports as
+// entity.within for that node.
+func TestRunPlanWithinAgreesWithGet(t *testing.T) {
+	testCases := []struct {
+		name    string
+		fixture map[string]string
+		subject string
+	}{
+		{
+			name:    "over a storey holding a room within a room and an undrawn node",
+			fixture: nestedPlanFixture(),
+			subject: "site:L-01",
+		},
+		{
+			name:    "over the building, two levels above the rooms",
+			fixture: nestedPlanFixture(),
+			subject: "site:B-01",
+		},
+		{
+			name:    "over a storey holding a ring which could not be read",
+			fixture: unreadableFixture(),
+			subject: "site:L-01",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Chdir(tree(t, testCase.fixture))
+
+			var stdout, stderr bytes.Buffer
+			run(append([]string{"plan"}, wholeStorey(testCase.subject)...), &stdout, &stderr)
+			require.NotZero(t, stdout.Len(), stderr.String())
+
+			entries := withins(listed[planResult](t, stdout.String()))
+			require.NotEmpty(t, entries)
+
+			for node, within := range entries {
+				got, _ := runIn(t, exitSuccess, "get", node)
+
+				assert.Equal(t, listed[getResult](t, got).Entity.Within, within, node)
+				assert.NotEmpty(t, within, "%s is a descendant of the subject and so is within something", node)
+			}
+		})
+	}
+}
+
+func TestRunPlanAlwaysWritesWithin(t *testing.T) {
+	t.Chdir(tree(t, nestedPlanFixture()))
+
+	stdout, _ := runIn(t, exitSuccess, append([]string{"plan"}, wholeStorey("site:L-01")...)...)
+
+	var raw struct {
+		Outlines []map[string]json.RawMessage `json:"outlines"`
+		Undrawn  []map[string]json.RawMessage `json:"undrawn"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &raw))
+	require.NotEmpty(t, raw.Outlines)
+	require.NotEmpty(t, raw.Undrawn)
+
+	for _, entry := range append(raw.Outlines, raw.Undrawn...) {
+		assert.Contains(t, entry, "within", "every entry carries the key")
+	}
 }

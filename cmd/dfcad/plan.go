@@ -117,9 +117,10 @@ The object plan writes carries "subject", "planned" and the "digest" of the
 source tree it was read from, the "frame" every coordinate in it is in and that
 frame's "unit", the
 "tolerance" it was judged against, the "annotating" predicates it was asked
-for, one "outlines" entry per contained node which was drawn with its "region"
-and its "annotations", and the "budget": the accuracy of the rings, over the
-position claims which put every drawn corner where it is. A region read from a
+for, one "outlines" entry per contained node which was drawn with the node it
+is "within", its "region" and its "annotations", and the "budget": the
+accuracy of the rings, over the position claims which put every drawn corner
+where it is. A region read from a
 node drawn as a point carries "at" — its coordinate — and no pieces, which is
 what a consumer places a symbol from. Where a ring bent it
 also carries the "chord" tolerance it was drawn to and the "deviation" that
@@ -137,9 +138,9 @@ that frame rather than in the plan's. A curve is judged against --chord where
 it was drawn, before it is carried.
 
 Where something inside the subject was not drawn it also carries "undrawn": one
-entry per such node, in id order, with its id, its label, kind and type, its
-"annotations", and a "reason" — "no-boundary" for a node the model gives no
-edges, "unreadable-boundary" for one whose edges this run could not read,
+entry per such node, in id order, with its id, its label, kind and type, the
+node it is "within", its "annotations", and a "reason" — "no-boundary" for a
+node the model gives no edges, "unreadable-boundary" for one whose edges this run could not read,
 "no-position" for a node drawn as a point which nothing places, "uncarried" for
 one whose shape could not be carried into the plan's frame — the frames are not
 related, a transform could not be applied, or the plan's frame is in a unit
@@ -281,6 +282,13 @@ type outlineEntry struct {
 	Kind  string `json:"kind,omitempty"`
 	Type  string `json:"type,omitempty"`
 
+	// Within is the id of the node it is directly within, the same value `get`
+	// reports as `entity.within`. It is always written: every outline is a
+	// descendant of the subject and so is within something, and the subject's
+	// children name the subject. It is what lets a renderer group rooms by
+	// storey, or draw an alcove inside its room, without a `get` per outline.
+	Within string `json:"within"`
+
 	// Region is the area it covers, with the ring bounding each piece and the
 	// edge behind each straight run of them, in the plan's frame.
 	Region regionEntry `json:"region"`
@@ -311,6 +319,10 @@ type undrawnEntry struct {
 	Label string `json:"label,omitempty"`
 	Kind  string `json:"kind,omitempty"`
 	Type  string `json:"type,omitempty"`
+
+	// Within is the id of the node it is directly within, exactly as an
+	// outline's is, and always written for the same reason.
+	Within string `json:"within"`
 
 	// Reason is why it was not drawn: `no-boundary` for a node which references
 	// no loop, `unreadable-boundary` for one whose loops the run could not read,
@@ -591,6 +603,7 @@ func outlineOf(outline dfcad.Outline, frame dfcad.ID) outlineEntry {
 		entry.Label = node.Label()
 		entry.Kind = string(node.Kind())
 		entry.Type = node.Type()
+		entry.Within = withinOf(node)
 	}
 
 	for _, annotation := range outline.Annotations() {
@@ -614,6 +627,7 @@ func undrawnOf(undrawn dfcad.Undrawn, frame dfcad.ID) undrawnEntry {
 		entry.Label = node.Label()
 		entry.Kind = string(node.Kind())
 		entry.Type = node.Type()
+		entry.Within = withinOf(node)
 	}
 
 	for _, annotation := range undrawn.Annotations() {
@@ -621,6 +635,15 @@ func undrawnOf(undrawn dfcad.Undrawn, frame dfcad.ID) undrawnEntry {
 	}
 
 	return entry
+}
+
+// withinOf is the id of the node which directly contains node, as the machine
+// contract writes it. It is read from the node rather than from the traversal
+// which reached it, so that it is the value `get` reports as `entity.within`
+// and never the subject a deeper descendant was found under.
+func withinOf(node *dfcad.SemanticNode) string {
+	within, _ := node.Within()
+	return string(within)
 }
 
 // declaredIn is the frame a node was read in as the machine contract writes it:

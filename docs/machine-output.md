@@ -1584,6 +1584,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `outlines[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `outlines[].kind` | string, optional | The kind it declares. |
 | `outlines[].type` | string, optional | The type it declares. |
+| `outlines[].within` | string | The id of the node it is directly within — the same value [`get`](#get) reports as `entity.within`, and never an ancestor further up. Always written: every outline is a descendant of the subject and so is within something, and the subject's children name the subject. It is what a renderer groups rooms by storey, or draws an alcove inside its room, from. |
 | `outlines[].region` | object | The area it covers, with `area`, `empty`, `pieces`, `at` and `boundary` exactly as [`buildable`](#buildable) writes them. A node drawn as a point — a panel, a receptacle, a survey monument — is an outline whose region carries `at`, the coordinate a sheet places a symbol at, and no pieces: it covers nothing and has no boundary to attribute. |
 | `outlines[].declared-in` | string, optional | The frame the node's shape was read in, written only where it is not `frame`: the region was carried out of it, and the claims were not. A claim is reported as it was written, so a coordinate-valued annotation on this node is a coordinate in this frame. |
 | `outlines[].annotations` | array | The claims reported on it, the node's own first and then those of each edge of its boundary. Empty rather than null for a room nobody has written anything on. |
@@ -1596,6 +1597,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `undrawn[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `undrawn[].kind` | string, optional | The kind it declares. |
 | `undrawn[].type` | string, optional | The type it declares. |
+| `undrawn[].within` | string | The id of the node it is directly within, exactly as `outlines[].within` is, and always written for the same reason. |
 | `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read, `no-position` for a node drawn as a point which nothing claims a position of under `--position`, `uncarried` for one whose shape was read in another frame and could not be carried into `frame` — the two frames are not related, a transform on the way could not be applied, or `frame` is in a unit other than the tolerance's. A closed set. |
 | `undrawn[].declared-in` | string, optional | The frame the node's shape was read in — or, for a node with no shape, the frame it declares — written only where it is not `frame`, so that its claims can be read in the frame they were written in. |
 | `undrawn[].annotations` | array | The claims reported on it, in the same order and the same shape as an outline's. Empty rather than null. A node that references no loop has no edges, so what it carries is exactly its own claims and no edge anchors. |
