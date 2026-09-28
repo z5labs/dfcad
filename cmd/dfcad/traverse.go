@@ -92,7 +92,9 @@ boundary of, and every other query walks on from them.
 The object traverse writes carries "subject", "query", the "depth" it was bounded
 by, and "results": what the walk reached, each with the relation which reached
 it, how far away it was, and — for the edges of a boundary — what physically
-realises it.
+realises it and the type that element declares, so a wall is told from a door
+without a second call. There is no kind beside the type: what backs an edge is
+always an Element.
 `
 
 // The queries traverse takes, which are the relations of the model in the
@@ -483,6 +485,18 @@ type traversed struct {
 	// none.
 	Backing []string `json:"backing,omitempty"`
 
+	// BackingTypes are the types the elements in Backing declare, one per
+	// element and at the same position, so that telling a wall from a door does
+	// not take a second call and a join on id. Absent exactly where Backing is.
+	// An element which declares no type — one whose type could not be read,
+	// which only a model the load refused holds — contributes "" so that the
+	// two stay aligned.
+	//
+	// There is no backing-kinds beside it: an edge is backed only by a node of
+	// kind Element, so the kind of every backing element is the same and a field
+	// carrying it would be a constant.
+	BackingTypes []string `json:"backing-types,omitempty"`
+
 	// Via are the ids of the edges an adjacent thing shares with the thing it
 	// was reached from, in the order that boundary traverses them. Absent for
 	// every relation but adjacency.
@@ -750,7 +764,8 @@ func nodeResult(node *dfcad.SemanticNode, relation dfcad.Relation, depth int) tr
 	return entry
 }
 
-// boundaryResult is one edge of a boundary, with what physically realises it.
+// boundaryResult is one edge of a boundary, with what physically realises it
+// and the type each of those elements declares.
 //
 // The classification is reported whatever it is, including the answer an edge
 // gets when it names a backing element the model does not hold. That is a load
@@ -772,6 +787,7 @@ func boundaryResult(boundary dfcad.BoundaryEdge) traversed {
 
 	for _, element := range boundary.Backing() {
 		entry.Backing = append(entry.Backing, string(element.ID()))
+		entry.BackingTypes = append(entry.BackingTypes, element.Type())
 	}
 
 	return entry

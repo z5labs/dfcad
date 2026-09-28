@@ -1052,6 +1052,7 @@ takes a query, an id, and three flags.
 | `results[].frame` | string, optional | The coordinate frame it is expressed in. |
 | `results[].classification` | string, optional | What an edge of a boundary separates the region by: `physical`, `virtual`, or `unresolved` where it names a backing element the model does not hold. Absent for a result that is not an edge. |
 | `results[].backing` | array, optional | The ids of the elements that physically realise an edge, in the order the edge named them. Absent for a virtual edge, which names none. |
+| `results[].backing-types` | array, optional | The type each element in `backing` declares, at the same position, so that `backing-types[i]` is the type of `backing[i]` and a wall is told from a door without a second call and a join on id. Absent exactly where `backing` is: for a virtual edge and for an unresolved one. Over a model the load refused, an element which declares no type — one whose `(type …)` could not be read — contributes `""`, so the two arrays stay aligned. There is no `backing-kinds`: an edge is backed only by a node of kind `Element`, so the kind of every backing element is `Element` and a field carrying it would be a constant. |
 | `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. Written under `adjacent-to` and absent otherwise. |
 | `results[].span` | span | Where it was written. |
 
