@@ -1373,6 +1373,7 @@ the one a permanent structure gets placed against.
 | `region.pieces[].area` | number | What one connected part encloses once its holes are taken away. |
 | `region.pieces[].outer` | array | The ring bounding that part, closed without repeating its first corner, each corner as its components. |
 | `region.pieces[].holes` | array, optional | The rings taken out of it. Absent where there are none. |
+| `region.at` | array, optional | Where a node drawn as a point sits, as its components in the order they were written. It is the whole shape of such a node, which covers no area and has no boundary to attribute, so a region carrying it has no pieces. Absent for every region read from loops and for every region an operation over an area produced — which is what tells a thing with a position from a thing with an outline, and why a buildable region never carries it. |
 | `region.boundary[].ring` | number | Which ring of the boundary a straight run belongs to, counted from zero in the order the rings are traversed. |
 | `region.boundary[].edge` | string | The id of the edge that run was written as, or whose arc it stands in for. |
 | `region.boundary[].origin` | string | What produced the run: `edge` where it is the edge itself, corner to corner as it was written, and `arc` where it is one chord of the drawing of the arc that edge bends along. |
@@ -1521,13 +1522,34 @@ one. That is the answer to the question rather than a failure to answer it.
 ### `plan`
 
 What a spatial node contains, as rings, with the claims written on them. It takes the id of
-the thing to plan and three flags — none of which has a default.
+the thing to plan and six flags, three of which are required — and none of which has a
+default.
 
 | Flag | Meaning |
 |------|---------|
 | `--annotate <predicate>` | A predicate whose claims are reported on every ring and on the edges bounding it. Repeatable, and at least one is required. |
 | `--position <predicate>` | The predicate a corner's position is claimed under, which the rings are read from. Required. |
 | `--tolerance <name>` | The tolerance corners are judged coincident against. Required. |
+| `--arc-centre <predicate>` | The predicate a curved edge's centre is claimed under. |
+| `--arc-through <predicate>` | The predicate the point a curved edge passes through is claimed under. |
+| `--chord <name>` | The tolerance a straight segment standing in for a curve may fall from it by. |
+
+The last three are the vocabulary a curved wall is read under, exactly as
+[`tessellate`](#tessellate) reads one, and all three are needed to read one: a ring is a list
+of points, so a curve has to become points somewhere, and `--chord` is where it is said how
+closely. **`--arc-centre` and `--arc-through` are a pair**: a centre with no point on the
+curve beside it leaves two arcs between the same two ends and does not say which was meant,
+so naming one and not the other is a **usage error**. A run which names both and no `--chord`
+reads a curve it meets as a ring it cannot draw — that room comes back under `undrawn` as
+`unreadable-boundary`, with a diagnostic saying no chord tolerance was named — rather than
+drawing it to a resolution nobody chose.
+
+A run which names neither predicate draws every edge as the straight line between its two
+ends, and says so wherever the model states otherwise: `chorded` lists every edge which claims
+a position — which is how and only how a curve is written, because an edge has no position of
+its own — and a warning on stderr names each of them. A ring drawn straight through a curve is
+a drawing error rather than a rounding, and a sheet is the last place anything would notice
+it.
 
 **This is a query and not an export.** It writes no file
 ([0022](decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md) is about the
@@ -1551,12 +1573,18 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `unit` | string, optional | That frame's linear unit. Every coordinate here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
 | `annotating` | array | The predicates the run asked for, in the order it named them and with a repeat written once. |
+| `chord` | object, optional | The tolerance the curves of the rings were drawn to: `name`, `value` and `unit`. Of the plan rather than of any outline in it. It travels with the answer because a ring that does not say how closely it follows the curve it came from is an approximation nobody downstream can judge, and nobody can reproduce. Absent, with `deviation`, for a plan in which no ring bent — a storey of straight walls, and a run which read no curve: nothing was approximated, so there is no tolerance it was drawn to. |
+| `deviation.value` | number | How far the worst segment of any outline actually falls from the curve it stands in for. Absent wherever `chord` is absent, and so absent wherever `chorded` is written: a curve that was not read was not drawn to anything. |
+| `deviation.unit` | string, optional | The frame's linear unit. |
+| `chorded[].edge` | string | An edge of a ring which states a curve this run did not read. Absent for a run which read every curve and for a storey which claims none. |
+| `chorded[].predicates` | array | The predicates that edge states a position under, which is what to name to have the curve read. |
+| `chorded[].span` | object | Where that edge was written. |
 | `outlines` | array | One entry per contained node that was drawn, in id order. Empty rather than null for a subject that contains nothing drawable. |
 | `outlines[].node` | string | The id of the node the rings were read from, which is what names them. |
 | `outlines[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `outlines[].kind` | string, optional | The kind it declares. |
 | `outlines[].type` | string, optional | The type it declares. |
-| `outlines[].region` | object | The area it covers, with `area`, `empty`, `pieces` and `boundary` exactly as [`buildable`](#buildable) writes them. |
+| `outlines[].region` | object | The area it covers, with `area`, `empty`, `pieces`, `at` and `boundary` exactly as [`buildable`](#buildable) writes them. A node drawn as a point — a panel, a receptacle, a survey monument — is an outline whose region carries `at`, the coordinate a sheet places a symbol at, and no pieces: it covers nothing and has no boundary to attribute. |
 | `outlines[].annotations` | array | The claims reported on it, the node's own first and then those of each edge of its boundary. Empty rather than null for a room nobody has written anything on. |
 | `outlines[].annotations[].anchor.kind` | string | Which family the claim is written on: `edge` for one written on an edge of a ring, `node` for one written on the node that ring bounds. |
 | `outlines[].annotations[].anchor.id` | string | The id of that edge or that node. |
@@ -1567,7 +1595,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `undrawn[].label` | string, optional | What it is called. Absent where it is called nothing. |
 | `undrawn[].kind` | string, optional | The kind it declares. |
 | `undrawn[].type` | string, optional | The type it declares. |
-| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read. A closed set of two. |
+| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read, `no-position` for a node drawn as a point which nothing claims a position of under `--position`. A closed set. |
 | `undrawn[].annotations` | array | The claims reported on it, in the same order and the same shape as an outline's. Empty rather than null. A node that references no loop has no edges, so what it carries is exactly its own claims and no edge anchors. |
 | `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
 
@@ -1609,7 +1637,12 @@ a room's area with a wall's fire rating would produce a figure of nothing at all
 
 Which nodes are drawn is every descendant of the subject that references at least one loop
 this run could read, however deep: a room inside a storey and an alcove inside that room are
-both places somebody draws. The subject itself is not drawn — the question is what is in it.
+both places somebody draws. So is every descendant whose declared geometry is `point` and
+which a claim under `--position` places, read from the position claimed of the node itself:
+its outline carries `at` and no pieces, because a panel, a receptacle and a survey monument
+are each that shape, and a plan that reported them as having no boundary would leave every
+device on a floor off the sheet. The subject itself is not drawn — the question is what is in
+it.
 
 **Nothing the subject contains is dropped.** Every descendant that was not drawn comes back
 under `undrawn`, named, with what it is, why it was not drawn and the claims written on it —
@@ -1620,9 +1653,9 @@ both are things somebody put inside that storey. This is the one place the paylo
 an authored fact without saying so, and the failure it would cause has no downstream symptom
 at all: the sheet renders, looks complete, and is missing a door.
 
-**The reason is a token and the detail is a diagnostic.** `reason` says which of the two
+**The reason is a token and the detail is a diagnostic.** `reason` says which of them
 applies, because that is what decides whether anybody has to act — nobody fixes a circuit
-group, somebody fixes a ring that will not close — and a consumer deciding that should read a
+group, somebody fixes a ring that will not close or places a receptacle nobody set out — and a consumer deciding that should read a
 field rather than match prose. Where the reason is a defect, the diagnostics on stderr carry
 the loop, the file, the position and the size of the gap, which is where anything an author
 acts on belongs; a second copy of it on stdout would be a second thing to keep true.
@@ -1654,7 +1687,9 @@ about one would be a diagnostic about a model in which nothing is wrong.
 
 **Exit `1`** is a plan a ring of which could not be read — a boundary that does not close, one
 that crosses itself, corners that are not in one plane, a tolerance the registry does not
-declare in the frame's unit. The other rooms are still drawn and the object still comes back
+declare in the frame's unit, a curve met with no `--chord` named — or a node drawn as a point
+that nothing places, which declares that its shape is where it is and then does not say where.
+The other rooms are still drawn and the object still comes back
 with `planned` false and the room named under `undrawn`, because a sheet with one room missing
 is more use than no sheet and the diagnostics on stderr say which room to fix.
 
