@@ -649,7 +649,7 @@ func (l *registryLoader) declareFrame(node *Node) {
 		return
 	}
 
-	declaration := &frameDeclaration{frame: Frame{ID: id, Span: span}, id: span}
+	declaration := &frameDeclaration{frame: Frame{ID: id, Span: span, Form: node.Span}, id: span}
 
 	if arg, ok := argumentOf(node, "label"); ok {
 		declaration.frame.Label, _ = l.text(arg, "a string")

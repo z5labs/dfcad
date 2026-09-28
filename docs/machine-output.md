@@ -775,7 +775,9 @@ flags. Given `-` in place of the id it reads many ids from standard input instea
 
 An id is unique across the whole model, so this is one command for both families. A vertex,
 an edge and a loop are retrieved by the same call a semantic node is, and `family` says
-which came back and so which of the fields to expect.
+which came back and so which of the fields to expect. So is a frame: it is both a registry
+entry and a node ([SPEC §7.5](../SPEC.md#75-frame)), its id is drawn from the same id space,
+and it comes back as `family` `frame` — see [A frame](#a-frame).
 
 ```json
 {
@@ -824,7 +826,7 @@ which came back and so which of the fields to expect.
 | `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `entity` | object | The thing the id named. |
 | `entity.id` | string | The id the model holds it under, which is the id that was asked for. |
-| `entity.family` | string | One of `node`, `vertex`, `edge`, `loop`. It says which of the fields below to expect. |
+| `entity.family` | string | One of `node`, `vertex`, `edge`, `loop`, `frame`. It says which of the fields below to expect. |
 | `entity.label` | string, optional | Its name for a person reading it. |
 | `entity.kind` | string, optional | The kind a semantic node declares. |
 | `entity.type` | string, optional | The type a semantic node declares, which need not be one the registry declares. |
@@ -836,6 +838,9 @@ which came back and so which of the fields to expect.
 | `entity.start`, `entity.end` | string, optional | The ids of the vertices an edge runs between. |
 | `entity.backed-by` | array, optional | The ids of the elements that physically realise an edge. |
 | `entity.edges` | array, optional | The ids of the edges a loop is assembled from, in the order it wrote them. |
+| `entity.unit` | string, optional | A frame's one linear unit, as declared ([0005](./decisions/0005-one-linear-unit-per-frame.md)). Never converted. Written only on a frame. |
+| `entity.parent` | string, optional | The id of the frame a frame is expressed relative to. Written only on a frame, and absent on the root. |
+| `entity.transform` | string, optional | The id of the claim a frame names as its transform to the parent, as written; the claim itself is in `entity.claims`. Written only on a frame, and absent on the root. |
 | `entity.observations` | array, optional | The observation files it links to, as paths relative to the model root, in the order it wrote them. Absent when it links to none. Producing this reads nothing. |
 | `entity.observation-records` | array, optional | The records those files hold, written under `--observations` and absent otherwise. Empty rather than absent when the flag was given and the files hold no record, because "nobody has surveyed this" and "you did not ask" are different answers. |
 | `entity.retired` | object, optional | How a semantic node stopped existing: `date`, `reason`, and `superseded-by` where something stands in its place. Absent for a node that was not retired. |
@@ -940,9 +945,76 @@ a reference written years ago answerable — it either names the thing it always
 names something that says it stopped existing and, where there is one, what replaced it
 ([0002](./decisions/0002-immutable-id-mutable-label.md)).
 
+#### A frame
+
+A frame id is answered from the registry's frames when no entity holds it. It carries `id`,
+`label` where one was written, `unit`, `parent` and `transform` (both absent on the root),
+`span` — the whole frame form — its `claims` and its `values`, and `assertions`, which is
+always `[]`: a frame form carries none. Against `testdata/checks/grid/affirmed`, run from its
+parent directory:
+
+```json
+{
+  "version": 2,
+  "command": "get",
+  "refused": false,
+  "entity": {
+    "id": "frame:survey-grid",
+    "family": "frame",
+    "label": "Site survey grid",
+    "unit": "m",
+    "span": "affirmed/registry.dfc:51:1-60:26",
+    "claims": [
+      {
+        "id": "survey:C-0010",
+        "predicate": "ground-to-grid",
+        "value": {"shape": "scalar", "scalar": 1},
+        "source": "Georeferencing report GR-2026-002, Acme Surveys, section 4: combined factor",
+        "method": "method:gnss-static",
+        "date": "2026-02-11",
+        "rank": "normal",
+        "span": "affirmed/registry.dfc:55:3-60:25"
+      }
+    ],
+    "values": [
+      {"predicate": "crs", "value": {"shape": "text", "text": "EPSG:25831"}, "span": "affirmed/registry.dfc:54:3-54:21"}
+    ],
+    "assertions": []
+  }
+}
+```
+
+and `get frame:site` carries `"parent": "frame:survey-grid", "transform": "survey:C-0001"`
+beside the `frame-transform` claim that `transform` names, whose `value.transform.scale` is
+the scale of the fit.
+
+- **Claims are claims.** A claim written on a frame is reported in the `claims[]` object
+  every family's is, and `--claims resolved` and `--deprecated` do to it exactly what they
+  do anywhere else.
+- **Nothing is singled out.** Which predicate names a coordinate reference system, and
+  which states a ground-to-grid factor, is project data, so the answer carries every claim
+  and plain value and the caller selects by its own names. A factor is stated as a claim
+  (`entity.claims`), as a plain value (`entity.values`), or as a transform whose scale is not
+  `1` (`value.transform.scale` of the claim `entity.transform` names); whether it is stated
+  at all is what `check`'s `ground-to-grid-stated` answers.
+- **No observations.** A frame links no observation file, so `observations` is absent and
+  `--observations` writes `"observation-records": []`.
+- **Only get.** The frames are consulted by `get` alone. `traverse`, `check --subject`,
+  `plan` and the writers answer a frame id as they always have, and a node, vertex, edge or
+  loop answers byte for byte as it did.
+- **Human format.** `--format human` renders the frame on stderr: its unit, and its parent
+  and transform where it has them, at every verbosity, then its claims and values as for any
+  other family.
+
+`"family": "frame"` is written only for an id which was a usage error with nothing on stdout,
+and `unit`, `parent` and `transform` are optional and absent on every other family, so the
+contract stays at version `2` ([The versioning rule](#the-versioning-rule)).
+
+#### Unknown ids
+
 An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
 naming it, and naming the nearest id there is when one is close enough to be the id that
-was meant. It is not an empty answer: a thing that is not there and a thing with nothing
+was meant. An id is held when an entity holds it or the registry declares a frame under it. It is not an empty answer: a thing that is not there and a thing with nothing
 said about it are different answers. An argument that is not a well-formed id is the same
 exit code, reporting the rule it broke rather than a lookup that was never going to find
 anything.

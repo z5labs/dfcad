@@ -36,6 +36,13 @@ families. A vertex, an edge and a loop are retrieved by the same call a
 semantic node is, and the "family" field of the answer says which came back and
 so which of the fields to expect.
 
+A frame id is answered too. A frame is both a registry entry and a node, so its
+id comes back with family "frame": its unit, the frame it is expressed relative
+to, the id of the claim holding its transform to that parent, and every claim
+and plain value written on it — the coordinate reference system and the
+ground-to-grid factor among them, under whichever predicates the registry names
+them by.
+
 Flags:
 
 	--claims <how>   full, which is every claim written on it, or resolved,
@@ -138,6 +145,12 @@ const (
 	familyVertex = "vertex"
 	familyEdge   = "edge"
 	familyLoop   = "loop"
+
+	// familyFrame is a coordinate frame the registry declares, which is the one
+	// family an id names that is not an entity of the graph: a frame is both a
+	// registry entry and a node, and its id is drawn from the id space every
+	// other family's is.
+	familyFrame = "frame"
 )
 
 // ErrMissingID is a get with no id to get.
@@ -283,7 +296,7 @@ type getEntity struct {
 	// ID is the id the model holds it under, which is the id asked for.
 	ID string `json:"id"`
 
-	// Family is which family holds it: node, vertex, edge or loop.
+	// Family is which family holds it: node, vertex, edge, loop or frame.
 	Family string `json:"family"`
 
 	// Label is its name for a person reading it. Absent when it was not
@@ -328,6 +341,18 @@ type getEntity struct {
 	// Edges are the ids of the edges a loop is assembled from, in the order it
 	// wrote them.
 	Edges []string `json:"edges,omitempty"`
+
+	// Unit is a frame's one linear unit, as declared. Written only on a frame.
+	Unit string `json:"unit,omitempty"`
+
+	// Parent is the id of the frame a frame is expressed relative to. Written
+	// only on a frame, and absent on the root.
+	Parent string `json:"parent,omitempty"`
+
+	// Transform is the id of the claim a frame names as its transform to the
+	// parent, as written: the claim itself is among the claims. Written only on
+	// a frame, and absent on the root.
+	Transform string `json:"transform,omitempty"`
 
 	// Observations are the observation files it links to, as paths relative to
 	// the model root and in the order it wrote them. Absent when it links to
@@ -671,13 +696,13 @@ func runGet(cmd command, args []string, stdin io.Reader, stdout, stderr io.Write
 
 	graph, loaded := loadModel(cmd, globals, stderr)
 
-	entity, ok := graph.Entity(id)
+	found, ok := retrieve(graph, id)
 	if !ok {
 		nearest, _ := graph.Nearest(id)
 		return usageError(cmd, UnknownIDError{ID: string(id), Nearest: string(nearest)}, stderr, false)
 	}
 
-	described, diags := asked.describe(graph, entity)
+	described, diags := asked.describe(graph, found)
 	render(diags, stderr)
 
 	result := getResult{
@@ -704,20 +729,65 @@ type retrieval struct {
 	observations bool
 }
 
-// describe is one entity as the answer reports it, with the records behind it
+// held is what an id names: an entity the graph holds, or a frame the registry
+// declares. Exactly one of the two is set.
+//
+// A frame is not an entity of the graph, and is not made one here: the lookup
+// every other command makes — traverse, check --subject, plan, the writers —
+// is Graph.Entity, and a frame reaching any of them would be a family none of
+// them was written for. It is get alone which answers one.
+type held struct {
+	entity dfcad.Entity
+	frame  *dfcad.Frame
+}
+
+// id is the id the thing is held under.
+func (h held) id() dfcad.ID {
+	if h.frame != nil {
+		return h.frame.ID
+	}
+	return h.entity.ID()
+}
+
+// retrieve is the thing an id names: the entity the graph holds under it, and
+// failing that the frame the registry declares under it. The id space is one,
+// so at most one of the two holds any id.
+func retrieve(graph *dfcad.Graph, id dfcad.ID) (held, bool) {
+	if entity, ok := graph.Entity(id); ok {
+		return held{entity: entity}, true
+	}
+	if frame, ok := graph.Registry().Frame(id); ok {
+		return held{frame: &frame}, true
+	}
+	return held{}, false
+}
+
+// describe is one thing as the answer reports it, with the records behind it
 // where they were asked for, and whatever is wrong with the files they came
 // from.
 //
 // The files are opened here and nowhere else in this command: everything else
 // answers from what the load read. A run without the flag reads no observation
 // file at all, whatever the thing it retrieved links to.
-func (r retrieval) describe(graph *dfcad.Graph, entity dfcad.Entity) (getEntity, []dfcad.Diagnostic) {
-	out := describe(graph, entity, r.selection, r.deprecated)
+func (r retrieval) describe(graph *dfcad.Graph, found held) (getEntity, []dfcad.Diagnostic) {
+	if found.frame != nil {
+		out := describeFrame(graph, *found.frame, r.selection, r.deprecated)
+		if r.observations {
+			// A frame links no observation file, so asked for its records it
+			// has none — which is an answer, and an empty list says so where a
+			// missing field would say nobody asked.
+			records := make([]observationEntry, 0)
+			out.Records = &records
+		}
+		return out, nil
+	}
+
+	out := describe(graph, found.entity, r.selection, r.deprecated)
 	if !r.observations {
 		return out, nil
 	}
 
-	records, diags := observationsOf(graph, entity)
+	records, diags := observationsOf(graph, found.entity)
 	out.Records = &records
 
 	return out, diags
@@ -758,8 +828,8 @@ func getMany(cmd command, globals *globals, asked retrieval, stdin io.Reader, st
 	// store holds what it read; what is wrong with it is rendered once too,
 	// rather than once per entity which happens to link to it.
 	var diags []dfcad.Diagnostic
-	for _, entity := range entities {
-		described, found := asked.describe(graph, entity)
+	for _, each := range entities {
+		described, found := asked.describe(graph, each)
 		result.Entities = append(result.Entities, described)
 		diags = appendUnseen(diags, found...)
 	}
@@ -795,18 +865,18 @@ func readIDs(stdin io.Reader) ([]string, error) {
 	return out, scanner.Err()
 }
 
-// retrieveAll is every entity the written ids name, in id order and each once.
+// retrieveAll is every thing the written ids name, in id order and each once.
 //
 // Where any of them cannot be retrieved the answer is a [BatchIDsError] naming
 // every one which cannot, and no entity at all: a partial answer is one a
 // caller would read as the whole.
-func retrieveAll(graph *dfcad.Graph, written []string) ([]dfcad.Entity, error) {
+func retrieveAll(graph *dfcad.Graph, written []string) ([]held, error) {
 	written = slices.Clone(written)
 	slices.Sort(written)
 	written = slices.Compact(written)
 
 	var (
-		found []dfcad.Entity
+		found []held
 		errs  []error
 	)
 
@@ -817,14 +887,14 @@ func retrieveAll(graph *dfcad.Graph, written []string) ([]dfcad.Entity, error) {
 			continue
 		}
 
-		entity, ok := graph.Entity(id)
+		each, ok := retrieve(graph, id)
 		if !ok {
 			nearest, _ := graph.Nearest(id)
 			errs = append(errs, UnknownIDError{ID: string(id), Nearest: string(nearest)})
 			continue
 		}
 
-		found = append(found, entity)
+		found = append(found, each)
 	}
 
 	if len(errs) > 0 {
@@ -834,11 +904,11 @@ func retrieveAll(graph *dfcad.Graph, written []string) ([]dfcad.Entity, error) {
 	// The entities are put in the order of the ids they are held under, and a
 	// repeat is dropped there, rather than trusting the order of the spellings
 	// they were asked for by.
-	slices.SortFunc(found, func(a, b dfcad.Entity) int {
-		return strings.Compare(string(a.ID()), string(b.ID()))
+	slices.SortFunc(found, func(a, b held) int {
+		return strings.Compare(string(a.id()), string(b.id()))
 	})
-	found = slices.CompactFunc(found, func(a, b dfcad.Entity) bool {
-		return a.ID() == b.ID()
+	found = slices.CompactFunc(found, func(a, b held) bool {
+		return a.id() == b.id()
 	})
 
 	return found, nil
@@ -944,6 +1014,28 @@ func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, depreca
 	}
 
 	return out
+}
+
+// describeFrame is one declared frame as the answer reports it.
+//
+// Its claims and its plain values are read from the claim index under its id,
+// as every other family's are: a frame is a claim-bearing form, and a claim on
+// a frame is a claim. The transform is named by the id of its claim, as written,
+// and the claim itself is among the claims. A frame form carries no assertion
+// and links no observation file.
+func describeFrame(graph *dfcad.Graph, frame dfcad.Frame, selection string, deprecated bool) getEntity {
+	return getEntity{
+		ID:         string(frame.ID),
+		Family:     familyFrame,
+		Label:      frame.Label,
+		Unit:       string(frame.Unit),
+		Parent:     string(frame.Parent),
+		Transform:  string(frame.Transform),
+		Span:       frame.Form,
+		Claims:     claimsOf(graph, frame.ID, selection, deprecated),
+		Values:     valuesOf(graph, frame.ID),
+		Assertions: make([]assertionEntry, 0),
+	}
 }
 
 // observationPaths is the observation files one thing links to, as the answer
@@ -1251,6 +1343,20 @@ func valueOf(value dfcad.Value) claimValue {
 func reportEntity(entity getEntity, globals *globals, stderr io.Writer) {
 	if !globals.human() {
 		return
+	}
+
+	// A frame's declaration is what a person asking about a frame is asking
+	// for, so it is written whatever the verbosity, the way list-frames writes
+	// the chain: the unit, and the parent and the transform where there are
+	// any, before what is written on the frame.
+	if entity.Family == familyFrame {
+		_, _ = fmt.Fprintf(stderr, "unit: %s\n", entity.Unit)
+		if entity.Parent != "" {
+			_, _ = fmt.Fprintf(stderr, "parent: %s\n", entity.Parent)
+		}
+		if entity.Transform != "" {
+			_, _ = fmt.Fprintf(stderr, "transform: %s\n", entity.Transform)
+		}
 	}
 
 	for _, claim := range entity.Claims {
