@@ -523,7 +523,8 @@ Rules:
   unit token included, and nothing else follows it: `(colour "slate")`,
   `(nominal-width 8.5 m)`. Writing a claim form for a non-claim-bearing predicate, or a plain
   value for a claim-bearing one, is a load error in each direction, naming the predicate and
-  what the registry says about it.
+  what the registry says about it. A plain value is checked against its predicate's shape,
+  unit and dimension exactly as a `value` child is, and a mismatch is the same load error.
 - **Repeating a predicate on one node is the normal case**, not an error. Two `width` claims
   on one node are two measurements, and the disagreement between them is the most valuable
   thing in the file.

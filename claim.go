@@ -694,10 +694,19 @@ func (l *claimLoader) subject(node *Node, enclosing *form, tag string) {
 			continue
 		}
 
-		// The plain value of a non-claim-bearing predicate is left where it was
-		// written. It carries no source, no method and no accuracy, which is
-		// the whole of what this pass reads.
+		// The plain value of a non-claim-bearing predicate becomes no claim: it
+		// carries no source, no method and no accuracy. It is still a value,
+		// though, written exactly as the same predicate's value child would be,
+		// so it is read by the one reader a value child is read by and against
+		// the same declaration — a shape, a unit or a dimension which would
+		// refuse the claim refuses the plain value too, in the same words.
+		//
+		// A predicate nothing declares has no shape and no unit to judge the
+		// value against, and has already been reported once as undeclared.
 		if !asClaim {
+			if isDeclared {
+				l.value(child, written, declared, isDeclared)
+			}
 			continue
 		}
 

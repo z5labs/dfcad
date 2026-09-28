@@ -1,0 +1,14 @@
+testdata/claim/plain-value-wrong-dimension/claims.dfc:6:20: error: expected the 3 components the predicate design-position declares, found 2
+6 |   (design-position (4.0 0.0) m))
+  |                    ^^^^^^^^^
+  = hint: design-position declares a coordinate of 3 components
+testdata/claim/plain-value-wrong-dimension/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate design-position
+   |            ^^^^^^^^^^^^^^^
+testdata/claim/plain-value-wrong-dimension/claims.dfc:10:20: error: expected the 3 components the predicate design-position declares, found 4
+10 |   (design-position (4.0 0.0 0.0 1.0) m))
+   |                    ^^^^^^^^^^^^^^^^^
+   = hint: design-position declares a coordinate of 3 components
+testdata/claim/plain-value-wrong-dimension/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate design-position
+   |            ^^^^^^^^^^^^^^^

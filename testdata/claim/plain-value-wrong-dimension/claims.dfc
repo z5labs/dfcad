@@ -1,0 +1,10 @@
+; A coordinate of the right shape and the wrong length. The count is fixed by
+; the predicate's declared dimension, so this is as much a mismatch as writing a
+; string would be.
+(vertex geom:V-01
+  (frame frame:building)
+  (design-position (4.0 0.0) m))
+
+(vertex geom:V-02
+  (frame frame:building)
+  (design-position (4.0 0.0 0.0 1.0) m))

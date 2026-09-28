@@ -227,9 +227,12 @@ func TestRunExportRefusesAGeoreferenceItCannotWrite(t *testing.T) {
 			expected: "only the definition",
 		},
 		{
-			name:     "an identifier which is not a string",
-			files:    sited(`(crs 6543.0)`),
-			args:     []string{"--crs", "crs"},
+			// The load refuses a number under a predicate declared text, so the
+			// export's own check is reached by naming a predicate the registry
+			// declares as something else.
+			name:     "an identifier under a predicate which declares no string",
+			files:    withCRSCode(sited(`(crs-code 6543.0)`)),
+			args:     []string{"--crs", "crs-code"},
 			expected: "found a scalar value",
 		},
 	}
@@ -243,6 +246,32 @@ func TestRunExportRefusesAGeoreferenceItCannotWrite(t *testing.T) {
 			assert.Contains(t, stderr, testCase.expected)
 		})
 	}
+}
+
+// withCRSCode declares crs-code beside the fixture's vocabulary: a plain,
+// non-claim-bearing predicate whose value is a number, which is what an
+// identifier is not.
+func withCRSCode(files map[string]string) map[string]string {
+	files["registry.dfc"] += `
+(predicate crs-code
+  (shape scalar)
+  (claim-bearing #f)
+  (description "The code alone, without its authority."))
+`
+	return files
+}
+
+// TestRunExportRefusesAnIdentifierTheLoadRefused is its own function because it
+// exits at a different gate: a number under a predicate declared text is a
+// plain value the load has already refused, so the run stops there as a load
+// failure and never reaches the georeference.
+func TestRunExportRefusesAnIdentifierTheLoadRefused(t *testing.T) {
+	result, _, stderr := exporting(t, exitLoad, sited(`(crs 6543.0)`), "--crs", "crs")
+
+	assert.False(t, result.Derived)
+	assert.Empty(t, result.Files)
+	assert.Contains(t, stderr, "registry.dfc:12:3")
+	assert.NotContains(t, stderr, "found a scalar value", "the export's own check is not reached")
 }
 
 // TestRunExportReportsEveryGeoreferenceMistakeAtOnce is its own function

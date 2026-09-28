@@ -1,0 +1,14 @@
+testdata/claim/plain-value-with-a-unit/claims.dfc:7:19: error: expected no unit after the value, found m
+7 |   (occupancy 12.0 m)
+  |                   ^
+  = hint: occupancy declares no unit, and there is no unitless token: a non-dimensional value is written with no unit at all
+testdata/claim/plain-value-with-a-unit/registry.dfc:24:12: note: the predicate is declared here
+24 | (predicate occupancy
+   |            ^^^^^^^^^
+testdata/claim/plain-value-with-a-unit/claims.dfc:8:19: error: expected no unit after the value, found m
+8 |   (colour "slate" m))
+  |                   ^
+  = hint: colour declares no unit, and there is no unitless token: a non-dimensional value is written with no unit at all
+testdata/claim/plain-value-with-a-unit/registry.dfc:29:12: note: the predicate is declared here
+29 | (predicate colour
+   |            ^^^^^^

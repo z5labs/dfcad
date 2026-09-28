@@ -1,0 +1,11 @@
+; A dimensional plain value written with no unit. 0005 forbids a claim's value
+; this, and a plain value is not a place for it to survive.
+(node site:S-101
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (nominal-width 8.5))
+
+(vertex geom:V-01
+  (frame frame:building)
+  (design-position (4.0 0.0 0.0)))

@@ -1,0 +1,28 @@
+testdata/claim/plain-value-wrong-shape/claims.dfc:8:3: error: expected the scalar value the predicate nominal-width declares, found a string
+8 |   (nominal-width "wide")
+  |   ^^^^^^^^^^^^^^^^^^^^^^
+  = hint: nominal-width declares a scalar value
+testdata/claim/plain-value-wrong-shape/registry.dfc:18:12: note: the predicate is declared here
+18 | (predicate nominal-width
+   |            ^^^^^^^^^^^^^
+testdata/claim/plain-value-wrong-shape/claims.dfc:9:3: error: expected the text value the predicate colour declares, found a number
+9 |   (colour 8.5)
+  |   ^^^^^^^^^^^^
+  = hint: colour declares a text value
+testdata/claim/plain-value-wrong-shape/registry.dfc:29:12: note: the predicate is declared here
+29 | (predicate colour
+   |            ^^^^^^
+testdata/claim/plain-value-wrong-shape/claims.dfc:10:3: error: expected the coordinate value the predicate design-position declares, found a number
+10 |   (design-position 8.5 m))
+   |   ^^^^^^^^^^^^^^^^^^^^^^^
+   = hint: design-position declares a coordinate value
+testdata/claim/plain-value-wrong-shape/registry.dfc:34:12: note: the predicate is declared here
+34 | (predicate design-position
+   |            ^^^^^^^^^^^^^^^
+testdata/claim/plain-value-wrong-shape/registry.dfc:51:3: error: expected the text value the predicate crs declares, found a number
+51 |   (crs 25831.0 m))
+   |   ^^^^^^^^^^^^^^^
+   = hint: crs declares a text value
+testdata/claim/plain-value-wrong-shape/registry.dfc:41:12: note: the predicate is declared here
+41 | (predicate crs
+   |            ^^^

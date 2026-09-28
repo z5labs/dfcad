@@ -1,0 +1,8 @@
+; The second file of the tree, read after the first whatever the first held.
+(vertex geom:V-01
+  (frame frame:building)
+  (design-position (4.0 0.0) m))
+
+(vertex geom:V-02
+  (frame frame:building)
+  (design-position (4.0 0.0 0.0) m))
