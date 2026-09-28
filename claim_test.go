@@ -1514,3 +1514,243 @@ func TestClaimCombinedReportsTermsInMixedUnits(t *testing.T) {
 	require.True(t, errors.As(err, &mixed), "expected MixedUnitsError, got %T", err)
 	assert.Equal(t, []Unit{"mm", "m"}, mixed.Units)
 }
+
+// plainOfRegistry declares a frame carrying a plain value, and a predicate of
+// each spelling: three non-claim-bearing, of two shapes, and one claim-bearing
+// so that a bare scalar written under it can be shown to be no plain value.
+const plainOfRegistry = `(project (globalid-namespace "https://example.org/models/plain"))
+(namespace frame (description "Coordinate frames declared by this model."))
+(namespace geom (description "Geometric nodes minted by this model."))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(type Plot (kind Space) (geometry area) (description "A parcel of ground."))
+(predicate crs (shape text) (claim-bearing #f) (description "The coordinate reference system."))
+(predicate note (shape text) (claim-bearing #f) (description "A remark for a person reading it."))
+(predicate nominal-width (unit m) (shape scalar) (claim-bearing #f) (description "The width it was designed to."))
+(predicate width (unit m) (shape scalar) (description "How wide it is."))
+(frame frame:site (label "Site grid") (unit m) (crs "EPSG:25831"))
+`
+
+// plainWant is what one plain value is expected to hold, read through the
+// accessors a caller would read it through.
+type plainWant struct {
+	predicate string
+	shape     Shape
+	text      string
+	scalar    float64
+	unit      Unit
+	written   string
+}
+
+func TestClaimsPlainOf(t *testing.T) {
+	testCases := []struct {
+		name     string
+		entities string
+		subject  ID
+		expected []plainWant
+	}{
+		{
+			name:     "reads a plain value written on a semantic node",
+			entities: "(node site:S-01\n  (kind Space)\n  (type Plot)\n  (geometry area)\n  (note \"Fenced on three sides\"))\n",
+			subject:  "site:S-01",
+			expected: []plainWant{
+				{predicate: "note", shape: ShapeText, text: "Fenced on three sides", written: `(note "Fenced on three sides")`},
+			},
+		},
+		{
+			name:     "reads a plain value written on a vertex, with the unit written beside it",
+			entities: "(vertex geom:V-01 (frame frame:site) (nominal-width 8.5 m))\n",
+			subject:  "geom:V-01",
+			expected: []plainWant{
+				{predicate: "nominal-width", shape: ShapeScalar, scalar: 8.5, unit: UnitMetre, written: "(nominal-width 8.5 m)"},
+			},
+		},
+		{
+			name:     "reads a plain value written on an edge",
+			entities: "(edge geom:E-01 (frame frame:site) (vertices geom:V-01 geom:V-02) (note \"South boundary\"))\n",
+			subject:  "geom:E-01",
+			expected: []plainWant{
+				{predicate: "note", shape: ShapeText, text: "South boundary", written: `(note "South boundary")`},
+			},
+		},
+		{
+			name:     "reads a plain value written on a loop",
+			entities: "(loop geom:L-01 (frame frame:site) (edges geom:E-01) (note \"Plot outline\"))\n",
+			subject:  "geom:L-01",
+			expected: []plainWant{
+				{predicate: "note", shape: ShapeText, text: "Plot outline", written: `(note "Plot outline")`},
+			},
+		},
+		{
+			name:     "reads a plain value written on a frame",
+			entities: "",
+			subject:  "frame:site",
+			expected: []plainWant{
+				{predicate: "crs", shape: ShapeText, text: "EPSG:25831", written: `(crs "EPSG:25831")`},
+			},
+		},
+		{
+			name:     "returns a repeated predicate's values, and every other, in written order",
+			entities: "(node site:S-01\n  (kind Space)\n  (type Plot)\n  (geometry area)\n  (note \"first\")\n  (crs \"EPSG:1234\")\n  (note \"second\"))\n",
+			subject:  "site:S-01",
+			expected: []plainWant{
+				{predicate: "note", shape: ShapeText, text: "first", written: `(note "first")`},
+				{predicate: "crs", shape: ShapeText, text: "EPSG:1234", written: `(crs "EPSG:1234")`},
+				{predicate: "note", shape: ShapeText, text: "second", written: `(note "second")`},
+			},
+		},
+		{
+			name:     "returns nothing for a bare scalar under a claim-bearing predicate",
+			entities: "(node site:S-01\n  (kind Space)\n  (type Plot)\n  (geometry area)\n  (width 8.5 m))\n",
+			subject:  "site:S-01",
+		},
+		{
+			name:     "returns nothing for a plain value its predicate's declaration refuses",
+			entities: "(node site:S-01\n  (kind Space)\n  (type Plot)\n  (geometry area)\n  (nominal-width 8.5 ft))\n",
+			subject:  "site:S-01",
+		},
+		{
+			name:     "returns nothing for a subject nothing was written on",
+			entities: "(node site:S-01\n  (kind Space)\n  (type Plot)\n  (geometry area)\n  (note \"here\"))\n",
+			subject:  "site:S-02",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			claims, _ := loadClaimModel(t, plainOfRegistry, testCase.entities)
+
+			var got []PlainValue
+			for value := range claims.PlainOf(testCase.subject) {
+				got = append(got, value)
+			}
+
+			require.Len(t, got, len(testCase.expected))
+			for i, want := range testCase.expected {
+				assert.Equal(t, want.predicate, got[i].Predicate)
+				assert.Equal(t, want.shape, got[i].Value.Shape())
+				assert.Equal(t, want.unit, got[i].Value.Unit())
+
+				switch want.shape {
+				case ShapeText:
+					text, ok := got[i].Value.Text()
+					require.True(t, ok)
+					assert.Equal(t, want.text, text)
+				case ShapeScalar:
+					scalar, ok := got[i].Value.Scalar()
+					require.True(t, ok)
+					assert.Equal(t, want.scalar, scalar)
+				}
+
+				// The span is the whole form, in whichever file wrote it, which
+				// is what sends a reader to it.
+				span := got[i].Value.Span()
+				source, err := os.ReadFile(span.Start.Path)
+				require.NoError(t, err)
+				assert.Equal(t, want.written, string(source[span.Start.Offset:span.End.Offset]))
+			}
+
+			assert.Zero(t, claims.Len(), "a plain value is not counted among the claims")
+		})
+	}
+}
+
+// TestClaimsPlainOfIsNilSafe checks that the plain values of no load are none,
+// as the claims of no load are.
+func TestClaimsPlainOfIsNilSafe(t *testing.T) {
+	var claims *Claims
+
+	for range claims.PlainOf("site:S-01") {
+		t.Fatal("a nil Claims holds no plain value")
+	}
+	for range (&Claims{}).PlainOf("site:S-01") {
+		t.Fatal("the zero Claims holds no plain value")
+	}
+}
+
+// TestClaimsPlainOfStopsWhenAsked checks that the iterator honours a caller
+// which breaks out of it.
+func TestClaimsPlainOfStopsWhenAsked(t *testing.T) {
+	claims, _ := loadClaimModel(t, plainOfRegistry,
+		"(node site:S-01\n  (kind Space)\n  (type Plot)\n  (geometry area)\n  (note \"first\")\n  (note \"second\"))\n")
+
+	var read int
+	for range claims.PlainOf("site:S-01") {
+		read++
+		break
+	}
+
+	assert.Equal(t, 1, read)
+}
+
+// TestClaimsPlainOfAgreesWithFramePlain checks, over every model in the
+// fixture corpus which loads, that the plain values the claim pass records on a
+// frame are the ones Frame.Plain reads off it: filtered to one predicate, the
+// one answers exactly what the other does. Two readings of one form which
+// disagreed would be two answers to what the model says.
+func TestClaimsPlainOfAgreesWithFramePlain(t *testing.T) {
+	var roots []string
+	require.NoError(t, filepath.WalkDir("testdata", func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && entry.Name() == "registry"+Extension {
+			roots = append(roots, filepath.Dir(path))
+		}
+		return nil
+	}))
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "registry"+Extension), []byte(plainOfRegistry+
+		"(frame frame:building (label \"Building grid\") (unit m) (parent frame:site) (crs \"EPSG:6543\") (nominal-width 8.5 m) (crs \"EPSG:26982\"))\n"), 0o644))
+	roots = append(roots, root)
+
+	var compared int
+	for _, root := range roots {
+		registry, diags := LoadRegistry(root)
+		if hasError(diags) {
+			continue
+		}
+
+		claims, diags := LoadClaims(root, registry)
+		if hasError(diags) {
+			continue
+		}
+
+		for frame := range registry.Frames() {
+			predicates := make(map[string]struct{})
+			for _, form := range frame.Claims {
+				if tag, ok := formTag(form); ok {
+					predicates[tag] = struct{}{}
+				}
+			}
+			for value := range claims.PlainOf(frame.ID) {
+				predicates[value.Predicate] = struct{}{}
+			}
+
+			for predicate := range predicates {
+				var got []Value
+				for value := range claims.PlainOf(frame.ID) {
+					if value.Predicate == predicate {
+						got = append(got, value.Value)
+					}
+				}
+
+				assert.Equal(t, frame.Plain(predicate), got, "%s: %s under %s", root, frame.ID, predicate)
+				if len(got) > 0 {
+					compared++
+				}
+			}
+		}
+	}
+
+	// The frames written here carry three predicates' worth between them, and
+	// the corpus at least one more, so a count below that is a walk which found
+	// nothing rather than a property which held.
+	assert.GreaterOrEqual(t, compared, 4, "the property was checked against plain values rather than their absence")
+}
+
+// hasError reports whether any of diags is an error.
+func hasError(diags []Diagnostic) bool {
+	return slices.ContainsFunc(diags, func(diag Diagnostic) bool { return diag.Severity == SeverityError })
+}

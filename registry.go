@@ -475,10 +475,10 @@ type Frame struct {
 // order they were written.
 //
 // A predicate the registry declares non-claim-bearing takes a plain value and
-// no children (specification section 6.5), and the claim pass leaves that value
-// exactly where it was written: there is no source, no method and no accuracy
-// on it, which is the whole of what that pass reads. This is how one is read
-// back, and it is what carries a fact about a frame which is not a measurement
+// no children (specification section 6.5), and the claim pass makes no claim of
+// it: there is no source, no method and no accuracy on it. This is how one is
+// read back from the frame alone — [Claims.PlainOf] is the same values read by
+// that pass, for every form a claim may be written on — and it is what carries a fact about a frame which is not a measurement
 // — the name of the coordinate reference system it is rooted at, say — without
 // dressing it up as one.
 //

@@ -3919,6 +3919,31 @@ func ExampleFrame_Plain() {
 	// 0
 }
 
+// A plain value is not a claim, so Claims.Of never reaches one. Claims.PlainOf
+// is how the plain values written on any thing are read back — a node, a
+// vertex, an edge, a loop or, as here, a frame — in the order they were
+// written.
+func ExampleClaims_PlainOf() {
+	registry, _ := dfcad.LoadRegistry("testdata/frame/valid")
+	claims, _ := dfcad.LoadClaims("testdata/frame/valid", registry)
+
+	for value := range claims.PlainOf("frame:survey-grid") {
+		identifier, _ := value.Value.Text()
+		fmt.Printf("%s: %s\n", value.Predicate, identifier)
+	}
+
+	// None of them is counted among the claims written on the frame.
+	var measured int
+	for range claims.Of("frame:survey-grid") {
+		measured++
+	}
+	fmt.Println(measured, "claims")
+
+	// Output:
+	// crs: EPSG:25831
+	// 0 claims
+}
+
 // A model carries no version stamp, deliberately, so whether it loads under a
 // given engine is a question only the consumer holding both can ask.
 //

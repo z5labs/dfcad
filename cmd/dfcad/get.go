@@ -85,9 +85,12 @@ computed listing happened to hold; write - and pipe them instead.
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
 The object get writes carries "entity": the thing found, its axes, the ids it
-references, where it was written, its claims in predicate order, and the
-assertions written on it. The claims are what is known about the thing; the
-assertions are what has to hold of it.
+references, where it was written, its claims in predicate order, the plain
+values written on it under "values", and the assertions written on it. The
+claims are what is known about the thing; the assertions are what has to hold
+of it. A plain value is the spelling a predicate the registry declares
+non-claim-bearing takes, and is not a claim: it has no provenance, nothing
+resolves or deprecates it, and "values" is absent where there is none.
 
 Given -, it carries "entities" in place of "entity": one element per distinct id
 read, in id order, each exactly the object "entity" would be for that id. The
@@ -363,6 +366,16 @@ type getEntity struct {
 	// than null when nothing is claimed about it.
 	Claims []claimEntry `json:"claims"`
 
+	// Values are the plain values written on it, in predicate order. Absent
+	// when it carries none, which is the ordinary case.
+	//
+	// They are beside the claims rather than among them because a plain value
+	// is not a claim: it has no id, no source, no method, no accuracy, no date
+	// and no rank, and an entry of claims without them would read as an
+	// unrankable claim the model does not contain. Nothing resolves one and
+	// nothing deprecates one, so neither --claims nor --deprecated moves them.
+	Values []valueEntry `json:"values,omitempty"`
+
 	// Assertions are the assertions written on it, in the order they were
 	// written. Empty rather than null when nothing constrains it.
 	//
@@ -539,6 +552,20 @@ type claimEntry struct {
 	Resolution string `json:"resolution,omitempty"`
 
 	// Span is where the claim was written.
+	Span dfcad.Span `json:"span"`
+}
+
+// valueEntry is one plain value as get reports it: the predicate it was written
+// under, the value in the shape a claim's value takes, and where.
+type valueEntry struct {
+	// Predicate is the predicate it was written under.
+	Predicate string `json:"predicate"`
+
+	// Value is the value and the unit it is expressed in, in exactly the shape
+	// a claim's value is written in, so a caller reads one value shape.
+	Value claimValue `json:"value"`
+
+	// Span is where the plain value was written.
 	Span dfcad.Span `json:"span"`
 }
 
@@ -863,6 +890,7 @@ func describe(graph *dfcad.Graph, entity dfcad.Entity, selection string, depreca
 		Span:         entity.Span(),
 		Observations: observationPaths(entity),
 		Claims:       claimsOf(graph, entity.ID(), selection, deprecated),
+		Values:       valuesOf(graph, entity.ID()),
 		Assertions:   assertionsOf(entity),
 	}
 
@@ -1027,6 +1055,34 @@ func claimsOf(graph *dfcad.Graph, subject dfcad.ID, selection string, deprecated
 	}
 
 	inPredicateOrder(out)
+
+	return out
+}
+
+// valuesOf is the plain values written on one subject, as the answer reports
+// them: in predicate order and then by where each was written, which is the
+// order the claims beside them are in.
+//
+// It is nil for a subject carrying none, so the field is absent and an answer
+// over a model holding no plain value is the answer it always was.
+func valuesOf(graph *dfcad.Graph, subject dfcad.ID) []valueEntry {
+	var out []valueEntry
+
+	for plain := range graph.Claims().PlainOf(subject) {
+		out = append(out, valueEntry{
+			Predicate: plain.Predicate,
+			Value:     valueOf(plain.Value),
+			Span:      plain.Value.Span(),
+		})
+	}
+
+	slices.SortStableFunc(out, func(a, b valueEntry) int {
+		return cmp.Or(
+			strings.Compare(a.Predicate, b.Predicate),
+			strings.Compare(a.Span.Start.Path, b.Span.Start.Path),
+			cmp.Compare(a.Span.Start.Offset, b.Span.Start.Offset),
+		)
+	})
 
 	return out
 }
@@ -1202,6 +1258,15 @@ func reportEntity(entity getEntity, globals *globals, stderr io.Writer) {
 		// reading of them is progress rather than result.
 		if globals.Verbosity >= verbosityProgress {
 			_, _ = fmt.Fprintf(stderr, "%s: %s\n", claim.Predicate, spellClaim(claim))
+		}
+	}
+
+	// A plain value is listed after the claims and said to be one, because a
+	// line reading like a claim with its provenance missing is the confusion
+	// keeping the two apart exists to prevent.
+	for _, value := range entity.Values {
+		if globals.Verbosity >= verbosityProgress {
+			_, _ = fmt.Fprintf(stderr, "%s: %s, plain value\n", value.Predicate, spellClaimValue(value.Value))
 		}
 	}
 

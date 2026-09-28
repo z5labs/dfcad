@@ -841,6 +841,7 @@ which came back and so which of the fields to expect.
 | `entity.retired` | object, optional | How a semantic node stopped existing: `date`, `reason`, and `superseded-by` where something stands in its place. Absent for a node that was not retired. |
 | `entity.span` | span | Where it was written: the file, and the line and column of both ends of the form. |
 | `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
+| `entity.values` | array, optional | The plain values written on it — the spelling a predicate the registry declares `(claim-bearing #f)` takes ([SPEC §6.5](../SPEC.md#65-claims)) — in predicate order and then by where each was written. Absent when it carries none, which is the ordinary case. `--claims` and `--deprecated` do not change it: a plain value is never resolved and never deprecated. |
 | `entity.assertions` | array | The assertions written on it, in the order they were written. Empty rather than null when nothing constrains it. |
 
 Every claim carries the evidence for its value, because a value without it is the bare
@@ -861,6 +862,17 @@ number the format exists to stop:
 | `claims[].superseded-by` | string, optional | The id of the claim that replaced this one. |
 | `claims[].resolution` | string, optional | What the rule left this claim as: `current`, `tied` or `unranked`. Written under `--claims resolved` and absent otherwise, because under `--claims full` nothing has been resolved. |
 | `claims[].span` | span | Where the claim was written. |
+
+A plain value is not a claim, which is why it is beside `claims` rather than among them: it
+has no id, no source, no method, no accuracy, no date and no rank, and an entry of `claims`
+without them would read as an unrankable claim the model does not contain. Its value is the
+object a claim's value is, so a caller reads one value shape:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `values[].predicate` | string | The predicate it was written under. |
+| `values[].value` | object | The value, exactly as [`claims[].value`](#get) writes one: `shape`, `unit` where the predicate declares one, and the field its shape names. |
+| `values[].span` | span | Where the plain value was written: the whole form, predicate and value. |
 
 Each assertion is what was written on the thing, rather than what the check registry makes
 of it:
