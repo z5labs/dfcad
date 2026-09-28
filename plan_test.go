@@ -1313,3 +1313,175 @@ func TestSelectionSelects(t *testing.T) {
 		})
 	}
 }
+
+// measuredEdgeGeometry is what the carried fixture adds to measure across the room:
+// a labelled diagonal between two of its corners carrying a length, the other
+// diagonal carrying nothing, and a run from a corner to a vertex no outline has.
+const measuredEdgeGeometry = `
+(edge geom:E-90 (label "Diagonal") (frame frame:building) (vertices geom:V-11 geom:V-13)
+  (wall-length (value 12.806 m) (source "Check measurement CM-2026-003") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-04")))
+(edge geom:E-91 (frame frame:building) (vertices geom:V-12 geom:V-14))
+
+(vertex geom:V-99 (frame frame:building)
+  (position (value (5.0 4.0 0.0) m) (source "Interior control set IC-01") (method method:total-station)
+    (accuracy (independent 0.004 m)) (date "2026-02-18")))
+(edge geom:E-92 (frame frame:building) (vertices geom:V-11 geom:V-99)
+  (wall-length (value 6.403 m) (source "Check measurement CM-2026-003") (method method:tape)
+    (accuracy (independent 0.01 m)) (date "2026-03-04")))
+`
+
+// measuredAcross loads the carried fixture with the measurements above added.
+func measuredAcross(t *testing.T) planFixture {
+	t.Helper()
+
+	return planModel(t, tree(t, map[string]string{
+		"registry.dfc":          carriedRegistry,
+		"entities/model.dfc":    carriedEntities,
+		"entities/geometry.dfc": carriedGeometry + measuredEdgeGeometry,
+	}))
+}
+
+// measuredIDs is the id of each measured edge of a plan, in the order it came
+// back.
+func measuredIDs(plan Plan) []string {
+	out := make([]string, 0, len(plan.Measured()))
+	for _, edge := range plan.Measured() {
+		out = append(out, string(edge.ID()))
+	}
+	return out
+}
+
+func TestPlanOfReportsTheEdgesMeasuredBetweenItsCorners(t *testing.T) {
+	testCases := []struct {
+		name       string
+		selection  Selection
+		predicates []string
+		expected   []string
+	}{
+		{
+			name:       "reports an edge between two corners carrying a claim asked for",
+			predicates: []string{planLength},
+			expected:   []string{"geom:E-90"},
+		},
+		{
+			name:       "reports nothing where no predicate asked for is claimed on it",
+			predicates: []string{planPosition},
+			expected:   []string{},
+		},
+		{
+			name:       "reports nothing whose corners belong to an outline the selection left out",
+			selection:  Selection{Types: []string{"Fence"}},
+			predicates: []string{planLength},
+			expected:   []string{},
+		},
+		{
+			name:       "reports an edge between corners of an outline the selection kept",
+			selection:  Selection{Types: []string{"Room"}},
+			predicates: []string{planLength},
+			expected:   []string{"geom:E-90"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			fixture := measuredAcross(t)
+
+			node, ok := fixture.graph.Node("plan:P-01")
+			require.True(t, ok)
+
+			plan, diags := fixture.graph.PlanOfSelected(node, fixture.survey,
+				Annotations{Predicates: testCase.predicates}, testCase.selection)
+			require.Empty(t, diagnosticMessages(diags))
+
+			assert.Equal(t, testCase.expected, measuredIDs(plan))
+		})
+	}
+}
+
+// TestPlanOfPutsAMeasuredEdgeWhereItsCornersWereDrawn is its own function because
+// it is the property that the two ends agree with the boundary, rather than a
+// variation on which edges are reported.
+func TestPlanOfPutsAMeasuredEdgeWhereItsCornersWereDrawn(t *testing.T) {
+	plan, diags := measuredAcross(t).plan(t, "plan:P-01", planLength)
+	require.Empty(t, diagnosticMessages(diags))
+
+	require.Len(t, plan.Measured(), 1)
+	edge := plan.Measured()[0]
+
+	start, end := edge.Vertices()
+	assert.Equal(t, ID("geom:V-11"), start)
+	assert.Equal(t, ID("geom:V-13"), end)
+	assert.Equal(t, "Diagonal", edge.Label())
+	assert.Equal(t, ID("frame:building"), edge.DeclaredIn(), "it was written on the building grid")
+
+	// Where each run of the room's boundary leaves a corner, which is where the
+	// sheet already drew that corner.
+	leaving := make(map[ID]Point)
+	for _, segment := range outlineOf(t, plan, "plan:S-01").Region().Segments() {
+		first, second := segment.Edge().Vertices()
+		leaves := first
+		if segment.Reversed() {
+			leaves = second
+		}
+		leaving[leaves] = segment.From()
+	}
+
+	assert.Equal(t, leaving["geom:V-11"], edge.From())
+	assert.Equal(t, leaving["geom:V-13"], edge.To())
+	assert.True(t, pointsNear(Point{5, 4, 0}, edge.From()), "carried onto the site grid, got %v", edge.From())
+	assert.True(t, pointsNear(Point{15, 12, 0}, edge.To()), "carried onto the site grid, got %v", edge.To())
+
+	require.Len(t, edge.Annotations(), 1)
+	anchor := edge.Annotations()[0].Anchor()
+	assert.Equal(t, AnchorEdge, anchor.Kind())
+	assert.Equal(t, ID("geom:E-90"), anchor.ID())
+}
+
+// TestPlanOfCountsAndRendersItsMeasuredEdges is its own function because the
+// count and the rendering are a different shape of assertion from the machine
+// one.
+func TestPlanOfCountsAndRendersItsMeasuredEdges(t *testing.T) {
+	without, diags := carried(t).plan(t, "plan:P-01", planLength)
+	require.Empty(t, diagnosticMessages(diags))
+
+	with, diags := measuredAcross(t).plan(t, "plan:P-01", planLength)
+	require.Empty(t, diagnosticMessages(diags))
+
+	assert.Equal(t, without.Annotations()+1, with.Annotations(), "the claim on the diagonal is counted")
+	spelled := func(budget Budget) []string {
+		var out []string
+		for _, term := range budget.Terms() {
+			out = append(out, term.String())
+		}
+		return out
+	}
+	assert.Equal(t, spelled(without.Budget()), spelled(with.Budget()), "its ends were drawn, so were already budgeted")
+
+	assert.NotContains(t, without.String(), "measured")
+	assert.Equal(t, fmt.Sprintf("plan:P-01: 3 outlines, 1 measured edge, %d claims", with.Annotations()), with.String())
+
+	report := with.Report()
+	assert.Contains(t, report, "geom:E-90 (Diagonal): measured, geom:V-11 to geom:V-13, 1 claim")
+	assert.Contains(t, report, "wall-length on edge geom:E-90, geom:V-11 to geom:V-13, from")
+	assert.Less(t, strings.Index(report, "plan:S-01"), strings.Index(report, "geom:E-90 (Diagonal)"),
+		"the measured edges come after the outlines")
+}
+
+func TestMeasuredEdgeZeroValueNamesNothing(t *testing.T) {
+	var edge MeasuredEdge
+
+	assert.Nil(t, edge.Edge())
+	assert.Equal(t, ID(""), edge.ID())
+	assert.Equal(t, "", edge.Label())
+	assert.Equal(t, ID(""), edge.DeclaredIn())
+	assert.Empty(t, edge.Annotations())
+	assert.Equal(t, "nothing", edge.String())
+
+	start, end := edge.Vertices()
+	assert.Equal(t, ID(""), start)
+	assert.Equal(t, ID(""), end)
+
+	var plan Plan
+	assert.Empty(t, plan.Measured())
+}

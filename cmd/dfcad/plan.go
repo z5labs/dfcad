@@ -125,6 +125,19 @@ two spellings of one mistake. A node drawn as a point which nothing places is an
 error on the same terms: it declares that its shape is where it is, and the
 model then does not say where.
 
+A measurement between two corners is an ordinary edge carrying a claim, and
+nothing requires it to bound anything: a dimension string across a room, or a
+span between two jambs. Such an edge is reported in "measured" when both its
+ends are corners the plan drew — a vertex of an edge bounding a drawn outline,
+a ring or an open run alike — when it bounds no drawn outline itself, and when
+it carries a live claim under an --annotate predicate. Its frame does not place
+it: a frame is not a place, two storeys may share one, and a plan of a parcel
+would otherwise pull in every edge on the site grid. Under --kind or --type the
+corners are those of the outlines reported. An edge running to a vertex no
+drawn outline has is not on the plan, and stays with list-geometry. A curve
+claimed on a measured edge is not drawn — a measurement runs between two
+points — and the edge is not listed in "chorded".
+
 A storey containing nothing with an outline is an empty result and exit 0 — the
 truthful answer to what it looks like in plan.
 
@@ -167,6 +180,14 @@ them for everything the subject contains, so a renderer which drew every
 outline and listed every undrawn node has drawn or named the whole storey — or,
 under a filter, everything in it the filter selects; a node the filter does not
 select is in neither. The key is absent for a storey every node of which was drawn.
+
+Where an edge was measured across the drawing it carries "measured": one entry
+per such edge, in edge id order, with its "edge" id, its "label", its two
+"vertices" in authored order, "from" and "to" — where those two corners are, in
+the plan's frame, identical to their coordinates in "region.boundary" — its
+"declared-in" frame where that is not the plan's, and its "annotations", each
+anchored to the edge, in the shape an outline's take. The key is absent where
+no edge was.
 
 Exit code 1 is a plan a ring of which could not be read — a boundary which does
 not close, one which crosses itself, corners which are not in one plane, a
@@ -277,6 +298,15 @@ type planResult struct {
 	// Outlines is one entry per contained node which was drawn, in id order.
 	// Empty rather than null for a subject which contains nothing drawable.
 	Outlines []outlineEntry `json:"outlines"`
+
+	// Measured is one entry per edge which bounds no outline drawn, runs between
+	// two corners of those that were, and carries a claim under a predicate the
+	// run annotates with, in edge id order. Absent where there is none, so that a
+	// model nobody measured across writes the bytes it always did.
+	//
+	// It is how a dimension string across a room reaches a sheet without the
+	// consumer listing every edge in the model and filtering them itself.
+	Measured []measuredEntry `json:"measured,omitempty"`
 
 	// Undrawn is one entry per contained node which was not drawn, in id order,
 	// each saying why and carrying the claims written on it. Absent for a
@@ -393,6 +423,34 @@ type undrawnEntry struct {
 	//
 	// A node which references no loop has no edges, so what it carries is exactly
 	// its own claims and no edge anchors.
+	Annotations []annotationEntry `json:"annotations"`
+}
+
+// measuredEntry is one measured edge as the machine contract writes it.
+type measuredEntry struct {
+	// Edge is the id of the edge the claims are written on.
+	Edge string `json:"edge"`
+
+	// Label is what the edge is called, absent where it is called nothing.
+	Label string `json:"label,omitempty"`
+
+	// Vertices are the edge's two corners in the order it was authored, exactly
+	// as an edge anchor gives them.
+	Vertices []string `json:"vertices"`
+
+	// From and To are where the first and the second of those corners are, in
+	// the plan's frame. They are the coordinates those corners have in
+	// `outlines[].region.boundary`, taken from there rather than read again.
+	From []float64 `json:"from"`
+	To   []float64 `json:"to"`
+
+	// DeclaredIn is the frame the edge was written in, written only where that
+	// is not the plan's frame, as an outline's is.
+	DeclaredIn string `json:"declared-in,omitempty"`
+
+	// Annotations are the claims reported on it, each with an edge anchor, in
+	// the shape and the order an outline's take. Never empty: an edge carrying
+	// none is not reported.
 	Annotations []annotationEntry `json:"annotations"`
 }
 
@@ -670,6 +728,12 @@ func reportPlan(
 		result.Outlines = append(result.Outlines, outlineOf(outline, drawn.Frame()))
 	}
 
+	// Written only where something was measured across, for the reason undrawn
+	// is written only where something was not drawn.
+	for _, measured := range drawn.Measured() {
+		result.Measured = append(result.Measured, measuredOf(measured, drawn.Frame()))
+	}
+
 	// Written only where something was not drawn, so that a storey every node of
 	// which drew produces exactly the object it always did. An empty list here
 	// would be a key a consumer had to read to learn nothing.
@@ -706,6 +770,29 @@ func outlineOf(outline dfcad.Outline, frame dfcad.ID) outlineEntry {
 	}
 
 	for _, annotation := range outline.Annotations() {
+		entry.Annotations = append(entry.Annotations, annotationOf(annotation))
+	}
+
+	return entry
+}
+
+// measuredOf is one measured edge as the machine contract writes it, in a plan
+// expressed in frame.
+func measuredOf(measured dfcad.MeasuredEdge, frame dfcad.ID) measuredEntry {
+	start, end := measured.Vertices()
+	from, to := measured.From(), measured.To()
+
+	entry := measuredEntry{
+		Edge:        string(measured.ID()),
+		Label:       measured.Label(),
+		Vertices:    []string{string(start), string(end)},
+		From:        from[:],
+		To:          to[:],
+		DeclaredIn:  declaredIn(measured.DeclaredIn(), frame),
+		Annotations: make([]annotationEntry, 0, len(measured.Annotations())),
+	}
+
+	for _, annotation := range measured.Annotations() {
 		entry.Annotations = append(entry.Annotations, annotationOf(annotation))
 	}
 
