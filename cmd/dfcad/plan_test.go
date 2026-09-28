@@ -1068,3 +1068,55 @@ func TestRunPlanNamesADeviceNothingPlaces(t *testing.T) {
 	// this degrade per node rather than refuse the storey.
 	assert.Equal(t, []string{"site:D-01", "site:R-01", "site:R-02"}, outlined(result))
 }
+
+// TestRunPlanCarriesEachClaimsAccuracyCombined checks that a claim on a plan
+// carries the figure its accuracy reduces to, exactly as a claim anywhere else
+// in the contract does: on an outline's annotations and on an undrawn node's.
+func TestRunPlanCarriesEachClaimsAccuracyCombined(t *testing.T) {
+	t.Chdir(tree(t, withCombined(planFixture(), "site:L-01")))
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{
+		"plan",
+		"--annotate", "area",
+		"--annotate", "width",
+		"--annotate", "depth",
+		"--annotate", "seats",
+		"--position", "position",
+		"--tolerance", "coincident",
+		"site:L-01",
+	}, &stdout, &stderr)
+	require.Equal(t, exitSuccess, code, stderr.String())
+	require.NotContains(t, stderr.String(), "error:", "the fixture loads with no more than its warning")
+
+	result := listed[planResult](t, stdout.String())
+
+	t.Run("on the annotations of an outline", func(t *testing.T) {
+		var area *annotationEntry
+		for _, outline := range result.Outlines {
+			for i, annotation := range outline.Annotations {
+				if outline.Node == "site:R-01" && annotation.Predicate == "area" {
+					area = &outline.Annotations[i]
+				}
+			}
+		}
+		require.NotNil(t, area)
+
+		assert.Equal(t, &combinedUncertainty{Magnitude: 0.05, Unit: "m2", CoverageFactor: 1}, area.Combined)
+		assert.Empty(t, area.Units)
+	})
+
+	t.Run("on the annotations of a node it could not draw", func(t *testing.T) {
+		var claims []claimEntry
+		for _, undrawn := range result.Undrawn {
+			if undrawn.Node != "site:S-120" {
+				continue
+			}
+			for _, annotation := range undrawn.Annotations {
+				claims = append(claims, annotation.claimEntry)
+			}
+		}
+
+		assert.Equal(t, 6, assertCombined(t, claims), "how many of the claims were checked")
+	})
+}

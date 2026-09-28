@@ -1285,7 +1285,7 @@ func unrankable(spec ClaimSpec) (Notice, bool) {
 		hasAccuracy: len(spec.Accuracy) > 0,
 	}
 
-	_, err := claim.combined()
+	_, err := claim.Combined()
 	if err == nil {
 		return Notice{}, false
 	}

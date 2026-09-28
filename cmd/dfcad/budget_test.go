@@ -286,9 +286,17 @@ var (
 	}
 
 	wholeRetrieval = path{
-		name:    "the same question by way of a whole retrieval",
-		what:    "how big is Meeting Room B on level 1, retrieving the thing itself on the way",
-		ceiling: 820,
+		name: "the same question by way of a whole retrieval",
+		what: "how big is Meeting Room B on level 1, retrieving the thing itself on the way",
+		// The ceiling was 820 until every claim object began carrying its
+		// accuracy combined beside the terms, which is about twenty tokens a
+		// claim and took this path to 827. It is raised rather than absorbed
+		// silently because of what the tokens buy: the one figure resolution
+		// ranks a claim by, which a consumer otherwise reimplements — and the
+		// one consumer measured had done so three times, each wrongly at the
+		// edges, joining the totals linearly, taking no absolute values and
+		// counting a repeated term id twice.
+		ceiling: 830,
 		calls:   []call{listTypes, listRooms, getRoom, resolveArea},
 	}
 
@@ -348,7 +356,15 @@ var (
 		// which actually holds twenty-nine things, and said nothing about the
 		// difference. An absence is the one thing a caller cannot detect, and
 		// thirty-five tokens is what it costs not to have to.
-		ceiling: 8000,
+		//
+		// It was 8000 until every claim object began carrying its accuracy
+		// combined beside the terms, which is about twenty tokens on each of the
+		// thirteen claims this storey annotates and took it to 8165. It is
+		// raised for the reason the whole retrieval's ceiling is: the figure is
+		// the one resolution ranks each claim by, and a consumer drawing a
+		// plan otherwise reimplements it — wrongly, three times over, in the one
+		// consumer measured.
+		ceiling: 8180,
 		// Two rather than the standing four, because the standing claim would be
 		// a comparison between two different questions. Every other path answers
 		// about one named thing, and reading the whole model is the only other
@@ -563,6 +579,12 @@ type field struct {
 
 	// keys are the JSON object keys removed, at any depth.
 	keys []string
+
+	// within, where it is set, confines the removal to what lies under a key
+	// of that name. It is for a key the answer uses in two places for two
+	// things — a claim's own combined accuracy and a budget's combined figure
+	// are both `combined` — where pricing one must not remove the other.
+	within string
 }
 
 var fields = []field{
@@ -597,6 +619,16 @@ var fields = []field{
 		keys: []string{"accuracy"},
 	},
 	{
+		// Priced because it was raised over the whole-retrieval and the
+		// annotated-plan ceilings: the figure resolution ranks each claim by,
+		// which a consumer drawing a plan otherwise reimplements. Only the
+		// claims' own figures are removed; the ring budget's is another field.
+		name:   "the combined accuracy on each claim in `plan`",
+		call:   planLevel,
+		keys:   []string{"combined"},
+		within: "annotations",
+	},
+	{
 		// A computed area rests on one claim per corner rather than on one
 		// claim, so its budget grows with the shape while the figures do not.
 		// Pricing it is what a review of this call has to start from, and the
@@ -616,35 +648,37 @@ var fields = []field{
 	},
 }
 
-// without is the answer re-encoded with the named keys removed at any depth.
-func without(t testing.TB, answer string, keys ...string) string {
+// without is the answer re-encoded with the named keys removed at any depth —
+// or, where within is set, only at any depth under a key of that name.
+func without(t testing.TB, answer, within string, keys ...string) string {
 	t.Helper()
 
 	var tree any
 	require.NoError(t, json.Unmarshal([]byte(answer), &tree))
 
-	out, err := json.Marshal(strip(tree, keys))
+	out, err := json.Marshal(strip(tree, keys, within, within == ""))
 	require.NoError(t, err)
 
 	return string(out)
 }
 
-// strip removes the named keys from every object in the tree.
-func strip(tree any, keys []string) any {
+// strip removes the named keys from every object in the tree, once inside is
+// true; it becomes true under a key named within.
+func strip(tree any, keys []string, within string, inside bool) any {
 	switch value := tree.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(value))
 		for key, child := range value {
-			if slices.Contains(keys, key) {
+			if inside && slices.Contains(keys, key) {
 				continue
 			}
-			out[key] = strip(child, keys)
+			out[key] = strip(child, keys, within, inside || key == within)
 		}
 		return out
 	case []any:
 		out := make([]any, len(value))
 		for i, child := range value {
-			out[i] = strip(child, keys)
+			out[i] = strip(child, keys, within, inside)
 		}
 		return out
 	default:
@@ -848,7 +882,7 @@ func measurements(t testing.TB) string {
 		fmt.Fprintf(&out, "| %s | `%s` |", f.name, f.call.name)
 
 		text := answer(t, f.call)
-		with, withoutIt := without(t, text), without(t, text, f.keys...)
+		with, withoutIt := without(t, text, ""), without(t, text, f.within, f.keys...)
 		for _, e := range encodings {
 			codec := codecFor(t, e)
 

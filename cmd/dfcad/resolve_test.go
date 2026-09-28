@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 
@@ -967,4 +968,263 @@ func TestRunResolveTreatsAnAccuracyInMixedUnitsAsUnrankable(t *testing.T) {
 		assert.False(t, with.Refused, "a warning is not a refusal")
 		assert.Equal(t, 2, strings.Count(report, "warning"), "one warning for each claim whose units are mixed")
 	})
+}
+
+// resolvingCombined runs resolve over the fixture with [combinedModel] added,
+// which loads with a warning, and decodes what reached stdout.
+func resolvingCombined(t *testing.T, expectedCode int, args ...string) (resolveResult, string) {
+	t.Helper()
+
+	t.Chdir(tree(t, withCombined(answerable(), "")))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, expectedCode, run(append([]string{"resolve"}, args...), &stdout, &stderr), stderr.String())
+	require.NotContains(t, stderr.String(), "error:", "the fixture loads with no more than its warning")
+
+	return listed[resolveResult](t, stdout.String()), stdout.String()
+}
+
+// TestRunResolveCarriesTheCombinedAccuracyOfItsAnswer checks the two fields
+// written beside the answer's accuracy: the terms reduced to one figure, or the
+// units which stopped them being reduced.
+func TestRunResolveCarriesTheCombinedAccuracyOfItsAnswer(t *testing.T) {
+	testCases := []struct {
+		name             string
+		args             []string
+		expectedCode     int
+		expectedCombined *combinedUncertainty
+		expectedUnits    []string
+	}{
+		{
+			name:             "joins an independent and a systematic term in quadrature",
+			args:             []string{"site:S-120", "width"},
+			expectedCode:     exitSuccess,
+			expectedCombined: &combinedUncertainty{Magnitude: 0.008544003745317531, Unit: "m", CoverageFactor: 1},
+		},
+		{
+			name:             "is one term as it was written",
+			args:             []string{"site:S-101", "area"},
+			expectedCode:     exitSuccess,
+			expectedCombined: &combinedUncertainty{Magnitude: 0.05, Unit: "m2", CoverageFactor: 1},
+		},
+		{
+			name:         "writes neither where the answer's claim states no accuracy",
+			args:         []string{"site:S-120", "seats"},
+			expectedCode: exitSuccess,
+		},
+		{
+			name:         "writes neither where nothing resolved",
+			args:         []string{"site:S-120", "depth"},
+			expectedCode: exitAmbiguous,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, _ := resolvingCombined(t, testCase.expectedCode, testCase.args...)
+
+			assert.Equal(t, testCase.expectedCombined, result.Combined)
+			assert.Equal(t, testCase.expectedUnits, result.Units)
+		})
+	}
+}
+
+// TestRunResolveNamesTheUnitsOfAnAnswerWhoseAccuracyDoesNotCombine is its own
+// function because it is the one answer carrying an accuracy and no figure:
+// the unranked claim whose terms are in two units.
+func TestRunResolveNamesTheUnitsOfAnAnswerWhoseAccuracyDoesNotCombine(t *testing.T) {
+	files := answerable()
+	files["entities/site.dfc"] += mixedAccuracyModel
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"resolve", "site:S-109", "height"}, &stdout, &stderr), stderr.String())
+
+	result := listed[resolveResult](t, stdout.String())
+
+	assert.Equal(t, outcomeUnranked, result.Outcome)
+	assert.NotEmpty(t, result.Accuracy)
+	assert.Nil(t, result.Combined)
+	assert.Equal(t, []string{"mm", "m"}, result.Units)
+}
+
+// TestRunResolveWritesTheCombinedFigureBetweenTheAccuracyAndTheClaimID checks
+// where the field sits, which is part of the contract.
+func TestRunResolveWritesTheCombinedFigureBetweenTheAccuracyAndTheClaimID(t *testing.T) {
+	_, written := resolvingCombined(t, exitSuccess, "site:S-120", "width")
+
+	assert.Contains(t, written,
+		`"source":"control:CP-3"}],"combined":{"magnitude":0.008544003745317531,"unit":"m","coverage-factor":1},"claim-id":"resurvey:W-0002"`)
+}
+
+// TestRunResolveCarriesTheCombinedAccuracyOfEveryClaimItReports checks the
+// claim objects resolve writes beside its answer, which are the claim object
+// get writes.
+func TestRunResolveCarriesTheCombinedAccuracyOfEveryClaimItReports(t *testing.T) {
+	testCases := []struct {
+		name         string
+		args         []string
+		expectedCode int
+		claims       func(resolveResult) []claimEntry
+		expected     int
+	}{
+		{
+			name:         "on every candidate",
+			args:         []string{"--candidates", "site:S-120", "width"},
+			expectedCode: exitSuccess,
+			claims:       func(result resolveResult) []claimEntry { return result.Candidates },
+			expected:     3,
+		},
+		{
+			name:         "on every claim tied in an ambiguity",
+			args:         []string{"site:S-120", "depth"},
+			expectedCode: exitAmbiguous,
+			claims:       func(result resolveResult) []claimEntry { return result.Candidates },
+			expected:     2,
+		},
+		{
+			name:         "on the claim the evidence names",
+			args:         []string{"--evidence", "site:S-120", "width"},
+			expectedCode: exitSuccess,
+			claims: func(result resolveResult) []claimEntry {
+				if result.Claim == nil {
+					return nil
+				}
+				return []claimEntry{*result.Claim}
+			},
+			expected: 1,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, _ := resolvingCombined(t, testCase.expectedCode, testCase.args...)
+
+			assert.Equal(t, testCase.expected, assertCombined(t, testCase.claims(result)), "how many of the claims were checked")
+		})
+	}
+}
+
+// TestRunResolveAcrossFramesKeepsTheClaimsOwnCombinedFigure checks that the two
+// combined figures of a cross-frame answer are the two different things the
+// contract says: the claim's own accuracy at the top level, and the transformed
+// answer's in the budget.
+func TestRunResolveAcrossFramesKeepsTheClaimsOwnCombinedFigure(t *testing.T) {
+	result := answering(t, exitSuccess, "--frame", "frame:site-grid", "geom:V-01", "position")
+
+	// The claim's own terms, √(0.004² + 0.008²), and nothing of the route.
+	require.NotNil(t, result.Combined)
+	assert.InDelta(t, math.Sqrt(0.004*0.004+0.008*0.008), result.Combined.Magnitude, 1e-15)
+	assert.Equal(t, "m", result.Combined.Unit)
+
+	// The answer's, with the fit which relates the frames in it too.
+	require.NotNil(t, result.Budget)
+	require.NotNil(t, result.Budget.Combined)
+	assert.Greater(t, result.Budget.Combined.Magnitude, result.Combined.Magnitude)
+}
+
+// TestRunResolvePrintsTheFigureItRanksBy is the property the combined figure
+// exists to keep, checked in place of a round trip because nothing printed here
+// is read back: for every claim resolve reports over a fixture, the figure
+// printed is [dfcad.Claim.Combined] exactly; and wherever accuracy decided the
+// answer, the current claim's figure is the smallest among the candidates
+// sharing its unit.
+func TestRunResolvePrintsTheFigureItRanksBy(t *testing.T) {
+	testCases := []struct {
+		name  string
+		files func() map[string]string
+	}{
+		{name: "over the resolve fixture", files: answerable},
+		{name: "over the fixture of combined accuracies", files: func() map[string]string { return withCombined(answerable(), "") }},
+		{name: "over the fixture of mixed units", files: func() map[string]string {
+			files := answerable()
+			files["entities/site.dfc"] += mixedAccuracyModel
+			return files
+		}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, testCase.files())
+			t.Chdir(root)
+
+			graph, _ := dfcad.LoadGraph(".")
+			require.NotNil(t, graph)
+
+			// Each claim by where it was written, which is what ties a claim
+			// object on stdout back to the claim the library loaded.
+			bySpan := make(map[string]*dfcad.Claim)
+			type pair struct {
+				subject   dfcad.ID
+				predicate string
+			}
+			var pairs []pair
+			seen := make(map[pair]bool)
+			for claim := range graph.Claims().All() {
+				bySpan[claim.Span().String()] = claim
+
+				// A frame's transform is claimed on the frame, which is
+				// registry data rather than a thing resolve is asked about.
+				if _, isFrame := graph.Registry().Frame(claim.Subject()); isFrame {
+					continue
+				}
+
+				key := pair{subject: claim.Subject(), predicate: claim.Predicate()}
+				if !seen[key] {
+					seen[key] = true
+					pairs = append(pairs, key)
+				}
+			}
+			require.NotEmpty(t, pairs)
+
+			checked, decided := 0, 0
+			for _, key := range pairs {
+				var stdout, stderr bytes.Buffer
+				code := run([]string{"resolve", "--candidates", string(key.subject), key.predicate}, &stdout, &stderr)
+				require.Contains(t, []int{exitSuccess, exitCheck, exitAmbiguous, exitStrict}, code, stderr.String())
+
+				result := listed[resolveResult](t, stdout.String())
+				for _, candidate := range result.Candidates {
+					claim, ok := bySpan[candidate.Span.String()]
+					require.True(t, ok, "a candidate at %s the library did not load", candidate.Span)
+
+					expected, units := combinedOf(claim)
+					assert.Equal(t, expected, candidate.Combined, "%s %s at %s", key.subject, key.predicate, candidate.Span)
+					assert.Equal(t, units, candidate.Units, "%s %s at %s", key.subject, key.predicate, candidate.Span)
+
+					if combined, err := claim.Combined(); err == nil {
+						require.NotNil(t, candidate.Combined)
+						assert.Equal(t, combined.Magnitude, candidate.Combined.Magnitude)
+						assert.Equal(t, string(combined.Unit), candidate.Combined.Unit)
+						assert.Equal(t, combined.CoverageFactor, candidate.Combined.CoverageFactor)
+					}
+					checked++
+				}
+
+				if result.Reason != string(dfcad.ReasonAccuracy) {
+					continue
+				}
+				decided++
+
+				var current *claimEntry
+				for i := range result.Candidates {
+					if result.Candidates[i].Resolution == resolutionCurrent {
+						current = &result.Candidates[i]
+					}
+				}
+				require.NotNil(t, current, "%s %s resolved on accuracy with no current candidate", key.subject, key.predicate)
+				require.NotNil(t, current.Combined)
+
+				for _, other := range result.Candidates {
+					if other.Combined == nil || other.Combined.Unit != current.Combined.Unit {
+						continue
+					}
+					assert.LessOrEqual(t, current.Combined.Magnitude, other.Combined.Magnitude,
+						"%s %s: the current claim is the most accurate of its unit", key.subject, key.predicate)
+				}
+			}
+			assert.Positive(t, checked, "no candidate was checked")
+			assert.Positive(t, decided, "no answer was decided on accuracy")
+		})
+	}
 }
