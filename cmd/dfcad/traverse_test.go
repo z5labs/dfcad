@@ -1458,6 +1458,10 @@ func objectKeys(t *testing.T, message json.RawMessage) []string {
 		require.NoError(t, decoder.Decode(&skipped))
 	}
 
+	closing, err := decoder.Token()
+	require.NoError(t, err)
+	require.Equal(t, json.Delim('}'), closing)
+
 	return keys
 }
 
