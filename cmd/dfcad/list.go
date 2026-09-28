@@ -135,6 +135,41 @@ The object list-tolerances writes carries "tolerances": one entry per declared
 tolerance, in name order, each with its name, its value and its unit.
 `
 
+const listFramesUsage = `dfcad list-frames — list the coordinate frames the registry declares.
+
+Usage:
+
+	dfcad list-frames [flags]
+
+Every coordinate frame the registry declares, with its unit, the frame it is
+expressed relative to and the claim holding its transform to that frame. These
+are the ids "--frame" accepts on every command which takes one, and the only
+spellings it takes. It takes no arguments: the answer is the whole of that sort
+of the registry.
+
+The listing reports what was declared and converts nothing: a frame's unit is
+its one linear unit as written. The root is the frame with no parent, and it
+carries neither a parent nor a transform. Nothing is inlined: the transform is
+named by the id of its claim, and a claim or a plain value written on a frame
+is "dfcad get" of that frame, not something this listing repeats. Nor does it
+mark any frame as carrying a coordinate reference system: which predicate names
+one is project data.
+
+A frame declares a label and no description, so there is no --describe.
+
+Frames come back in id order, so two runs over one model produce the same list
+and a diff between them means something.
+
+A model which declares no frame at all lists nothing and succeeds. That is an
+empty registry rather than a failure.
+
+` + globalFlagsHelp + `
+` + outputContractHelp + `
+The object list-frames writes carries "frames": one entry per declared frame,
+in id order, each with its id, its label where one was written, its unit, and —
+on every frame but the root — its parent and the id of its transform claim.
+`
+
 const listInstancesUsage = `dfcad list-instances — list the instances of a type.
 
 Usage:
@@ -524,6 +559,41 @@ type listedTolerance struct {
 	Description string `json:"description,omitempty"`
 }
 
+// listFramesResult is the object list-frames writes to stdout.
+type listFramesResult struct {
+	envelope
+	loadState
+
+	// Frames is one entry per declared frame, in id order.
+	Frames []listedFrame `json:"frames"`
+}
+
+// listedFrame is one declared coordinate frame as the discovery path reports
+// it.
+//
+// It is the declaration exactly as written — the unit never converted, the
+// parent and the transform named by id — and nothing written on the frame is
+// inlined: a claim or a plain value on it is that frame's retrieval, which is
+// get's.
+type listedFrame struct {
+	// ID is the frame's id, which is what every --frame flag takes.
+	ID string `json:"id"`
+
+	// Label is the frame's name for a person. Absent when it was not written.
+	Label string `json:"label,omitempty"`
+
+	// Unit is the frame's one linear unit, as declared.
+	Unit string `json:"unit"`
+
+	// Parent is the id of the frame this one is expressed relative to. Absent
+	// on the root.
+	Parent string `json:"parent,omitempty"`
+
+	// Transform is the id of the claim the frame names as its transform to the
+	// parent. Absent on the root.
+	Transform string `json:"transform,omitempty"`
+}
+
 // listInstancesResult is the object list-instances writes to stdout.
 type listInstancesResult struct {
 	envelope
@@ -800,6 +870,50 @@ func runListTolerances(cmd command, args []string, _ io.Reader, stdout, stderr i
 	}
 
 	reportTolerances(result.Tolerances, globals, stderr)
+
+	if err := emit(stdout, result); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return exitLoad
+	}
+
+	return exitSuccess
+}
+
+// runListFrames is the list-frames command.
+func runListFrames(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	extra, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	if len(extra) > 0 {
+		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
+	}
+
+	graph, loaded := loadModel(cmd, globals, stderr)
+
+	result := listFramesResult{
+		envelope:  newEnvelope(cmd.name),
+		loadState: loaded,
+
+		// Made rather than declared, as list-types' is, so that a registry
+		// declaring nothing writes an empty list rather than a null.
+		Frames: make([]listedFrame, 0),
+	}
+	for declared := range graph.Registry().Frames() {
+		result.Frames = append(result.Frames, listedFrame{
+			ID:        string(declared.ID),
+			Label:     declared.Label,
+			Unit:      string(declared.Unit),
+			Parent:    string(declared.Parent),
+			Transform: string(declared.Transform),
+		})
+	}
+
+	reportFrames(result.Frames, globals, stderr)
 
 	if err := emit(stdout, result); err != nil {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
@@ -1473,6 +1587,30 @@ func reportTolerances(tolerances []listedTolerance, globals *globals, stderr io.
 	}
 
 	_, _ = fmt.Fprintf(stderr, "%s\n", plural(len(tolerances), "tolerance"))
+}
+
+// reportFrames renders a list-frames result for a person, on stderr: one line
+// per frame — its id, its unit, and the frame it is expressed relative to where
+// it has one — then how many there were.
+//
+// The lines are not behind the verbosity flag, for the reason list-predicates'
+// are not: a person asking which frames there are is asking for the chain, and
+// a count on its own answers nothing they asked.
+func reportFrames(frames []listedFrame, globals *globals, stderr io.Writer) {
+	if !globals.human() {
+		return
+	}
+
+	for _, declared := range frames {
+		if declared.Parent == "" {
+			_, _ = fmt.Fprintf(stderr, "%s: %s\n", declared.ID, declared.Unit)
+			continue
+		}
+
+		_, _ = fmt.Fprintf(stderr, "%s: %s → %s\n", declared.ID, declared.Unit, declared.Parent)
+	}
+
+	_, _ = fmt.Fprintf(stderr, "%s\n", plural(len(frames), "frame"))
 }
 
 // reportInstances renders a list-instances result for a person, on stderr.

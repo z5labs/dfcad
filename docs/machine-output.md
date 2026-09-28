@@ -469,6 +469,58 @@ It is a command of its own rather than a flag on `list-types`, and it is on no g
 [`token-budget.md`](./token-budget.md): the cold start pays nothing for it, and only the caller
 which asks for the vocabulary does.
 
+### `list-frames`
+
+The coordinate frames the registry declares, with the unit each was declared in, the frame it
+is expressed relative to and the claim holding its transform to that frame. These are the ids
+`--frame` accepts on every command which takes one — exactly `Registry.Names(dfcad.SortFrame)`,
+the set the unknown-frame usage error lists — and the only spellings it takes. It takes no
+arguments and no flags of its own: a frame declares a label and no description, so there is
+no `--describe`.
+
+```json
+{
+  "version": 2,
+  "command": "list-frames",
+  "refused": false,
+  "frames": [
+    {"id": "frame:site", "label": "Site setting-out grid", "unit": "m", "parent": "frame:survey-grid", "transform": "survey:C-0001"},
+    {"id": "frame:survey-grid", "label": "Site survey grid", "unit": "m"}
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `refused` | boolean | True where the load refused the model, and what follows was read through it. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
+| `frames` | array | One entry per declared frame, in id order. Empty rather than null when the registry declares none. |
+| `frames[].id` | string | The frame's id, which is what every `--frame` flag takes. |
+| `frames[].label` | string, optional | The frame's name for a person. Absent when it was not written. |
+| `frames[].unit` | string | The frame's one linear unit, as declared. Never converted. |
+| `frames[].parent` | string, optional | The id of the frame this one is expressed relative to. Absent on the root. |
+| `frames[].transform` | string, optional | The id of the claim the frame names as its transform to the parent. Absent on the root. |
+
+Frames come back in id order, so two runs over one model write the same bytes. Each entry's
+keys are written in the order the table gives them. The root is the entry with no `parent`;
+following `parent` from any other entry walks the chain to it. Over a model the load refused
+the listing still answers, and a frame whose parent is not declared is listed with the parent
+it names, as written.
+
+A frame is a node, its unit is its one linear unit
+([0005](./decisions/0005-one-linear-unit-per-frame.md)), and its transform is a claim. The
+listing names the transform by the id of its claim and inlines nothing: no claim, no plain value and no span.
+What is written *on* a frame — the transform's value, a coordinate reference system, a
+ground-to-grid factor — is that frame's retrieval, which is [`get`](#get) of its id. Nor does
+the listing mark any frame as carrying a coordinate reference system: which predicate names
+one is project data.
+
+With `--format human` it renders the chain on stderr, one line per frame — its id, its unit,
+and `→` the parent where it has one — then the count. Stdout is the same in every format.
+
+It is a command of its own rather than a flag on `list-types`, and it is on no gated path of
+[`token-budget.md`](./token-budget.md): the cold start pays nothing for it, and only the caller
+which asks for the vocabulary does.
+
 ### `list-instances`
 
 The instances of one type, or of the whole model. It takes an optional type argument and
@@ -537,7 +589,8 @@ three sets are not the same size. An unknown **type** points at `list-types`: a 
 worth discovering is one too large to print into an error. An unknown **kind** lists the
 seven, which are a closed set compiled into the engine and are not in `list-types` at all.
 An unknown **frame** lists the frames the registry declares, which `list-types` does not
-list either.
+list either; [`list-frames`](#list-frames) lists them, with each one's unit, parent and
+transform.
 
 ### `list-geometry`
 

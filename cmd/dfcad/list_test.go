@@ -55,6 +55,22 @@ const listRegistry = `(project
     (accuracy (independent 0.004 m))
     (date "2026-03-02")))
 
+(frame frame:fit-out
+  (unit m)
+  (parent frame:building)
+  (transform site:C-0009)
+  (frame-transform
+    (id site:C-0009)
+    (value
+      (transform
+        (translation 1.5 2.5 0.0)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Fit-out drawing FO-101, rev C")
+    (method method:total-station)
+    (accuracy (independent 0.002 m))
+    (date "2026-04-14")))
+
 (type Campus
   (kind Zone)
   (geometry absent)
@@ -815,7 +831,7 @@ func TestRunListInstancesOnAnEmptyModel(t *testing.T) {
 // because the run produced no result.
 func TestRunListRejectsWhatTheModelDoesNotDeclare(t *testing.T) {
 	declaredTypes := []string{"Campus", "Fitting", "MeetingRoom", "OfficeBuilding", "Parcel"}
-	declaredFrames := []string{"frame:building", "frame:site-grid"}
+	declaredFrames := []string{"frame:building", "frame:fit-out", "frame:site-grid"}
 
 	testCases := []struct {
 		name           string
@@ -863,6 +879,12 @@ func TestRunListRejectsWhatTheModelDoesNotDeclare(t *testing.T) {
 			args: []string{"list-tolerances", "coincident"},
 			expectedStderr: "dfcad list-tolerances: " +
 				UnexpectedArgumentsError{Extra: []string{"coincident"}}.Error() + "\n\n" + listTolerancesUsage,
+		},
+		{
+			name: "rejects an argument to list-frames, which takes none",
+			args: []string{"list-frames", "frame:building"},
+			expectedStderr: "dfcad list-frames: " +
+				UnexpectedArgumentsError{Extra: []string{"frame:building"}}.Error() + "\n\n" + listFramesUsage,
 		},
 	}
 
@@ -1021,6 +1043,7 @@ func TestRunListStillAnswersOnAModelWithDiagnostics(t *testing.T) {
 		{"list-types"},
 		{"list-predicates"},
 		{"list-tolerances"},
+		{"list-frames"},
 		{"list-instances"},
 		{"list-geometry", "--predicate", "position"},
 	} {
@@ -1162,6 +1185,11 @@ func TestRunListUsage(t *testing.T) {
 			expectedStderr: listTolerancesUsage,
 		},
 		{
+			name:           "prints the list-frames usage to stderr and succeeds",
+			args:           []string{"list-frames", "-h"},
+			expectedStderr: listFramesUsage,
+		},
+		{
 			name:           "prints the list-instances usage to stderr and succeeds",
 			args:           []string{"list-instances", "-h"},
 			expectedStderr: listInstancesUsage,
@@ -1189,6 +1217,7 @@ func TestListErrorsAreNotSwallowed(t *testing.T) {
 		{"list-types"},
 		{"list-predicates"},
 		{"list-tolerances"},
+		{"list-frames"},
 		{"list-instances"},
 		{"list-geometry", "--predicate", "position"},
 	} {
@@ -1396,7 +1425,7 @@ func TestRunListGeometryRefusesAFrameTheRegistryDoesNotDeclare(t *testing.T) {
 	var unknown UnknownFrameError
 	require.ErrorAs(t, err, &unknown)
 	assert.Equal(t, "frame:annex", unknown.Frame)
-	assert.Equal(t, []string{"frame:building", "frame:site-grid"}, unknown.Declared)
+	assert.Equal(t, []string{"frame:building", "frame:fit-out", "frame:site-grid"}, unknown.Declared)
 
 	var stdout, stderr bytes.Buffer
 
@@ -1686,7 +1715,7 @@ func TestRunListGeometryRejectsWhatItCannotAskAbout(t *testing.T) {
 			name: "names a frame the registry does not declare",
 			args: []string{"list-geometry", "--predicate", "position", "--frame", "frame:annex"},
 			expectedStderr: "dfcad list-geometry: " +
-				UnknownFrameError{Frame: "frame:annex", Declared: []string{"frame:building", "frame:site-grid"}}.Error() + "\n",
+				UnknownFrameError{Frame: "frame:annex", Declared: []string{"frame:building", "frame:fit-out", "frame:site-grid"}}.Error() + "\n",
 		},
 		{
 			name: "rejects an argument, which it takes none of",
@@ -1957,7 +1986,7 @@ func TestListFiltersWrittenTwiceAnswerTheUnion(t *testing.T) {
 // repeated filter raises: its first value nobody declared, reported exactly as
 // it would be written alone, whichever position it was written in.
 func TestRunListRejectsAnUndeclaredValueOfARepeatedFilter(t *testing.T) {
-	declaredFrames := []string{"frame:building", "frame:site-grid"}
+	declaredFrames := []string{"frame:building", "frame:fit-out", "frame:site-grid"}
 
 	testCases := []struct {
 		name           string
@@ -2045,7 +2074,7 @@ func TestCheckFiltersReportsTheFirstUndeclaredValue(t *testing.T) {
 		var unknown UnknownFrameError
 		require.ErrorAs(t, checkFilters(registry, nil, nil, []string{"frame:building", "frame:annex"}), &unknown)
 		assert.Equal(t, "frame:annex", unknown.Frame)
-		assert.Equal(t, []string{"frame:building", "frame:site-grid"}, unknown.Declared)
+		assert.Equal(t, []string{"frame:building", "frame:fit-out", "frame:site-grid"}, unknown.Declared)
 	})
 }
 
@@ -2915,4 +2944,196 @@ func TestRunListTolerancesAnswersThroughARefusedLoad(t *testing.T) {
 
 	assert.True(t, result.Refused)
 	assert.NotEmpty(t, result.Tolerances)
+}
+
+// listFramesOf runs list-frames over files and decodes its answer.
+func listFramesOf(t *testing.T, files map[string]string, args ...string) listFramesResult {
+	t.Helper()
+
+	t.Chdir(tree(t, files))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run(append([]string{"list-frames"}, args...), &stdout, &stderr), stderr.String())
+
+	return listed[listFramesResult](t, stdout.String())
+}
+
+func TestRunListFrames(t *testing.T) {
+	testCases := []struct {
+		name           string
+		files          map[string]string
+		expectedFrames []listedFrame
+	}{
+		{
+			name:  "reports every declared frame in id order, the root with no parent and a frame with no label with none",
+			files: model(),
+			expectedFrames: []listedFrame{
+				{ID: "frame:building", Label: "Building local grid", Unit: "m", Parent: "frame:site-grid", Transform: "site:C-0001"},
+				{ID: "frame:fit-out", Unit: "m", Parent: "frame:building", Transform: "site:C-0009"},
+				{ID: "frame:site-grid", Label: "Site survey grid", Unit: "m"},
+			},
+		},
+		{
+			name:  "reports a frame's unit as it was declared, never converted",
+			files: map[string]string{"registry.dfc": "(project (globalid-namespace \"https://example.org/e\"))\n(namespace frame (description \"Frames.\"))\n(frame frame:drawing (unit mm))\n"},
+			expectedFrames: []listedFrame{
+				{ID: "frame:drawing", Unit: "mm"},
+			},
+		},
+		{
+			name:           "reports a registry which declares no frame as no frames at all",
+			files:          map[string]string{"registry.dfc": "(project (globalid-namespace \"https://example.org/e\"))\n"},
+			expectedFrames: []listedFrame{},
+		},
+		{
+			name:           "reports an empty model as no frames at all",
+			files:          map[string]string{"notes.md": "nothing to see"},
+			expectedFrames: []listedFrame{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result := listFramesOf(t, testCase.files)
+
+			assert.Equal(t, outputVersion, result.Version)
+			assert.Equal(t, "list-frames", result.Command)
+			assert.Equal(t, testCase.expectedFrames, result.Frames)
+		})
+	}
+}
+
+// TestRunListFramesAnswersTheGridFixtureExactly is its own function because it
+// asserts the bytes a caller reads rather than the values they decode to: the
+// key order, which fields are written and which are left out.
+func TestRunListFramesAnswersTheGridFixtureExactly(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "checks", "grid", "affirmed"))
+	require.NoError(t, err)
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-frames", "--root", root}, &stdout, &stderr), stderr.String())
+
+	assert.Equal(t, `{"version":2,"command":"list-frames","refused":false,"frames":[`+
+		`{"id":"frame:site","label":"Site setting-out grid","unit":"m","parent":"frame:survey-grid","transform":"survey:C-0001"},`+
+		`{"id":"frame:survey-grid","label":"Site survey grid","unit":"m"}]}`+"\n",
+		stdout.String())
+}
+
+// TestRunListFramesWritesOnlyWhatWasDeclared is its own function because it is
+// about which keys reach stdout rather than about what they decode to: an empty
+// label and an absent one decode alike, and so do an empty parent and none.
+func TestRunListFramesWritesOnlyWhatWasDeclared(t *testing.T) {
+	t.Chdir(tree(t, model()))
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"list-frames"}, &stdout, &stderr), stderr.String())
+
+	entries := entriesOf(t, object(t, stdout.String()), "frames")
+	require.Len(t, entries, 3)
+
+	keys := make(map[string][]string, len(entries))
+	for _, entry := range entries {
+		fields, ok := entry.(map[string]any)
+		require.True(t, ok)
+
+		id, _ := fields["id"].(string)
+		keys[id] = slices.Sorted(maps.Keys(fields))
+	}
+
+	assert.Equal(t, map[string][]string{
+		"frame:building":  {"id", "label", "parent", "transform", "unit"},
+		"frame:fit-out":   {"id", "parent", "transform", "unit"},
+		"frame:site-grid": {"id", "label", "unit"},
+	}, keys)
+}
+
+// TestRunListFramesRendersTheChainForAPerson is its own function because it is
+// about stderr, and about stdout not changing with it.
+func TestRunListFramesRendersTheChainForAPerson(t *testing.T) {
+	listing := func(t *testing.T, args ...string) (string, string) {
+		t.Helper()
+
+		t.Chdir(tree(t, model()))
+
+		var stdout, stderr bytes.Buffer
+		require.Equal(t, exitSuccess, run(append([]string{"list-frames"}, args...), &stdout, &stderr), stderr.String())
+
+		return stdout.String(), stderr.String()
+	}
+
+	machine, machineReport := listing(t)
+	human, humanReport := listing(t, "--format", formatHuman)
+	loud, _ := listing(t, "--format", formatHuman, "-v")
+
+	assert.Equal(t, machine, human)
+	assert.Equal(t, machine, loud)
+
+	assert.Empty(t, machineReport)
+	assert.Equal(t, "frame:building: m → frame:site-grid\n"+
+		"frame:fit-out: m → frame:building\n"+
+		"frame:site-grid: m\n"+
+		"3 frames\n", humanReport)
+}
+
+// TestRunListFramesListsWhatTheRegistryDeclares is the property the command
+// exists for: the ids it lists are exactly the registry's frames, each entry is
+// the declaration, and every id listed is one --frame accepts, so a caller
+// which checks a flag against the listing is checking it against what every
+// command will take.
+func TestRunListFramesListsWhatTheRegistryDeclares(t *testing.T) {
+	result := listFramesOf(t, model())
+
+	listedIDs := make([]string, 0, len(result.Frames))
+	for _, declared := range result.Frames {
+		listedIDs = append(listedIDs, declared.ID)
+	}
+
+	graph, _ := dfcad.LoadGraph(".")
+	registry := graph.Registry()
+
+	require.Equal(t, registry.Names(dfcad.SortFrame), listedIDs)
+	require.NotEmpty(t, listedIDs)
+
+	for _, entry := range result.Frames {
+		declared, ok := registry.Frame(dfcad.ID(entry.ID))
+		require.True(t, ok, entry.ID)
+
+		assert.Equal(t, string(declared.Unit), entry.Unit, entry.ID)
+		assert.Equal(t, string(declared.Parent), entry.Parent, entry.ID)
+		assert.Equal(t, string(declared.Transform), entry.Transform, entry.ID)
+	}
+
+	for _, id := range listedIDs {
+		t.Run("list-instances accepts "+id, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			assert.Equal(t, exitSuccess, run([]string{"list-instances", "--frame", id}, &stdout, &stderr), stderr.String())
+		})
+	}
+}
+
+// TestRunListFramesAnswersThroughARefusedLoad is its own function because it
+// is about the load rather than the listing: a discovery read answers over a
+// model the load refused, and says so in its object rather than its exit code.
+func TestRunListFramesAnswersThroughARefusedLoad(t *testing.T) {
+	t.Run("answers over a model whose frame namespace is undeclared", func(t *testing.T) {
+		result := listFramesOf(t, unloadable(t))
+
+		assert.True(t, result.Refused)
+		assert.NotEmpty(t, result.Frames)
+	})
+
+	t.Run("lists a frame whose parent is missing as it was written", func(t *testing.T) {
+		files := model()
+
+		const parent = "(parent frame:site-grid)"
+		require.Contains(t, files["registry.dfc"], parent, "the fixture registry no longer names the parent this replaces")
+		files["registry.dfc"] = strings.Replace(files["registry.dfc"], parent, "(parent frame:nowhere)", 1)
+
+		result := listFramesOf(t, files)
+
+		assert.True(t, result.Refused)
+		assert.Contains(t, result.Frames, listedFrame{
+			ID: "frame:building", Label: "Building local grid", Unit: "m", Parent: "frame:nowhere", Transform: "site:C-0001",
+		})
+	})
 }
