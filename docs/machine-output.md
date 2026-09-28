@@ -1009,6 +1009,7 @@ takes a query, an id, and three flags.
 | `members-of` | The zones the thing is a member of, and the zones those are members of where membership nests. | `membership` |
 | `members` | What a zone groups — every node which wrote `(member-of <id>)`, whatever its type — and what those group where they are zones themselves. | `membership` |
 | `boundary-of` | The edges the thing's outline is assembled from, each classified by what physically realises it. | `boundary` |
+| `bounds` | Given a loop, the nodes which name it in a `(boundary …)`; given an edge, the nodes whose boundary reaches it through any of their loops. The reverse of `boundary-of`, walked from the shape. | `boundary` |
 | `adjacent-to` | The things that share a boundary edge with it. | `adjacency` |
 
 ```json
@@ -1087,10 +1088,17 @@ that order is the ring itself and is data rather than presentation.
 written, rather than flags that are quietly ignored, for the reason `--deprecated` beside `--claims resolved` is: a flag that is
 silently dropped answers a different question from the one that was asked.
 
+`bounds` is the same relation read from the other end, so it is one step too: every result
+is a node at `depth` `1` with the relation `boundary`, in id order, and `--depth` beside it is
+a usage error for the same reason. Its results are nodes, so `--kind` and `--type` are
+honoured. A loop or an edge that bounds nothing is an empty `results`, not an error.
+
 An id nothing in the model holds is a **usage error** — exit `3`, with nothing on stdout —
-naming it and the nearest id there is, exactly as `get` reports one. An id that names a
-vertex, an edge or a loop is a usage error too, naming which of them it is: the relations
-above are written between semantic nodes, and a shape is reached through the node it bounds.
+naming it and the nearest id there is, exactly as `get` reports one. Every query walks from a
+semantic node except `bounds`, which walks from a loop or an edge; an id of any other family
+is a usage error too, naming which family it is and which the query takes. `bounds` is how a
+walk starts from a shape: it names the nodes the shape is the boundary of, and every other
+query walks on from them.
 A walk that reaches nothing is not an error — it is an empty `results` and exit `0`.
 
 ### `claims`

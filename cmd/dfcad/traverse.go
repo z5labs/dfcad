@@ -36,6 +36,8 @@ Queries:
 	               where they are zones themselves
 	boundary-of    the edges the thing's outline is assembled from, each
 	               classified by what physically realises it
+	bounds         the things a loop or an edge is the boundary of: the nodes
+	               which name the loop, or whose outline reaches the edge
 	adjacent-to    the things which share a boundary edge with it
 
 Flags:
@@ -79,9 +81,11 @@ The edges of a boundary are the exception: they come back in the order the
 loops traverse them, because that order is the model's own.
 
 An id nothing in the model holds is a usage error naming it, and naming the
-nearest id there is, exactly as ` + "`dfcad get`" + ` reports one. An id which names a
-vertex, an edge or a loop is a usage error too: the relations above are written
-between semantic nodes, and a shape is reached through the node it bounds.
+nearest id there is, exactly as ` + "`dfcad get`" + ` reports one. Every query but
+bounds walks from a semantic node, and bounds walks from a loop or an edge; an id
+of any other family is a usage error naming what it is and what the query takes.
+A walk from a shape starts with bounds: it names the nodes the shape is the
+boundary of, and every other query walks on from them.
 
 ` + globalFlagsHelp + `
 ` + outputContractHelp + `
@@ -107,6 +111,7 @@ const (
 	queryMembersOf   = "members-of"
 	queryMembers     = "members"
 	queryBoundaryOf  = "boundary-of"
+	queryBounds      = "bounds"
 	queryAdjacentTo  = "adjacent-to"
 )
 
@@ -142,8 +147,27 @@ type query struct {
 	// results are edges.
 	grouped bool
 
-	// walk is the traversal itself, already bounded.
-	walk func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed
+	// takes are the families of the subject it walks from, spelled the way
+	// [familyOf] spells them. Every query but bounds takes a semantic node, and
+	// bounds takes the two shapes a boundary is assembled from.
+	takes []string
+
+	// walk is the traversal itself, already bounded. It is only ever handed a
+	// subject of a family in takes.
+	walk func(graph *dfcad.Graph, subject dfcad.Entity, depth int) []traversed
+}
+
+// takesNode is what every query which walks from a semantic node takes.
+var takesNode = []string{familyNode}
+
+// fromNode is a walk from a semantic node, as a walk from any subject.
+//
+// The assertion cannot fail: [walkable] hands a query only a subject of a family
+// it takes, and every query built with this takes a node alone.
+func fromNode(walk func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed) func(*dfcad.Graph, dfcad.Entity, int) []traversed {
+	return func(graph *dfcad.Graph, subject dfcad.Entity, depth int) []traversed {
+		return walk(graph, subject.(*dfcad.SemanticNode), depth)
+	}
 }
 
 // queries is every query, in the order the usage lists them.
@@ -152,42 +176,73 @@ var queries = []query{
 		name:    queryContains,
 		deep:    true,
 		grouped: true,
-		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+		takes:   takesNode,
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
 			return related(graph.DescendantsTo(subject, depth))
-		},
+		}),
 	},
 	{
 		name:    queryContainedBy,
 		deep:    true,
 		grouped: true,
-		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+		takes:   takesNode,
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
 			return related(graph.AncestorsTo(subject, depth))
-		},
+		}),
 	},
 	{
 		name:    queryMembersOf,
 		deep:    true,
 		grouped: true,
-		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+		takes:   takesNode,
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
 			return related(graph.ZonesTo(subject, depth))
-		},
+		}),
 	},
 	{
 		name:    queryMembers,
 		deep:    true,
 		grouped: true,
-		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+		takes:   takesNode,
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
 			return related(graph.MembersTo(subject, depth))
-		},
+		}),
 	},
 	{
 		name:    queryBoundaryOf,
 		deep:    false,
 		grouped: false,
-		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, _ int) []traversed {
+		takes:   takesNode,
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, _ int) []traversed {
 			var out []traversed
 			for boundary := range graph.Classify(subject) {
 				out = append(out, boundaryResult(boundary))
+			}
+			return out
+		}),
+	},
+	{
+		name:    queryBounds,
+		deep:    false,
+		grouped: true,
+		takes:   []string{familyLoop, familyEdge},
+		walk: func(graph *dfcad.Graph, subject dfcad.Entity, _ int) []traversed {
+			var bounded iter.Seq[*dfcad.SemanticNode]
+			switch shape := subject.(type) {
+			case *dfcad.Loop:
+				bounded = graph.Bounded(shape)
+			case *dfcad.Edge:
+				bounded = graph.Regions(shape)
+			default:
+				return nil
+			}
+
+			// One step, whichever shape: a region is one relation away from the
+			// loop it names and from every edge that loop names, in the same way
+			// the edges of its boundary are one step away from it.
+			var out []traversed
+			for node := range bounded {
+				out = append(out, nodeResult(node, dfcad.RelationBoundary, 1))
 			}
 			return out
 		},
@@ -196,7 +251,8 @@ var queries = []query{
 		name:    queryAdjacentTo,
 		deep:    true,
 		grouped: true,
-		walk: func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
+		takes:   takesNode,
+		walk: fromNode(func(graph *dfcad.Graph, subject *dfcad.SemanticNode, depth int) []traversed {
 			var out []traversed
 			for neighbour := range graph.AdjacentTo(subject, depth) {
 				entry := nodeResult(neighbour.Node(), neighbour.Relation(), neighbour.Depth())
@@ -206,7 +262,7 @@ var queries = []query{
 				out = append(out, entry)
 			}
 			return out
-		},
+		}),
 	},
 }
 
@@ -290,15 +346,15 @@ func (e FlagNotApplicableError) Error() string {
 // The reasons a query refuses a flag, which are properties of the relation
 // rather than of the invocation.
 const (
-	depthNotApplicable = "the boundary of a thing is one step from it — the edges its outline is assembled from — " +
-		"and there is nothing beyond them to follow"
+	depthNotApplicable = "a boundary is one step from what it bounds — the edges an outline is assembled from, " +
+		"and the nodes a loop or an edge is the outline of — and there is nothing beyond them to follow"
 
 	filterNotApplicable = "the results are edges, which declare neither a kind nor a type; " +
 		"what an edge is realised by is reported as its backing"
 )
 
-// NotTraversableError is an id which names something the relations are not
-// written between.
+// NotTraversableError is an id which names something of a family the query
+// asked of it does not walk from.
 //
 // It is a usage error rather than an empty walk for the reason an unknown id is
 // one: a shape which bounds nothing and a shape asked the wrong question are
@@ -308,16 +364,45 @@ type NotTraversableError struct {
 	// ID is what was asked about.
 	ID string
 
-	// Family is the family which holds it: vertex, edge or loop.
+	// Family is the family which holds it: node, vertex, edge or loop.
 	Family string
+
+	// Query is the query it was asked of. Empty where the command asking takes
+	// no query and walks from a semantic node by definition.
+	Query string
+
+	// Takes are the families that query walks from.
+	Takes []string
 }
 
 // Error implements [error].
 func (e NotTraversableError) Error() string {
+	asker := e.Query
+	if asker == "" {
+		asker = "this command"
+	}
+
 	return fmt.Sprintf(
-		"cannot walk from %s: it is %s %s, and the relations traverse follows are written between semantic nodes",
-		e.ID, article(e.Family), e.Family,
+		"cannot walk from %s: it is %s %s, and %s takes %s",
+		e.ID, article(e.Family), e.Family, asker, familiesTaken(e.Takes),
 	)
+}
+
+// familiesTaken is a list of families as a sentence reads it: "a node", "a loop or
+// an edge".
+func familiesTaken(takes []string) string {
+	spelled := make([]string, 0, len(takes))
+	for _, family := range takes {
+		spelled = append(spelled, article(family)+" "+family)
+	}
+
+	switch len(spelled) {
+	case 0:
+		return "nothing"
+	case 1:
+		return spelled[0]
+	}
+	return strings.Join(spelled[:len(spelled)-1], ", ") + " or " + spelled[len(spelled)-1]
 }
 
 // article is the indefinite article a word reads with.
@@ -496,7 +581,7 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		return usageError(cmd, err, stderr, false)
 	}
 
-	subject, err := traversable(graph, id)
+	subject, err := walkable(graph, id, asked)
 	if err != nil {
 		return usageError(cmd, err, stderr, false)
 	}
@@ -515,7 +600,7 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 	// of a boundary are left where the loops put them: that order is the ring
 	// itself, which is data rather than presentation, and sorting it would throw
 	// away which edge is next to which.
-	if asked.name != queryBoundaryOf {
+	if asked.grouped {
 		slices.SortStableFunc(result.Results, func(a, b traversed) int {
 			return cmp.Or(cmp.Compare(a.Depth, b.Depth), strings.Compare(a.ID, b.ID))
 		})
@@ -560,21 +645,35 @@ func checkFlags(asked query, given map[string]bool) error {
 	return nil
 }
 
-// traversable is the semantic node id names, reporting an id nothing holds and
-// one which names a shape rather than a thing.
-func traversable(graph *dfcad.Graph, id dfcad.ID) (*dfcad.SemanticNode, error) {
+// walkable is the entity id names, reporting an id nothing holds and one of a
+// family the query does not walk from.
+func walkable(graph *dfcad.Graph, id dfcad.ID, asked query) (dfcad.Entity, error) {
 	entity, ok := graph.Entity(id)
 	if !ok {
 		nearest, _ := graph.Nearest(id)
 		return nil, UnknownIDError{ID: string(id), Nearest: string(nearest)}
 	}
 
-	node, ok := entity.(*dfcad.SemanticNode)
-	if !ok {
-		return nil, NotTraversableError{ID: string(id), Family: familyOf(entity)}
+	family := familyOf(entity)
+	if !slices.Contains(asked.takes, family) {
+		return nil, NotTraversableError{ID: string(id), Family: family, Query: asked.name, Takes: asked.takes}
 	}
 
-	return node, nil
+	return entity, nil
+}
+
+// traversable is the semantic node id names, reporting an id nothing holds and
+// one which names a shape rather than a thing.
+//
+// It is what a command which walks from a node by definition asks, rather than
+// a query of traverse, so the refusal names no query.
+func traversable(graph *dfcad.Graph, id dfcad.ID) (*dfcad.SemanticNode, error) {
+	entity, err := walkable(graph, id, query{takes: takesNode})
+	if err != nil {
+		return nil, err
+	}
+
+	return entity.(*dfcad.SemanticNode), nil
 }
 
 // familyOf is which family holds one entity, spelled the way the form which
