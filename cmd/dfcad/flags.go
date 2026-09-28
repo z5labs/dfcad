@@ -81,10 +81,13 @@ func (e RootError) Unwrap() error {
 //
 // It is refused rather than answered with its last value, because the flag
 // package keeps the last and says nothing: a run which dropped a value the
-// caller wrote would come back complete-looking and answering a narrower
-// question than the one asked. A flag which names what an answer is of —
+// caller wrote would come back complete-looking and answering a different
+// question from the one asked. A flag which names what an answer is of —
 // list-geometry's --predicate — is not a filter, so a second value is not a
-// union but a second question, and a question the answer has no room for.
+// union but a second question, and a question the answer has no room for. A
+// flag which is a parameter of the question — resolve's --frame, --depth,
+// --tolerance, the global flags — has no meaning to give a second value at
+// all, and is refused by [parse] whether or not the two values agree.
 type RepeatedFlagError struct {
 	// Flag is the flag, without its dashes.
 	Flag string
@@ -96,7 +99,7 @@ type RepeatedFlagError struct {
 // Error implements [error].
 func (e RepeatedFlagError) Error() string {
 	return fmt.Sprintf(
-		"--%s written %d times (%s): it names what is listed rather than narrowing it, so it is written once",
+		"--%s written %d times (%s): it takes one value, so it is written once",
 		e.Flag, len(e.Values), strings.Join(e.Values, ", "),
 	)
 }
@@ -116,6 +119,53 @@ func once(flag string, written repeated) (string, error) {
 	default:
 		return "", RepeatedFlagError{Flag: flag, Values: slices.Clone([]string(written))}
 	}
+}
+
+// repeatable is a flag value which gives a second occurrence a meaning of its
+// own: a filter, which is satisfied by any of its values, a flag which builds a
+// list, like --corner, or a counter, like -v.
+//
+// It is what [parse] reads to tell a flag which repeats by design from one
+// which is written once. The default is written once: a value type opts in by
+// implementing this, so a flag added later with the flag package's own String,
+// Bool or Float64 is refused when repeated without a line of its own, and a
+// flag which repeats says so where its type is declared.
+type repeatable interface {
+	flag.Value
+
+	// repeatable marks the type. It does nothing.
+	repeatable()
+}
+
+// single is the value of a flag which is written once, standing in front of
+// the value the command declared.
+//
+// It hands the first value to the command's own and records every one, so that
+// [parse] can refuse a flag which was written more than once and name every
+// value it was given. A second value is recorded rather than set: it is about
+// to be refused, and setting it first would report whatever the command's own
+// value made of it — a --depth of zero, say — instead of the repeat.
+type single struct {
+	flag.Value
+
+	// written is every value the flag was given, in the order written.
+	written []string
+}
+
+// Set implements [flag.Value].
+func (s *single) Set(value string) error {
+	s.written = append(s.written, value)
+	if len(s.written) > 1 {
+		return nil
+	}
+	return s.Value.Set(value)
+}
+
+// IsBoolFlag lets a boolean flag still stand alone, which the flag package
+// learns by asking the value, and so by asking this one.
+func (s *single) IsBoolFlag() bool {
+	boolean, ok := s.Value.(interface{ IsBoolFlag() bool })
+	return ok && boolean.IsBoolFlag()
 }
 
 // InvalidVerbosityError is a --verbose that names no level.
@@ -182,6 +232,9 @@ func (v *verbosity) Set(value string) error {
 func (v *verbosity) IsBoolFlag() bool {
 	return true
 }
+
+// repeatable implements [repeatable]: -v written twice says more than -v.
+func (v *verbosity) repeatable() {}
 
 // endOfFlags is the argument which says that nothing after it is a flag,
 // however it is spelled. It is the flag package's own spelling, and is named
@@ -371,23 +424,103 @@ func newFlagSet(cmd command, globals *globals) *flag.FlagSet {
 // it is done here rather than in each subcommand: an interface where the
 // meaning of a flag depends on which command it was written for is one nobody
 // can hold in their head.
+//
+// A flag which takes one value and is written more than once is a usage error
+// here too, for every command at once: see [parseFlags].
 func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, stderr io.Writer) ([]string, int, bool) {
+	if inspectFlags != nil {
+		inspectFlags(cmd, flags)
+	}
+
+	positional, err := parseFlags(flags, args)
+	if errors.Is(err, flag.ErrHelp) {
+		// Help is for a person, so it goes where everything for a person
+		// goes. Stdout stays empty: a run that produced no result writes no
+		// result object, and never writes prose instead of one.
+		_, _ = fmt.Fprint(stderr, cmd.usage)
+		return nil, exitSuccess, true
+	}
+	if err != nil {
+		// Every flag which was repeated is named, each on a line of its own,
+		// rather than the first: fixing one and running again only to be
+		// told about the next is the guessing loop a usage error should end.
+		errs := []error{err}
+		if joined, ok := err.(interface{ Unwrap() []error }); ok {
+			errs = joined.Unwrap()
+		}
+		for _, each := range errs {
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, each)
+		}
+		_, _ = fmt.Fprint(stderr, "\n", cmd.usage)
+		return nil, exitUsage, true
+	}
+
+	if err := globals.validate(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
+		_, _ = fmt.Fprint(stderr, cmd.usage)
+		return nil, exitUsage, true
+	}
+
+	// Before the root, because a model this engine cannot load is a model this
+	// engine cannot load wherever it is. Stdout stays empty, which is what says
+	// the run produced no result: a refusal reported beside a result object
+	// would be a run reporting on a model it never read.
+	if err := globals.supported(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return nil, exitLoad, true
+	}
+
+	if err := globals.open(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+		return nil, exitLoad, true
+	}
+
+	return positional, exitSuccess, false
+}
+
+// inspectFlags, where it is set, is handed every flag set [parse] is about to
+// parse, before it parses it. It is nil outside the tests, which use it to walk
+// the flags each command declares without a list of them that could fall
+// behind the commands.
+var inspectFlags func(cmd command, flags *flag.FlagSet)
+
+// parseFlags parses args against flags, resuming after every argument which is
+// not a flag, and returns the arguments in the order they were given.
+//
+// A flag which takes one value, written more than once, is refused with a
+// [RepeatedFlagError] naming it and every value it was given — whether or not
+// the values agree, and however many other flags were repeated too, each of
+// which is its own error in what comes back. The flag package would keep the
+// last value and say nothing, and a run which answers with the last of two
+// frames it was asked for is answering a question nobody asked.
+//
+// Which flags those are is decided here, once, for every command: every flag
+// on the set is written once unless its value is [repeatable]. That is what
+// keeps a single-valued flag a command adds later from needing a check of its
+// own, and a filter or a counter from being refused for doing what it is for.
+//
+// The flag set is handed back as it came: the values are stood in front of
+// while it parses and put back after.
+func parseFlags(flags *flag.FlagSet, args []string) ([]string, error) {
+	var once []*flag.Flag
+	flags.VisitAll(func(f *flag.Flag) {
+		if _, ok := f.Value.(repeatable); ok {
+			return
+		}
+		f.Value = &single{Value: f.Value}
+		once = append(once, f)
+	})
+	defer func() {
+		for _, f := range once {
+			f.Value = f.Value.(*single).Value
+		}
+	}()
+
 	var positional []string
 
 	for {
 		if err := flags.Parse(args); err != nil {
-			if errors.Is(err, flag.ErrHelp) {
-				// Help is for a person, so it goes where everything for a
-				// person goes. Stdout stays empty: a run that produced no
-				// result writes no result object, and never writes prose
-				// instead of one.
-				_, _ = fmt.Fprint(stderr, cmd.usage)
-				return nil, exitSuccess, true
-			}
-
-			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
-			_, _ = fmt.Fprint(stderr, cmd.usage)
-			return nil, exitUsage, true
+			return nil, err
 		}
 
 		rest := flags.Args()
@@ -417,25 +550,15 @@ func parse(cmd command, flags *flag.FlagSet, globals *globals, args []string, st
 		args = rest[1:]
 	}
 
-	if err := globals.validate(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n\n", cmd.name, err)
-		_, _ = fmt.Fprint(stderr, cmd.usage)
-		return nil, exitUsage, true
+	// VisitAll walks the flags in lexical order, so the errors come back in
+	// an order which does not depend on how the invocation was written.
+	var repeats []error
+	for _, f := range once {
+		written := f.Value.(*single).written
+		if len(written) > 1 {
+			repeats = append(repeats, RepeatedFlagError{Flag: f.Name, Values: slices.Clone(written)})
+		}
 	}
 
-	// Before the root, because a model this engine cannot load is a model this
-	// engine cannot load wherever it is. Stdout stays empty, which is what says
-	// the run produced no result: a refusal reported beside a result object
-	// would be a run reporting on a model it never read.
-	if err := globals.supported(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
-		return nil, exitLoad, true
-	}
-
-	if err := globals.open(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
-		return nil, exitLoad, true
-	}
-
-	return positional, exitSuccess, false
+	return positional, errors.Join(repeats...)
 }

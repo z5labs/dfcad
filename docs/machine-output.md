@@ -153,6 +153,17 @@ wrong with.
 
 Neither flag has any effect on the exit code.
 
+**A flag which takes one value is written once.** Written twice in one invocation — these
+globals, or any flag a command declares with one value, such as `resolve --frame`, `--depth`,
+`--position`, `--tolerance` or `get --claims` — it is a **usage error**: exit `3`, nothing on
+stdout, and stderr naming the flag and every value it was given. That holds whether or not the
+values agree. The alternative is to keep the last value and say nothing, and a run which
+answers `resolve --frame frame:annex --frame frame:site` in `frame:site` is answering a
+question other than the one it spelled. Every flag which repeats does so by design: the
+[filters](#filters), each of which is satisfied by any of its values, the flags which build a
+list, such as `plan --annotate` and `scaffold-loop --corner`, and `-v`. Each says so where
+its command documents it; a flag whose entry does not say it repeats is written once.
+
 `--entity-format` does, and is the one global flag that does. It is an assertion by the
 caller about the model, because there is nothing in a model to read it out of: files carry
 no version stamp, deliberately ([SPEC.md §10](../SPEC.md#10-versioning-of-this-specification)).
