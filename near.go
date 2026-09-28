@@ -239,22 +239,15 @@ func (v *vertexIndex) record(id ID, components []float64) {
 
 // within is every vertex no further than tolerance from a point, in the order
 // the index recorded them.
-//
-// A vertex whose position has a different number of components from the point
-// is never within it: nothing is padded, and a question with no answer is not
-// given a plausible wrong one.
 func (v *vertexIndex) within(components []float64, tolerance float64) []Nearby {
 	out := make([]Nearby, 0)
 
 	for _, id := range v.order {
 		at := v.at[id]
 
-		gap, ok := distanceBetween(at, components)
-		if !ok || gap > tolerance {
-			continue
+		if gap, ok := withinTolerance(at, components, tolerance); ok {
+			out = append(out, Nearby{Vertex: id, At: at, Distance: gap})
 		}
-
-		out = append(out, Nearby{Vertex: id, At: at, Distance: gap})
 	}
 
 	return out
@@ -263,20 +256,42 @@ func (v *vertexIndex) within(components []float64, tolerance float64) []Nearby {
 // nearest is the vertex a point lands on: the nearest of the ones within the
 // tolerance, and whether there is one at all.
 //
-// Ties are broken by the order the index recorded them. It is an order rather
-// than an arbitrary choice so that two runs over one model land on the same
-// vertex.
+// It is one pass rather than [vertexIndex.within] followed by a second over what
+// that found, because a scaffold asks it once per corner; the two agree because
+// both admit a vertex by [withinTolerance]. Ties are broken by the order the index recorded
+// them. It is an order rather than an arbitrary choice so that two runs over one
+// model land on the same vertex.
 func (v *vertexIndex) nearest(components []float64, tolerance float64) (ID, float64, bool) {
 	var (
 		found   ID
 		nearest float64
 	)
 
-	for _, candidate := range v.within(components, tolerance) {
-		if found == "" || candidate.Distance < nearest {
-			found, nearest = candidate.Vertex, candidate.Distance
+	for _, id := range v.order {
+		gap, ok := withinTolerance(v.at[id], components, tolerance)
+		if !ok {
+			continue
+		}
+
+		if found == "" || gap < nearest {
+			found, nearest = id, gap
 		}
 	}
 
 	return found, nearest, found != ""
+}
+
+// withinTolerance is how far a vertex at one coordinate is from a point, and whether that
+// is within the tolerance: the one test a vertex is admitted by, whether a
+// lookup is listing or a scaffold is snapping.
+//
+// A vertex whose position has a different number of components from the point
+// is never within it: nothing is padded, and a question with no answer is not
+// given a plausible wrong one.
+func withinTolerance(at, point []float64, tolerance float64) (float64, bool) {
+	gap, ok := distanceBetween(at, point)
+	if !ok || gap > tolerance {
+		return 0, false
+	}
+	return gap, true
 }
