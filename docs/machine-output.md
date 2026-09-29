@@ -42,7 +42,8 @@ this form, gains no top-level copy. A run that read the model and
 was refused — a derivation, an export, `review`, or a change — writes the envelope,
 `"refused": true` and `diagnostics`, and nothing else, with its exit code unchanged. Help, a
 usage error and a load failure that read no model still write nothing. The record is the
-rule; the sections below come to state it command by command as each is brought into line.
+rule; [Diagnostics](#diagnostics) says what every object carries today, and the sections below
+come to state the rest command by command as each is brought into line.
 
 Output is deterministic: the same input produces byte-identical stdout. Keys come out in a
 fixed order, collections in a documented order, and nothing timing-dependent appears at
@@ -118,6 +119,78 @@ which is one line index away from recovering them; everything else that reads a 
 file and a line, and paid for the offsets on every span it never read. That is the
 version-`2` change, and it is why the whole span is a string rather than the same object
 with two fields dropped.
+
+## Diagnostics
+
+Every diagnostic a run renders on stderr is written in its object on stdout as well, as
+[0029](./decisions/0029-every-diagnostic-a-run-renders-is-written-in-its-answer-on-stdout.md)
+decides. It is one rule for every command that writes an object — the discovery reads,
+`check`, `resolve`, `route`, the derivations, the exports, `review`, `apply` and every write
+command — with one exception, `fmt`, below.
+
+```json
+{
+  "version": 2,
+  "command": "measure",
+  "subject": "plan:S-01",
+  "family": "node",
+  "derived": false,
+  "digest": "67b93ad0…",
+  "diagnostics": [
+    {
+      "severity": "error",
+      "span": "surveyed/model.dfc:178:7-178:16",
+      "message": "expected the loop geom:L-11 not to cross itself, found the segment geom:V-12 to geom:V-13 crossing geom:V-14 to geom:V-11 at (5.0 4.0 0.0) m",
+      "hint": "a ring which crosses itself encloses no one region; …"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back. It is the number the stderr rendering's last line gives — "7 more diagnostics suppressed by the limit of 100" — summed over the run. Absent where the limit held back none. |
+| `diagnostics` | array, optional | One entry per diagnostic the run rendered on stderr, in the order it rendered them. Absent where the run rendered none, so an answer over a model with nothing to report is the bytes it always was. |
+| `diagnostics[].severity` | string | `error` or `warning`. An error is what refuses a model or a change; a warning is rendered and refuses nothing. |
+| `diagnostics[].span` | string | Where it is, as a [span](#spans). |
+| `diagnostics[].message` | string | What was expected and what was found. |
+| `diagnostics[].hint` | string, optional | What to do about it, where the diagnostic says. |
+| `diagnostics[].related` | array, optional | The other places that explain it, each with its own `span` and `message`. |
+
+Each entry is exactly the shape `fmt` writes under `files[].diagnostics`: both are
+`dfcad.Diagnostic` written by `encoding/json`, from the same fields `Diagnostic.Render` writes
+the stderr rendering from. Neither is derived by parsing the other, so there is nothing to keep
+in step — decode the entries into `[]dfcad.Diagnostic`, render each in order with
+`Diagnostic.Render` and `dfcad.FileSources{}`, and the result is the run's stderr under the
+default format, wherever that stderr held only diagnostics.
+
+**`diagnostics` is the last field of the object.** `diagnostics-suppressed`, where it is
+written, is the field before it. Everything the command answers comes first, so a caller
+reading the answer reads it before the reasons for it.
+
+**It is the run's account of what it rendered, not a second answer.** A diagnostic a command
+also carries in an array of its own — one of `check`'s `violations[]` or `chorded[]`, one of
+`review`'s `findings[]`, the reason behind one of `plan`'s or `export-map`'s `undrawn[]` — is
+in `diagnostics` too. Those arrays are each command's answer, shaped for its question and
+unchanged; `diagnostics` is what the run told a person, and reading it never needs to know
+which commands have a second place for some of it.
+
+**Nothing is a diagnostic that is not one.** A usage error, a `dfcad <cmd>: …` line,
+`--verbose` progress and the `--format human` summary are not in it. `--format` and
+`--verbose` change none of it: stdout is the same bytes under every format and verbosity.
+
+**`fmt` is the exception, and only in where it writes them.** Its `files[].diagnostics`
+already is this form, grouped by the file each is about, so it writes no top-level copy.
+
+A run which writes nothing on stdout still writes nothing: a derivation, an export, `review`
+and a write over a model the load refused exit `2` with an empty stdout, and their
+diagnostics are on stderr only. The record decides that such a run will write the envelope,
+`"refused": true` and `diagnostics`; until it does, the empty stream and the exit code are
+the whole of what a caller has. The record also gives each entry `ids` and `nodes` naming the
+things it is about. Neither is written yet, and a caller cannot rely on either being present.
+
+The field was added under version `2`, which the [versioning rule](#the-versioning-rule)
+allows: a caller that never reads it sees the object it always did.
 
 ## Exit codes
 
@@ -375,6 +448,8 @@ before. It takes no arguments and one flag.
 | `types[].classifications[].system` | string | The scheme's name, exactly as the registry wrote it. Nothing here interprets it: there is no list of known systems. |
 | `types[].classifications[].code` | string | What the type is called within that scheme, exactly as the registry wrote it, and equally uninterpreted. |
 | `types[].instances` | integer | How many semantic nodes declare this type. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 The descriptions are asked for rather than given. They are prose about the vocabulary rather
 than about this model, they grow with the registry rather than with the model, and this is
@@ -423,6 +498,8 @@ takes. It takes no arguments and one flag.
 | `predicates[].claim-bearing` | boolean | Whether a value under the predicate is a claim rather than a plain value. **Always written**: its default is true, and an absent field reads as false to every JSON consumer. |
 | `predicates[].strict` | boolean, optional | Whether an ambiguous resolution of the predicate is a failure rather than a report. Written only where it is true, the way `absent` is on a listed type. |
 | `predicates[].description` | string, optional | The one line the registry gives the predicate. Written under `--describe`, and absent under it too when the registry wrote none. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Predicates come back in name order, so two runs over one model write the same bytes. Each
 entry's keys are written in the order the table gives them.
@@ -466,6 +543,8 @@ hint prints — and the only spellings those flags take. It takes no arguments a
 | `tolerances[].value` | number | The declared magnitude. |
 | `tolerances[].unit` | string | The unit the magnitude was declared in. Never converted: a tolerance declared in `mm` is listed in `mm`. |
 | `tolerances[].description` | string, optional | The one line the registry gives the tolerance. Written under `--describe`, and absent under it too when the registry wrote none. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Tolerances come back in name order, so two runs over one model write the same bytes. Each
 entry's keys are written in the order the table gives them.
@@ -511,6 +590,8 @@ no `--describe`.
 | `frames[].unit` | string | The frame's one linear unit, as declared. Never converted. |
 | `frames[].parent` | string, optional | The id of the frame this one is expressed relative to. Absent on the root. |
 | `frames[].transform` | string, optional | The id of the claim the frame names as its transform to the parent. Absent on the root. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Frames come back in id order, so two runs over one model write the same bytes. Each entry's
 keys are written in the order the table gives them. The root is the entry with no `parent`;
@@ -587,6 +668,8 @@ caller reading a mixed listing can tell which is which without asking about each
 | `instances[].kind` | string | The kind it declares, reported whether or not a kind was filtered on. |
 | `instances[].frame` | string, optional | The coordinate frame it is expressed in. Absent when it declares none. |
 | `instances[].retired` | boolean, optional | Whether the thing it names stopped existing. Absent on a node that did not, so a listing that was not asked for the retired ones holds nothing else. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Instances come back in id order rather than in walk order, so the listing does not change
 when a node is moved between files while the model it describes stays the same.
@@ -694,6 +777,8 @@ A vertex and a loop carry the same shape without `start` and `end`:
 | `near` | object, optional | Under `--near` only: the query, as `{"at": [...], "tolerance": {"name", "value", "unit"}}` — the point, component by component, and the declared tolerance a vertex had to be within of it. |
 | `nodes[].at` | array, optional | Under `--near` only: where the vertex's position resolves, component by component, in the frame's unit. |
 | `nodes[].distance` | number, optional | Under `--near` only: how far that position is from the point, in the frame's unit. `0` for a vertex exactly at it. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 An edge names its two vertices **in the order they were authored**. The order is the data —
 an edge is directed, and the region on the other side of it traverses it the other way — so
@@ -860,6 +945,8 @@ and it comes back as `family` `frame` — see [A frame](#a-frame).
 | `entity.claims` | array | The claims written on it, in predicate order and then by where each was written. Empty rather than null when nothing is claimed about it. |
 | `entity.values` | array, optional | The plain values written on it — the spelling a predicate the registry declares `(claim-bearing #f)` takes ([SPEC §6.5](../SPEC.md#65-claims)) — in predicate order and then by where each was written. Absent when it carries none, which is the ordinary case. `--claims` and `--deprecated` do not change it: a plain value is never resolved and never deprecated. |
 | `entity.assertions` | array | The assertions written on it, in the order they were written. Empty rather than null when nothing constrains it. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Every claim carries the evidence for its value, because a value without it is the bare
 number the format exists to stop:
@@ -1159,6 +1246,8 @@ wrote it down — is `--evidence`:
 | `claim` | object, optional | The claim the answer came from, in the shape documented under `get`. Written under `--evidence` and absent otherwise. |
 | `candidates` | array, optional | Claims that could still be the answer, each in that same full shape and marked with its `resolution`. |
 | `budget` | object, optional | The accumulated error of a cross-frame answer, broken out by term. Written only where a frame transform was applied. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 `value`, `accuracy` and `claim-id` are the answer; `claim` is the audit trail. The split is
 [0017. The answer is the default and the evidence is asked for](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md),
@@ -1332,6 +1421,8 @@ takes a query, an id, and seven flags.
 | `results[].from` | string, optional | The id of the thing an adjacent thing was reached from, which is the thing `via` names the shared edges with. At depth 1 that is the subject, and it is written there too, so a result's shape does not depend on its depth. Past it, it is a result one step nearer: where more than one thing a step nearer shares an edge with it — a crossable edge, under `--cross-virtual` or `--cross-type` — the one with the smallest id. The walk is breadth first, so following `from` from any result reaches the subject in exactly `depth` steps, and that chain is a shortest path. Written under `adjacent-to` and absent otherwise. |
 | `results[].via` | array, optional | The ids of the edges an adjacent thing shares with the thing it was reached from, in the order that boundary traverses them. At depth 1 that is the subject. Past it, where more than one thing a step nearer shares an edge with it, it was reached from the one with the smallest id, so `via` does not move when a node moves between files and can be checked against `boundary-of`. Under `--cross-virtual` or `--cross-type` it names only the edges that may be crossed, so it says how to get between the two rather than what separates them. Written under `adjacent-to` and absent otherwise. |
 | `results[].span` | span | Where it was written. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Every result says which relation produced it, and containment is never reported as
 membership or the other way round. A wall inside a storey and grouped into three zones is
@@ -1570,6 +1661,8 @@ replaced them, so a retraction is followable forward without a second call.
 | `claims[].family` | string | Which family holds that thing: `node`, `vertex`, `edge` or `loop`, or `frame` where the id asked about is a frame. |
 | `claims[].type` | string, optional | The type the thing declares, where it is a node. Absent for a vertex, an edge, a loop or a frame, which declare none. |
 | `claims[].retired` | boolean, optional | `true` where the thing is a node which has been retired. Absent otherwise: a retired node's claims are still claims the model holds, and the audit view lists them. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 With no id, `claims` is the audit view of the whole model: exactly what `claims <id>` answers
 for each node, vertex, edge and loop, one after another in id order. Rows come in subject id
@@ -1752,6 +1845,8 @@ empty answer would read as a model nobody disagrees about.
 | `conflicts[].ambiguous` | boolean | Whether resolution picks nothing, so the disagreement has no answer. Exactly one of this and a claim marked `current` holds of every entry. |
 | `conflicts[].current` | string, optional | The id of the claim resolution picks. Absent when nothing was picked, and also when the claim that was picked wrote no id of its own — the claim marked `current` below carries the span that names it instead. |
 | `conflicts[].claims` | array | The competing claims, in the order they were written, each the claim object documented under `get` with the `resolution` field documented under `claims`. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 A pair conflicts when more than one live claim is written on it, whatever those claims say.
 Whether two values *agree* is a question about a tolerance, and tolerances are registry data
@@ -1807,6 +1902,8 @@ namespace alone, or by one that matches on nothing.
 | `destination.rule` | string, optional | The routing rule that chose it. Absent when the destination was overridden — an override names no rule, and a caller must not go looking in the registry for one. |
 | `destination.overridden` | boolean | Whether `--file` named the destination outright. |
 | `destination.exists` | boolean | Whether the model already holds that file. A destination that does not is created, with any directories above it, by the write that lands there. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 **Exactly one rule must match.** A node matched by none, and a node matched by more than one,
 are both a **usage error** naming the node and every rule consulted — never a silent default.
@@ -1865,6 +1962,8 @@ separately.
 | `bounds.min`, `bounds.max` | array | The corners of the axis-aligned bounding box, on the frame's own axes and on no others. The extent between them is not written: it is one subtraction, and a field restating it is a second place for it to be wrong. |
 | `bounds.unit` | string, optional | The frame's linear unit. |
 | `budget` | object, optional | The accuracy of the corners every figure was computed from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 **Every figure is written only where it could be computed.** "There is no answer" and "the
 answer is zero" are different states, and a shape which does not close has the first. Nothing
@@ -1891,8 +1990,8 @@ costs, is measured in [the token budget](token-budget.md).
 which are not in one plane, a ring which crosses itself, one whose corners are collinear, a
 corner nothing states the position of, a tolerance the registry does not declare in the unit
 of the frame. Each is its own diagnostic naming which mistake it is. The object still comes
-back with `derived` false, so a caller reads why from the diagnostics on stderr rather than
-from an empty stream.
+back with `derived` false and each of those diagnostics under
+[`diagnostics`](#diagnostics), so a caller reads why from the object rather than from stderr.
 
 A node which references no loop is **exit `0`** with `derived` true and no figures. A circuit
 group and a warranty have no outline, which is not a fault in either of them.
@@ -1953,6 +2052,8 @@ model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
 | `region.pieces[].holes` | array, optional | The rings taken out of it. Absent where there are none. |
 | `region.boundary[]` | array, optional | Which edge produced each straight run of the boundary. Same shape as [`buildable`](#buildable)'s `region.boundary`. Every run of a drawing names an edge: a chord standing in for part of an arc has `origin` `arc` and names the edge that bends along it. |
 | `budget` | object, optional | The accuracy of the corners the drawing was read from, broken out by term. Same shape as [`budget`](#budget), without `from` and `to`. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 **`deviation` is what was achieved and `chord` is what was asked for,** and the two differ
 because a curve is divided into a whole number of segments: an arc that needs two and a bit
@@ -2000,8 +2101,8 @@ the registry does not declare in the unit of the frame. So is an arc which the n
 tolerance would take more segments to follow than anything can use: that is refused with a
 diagnostic naming the edge, rather than truncated, because a tolerance far finer than the
 coordinates the arc was surveyed to draws a curve to a resolution nothing behind it supports.
-The result object still comes back with `derived` false, so a caller reads why from the
-diagnostics on stderr rather than from an empty stream.
+The result object still comes back with `derived` false and the refusal under
+[`diagnostics`](#diagnostics), so a caller reads why from the object rather than from stderr.
 
 ### `buildable`
 
@@ -2056,6 +2157,8 @@ the one a permanent structure gets placed against.
 | `region.boundary[].from` | array | The corner the run leaves, as its components. |
 | `region.boundary[].to` | array | The corner it arrives at. |
 | `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims and the setback claims together. Same shape as [`budget`](#budget), without `from` and `to`. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 **`boundary` is what attributes a ring back to the model it came from.** A polygon on its own
 is anonymous coordinates: it cannot say which segment is the party wall, cannot carry a
@@ -2090,8 +2193,8 @@ never a setback of nought. An edge that really is not set back says so, as a cla
 value of nought and the provenance every other value carries. Two claims equally current
 about one edge, a setback written outwards, one written in a unit the frame is not in and one
 shorter than the tolerance are refused the same way. The result object still comes back with
-`derived` false, so a caller reads why from the diagnostics on stderr rather than from an
-empty stream.
+`derived` false and the refusal under [`diagnostics`](#diagnostics), so a caller reads why
+from the object rather than from stderr.
 
 Setbacks that meet in the middle are **exit `0`**: `derived` is true, `region.empty` is true,
 and a warning on stderr says which parcel its own regime consumed. That is the answer to the
@@ -2170,6 +2273,8 @@ of the setbacks rather than instead of them.
 | `parcel` | object, optional | The envelope's outline as the model holds it, which the setbacks were taken off. Same shape as `buildable`'s `parcel`. Written only where `--setback` was given, so a run without it is the same bytes it always was; `envelope` is then what the setbacks leave, and carries no `boundary` because an operation produced it. |
 | `setbacks` | array, optional | The setbacks which were applied, one per edge of the envelope in the order its loops traverse them. Same shape as `buildable`'s `setbacks[]`: `edge`, `distance`, `unit`, `claim`, `source`, `span`. Written only where `--setback` was given. |
 | `budget` | object, optional | The accuracy of the answer broken out by term, over the position claims behind both outlines, the setback claims where `--setback` was given, and the transform claims of every frame the subject was carried through. Same shape as [`budget`](#budget), without `from` and `to`. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 The four verdicts are four different situations and are never rounded into two. A clearance
 of forty millimetres is a comfortable fit where the answer is known to five and no answer at
@@ -2305,6 +2410,8 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `undrawn[].declared-in` | string, optional | The frame the node's shape was read in — or, for a node with no shape, the frame it declares — written only where it is not `frame`, so that its claims can be read in the frame they were written in. |
 | `undrawn[].annotations` | array | The claims reported on it, in the same order and the same shape as an outline's. Empty rather than null. A node that references no loop has no edges, so what it carries is exactly its own claims and no edge anchors. |
 | `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and the transform claims of every frame an outline was carried through, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Beside `anchor`, every annotation carries the claim object `get` writes — `id`, `predicate`,
 `value`, `source`, `method`, `accuracy`, `combined` or `units`, `date`, `rank` and `span` — so a claim on a plan
@@ -2408,9 +2515,11 @@ at all: the sheet renders, looks complete, and is missing a door.
 **The reason is a token and the detail is a diagnostic.** `reason` says which of them
 applies, because that is what decides whether anybody has to act — nobody fixes a circuit
 group, somebody fixes a ring that will not close or places a receptacle nobody set out — and a consumer deciding that should read a
-field rather than match prose. Where the reason is a defect, the diagnostics on stderr carry
-the loop, the file, the position and the size of the gap, which is where anything an author
-acts on belongs; a second copy of it on stdout would be a second thing to keep true.
+field rather than match prose. Where the reason is a defect, the diagnostic behind it is
+under [`diagnostics`](#diagnostics) in the same object, carrying the loop, the file, the
+position and the size of the gap, and is rendered on stderr for whoever wrote the file. The
+two are one `dfcad.Diagnostic` written twice, by `encoding/json` and by `Render`, so there is
+nothing to keep in step between them.
 
 **An undrawable node degrades on its own and never refuses the storey**, whichever way it is
 undrawable. The other rooms are still drawn and the object still comes back. Whether the *run*
@@ -2444,7 +2553,8 @@ that nothing places, which declares that its shape is where it is and then does 
 or a node whose shape could not be carried into `frame`.
 The other rooms are still drawn and the object still comes back
 with `planned` false and the room named under `undrawn`, because a sheet with one room missing
-is more use than no sheet and the diagnostics on stderr say which room to fix.
+is more use than no sheet and the diagnostics — on stderr, and under
+[`diagnostics`](#diagnostics) in the object — say which room to fix.
 
 ### `check`
 
@@ -2569,6 +2679,14 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `drawn[].value` | number | That tolerance's value. |
 | `drawn[].deviation` | number | How far the worst segment of the drawing fell from the curve it stands in for: what was achieved, never more than `value`. |
 | `drawn[].unit` | string | What `value` and `deviation` are in, the linear unit of the frame. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
+
+**Every violation and every chorded edge is in [`diagnostics`](#diagnostics) as well**, the
+violation as an error and the chorded edge as a warning, after the diagnostics the load
+reported. `violations[]` and `chorded[]` are `check`'s answer, shaped for it — which rule,
+declared where, bound to what — and keep that shape; `diagnostics` is what the run rendered on
+stderr, in the order it rendered it, which for `check` is the load's and then its own.
 
 The counts are of **rules**, not of violations. One loop that does not close and one that
 closes the wrong way are two ways of failing one check, and a summary counting them as two
@@ -2875,6 +2993,13 @@ exit code.
 | `findings[].hint` | string, optional | What to do about it, which is usually the command which records the change properly. |
 | `findings[].related` | array, optional | The other places which explain this one, each a span and a message. |
 | `findings[].dangling` | array, optional | The references this revision still makes to an id it no longer holds, each a `from`, a `relation` and a `span`. Only `id-disappeared-without-supersession` fills it in. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
+
+**Every finding whose ruling is `failure` or `warning` is in [`diagnostics`](#diagnostics) as
+well**, after the diagnostics either revision's load reported. A finding ruled `ignored` is not
+rendered and is not there. `findings[]` is `review`'s answer and keeps its shape; `diagnostics`
+is what the run rendered on stderr.
 
 Findings are ordered by check, in the order the table above lists them, then by subject, then
 by position. Two runs over the same pair of revisions produce byte-identical stdout, so a
@@ -2953,6 +3078,13 @@ the decision looks like and for what happens when the rules do not place a node.
 | `files[].effects[].id` | string, optional | The thing it was about. Absent for a form carrying no id, which is every registry entry other than a frame. |
 | `files[].effects[].name` | string, optional | The plain symbol a registry entry is declared under, which is what a `type` effect is about. Absent for every form that names itself with an id instead. It is a field of its own rather than a second spelling of `id`: an id is namespaced, is never reissued and resolves to a node, and a registry name is none of those. |
 | `files[].diff` | string, optional | The unified diff from what was on disk to what was written. Absent where the two are the same. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
+
+**A change carries what the model it produced rendered.** A change which is written can still
+render warnings — about the model the change produced, or the one it was made to — and those
+are in [`diagnostics`](#diagnostics). A change the model refuses writes nothing to stdout, as
+below, so its diagnostics are on stderr only.
 
 Statuses:
 
@@ -3580,6 +3712,8 @@ an earlier one wrote, and nothing is judged against the model as it stands halfw
 | `totals.modified` | integer | How many it modified. |
 | `totals.retired` | integer | How many it retired. |
 | `notices` | array | Every notice the batch produced, in the order the operations reported them. The same notices `operations[].notices` carries, gathered. |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
 
 Exit codes are the ones every write command has, with the operation file reading as input:
 
@@ -3631,6 +3765,15 @@ first of them could not invent one.
 | `files[].path` | string | Where the file is, exactly as it would be opened. An artefact under the build directory is written beneath a directory named for the key it was produced under ([0021](./decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)), which is a path a caller cannot predict — so this field is how what was just produced is found. |
 | `files[].status` | string | One of `written`, `unchanged`. |
 | `identifiers` | array, optional | Written only under `--evidence`. One entry per rooted object, ascending by `id`, each a node `id` and the `global-id` derived for it ([0004](./decisions/0004-globalid-derives-from-a-pinned-namespace.md)). It is left out by default because it grows one entry per node and because every entry is recomputable exactly from the model a caller already has ([0017](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md)). |
+| `diagnostics-suppressed` | integer, optional | How many diagnostics the limit held back from `diagnostics` and from stderr alike. Absent where it held back none. See [Diagnostics](#diagnostics). |
+| `diagnostics` | array, optional | Every diagnostic the run rendered on stderr, in the order rendered, and always the last field of the object. Absent where the run rendered none. See [Diagnostics](#diagnostics). |
+
+**What an artefact command refused is in [`diagnostics`](#diagnostics).** On exit `1`, the
+diagnostics which kept the artefact from being written — a ring which will not read, a curve
+drawn to no tolerance — are there, and a warning rendered on a run which did write one, such
+as a map naming no coordinate reference system, is there too. `export-map`'s `undrawn[]` keeps
+its shape, and the diagnostic behind an entry whose reason is a defect is in `diagnostics` as
+well.
 
 Statuses:
 
@@ -3676,7 +3819,7 @@ Exit codes:
 | Code | When |
 |------|------|
 | `0` | The command answered. Either the artefact exists — `derived` true, with `files` naming it — or the model held nothing the format carries, which is `derived` true with `files` empty. |
-| `1` | The artefact could not be produced from the model that was read. `derived` false, `files` empty, and `digest` written, so a caller reads why from the diagnostics on stderr rather than from an empty stream. |
+| `1` | The artefact could not be produced from the model that was read. `derived` false, `files` empty, `digest` written, and the refusal under [`diagnostics`](#diagnostics), so a caller reads why from the object rather than from stderr. |
 | `2` | The model could not be read: the root is not there, the tree did not load, or a file of it could not be read. |
 | `3` | The invocation was wrong: a required flag missing, or a destination inside the authored tree, which is refused before anything is read. |
 

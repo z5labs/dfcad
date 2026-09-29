@@ -6,8 +6,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
+
+	"github.com/z5labs/dfcad"
 )
 
 // Exit codes. Structured results go to stdout; everything human facing goes to
@@ -108,13 +111,126 @@ func newEnvelope(command string) envelope {
 // Every result is a struct rather than a map so that its keys come out in a
 // fixed order, which is half of what makes two runs over the same input
 // byte-identical.
+//
+// Where stdout is a run's [answerStream], the diagnostics the run rendered on
+// its stderr are written after every other field of the object — see
+// [answerStream.close]. That is done here rather than by each result carrying a
+// field of its own, so that no command can write an object which leaves out a
+// diagnostic it rendered: there is no field for one to forget to fill in.
 func emit(stdout io.Writer, result any) error {
-	encoder := json.NewEncoder(stdout)
+	var encoded bytes.Buffer
+
+	encoder := json.NewEncoder(&encoded)
 
 	// Escaping the characters that matter in HTML would rewrite bytes of a
 	// path or a message that mean nothing of the sort here, and the output is
 	// read by a pipeline rather than embedded in a page.
 	encoder.SetEscapeHTML(false)
 
-	return encoder.Encode(result)
+	if err := encoder.Encode(result); err != nil {
+		return err
+	}
+
+	out := encoded.Bytes()
+	if answer, ok := stdout.(*answerStream); ok {
+		closed, err := answer.close(out)
+		if err != nil {
+			return err
+		}
+		out = closed
+	}
+
+	_, err := stdout.Write(out)
+	return err
+}
+
+// diagnosticStream is a run's stderr, holding every diagnostic rendered on it
+// so that the run's object on stdout can carry them as well.
+//
+// It is the stream rather than something beside it because rendering a
+// diagnostic and recording it for the object are one act: [render] does both to
+// the writer it is handed, so a diagnostic cannot reach a person without also
+// reaching the object, and a command cannot hold one without the other.
+type diagnosticStream struct {
+	io.Writer
+
+	// rendered is every diagnostic rendered on the stream, in the order it was
+	// rendered in.
+	rendered []dfcad.Diagnostic
+
+	// suppressed is how many diagnostics the limit held back from the
+	// rendering, summed over every rendering which held any back.
+	suppressed int
+}
+
+// record notes the diagnostics one rendering wrote, in the order it wrote
+// them.
+func (s *diagnosticStream) record(rendered dfcad.Diagnostics) {
+	s.rendered = append(s.rendered, rendered.All()...)
+	s.suppressed += rendered.Suppressed()
+}
+
+// answerStream is a run's stdout, joined to the stream its diagnostics were
+// rendered on.
+type answerStream struct {
+	io.Writer
+
+	// diagnostics is the run's stderr.
+	diagnostics *diagnosticStream
+}
+
+// renderedDiagnostics is the tail of an object whose run rendered a
+// diagnostic, in the order the fields are written.
+//
+// The count comes first so that `diagnostics` is the last field of the object,
+// which is where docs/machine-output.md says it is.
+type renderedDiagnostics struct {
+	Suppressed  int                `json:"diagnostics-suppressed,omitempty"`
+	Diagnostics []dfcad.Diagnostic `json:"diagnostics"`
+}
+
+// close returns the encoded object with the run's diagnostics written after
+// every other field, or exactly as it was given where the run rendered none.
+//
+// It splices rather than wrapping the result in a struct of its own because a
+// result's fields are the command's and are embedded at the top level of the
+// object; there is no Go type which puts a trailing field beside an arbitrary
+// struct's fields without knowing what they are.
+func (a *answerStream) close(encoded []byte) ([]byte, error) {
+	stream := a.diagnostics
+	if stream == nil || len(stream.rendered) == 0 && stream.suppressed == 0 {
+		return encoded, nil
+	}
+
+	body := bytes.TrimRight(encoded, "\n")
+	if len(body) < 2 || body[0] != '{' || body[len(body)-1] != '}' {
+		return encoded, nil
+	}
+
+	var tail bytes.Buffer
+	encoder := json.NewEncoder(&tail)
+	encoder.SetEscapeHTML(false)
+
+	diagnostics := stream.rendered
+	if diagnostics == nil {
+		diagnostics = []dfcad.Diagnostic{}
+	}
+	if err := encoder.Encode(renderedDiagnostics{Suppressed: stream.suppressed, Diagnostics: diagnostics}); err != nil {
+		return nil, err
+	}
+
+	// The tail is an object of its own; its fields go where the result's
+	// closing brace was, after a comma where the result has fields to follow.
+	fields := bytes.TrimRight(tail.Bytes(), "\n")
+	fields = fields[1 : len(fields)-1]
+
+	out := make([]byte, 0, len(body)+len(fields)+2)
+	out = append(out, body[:len(body)-1]...)
+	if len(bytes.TrimSpace(body[1:len(body)-1])) > 0 {
+		out = append(out, ',')
+	}
+	out = append(out, fields...)
+	out = append(out, '}', '\n')
+
+	return out, nil
 }

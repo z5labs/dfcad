@@ -497,7 +497,12 @@ func emitted(cmd command, stdout, stderr io.Writer, result any) int {
 // the change.
 //
 // It is the one place which decides how a diagnostic reaches a person, so that a
-// read and a write report the model's problems the same way.
+// read and a write report the model's problems the same way. It is also the one
+// place a diagnostic reaches the run's object on stdout: where stderr is the
+// run's [diagnosticStream], what was rendered is recorded on it in the order it
+// was rendered, and [emit] writes it after every other field of the object. A
+// diagnostic rendered anywhere but here would reach a person and not a caller,
+// which is the one thing this is here to rule out.
 func render(diags []dfcad.Diagnostic, stderr io.Writer) bool {
 	var collected dfcad.Diagnostics
 	collected.Add(diags...)
@@ -506,6 +511,10 @@ func render(diags []dfcad.Diagnostic, stderr io.Writer) bool {
 	// a read wrote to none of them, a refused change wrote nothing, and a change
 	// which was written is what is there.
 	_ = collected.Render(stderr, dfcad.FileSources{})
+
+	if stream, ok := stderr.(*diagnosticStream); ok {
+		stream.record(collected)
+	}
 
 	return collected.HasErrors()
 }

@@ -135,9 +135,9 @@ measure one to.
 
 Exit code 1 is a question which could not be answered — an outline which could
 not be read, two frames with no measured chain between them, a clearance
-shorter than the tolerance. The object still comes back, with "sited" false, so
-a caller reads why from the diagnostics on stderr rather than from an empty
-stream. A subject which does not fit is a successful run: the command answered,
+shorter than the tolerance. The object still comes back, with "sited" false and
+the refusal under "diagnostics", so a caller reads why from the object rather
+than from stderr. A subject which does not fit is a successful run: the command answered,
 and the answer is no.
 `
 

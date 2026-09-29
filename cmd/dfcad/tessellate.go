@@ -96,8 +96,8 @@ Exit code 1 is a drawing which could not be made — a ring which does not close
 a corner nothing states the position of, a shape which crosses itself, a chord
 tolerance the registry does not declare in the unit of the frame, or an arc a
 tolerance would take more segments to follow than anything can use. The object
-still comes back, with "derived" false, so a caller reads why from the
-diagnostics on stderr rather than from an empty stream.
+still comes back, with "derived" false and the refusal under "diagnostics", so
+a caller reads why from the object rather than from stderr.
 `
 
 // The flags tessellate takes beyond the ones the dimensional commands share,
