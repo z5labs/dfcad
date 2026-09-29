@@ -407,6 +407,50 @@ func TestRunSupersedeRefusesWhatItCannotCorrect(t *testing.T) {
 	}
 }
 
+// TestClaimCommandsRefuseAnAccuracyTermOfAnotherQuantity checks that the write
+// path refuses what the loader refuses, before anything is written: a position
+// in metres whose uncertainty is written as an area is exit 2 with the error
+// the loader reports, and the tree is as it was
+// ([0016](../../docs/decisions/0016-writes-are-all-or-nothing.md)).
+func TestClaimCommandsRefuseAnAccuracyTermOfAnotherQuantity(t *testing.T) {
+	testCases := []struct {
+		name    string
+		command string
+	}{
+		{name: "add-claim refuses it", command: "add-claim"},
+		{name: "supersede refuses it", command: "supersede"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, model())
+			before := contents(t, root)
+
+			stdout, stderr := invoke(t, exitLoad, root,
+				testCase.command, "--value", "0.0 0.0 0.0", "--unit", "m",
+				"--source", "Interior control set IC-02, Acme Surveys",
+				"--method", "method:total-station",
+				"--accuracy", "independent 4.0 m2",
+				"geom:V-01", "position",
+			)
+
+			diagnostics := refusedObject(t, stdout, testCase.command)
+			assert.Equal(t, before, contents(t, root), "a refused claim writes nothing")
+
+			var refusals []dfcad.Diagnostic
+			for _, diagnostic := range diagnostics {
+				if diagnostic.Severity == dfcad.SeverityError {
+					refusals = append(refusals, diagnostic)
+				}
+			}
+			require.Len(t, refusals, 1, "the one term in another quantity is the one error")
+			require.Len(t, refusals[0].Related, 1, "the error points at the value the term disagrees with")
+
+			assert.Contains(t, stderr, "m2")
+		})
+	}
+}
+
 // TestRunDeprecateClaim walks the explicit retraction: a claim named by the id
 // it wrote, retracted in favour of one named the same way.
 func TestRunDeprecateClaim(t *testing.T) {

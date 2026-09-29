@@ -189,6 +189,105 @@ func (u Unit) Metres() (float64, bool) {
 	return length, ok
 }
 
+// quantity is what a unit measures, as far as the engine can tell.
+//
+// The engine knows two quantities and no more. Length is the closed set of
+// [LinearUnits], and area is a linear unit squared, spelled as [squareUnit]
+// spells it. Every other unit a predicate declares measures something the
+// consuming repository knows and the engine does not — whether `arcsec` is an
+// angle like `deg` is not a question it can answer, and
+// [0010](docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md) keeps it
+// from learning — so such a unit is of no quantity here, and nothing is judged
+// against it.
+type quantity int
+
+const (
+	quantityUnjudged quantity = iota
+	quantityLength
+	quantityArea
+)
+
+// quantityOf is the quantity a unit measures, read off the two definitions the
+// engine has: the linear set, and the square of each member of it.
+func quantityOf(unit Unit) quantity {
+	if _, ok := unit.Metres(); ok {
+		return quantityLength
+	}
+
+	for _, linear := range linearUnits {
+		if squareUnit(linear) == unit {
+			return quantityArea
+		}
+	}
+
+	return quantityUnjudged
+}
+
+// String is how a diagnostic names the quantity.
+func (q quantity) String() string {
+	switch q {
+	case quantityLength:
+		return "length"
+	case quantityArea:
+		return "area"
+	}
+	return "unjudged"
+}
+
+// units is every unit of the quantity, in the order the linear set pins.
+func (q quantity) units() []Unit {
+	switch q {
+	case quantityLength:
+		return LinearUnits()
+	case quantityArea:
+		squares := make([]Unit, 0, len(linearUnits))
+		for _, linear := range linearUnits {
+			squares = append(squares, squareUnit(linear))
+		}
+		return squares
+	}
+	return nil
+}
+
+// termQuantity is the diagnostic for an accuracy term in a unit of another
+// quantity than its claim's value, and reports whether there is one.
+//
+// Specification section 6.6.5 requires every term to be in a unit of the same
+// quantity as the value: a term is an uncertainty in the value, so it measures
+// what the value measures, and a position whose uncertainty is an area is not a
+// position anybody can use. The rule is enforced where the engine knows the
+// value's quantity — a value in a linear unit, or in the square of one — and
+// nowhere else, because a value in any other unit is of a quantity the engine
+// does not know ([quantityOf]).
+//
+// A term in another unit of the same quantity is not this diagnostic. A
+// millimetre beside a metre is valid, and is only unrankable because nothing
+// converts between them, which the loader warns of separately.
+//
+// The claim is named by whoever calls this, as [claimName] spells it, and value
+// is the span of the value the term disagrees with.
+func termQuantity(claim string, value Span, unit Unit, term AccuracyTerm) (Diagnostic, bool) {
+	want := quantityOf(unit)
+	if want == quantityUnjudged || quantityOf(term.Unit) == want {
+		return Diagnostic{}, false
+	}
+
+	return Diagnostic{
+		Severity: SeverityError,
+		Span:     term.Span,
+		Message: fmt.Sprintf(
+			"expected every accuracy term of %s in a unit of %s, like the value's %s, found %s",
+			claim, want, unit, term.Unit,
+		),
+		Hint: fmt.Sprintf(
+			"a term is an uncertainty in the value, so it measures what the value measures; "+
+				"a unit of %s is one of %s",
+			want, join(spellings(want.units()), "and"),
+		),
+		Related: []RelatedLocation{{Span: value, Message: fmt.Sprintf("the value is in %s here", unit)}},
+	}, true
+}
+
 // unknownUnit is the diagnostic for a symbol written where a frame's linear
 // unit belongs.
 //

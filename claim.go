@@ -899,6 +899,10 @@ func (l *claimLoader) declare(subject ID, form *Node, predicate string, declared
 		claim.value = l.value(child, predicate, declared, isDeclared)
 	}
 
+	// Whether each term measures what the value measures is asked once both
+	// have been read, because the value is what says which quantity that is.
+	l.termQuantities(claim)
+
 	l.identify(claim, id)
 
 	l.claims.inOrder = append(l.claims.inOrder, claim)
@@ -978,9 +982,9 @@ func (l *claimLoader) rank(arg *Node) (Rank, bool) {
 // accuracy reads the terms of one accuracy form.
 //
 // The magnitudes are recorded in the units they were written with and are not
-// converted or compared here. Whether a term's unit is one of the same quantity
-// as the value's is a question about what a unit means, and what a unit means is
-// the arithmetic layer's rather than this one's.
+// converted here. Whether a term's unit is one of the same quantity as the
+// value's is asked once the value has been read, by [claimLoader.termQuantities],
+// against the rule [termQuantity] states beside the units themselves.
 //
 // An accuracy reports itself present only when a term could be read from it. An
 // accuracy whose only term was malformed has already been reported as that, and
@@ -1086,6 +1090,24 @@ func (l *claimLoader) mixedUnits(claim *Claim) {
 			"write every term in one unit, and the value's is the usual choice",
 		Related: related,
 	})
+}
+
+// termQuantities reports every accuracy term of a claim written in a unit of
+// another quantity than the claim's value, one diagnostic per term.
+//
+// A value which could not be read carries no unit, and a value in a unit the
+// engine does not know the quantity of is not judged; [termQuantity] says why.
+// Both leave every term loading as written.
+func (l *claimLoader) termQuantities(claim *Claim) {
+	if !claim.hasAccuracy {
+		return
+	}
+
+	for _, term := range claim.accuracy.Terms {
+		if diag, ok := termQuantity(claimName(claim), claim.value.span, claim.value.unit, term); ok {
+			l.add(diag)
+		}
+	}
 }
 
 // value reads a claim's value, checked against the shape and the unit the
