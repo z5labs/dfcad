@@ -141,7 +141,10 @@
 // favour of one already written. A retraction requires a replacement, which is
 // what keeps deprecating from being deleting, and the retracted claim keeps
 // everything it said — the record of why the number changed is the thing being
-// kept. None of the three ever writes over what a claim states.
+// kept. None of the three ever writes over what a claim states. A frame whose
+// `transform` names the claim being retracted is re-pointed at the replacement
+// in the same change, because a frame reads exactly the claim it names and
+// never follows a supersession from it.
 //
 // What none of them refuses but all of them report is a [Notice]: a claim which
 // carries no accuracy and so can never win resolution, a claim which disagrees

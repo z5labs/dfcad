@@ -3775,6 +3775,13 @@ as they were written, and the model gains the reason the number changed rather t
 the number it used to be
 ([0009](./decisions/0009-derived-values-are-never-written-back.md)).
 
+A **frame whose `transform` names the claim being corrected is re-pointed** at the new claim in
+the same change. A frame reads exactly the claim its `transform` names and never follows a
+supersession from it, so a correction that left the frame naming the retracted claim would
+change no answer across that frame. The frame appears in `effects` as `modified`, like any
+other form the change rewrote. A claim no frame's `transform` names is corrected exactly as
+before, and nothing is re-pointed.
+
 ```json
 {
   "version": 2,
@@ -3815,6 +3822,11 @@ measurement quietly go away ([0007](./decisions/0007-rank-is-closed.md)). A repl
 names no claim, a claim named as its own replacement, and a claim that is already deprecated
 are each a **usage error** for the same reason. A supersession that closes a ring is refused
 at commit, by the pass that walks the chain.
+
+A **frame whose `transform` names the claim being retracted is re-pointed** at the claim named
+by `--superseded-by`, in the same change, and appears in `effects` as `modified`. A replacement
+whose value is not a transform is refused at commit — exit `2`, writing nothing — by the
+diagnostic a frame naming such a claim always raises.
 
 Retracting the only live claim of a subject and predicate is permitted, and is reported as
 `unresolvable`.

@@ -114,6 +114,10 @@ func TestResolveFrames(t *testing.T) {
 			name:    "names both ends when a frame's transform names a claim which is not a transform",
 			fixture: "not-a-transform",
 		},
+		{
+			name:    "warns when a frame's transform names a retracted claim, naming the claim which replaced it",
+			fixture: "retracted-transform",
+		},
 	}
 
 	for _, testCase := range testCases {

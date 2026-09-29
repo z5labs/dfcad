@@ -1,0 +1,12 @@
+testdata/frame/retracted-transform/registry.dfc:25:8: warning: expected the transform of frame:site to name a claim which is still asserted, found survey:C-0001, which was superseded by survey:C-0005
+25 | (frame frame:site
+   |        ^^^^^^^^^^
+   = hint: the frame still reads the retracted claim, so every answer across it uses a value the model says is wrong; name the claim which stands in its place: (transform survey:C-0005)
+testdata/frame/retracted-transform/registry.dfc:30:3: note: the retracted claim is written here
+30 |   (frame-transform
+   |   ^^^^^^^^^^^^^^^^
+31 |     (id survey:C-0001)
+   | ^^^^^^^^^^^^^^^^^^^^^^
+   ... 10 lines omitted
+42 |     (superseded-by survey:C-0005))
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

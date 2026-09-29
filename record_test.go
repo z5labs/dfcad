@@ -7,6 +7,8 @@ package dfcad
 
 import (
 	"math"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -1258,4 +1260,248 @@ func entityFile(t *testing.T, root string) string {
 	t.Helper()
 
 	return contents(t, root)["entities/site.dfc"]
+}
+
+// frameValid is the fixture whose frames the re-pointing tests change: a chain
+// of frames, each measured against its parent by a transform claim with an id.
+var frameValid = frameFixture("valid")
+
+// aTransformClaim is a well-formed claim of the frame fixture's transform
+// predicate on frame:site, fitted half a metre east of the one it carries.
+func aTransformClaim() ClaimSpec {
+	return ClaimSpec{
+		Subject:   "frame:site",
+		Predicate: "frame-transform",
+		Value: TransformValue(Transform{
+			Translation: [3]float64{100.5, 200.0, 0.0},
+			Rotation:    [9]float64{1, 0, 0, 0, 1, 0, 0, 0, 1},
+			Scale:       1,
+		}),
+		Source:   "Georeferencing report GR-2026-007, Acme Surveys",
+		Method:   "method:gnss-static",
+		Accuracy: []AccuracyTerm{{Kind: TermIndependent, Magnitude: 0.008, Unit: UnitMetre}},
+		Date:     time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC),
+	}
+}
+
+// retransformedBy applies one change to a copy of the frame fixture, requiring
+// it to have been written, and returns what the commit reported and the model
+// it left behind — loaded again from the files, which is the round trip.
+func retransformedBy(t *testing.T, root string, change func(tx *Tx) error) (Commit, *Graph) {
+	t.Helper()
+
+	tx := begin(t, root)
+	require.NoError(t, change(tx))
+
+	commit, diags, err := tx.Commit()
+	require.NoError(t, err)
+	require.Empty(t, diags)
+
+	graph, found := LoadGraph(root)
+	require.Empty(t, found, "the rewritten registry loads clean")
+
+	return commit, graph
+}
+
+func TestTxRetractingTheClaimAFrameNamesRepointsTheFrame(t *testing.T) {
+	testCases := []struct {
+		name        string
+		change      func(tx *Tx) error
+		expected    ID
+		translation [3]float64
+	}{
+		{
+			name: "supersede re-points the frame at the claim it wrote",
+			change: func(tx *Tx) error {
+				_, _, err := tx.Supersede(aTransformClaim())
+				return err
+			},
+			expected:    "frame:site:frame-transform:1",
+			translation: [3]float64{100.5, 200.0, 0.0},
+		},
+		{
+			name: "deprecate-claim re-points the frame at the claim named as its replacement",
+			change: func(tx *Tx) error {
+				spec := aTransformClaim()
+				spec.ID = "survey:C-0009"
+
+				if _, _, err := tx.AddClaim(spec); err != nil {
+					return err
+				}
+
+				_, err := tx.DeprecateClaim("survey:C-0001", "survey:C-0009")
+				return err
+			},
+			expected:    "survey:C-0009",
+			translation: [3]float64{100.5, 200.0, 0.0},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			commit, graph := retransformedBy(t, copied(t, frameValid), testCase.change)
+
+			assert.Contains(t, spelledEffects(commit.Effects()), "modified frame frame:site",
+				"re-pointing the frame is an effect of the change")
+
+			frame, ok := graph.Registry().Frame("frame:site")
+			require.True(t, ok)
+			assert.Equal(t, testCase.expected, frame.Transform)
+
+			// The frame reads the replacement's value, which is the whole point:
+			// a correction nothing reads is a correction which changed nothing.
+			measured, ok := graph.Frames().Measurement("frame:site")
+			require.True(t, ok)
+
+			id, ok := measured.ID()
+			require.True(t, ok)
+			assert.Equal(t, testCase.expected, id)
+
+			transform, ok := graph.Frames().Transform("frame:site")
+			require.True(t, ok)
+			assert.Equal(t, testCase.translation, transform.Translation)
+
+			// The retracted claim is still there and says what it said.
+			retracted, ok := graph.Claims().Claim("survey:C-0001")
+			require.True(t, ok)
+			assert.Equal(t, RankDeprecated, retracted.Rank())
+
+			was, ok := retracted.Value().Transform()
+			require.True(t, ok)
+			assert.Equal(t, [3]float64{100.0, 200.0, 0.0}, was.Translation)
+
+			// And every other frame reads exactly what it read before.
+			for other, claim := range map[ID]ID{
+				"frame:building": "survey:C-0002",
+				"frame:annex":    "survey:C-0003",
+				"frame:room":     "survey:C-0004",
+			} {
+				frame, ok := graph.Registry().Frame(other)
+				require.True(t, ok)
+				assert.Equal(t, claim, frame.Transform, "%s is not re-pointed", other)
+			}
+		})
+	}
+}
+
+// TestTxRetractingAClaimNoFrameNamesRepointsNothing is its own function because
+// what it asserts is an absence: a claim on a frame which the frame's transform
+// does not name is retracted exactly as any other claim is.
+func TestTxRetractingAClaimNoFrameNamesRepointsNothing(t *testing.T) {
+	root := copied(t, frameValid)
+
+	// A second fit of the building, written beside the one its transform
+	// names and named by nothing.
+	retransformedBy(t, root, func(tx *Tx) error {
+		spec := aTransformClaim()
+		spec.ID, spec.Subject = "survey:C-0009", "frame:building"
+
+		_, _, err := tx.AddClaim(spec)
+		return err
+	})
+
+	commit, graph := retransformedBy(t, root, func(tx *Tx) error {
+		_, err := tx.DeprecateClaim("survey:C-0009", "survey:C-0002")
+		return err
+	})
+
+	// The one form changed is the frame the retracted claim is written on, and
+	// it changed once: the retraction, and no re-pointing after it.
+	assert.Equal(t, []string{"modified frame frame:building"}, spelledEffects(commit.Effects()))
+
+	frame, ok := graph.Registry().Frame("frame:building")
+	require.True(t, ok)
+	assert.Equal(t, ID("survey:C-0002"), frame.Transform)
+
+	retracted, ok := graph.Claims().Claim("survey:C-0009")
+	require.True(t, ok)
+	assert.Equal(t, RankDeprecated, retracted.Rank())
+}
+
+// TestTxRepointingAFrameAtAClaimWhichIsNoTransformIsRefused is its own function
+// because the refusal comes from the commit rather than from the mutation: the
+// replacement is a perfectly good claim, and what it is not is a fit between
+// two frames.
+func TestTxRepointingAFrameAtAClaimWhichIsNoTransformIsRefused(t *testing.T) {
+	root := copied(t, frameValid)
+
+	// An offset of the site grid, measured and named, and a scalar rather than
+	// a transform.
+	path := filepath.Join(root, "registry.dfc")
+	src, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	edited := strings.Replace(string(src), "  (transform survey:C-0001)\n", `  (transform survey:C-0001)
+  (offset
+    (id survey:C-0009)
+    (value 0.5 m)
+    (source "Setting-out check SC-2026-003, Acme Surveys")
+    (method method:gnss-static)
+    (accuracy (independent 0.01 m))
+    (date "2026-06-02"))
+`, 1)
+	edited += "\n(predicate offset (unit m) (shape scalar) (description \"How far one grid sits from another.\"))\n"
+	require.NoError(t, os.WriteFile(path, []byte(edited), 0o644))
+
+	before := contents(t, root)
+
+	tx := begin(t, root)
+	_, err = tx.DeprecateClaim("survey:C-0001", "survey:C-0009")
+	require.NoError(t, err, "the replacement is judged at commit, with what a load would say")
+
+	commit, diags, err := tx.Commit()
+	require.NoError(t, err)
+	assert.Empty(t, commit.Files, "a refused change describes nothing")
+	assert.Equal(t, before, contents(t, root), "a refused change writes nothing")
+
+	var collected Diagnostics
+	collected.Add(diags...)
+	require.True(t, collected.HasErrors(), "the change was refused")
+
+	assert.True(t, slices.ContainsFunc(diags, func(diagnostic Diagnostic) bool {
+		return diagnostic.Severity == SeverityError &&
+			strings.Contains(diagnostic.Message, "expected a claim whose value is a transform, found survey:C-0009")
+	}), "the refusal is the diagnostic a frame naming a claim which is no transform always raises: %v", diags)
+}
+
+// TestAFrameNamingARetractedClaimLoadsWithAWarning is its own function because
+// it is about a load rather than a change: a hand edit which leaves a frame
+// naming the claim a supersession retracted still loads, and says so.
+func TestAFrameNamingARetractedClaimLoadsWithAWarning(t *testing.T) {
+	root := copied(t, frameValid)
+
+	// Superseded through the write path, and then the frame put back by hand.
+	retransformedBy(t, root, func(tx *Tx) error {
+		_, _, err := tx.Supersede(aTransformClaim())
+		return err
+	})
+
+	path := filepath.Join(root, "registry.dfc")
+	src, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	edited := strings.Replace(string(src), "(transform frame:site:frame-transform:1)", "(transform survey:C-0001)", 1)
+	require.NotEqual(t, string(src), edited, "the frame names the replacement before the edit")
+	require.NoError(t, os.WriteFile(path, []byte(edited), 0o644))
+
+	graph, diags := LoadGraph(root)
+	require.NotNil(t, graph)
+	require.Len(t, diags, 1)
+
+	warning := diags[0]
+	assert.Equal(t, SeverityWarning, warning.Severity)
+	assert.Contains(t, warning.Message, "frame:site")
+	assert.Contains(t, warning.Message, "survey:C-0001")
+	assert.Contains(t, warning.Message, "frame:site:frame-transform:1")
+	assert.Contains(t, warning.Hint, "(transform frame:site:frame-transform:1)")
+
+	var collected Diagnostics
+	collected.Add(diags...)
+	assert.False(t, collected.HasErrors(), "a warning refuses nothing")
+
+	// The frame still reads what it names: following the chain at read time
+	// would change what a valid file means.
+	transform, ok := graph.Frames().Transform("frame:site")
+	require.True(t, ok)
+	assert.Equal(t, [3]float64{100.0, 200.0, 0.0}, transform.Translation)
 }

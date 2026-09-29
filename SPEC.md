@@ -1070,6 +1070,9 @@ relationship between two frames is a measurement, not a configuration constant.
 - A cycle in the parent chain is a load error naming the cycle. A missing parent, or a
   `transform` that does not resolve to a transform-shaped claim, is a load error naming both
   ends.
+- A frame reads exactly the claim its `transform` names and does not follow a supersession
+  from it; a `transform` naming a deprecated claim loads, with a warning naming the frame, the
+  claim and the claim that superseded it.
 - The transform being a claim is what makes a cross-frame answer accountable: the georeference
   fit carries the source, method, date and accuracy of the fit that produced it, and that
   accuracy is a systematic term in every cross-frame budget it touches.
