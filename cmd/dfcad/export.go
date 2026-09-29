@@ -418,9 +418,9 @@ close, a corner nothing states the position of, a boundary which does not lie
 at one level, a height or a thickness which is not a distance or is not
 positive, an offset which is not a distance, a body claimed of something no
 entity here can carry one on, or a filling off the run of what it is set in.
-The object still comes back, with "derived" false and no files, so a caller
-reads why from the diagnostics on stderr rather than from an empty stream. Exit code
-3 is a destination inside the authored tree, which is refused before anything
+The object still comes back, with "derived" false, no files and the refusal
+under "diagnostics", so a caller reads why from the object rather than from
+stderr. Exit code 3 is a destination inside the authored tree, which is refused before anything
 is read.
 `
 

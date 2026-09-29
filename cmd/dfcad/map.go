@@ -198,8 +198,8 @@ tolerance would be this command saying it is in the right one.
 Exit code 1 is a model no artefact could be made of: a region or a run which
 could not be drawn, one which could not be carried into the root frame, a
 coordinate reference system written where it does not belong. The object still comes back,
-with "derived" false and no files, so a caller reads why from the diagnostics on
-stderr rather than from an empty stream. Exit code 3 is a destination inside the
+with "derived" false, no files and the refusal under "diagnostics", so a caller
+reads why from the object rather than from stderr. Exit code 3 is a destination inside the
 authored tree, which is refused before anything is read.
 `
 
@@ -367,8 +367,8 @@ type mapUndrawnEntry struct {
 	Type  string `json:"type,omitempty"`
 
 	// Reason is why, as a token a caller branches on rather than a sentence it
-	// matches. The diagnostics on stderr carry the rest: the loop, the file,
-	// the line.
+	// matches. The diagnostics carry the rest — the loop, the file, the line —
+	// on stderr and under "diagnostics" in the same object.
 	Reason undrawnReason `json:"reason"`
 }
 

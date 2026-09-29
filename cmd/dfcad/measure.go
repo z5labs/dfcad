@@ -124,8 +124,8 @@ with the predicates it states it under.
 
 Exit code 1 is a measurement which could not be made — a ring which does not
 close, a corner nothing states the position of, a shape which crosses itself.
-The object still comes back, with "derived" false, so a caller reads why from
-the diagnostics on stderr rather than from an empty stream.
+The object still comes back, with "derived" false and the refusal under
+"diagnostics", so a caller reads why from the object rather than from stderr.
 `
 
 // measureResult is the object measure writes to stdout.

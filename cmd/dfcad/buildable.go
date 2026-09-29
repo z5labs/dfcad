@@ -95,8 +95,9 @@ it states it under.
 
 Exit code 1 is a derivation which could not be made — an edge nothing states
 the setback of, two claims equally current about one, a boundary which could
-not be read. The object still comes back, with "derived" false, so a caller
-reads why from the diagnostics on stderr rather than from an empty stream.
+not be read. The object still comes back, with "derived" false and the
+refusal under "diagnostics", so a caller reads why from the object rather than
+from stderr.
 `
 
 // The flags buildable takes beyond the global ones, named here because the

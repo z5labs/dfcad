@@ -193,9 +193,9 @@ Exit code 1 is a plan a ring of which could not be read — a boundary which doe
 not close, one which crosses itself, corners which are not in one plane, a
 tolerance the registry does not declare in the frame's unit — or could not be
 carried into the plan's frame. The other rooms are still drawn and the object
-still comes back, with "planned" false and the room named under "undrawn", so a
-caller reads which room to fix from that and from the diagnostics on stderr
-rather than from an empty stream.
+still comes back, with "planned" false, the room named under "undrawn" and the
+ring it could not read under "diagnostics", so a caller reads which room to fix
+and why from the object rather than from stderr.
 `
 
 // flagAnnotate is the flag naming a predicate whose claims a plan reports. It
@@ -404,9 +404,10 @@ type undrawnEntry struct {
 	// whether anybody has to act — a circuit group has no edges and is ordinary,
 	// a ring which does not close is a defect — and that decision belongs to a
 	// consumer reading a field rather than to one matching prose. Where the
-	// reason is a defect, the diagnostics on stderr carry the loop, the file, the
-	// position and the size of the gap, which is where anything an author acts on
-	// belongs and where a second copy of it would be a second thing to keep true.
+	// reason is a defect, the diagnostic behind it carries the loop, the file,
+	// the position and the size of the gap, and it is under "diagnostics" in the
+	// same object as well as on stderr. The two are one dfcad.Diagnostic written
+	// twice, so there is nothing to keep in step between them.
 	Reason string `json:"reason"`
 
 	// DeclaredIn is the frame the node's shape was read in — or, for a node

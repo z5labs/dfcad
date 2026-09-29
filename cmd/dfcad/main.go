@@ -356,6 +356,9 @@ const outputContractHelp = `Output:
 
 	Diagnostics, progress and everything else for a person go to stderr, on
 	every run and in every format. Nothing human-facing is ever on stdout.
+	The object carries the diagnostics the run rendered as well, under
+	"diagnostics" after every other field, with "diagnostics-suppressed"
+	where the limit held some back; both are absent where it rendered none.
 
 Exit codes:
 
@@ -450,5 +453,10 @@ func runOn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 
-	return cmd.run(cmd, args[1:], stdin, stdout, stderr)
+	// The two streams are joined for the length of the run, so that whatever
+	// render writes on stderr is written in the object emit writes on stdout.
+	rendered := &diagnosticStream{Writer: stderr}
+	answer := &answerStream{Writer: stdout, diagnostics: rendered}
+
+	return cmd.run(cmd, args[1:], stdin, answer, rendered)
 }
