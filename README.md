@@ -34,6 +34,7 @@ one change with `apply`:
 | `add-node`        | a semantic node                                                         |
 | `add-vertex`      | a corner, with where it is and how that is known                        |
 | `add-edge`        | a connection between two corners                                        |
+| `set-backing`     | what physically realises an edge, replacing what it named before        |
 | `add-loop`        | an ordered ring of edges                                                |
 | `scaffold-loop`   | a room's corners, walls and outline in one change                       |
 | `relate`          | what a node is inside, grouped with and bounded by                      |

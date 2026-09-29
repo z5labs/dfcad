@@ -2295,6 +2295,63 @@ func ExampleTx_AddAssertion_refused() {
 	// takes: tolerance
 }
 
+// ExampleTx_SetBacking backs an edge which was drawn before its wall was built.
+//
+// Whether an edge is a physical boundary or a virtual one is computed from what
+// it is backed by and stored nowhere, so stating the backing is the whole of the
+// edit: the classification flips with nothing else written.
+func ExampleTx_SetBacking() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+
+	if err := os.CopyFS(root, os.DirFS("testdata/boundary/backed")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	before, _ := dfcad.LoadGraph(root)
+	opening, _ := before.Topology().Edge("geom:E-01")
+	fmt.Println("before:", before.Classified(opening).Classification())
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = tx.Close() }()
+
+	if err := tx.SetBacking("geom:E-01", dfcad.BackingSpec{BackedBy: []dfcad.ID{"site:W-14"}}); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+
+	for _, effect := range commit.Effects() {
+		fmt.Printf("%s %s %s\n", effect.Op, effect.Tag, effect.ID)
+	}
+
+	after, _ := dfcad.LoadGraph(root)
+	opening, _ = after.Topology().Edge("geom:E-01")
+	fmt.Println("after:", after.Classified(opening).Classification(), opening.BackedBy())
+
+	// Output:
+	// before: virtual
+	// modified edge geom:E-01
+	// after: physical [site:W-14]
+}
+
 // ExampleTx_Retire records that a thing stopped existing, and moves what
 // referenced it onto the thing which replaced it.
 func ExampleTx_Retire() {
@@ -3084,7 +3141,7 @@ func ExampleParseBatch_refused() {
 	// Output:
 	// operation 1, add-node: a node is written with an id
 	// operation 2, add-node: json: unknown field "edges"
-	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim, add-assertion
+	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim, add-assertion, set-backing
 	// no id was written: true
 }
 

@@ -319,6 +319,45 @@ What must hold of every instance of a type is not this. That is the type's `inva
 which is registry data, and adding one stays an edit to the registry file that declares the
 type.
 
+### `set-backing`
+
+What an edge is physically realised by: the whole set, replacing every element it named
+before.
+
+| Member | Meaning |
+|--------|---------|
+| `id` | The edge. Required. |
+| `backedBy` | The elements that realise it now, as an array. Required: `[]` is how a virtual edge is written, and a member left out is refused rather than read as "backed by nothing". |
+
+```json
+{"op": "set-backing", "id": "geom:E-05", "backedBy": ["site:W-17"]}
+{"op": "set-backing", "id": "geom:E-05", "backedBy": []}
+```
+
+`backed-by` is unordered and repeatable (SPEC §6.3), so the operation states what the edge is
+backed by rather than a patch to get there. Every `backed-by` the edge wrote is replaced by the
+ones given, printed in canonical order; its vertices, frame, label, claims and assertions are
+untouched. Whether the edge is a physical boundary or a virtual one is computed from the
+result, so the classification flips with no other edit
+([0009](./decisions/0009-derived-values-are-never-written-back.md)).
+
+Refused when the operation is applied, before anything is written: an id nothing holds, and
+an id naming something other than an edge. Refused when the model the batch produces is
+interpreted, with that load's diagnostics: an element that names nothing, one that names
+geometry, one that names a node of another kind, and one named twice. An edge the same batch
+wrote counts, so drawing an edge and backing it are one batch.
+
+**Retiring a demolished element is two changes.** First make its edges virtual — or back them
+onto the element which replaced it — and then `retire` it in a change of its own:
+
+```json
+{"operations": [{"op": "set-backing", "id": "geom:E-05", "backedBy": []}]}
+{"operations": [{"op": "retire", "id": "site:W-16", "reason": "Partition demolished"}]}
+```
+
+One batch holding both is refused, because a retirement reads the references of the model as
+the change found it (see below).
+
 ## What one operation may assume of another
 
 **An operation may name what an earlier one wrote.** The ids the batch has already written
@@ -341,6 +380,13 @@ same batch wrote is two statements about one measurement, and it is written as o
 **A retirement names what the model already holds.** Retiring a node the same batch created
 is refused: a batch that creates a thing and withdraws it again is a batch that should not
 have created it.
+
+**A retirement reads the references the model already holds.** Whether anything still
+refers to the node being retired is asked of the model as the batch found it, not of what
+earlier operations of the batch have rewritten. So an edge made virtual by a `set-backing`
+earlier in the same batch still counts as naming the element, and the retirement is refused
+naming it: stop the edge naming the element in one change, and retire the element in the
+next.
 
 ## What is refused, and how
 

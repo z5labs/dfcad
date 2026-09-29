@@ -92,9 +92,52 @@ The order of the two ends is significant and is never sorted: an edge is
 directed, and the region on the other side of it traverses it the other way.
 Whether an edge is a physical boundary or a virtual one is computed from
 --backed-by rather than written, so adding the wall later flips the answer with
-no other edit.
+no other edit: ` + "`dfcad set-backing <edge> --backed-by <element>`" + ` is that edit.
 
 ` + geometryFlagsHelp + `
+` + globalFlagsHelp + `
+` + writeFlagsHelp + `
+` + outputContractHelp + `
+` + writeOutputHelp
+
+const setBackingUsage = `dfcad set-backing — replace what physically realises an edge.
+
+Usage:
+
+	dfcad set-backing [flags] <edge> (--backed-by <element>... | --virtual)
+
+An edge names the elements which physically realise it, and whether it is a
+physical boundary or a virtual one is computed from that and stored nowhere. This
+states the whole set: every backing the edge named is replaced by the ones given
+here, so a wall built after its edge was drawn, a wall demolished and a wall
+replaced by another are each one statement of what the edge is backed by now.
+Its vertices, frame, label, claims and assertions are untouched.
+
+Flags:
+
+	--backed-by <id>     an element which physically realises it; repeat for
+	                     more than one
+	--virtual            it is backed by nothing at all
+
+One of the two is required, and not both. A missing flag is not read as "backed
+by nothing": the empty set is a statement, and --virtual is how it is made.
+
+An id nothing holds and an id naming something which is not an edge are each a
+usage error, answered before anything is written. The elements are not resolved
+here: one which names nothing, one which names geometry and one which names a
+node of another kind are each refused when the model this would produce is
+interpreted, with the diagnostics a load of that model would have raised.
+
+Retiring a demolished element is two changes. First make its edges virtual, or
+back them onto the element which replaced it:
+
+	dfcad set-backing --virtual geom:E-05
+	dfcad retire --reason "Partition demolished" site:W-16
+
+The second is a change of its own because ` + "`dfcad retire`" + ` reads the references
+of the model as the change found it, so an edge made virtual earlier in the same
+change still refers to the element being retired.
+
 ` + globalFlagsHelp + `
 ` + writeFlagsHelp + `
 ` + outputContractHelp + `
@@ -448,6 +491,56 @@ func runAddEdge(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 
 	reportRouted(cmd, globals, stderr, id, destination)
+
+	return commitChange(cmd, tx, globals, stdout, stderr)
+}
+
+// runSetBacking is the set-backing command.
+func runSetBacking(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	backing := &repeated{}
+	flags.Var(backing, "backed-by", "")
+	virtual := flags.Bool("virtual", false, "")
+
+	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	id, exit, ok := subject(cmd, arguments, 1, stderr)
+	if !ok {
+		return exit
+	}
+
+	// The ids on the command line are read before the model is, for the reason
+	// `dfcad route` reads one there: nothing about the tree makes a malformed id
+	// well formed, and reporting a load of the whole model before saying so
+	// buries the one thing which is wrong.
+	backed, err := identified(*backing)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	spec := dfcad.BackingSpec{BackedBy: backed, Virtual: *virtual}
+
+	// Neither flag, or both, is answered before the model is read, for the
+	// reason `dfcad relate` answers a relation to nothing there: it is a
+	// property of the invocation, wrong whatever the model holds.
+	if err := spec.Check(id); err != nil {
+		return usageError(cmd, err, stderr, true)
+	}
+
+	tx, exit, ok := begin(cmd, globals, stderr)
+	if !ok {
+		return exit
+	}
+	defer func() { _ = tx.Close() }()
+
+	if err := tx.SetBacking(id, spec); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
 
 	return commitChange(cmd, tx, globals, stdout, stderr)
 }

@@ -50,6 +50,7 @@ const (
 	supersedeOperation      = "supersede"
 	deprecateClaimOperation = "deprecate-claim"
 	addAssertionOperation   = "add-assertion"
+	setBackingOperation     = "set-backing"
 )
 
 // ErrNoOperations is an operation file which carries no operation at all.
@@ -232,6 +233,7 @@ var made = []struct {
 	{supersedeOperation, func() Operation { return &SupersedeOperation{} }},
 	{deprecateClaimOperation, func() Operation { return &DeprecateClaimOperation{} }},
 	{addAssertionOperation, func() Operation { return &AddAssertionOperation{} }},
+	{setBackingOperation, func() Operation { return &SetBackingOperation{} }},
 }
 
 // Operations is the name of every operation an operation file may carry, in the
@@ -1391,6 +1393,47 @@ func (o *AddAssertionOperation) apply(tx *Tx, _ *Applied) error {
 	}
 
 	return tx.AddAssertion(AssertionSpec{Subject: subject, Check: o.Check, Parameters: o.Parameters})
+}
+
+// SetBackingOperation replaces what an edge is physically realised by. It is
+// `set-backing`.
+type SetBackingOperation struct {
+	// ID is the edge whose backing is being stated.
+	ID string `json:"id"`
+
+	// BackedBy are the elements which physically realise it now, replacing
+	// every one it named before. The member is required, and the empty array is
+	// how a virtual edge is written: a member left out is refused rather than
+	// read as "backed by nothing".
+	BackedBy *[]string `json:"backedBy"`
+}
+
+// Name implements [Operation].
+func (o *SetBackingOperation) Name() string { return setBackingOperation }
+
+func (o *SetBackingOperation) check() error {
+	if o.ID == "" {
+		return ErrNoID
+	}
+	if o.BackedBy == nil {
+		return ErrNoBacking
+	}
+	return nil
+}
+
+func (o *SetBackingOperation) apply(tx *Tx, _ *Applied) error {
+	id, err := identify(o.ID)
+	if err != nil {
+		return err
+	}
+
+	spec := BackingSpec{Virtual: len(*o.BackedBy) == 0}
+
+	if spec.BackedBy, err = identifyAll(*o.BackedBy); err != nil {
+		return err
+	}
+
+	return tx.SetBacking(id, spec)
 }
 
 // claimed reports what is missing from an operation which writes a claim,

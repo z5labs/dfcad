@@ -272,6 +272,16 @@ func TestParseBatchReadsEveryOperationsAxes(t *testing.T) {
 			written:  `{"op": "add-assertion", "subject": "geom:E-06", "check": "edge-backing-resolves"}`,
 			expected: &AddAssertionOperation{Subject: "geom:E-06", Check: "edge-backing-resolves"},
 		},
+		{
+			name:     "reads the elements an edge is backed by",
+			written:  `{"op": "set-backing", "id": "geom:E-05", "backedBy": ["site:W-17", "site:W-18"]}`,
+			expected: &SetBackingOperation{ID: "geom:E-05", BackedBy: &[]string{"site:W-17", "site:W-18"}},
+		},
+		{
+			name:     "reads an empty backing as the statement that the edge is virtual",
+			written:  `{"op": "set-backing", "id": "geom:E-05", "backedBy": []}`,
+			expected: &SetBackingOperation{ID: "geom:E-05", BackedBy: &[]string{}},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -424,6 +434,27 @@ func TestParseBatchNamesTheOperationEachProblemIsAbout(t *testing.T) {
 			expectedIndex:     2,
 			expectedOperation: "add-assertion",
 			expectedError:     ErrNoCheck,
+		},
+		{
+			name:              "refuses a backing which names no edge",
+			written:           `{"op": "set-backing", "backedBy": []}`,
+			expectedIndex:     2,
+			expectedOperation: "set-backing",
+			expectedError:     ErrNoID,
+		},
+		{
+			name:              "refuses a backing which leaves out what the edge is backed by",
+			written:           `{"op": "set-backing", "id": "geom:E-05"}`,
+			expectedIndex:     2,
+			expectedOperation: "set-backing",
+			expectedError:     ErrNoBacking,
+		},
+		{
+			name:              "refuses a backing written as null rather than as an empty set",
+			written:           `{"op": "set-backing", "id": "geom:E-05", "backedBy": null}`,
+			expectedIndex:     2,
+			expectedOperation: "set-backing",
+			expectedError:     ErrNoBacking,
 		},
 		{
 			name:              "refuses a member the operation does not read",
@@ -616,6 +647,18 @@ func TestTxApply(t *testing.T) {
 				{"modified node site:S-103"},
 			},
 			expectedFiles: []string{"entities/site.dfc"},
+		},
+		{
+			name: "applies a batch which moves a wall from one edge to another",
+			written: `{"operations": [
+				{"op": "set-backing", "id": "geom:E-02", "backedBy": []},
+				{"op": "set-backing", "id": "geom:E-01", "backedBy": ["site:E-01"]}
+			]}`,
+			expectedEffects: [][]string{
+				{"modified edge geom:E-02"},
+				{"modified edge geom:E-01"},
+			},
+			expectedFiles: []string{"entities/geometry.dfc"},
 		},
 		{
 			name: "applies a batch which corrects one measurement and retracts another",

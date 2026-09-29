@@ -3409,7 +3409,8 @@ other way.
 
 Whether an edge is a physical boundary or a virtual one is **computed** from `--backed-by`
 rather than written, so adding the wall later flips the answer with no other edit
-([0009](./decisions/0009-derived-values-are-never-written-back.md)).
+([0009](./decisions/0009-derived-values-are-never-written-back.md)) — and
+[`set-backing`](#set-backing) is that edit.
 
 The payload is the write payload above and nothing more.
 
@@ -3894,6 +3895,60 @@ type.
       "status": "rewritten",
       "effects": [{"op": "modified", "tag": "loop", "id": "geom:L-10"}],
       "diff": "--- model.dfc.orig\n+++ model.dfc\n@@ -171,7 +171,8 @@\n..."
+    }
+  ]
+}
+```
+
+### `set-backing`
+
+What an edge is physically realised by: the whole set, replacing every element it named
+before. It takes the edge, and exactly one of the two flags below, and reports the write
+payload above with nothing added to it: the one effect is `modified` on the edge.
+
+| Flag | Meaning |
+|------|---------|
+| `--backed-by <id>` | An element that physically realises it. Repeat for more than one. |
+| `--virtual` | It is backed by nothing at all. |
+
+```console
+$ dfcad set-backing --backed-by site:W-14 geom:E-01
+$ dfcad set-backing --virtual geom:E-05
+```
+
+`backed-by` is unordered and repeatable (SPEC §6.3), so the command states what the edge is
+backed by rather than a patch to get there — as `set-label` replaces a label. Every
+`backed-by` the edge wrote is replaced by the ones given, printed in canonical order; its
+vertices, frame, label, claims and assertions are untouched. Whether it is a physical boundary
+or a virtual one is computed from the result, so the classification flips with no other edit
+([0009](./decisions/0009-derived-values-are-never-written-back.md)).
+
+A missing flag is not read as "backed by nothing". Neither flag, both, and no edge named are
+each a **usage error**, exit `3`, answered before the model is read. An id nothing holds and
+an id naming something other than an edge are usage errors too, answered before anything is
+written. The elements are not resolved here: one that names nothing, one that names geometry,
+one that names a node of another kind and one named twice are each refused when the model
+this would produce is interpreted — so stdout carries [the refusal](#the-refusal), with the
+load failure exit code, and the diagnostics are the ones a load of that model would have
+raised.
+
+**Retiring a demolished element is two changes**: `set-backing --virtual` on each edge it
+backs (or `--backed-by` the element which replaced it), and then `retire` as a second change.
+`retire` reads the references of the model as the change found it, so an edge made virtual
+earlier in the same batch still names the element
+([What one operation may assume of another](./operation-file.md#what-one-operation-may-assume-of-another)).
+
+```json
+{
+  "version": 2,
+  "command": "set-backing",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "model.dfc",
+      "status": "rewritten",
+      "effects": [{"op": "modified", "tag": "edge", "id": "geom:E-05"}],
+      "diff": "--- model.dfc.orig\n+++ model.dfc\n@@ -80,8 +80,7 @@\n..."
     }
   ]
 }
