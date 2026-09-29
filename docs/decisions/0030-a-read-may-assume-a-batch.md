@@ -136,7 +136,7 @@ hypothesis would overwrite every other.
   "command": "check",
   "assumed": {
     "batch": "into-setback.json",
-    "operations": 3,
+    "operations": 1,
     "base": "<digest of the tree read>",
     "digest": "<digest of the tree the batch would produce>"
   }
