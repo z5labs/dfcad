@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+**See also:** [0030](./0030-a-read-may-assume-a-batch.md) — a read may answer over a batch it is told to assume; the batch is caller input, not a variant.
+
 ## Context
 
 Design work is comparative. Somebody always wants to see the scheme with the parking on the
