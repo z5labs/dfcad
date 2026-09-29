@@ -155,6 +155,12 @@ var samples = map[string][]string{
 	// the backing the edge already has: virtual. It is still a change which
 	// goes through the whole write path, which is what the walks need.
 	"set-backing": {"--virtual", "geom:E-01"},
+	// The plot boundary restated from its second edge: the same ring walked
+	// from another corner, which closes as the one it replaces did.
+	"set-edges": {
+		"--edge", "geom:E-12", "--edge", "geom:E-13", "--edge", "geom:E-14", "--edge", "geom:E-11",
+		"geom:L-11",
+	},
 	"add-loop": {
 		"--frame", "frame:building",
 		"--edge", "geom:E-01", "--edge", "geom:E-02", "--edge", "geom:E-03",

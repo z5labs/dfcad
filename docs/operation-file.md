@@ -151,7 +151,8 @@ An ordered ring of edges.
 | `edges` | The edges of the ring, in traversal order. At least one. |
 
 The order is the data. It is preserved exactly as written and is never sorted. Whether the
-ring closes is judged when the model the batch produces is loaded.
+ring closes is judged when the model the batch produces is loaded. A loop's ring is changed
+afterwards with [`set-edges`](#set-edges).
 
 ### `scaffold-loop`
 
@@ -357,6 +358,51 @@ onto the element which replaced it — and then `retire` it in a change of its o
 
 One batch holding both is refused, because a retirement reads the references of the model as
 the change found it (see below).
+
+### `set-edges`
+
+The edges a loop is traversed through: the whole ordered ring, replacing every edge it named
+before.
+
+| Member | Meaning |
+|--------|---------|
+| `id` | The loop. Required. |
+| `edges` | The edges of the ring, in traversal order. At least one. |
+
+```json
+{"op": "set-edges", "id": "geom:L-13", "edges": ["geom:E-13", "geom:E-14", "geom:E-15", "geom:E-16"]}
+```
+
+The whole list is replaced, as `add-loop` writes it: the order is the data (SPEC §6.4), and a
+patch to an ordered ring is the edit most likely to be wrong. The edges are written in the
+order given and never sorted. The loop's label, frame, claims and assertions are untouched,
+and every node naming the loop in `boundary` reads the new ring with no edit of its own.
+
+Refused when the operation is applied, before anything is written: an id nothing holds, an id
+naming something other than a loop, and an edge id naming nothing or something other than an
+edge — resolved as `add-loop` resolves them. An empty `edges` is refused before any model is
+read. Refused when the model the batch produces is interpreted, with that load's diagnostics:
+edges not in the loop's frame (SPEC §6.4, §7.5.1).
+
+**Whether the ring closes is not judged**, as it is not for `add-loop`: closure is judged
+against a tolerance the registry names, and a write has no way to choose one. A ring which
+does not close is written, and `dfcad check` reports it through `boundary-loops-close` — so a
+batch breaking an outline on purpose, to prove that check can fail, is an ordinary one, and
+`check --assume` answers over it without writing it.
+
+An edge the same batch wrote counts, so rerouting an outline through a new corner is one
+batch:
+
+```json
+{"operations": [
+  {"op": "add-vertex", "id": "geom:V-30", "frame": "frame:building", "file": "model.dfc", "predicate": "position",
+   "claim": {"value": "11.0 3.0 0.0", "unit": "m", "source": "Interior control set IC-01, Acme Surveys",
+             "method": "method:total-station", "accuracy": ["independent 0.004 m"], "date": "2026-02-18"}},
+  {"op": "add-edge", "id": "geom:E-30", "frame": "frame:building", "file": "model.dfc", "start": "geom:V-11", "end": "geom:V-30"},
+  {"op": "add-edge", "id": "geom:E-31", "frame": "frame:building", "file": "model.dfc", "start": "geom:V-30", "end": "geom:V-12"},
+  {"op": "set-edges", "id": "geom:L-13", "edges": ["geom:E-13", "geom:E-14", "geom:E-30", "geom:E-31", "geom:E-16"]}
+]}
+```
 
 ## What one operation may assume of another
 

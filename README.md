@@ -36,6 +36,7 @@ one change with `apply`:
 | `add-edge`        | a connection between two corners                                        |
 | `set-backing`     | what physically realises an edge, replacing what it named before        |
 | `add-loop`        | an ordered ring of edges                                                |
+| `set-edges`       | the ordered ring a loop runs through, replacing the one it named before |
 | `scaffold-loop`   | a room's corners, walls and outline in one change                       |
 | `relate`          | what a node is inside, grouped with and bounded by                      |
 | `classify-type`   | how a scheme outside this model names a type                            |

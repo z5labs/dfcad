@@ -51,6 +51,7 @@ const (
 	deprecateClaimOperation = "deprecate-claim"
 	addAssertionOperation   = "add-assertion"
 	setBackingOperation     = "set-backing"
+	setEdgesOperation       = "set-edges"
 )
 
 // ErrNoOperations is an operation file which carries no operation at all.
@@ -234,6 +235,7 @@ var made = []struct {
 	{deprecateClaimOperation, func() Operation { return &DeprecateClaimOperation{} }},
 	{addAssertionOperation, func() Operation { return &AddAssertionOperation{} }},
 	{setBackingOperation, func() Operation { return &SetBackingOperation{} }},
+	{setEdgesOperation, func() Operation { return &SetEdgesOperation{} }},
 }
 
 // Operations is the name of every operation an operation file may carry, in the
@@ -1442,6 +1444,45 @@ func (o *SetBackingOperation) apply(tx *Tx, _ *Applied) error {
 	}
 
 	return tx.SetBacking(id, spec)
+}
+
+// SetEdgesOperation replaces the edges a loop is traversed through. It is
+// `set-edges`.
+type SetEdgesOperation struct {
+	// ID is the loop whose ring is being stated.
+	ID string `json:"id"`
+
+	// Edges are the edges of the ring, in the order the loop is traversed,
+	// replacing every one it named before. The order is the data and is never
+	// sorted.
+	Edges []string `json:"edges"`
+}
+
+// Name implements [Operation].
+func (o *SetEdgesOperation) Name() string { return setEdgesOperation }
+
+func (o *SetEdgesOperation) check() error {
+	if o.ID == "" {
+		return ErrNoID
+	}
+	if len(o.Edges) == 0 {
+		return ErrNoEdges
+	}
+	return nil
+}
+
+func (o *SetEdgesOperation) apply(tx *Tx, _ *Applied) error {
+	id, err := identify(o.ID)
+	if err != nil {
+		return err
+	}
+
+	edges, err := identifyAll(o.Edges)
+	if err != nil {
+		return err
+	}
+
+	return tx.SetEdges(id, edges)
 }
 
 // claimed reports what is missing from an operation which writes a claim,

@@ -278,6 +278,11 @@ func TestParseBatchReadsEveryOperationsAxes(t *testing.T) {
 			expected: &SetBackingOperation{ID: "geom:E-05", BackedBy: &[]string{"site:W-17", "site:W-18"}},
 		},
 		{
+			name:     "reads the edges of a ring in the order they were written",
+			written:  `{"op": "set-edges", "id": "geom:L-13", "edges": ["geom:E-14", "geom:E-13", "geom:E-16", "geom:E-15"]}`,
+			expected: &SetEdgesOperation{ID: "geom:L-13", Edges: []string{"geom:E-14", "geom:E-13", "geom:E-16", "geom:E-15"}},
+		},
+		{
 			name:     "reads an empty backing as the statement that the edge is virtual",
 			written:  `{"op": "set-backing", "id": "geom:E-05", "backedBy": []}`,
 			expected: &SetBackingOperation{ID: "geom:E-05", BackedBy: &[]string{}},
@@ -455,6 +460,27 @@ func TestParseBatchNamesTheOperationEachProblemIsAbout(t *testing.T) {
 			expectedIndex:     2,
 			expectedOperation: "set-backing",
 			expectedError:     ErrNoBacking,
+		},
+		{
+			name:              "refuses a ring which names no loop",
+			written:           `{"op": "set-edges", "edges": ["geom:E-01"]}`,
+			expectedIndex:     2,
+			expectedOperation: "set-edges",
+			expectedError:     ErrNoID,
+		},
+		{
+			name:              "refuses a ring with no edges",
+			written:           `{"op": "set-edges", "id": "geom:L-01", "edges": []}`,
+			expectedIndex:     2,
+			expectedOperation: "set-edges",
+			expectedError:     ErrNoEdges,
+		},
+		{
+			name:              "refuses a ring which leaves out its edges",
+			written:           `{"op": "set-edges", "id": "geom:L-01"}`,
+			expectedIndex:     2,
+			expectedOperation: "set-edges",
+			expectedError:     ErrNoEdges,
 		},
 		{
 			name:              "refuses a member the operation does not read",
@@ -657,6 +683,19 @@ func TestTxApply(t *testing.T) {
 			expectedEffects: [][]string{
 				{"modified edge geom:E-02"},
 				{"modified edge geom:E-01"},
+			},
+			expectedFiles: []string{"entities/geometry.dfc"},
+		},
+		{
+			name: "applies a batch which draws an edge and routes a ring through it",
+			written: `{"operations": [
+				{"op": "add-edge", "id": "geom:E-08", "frame": "frame:building",
+				 "start": "geom:V-03", "end": "geom:V-01"},
+				{"op": "set-edges", "id": "geom:L-01", "edges": ["geom:E-01", "geom:E-02", "geom:E-08"]}
+			]}`,
+			expectedEffects: [][]string{
+				{"created edge geom:E-08"},
+				{"modified loop geom:L-01"},
 			},
 			expectedFiles: []string{"entities/geometry.dfc"},
 		},
