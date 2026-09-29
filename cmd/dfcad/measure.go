@@ -111,6 +111,7 @@ that is a per-corner quantity and a single number for it would be exactly the
 plausible answer the rest of this refuses to give.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object measure writes carries "subject" and the "family" which holds it,
 "derived" and the "digest" of the source tree it was computed against, the
@@ -263,7 +264,7 @@ type measuredBox struct {
 }
 
 // runMeasure is the measure command.
-func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runMeasure(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -301,7 +302,10 @@ func runMeasure(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}

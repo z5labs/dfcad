@@ -81,6 +81,7 @@ inside-out shape offsetting each edge on its own produces when the offsets
 cross over each other.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object buildable writes carries "subject", "derived" and the "digest" of
 the source tree it was derived from, the "frame" and "unit" it is expressed
@@ -326,7 +327,7 @@ type setbackEntry struct {
 }
 
 // runBuildable is the buildable command.
-func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runBuildable(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -366,7 +367,10 @@ func runBuildable(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}

@@ -142,6 +142,7 @@ A storey containing nothing with an outline is an empty result and exit 0 — th
 truthful answer to what it looks like in plan.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object plan writes carries "subject", "planned" and the "digest" of the
 source tree it was read from, the "frame" every coordinate in it is in and that
@@ -498,7 +499,7 @@ type anchorEntry struct {
 }
 
 // runPlan is the plan command.
-func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runPlan(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -552,7 +553,10 @@ func runPlan(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}

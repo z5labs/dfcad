@@ -102,6 +102,29 @@ type envelope struct {
 	Command string `json:"command"`
 }
 
+// assumedBatch is the envelope member a read writes where it answered over the
+// model a batch would produce rather than over the one on disk
+// (docs/decisions/0030-a-read-may-assume-a-batch.md).
+//
+// It is written after "command" and before every field of the payload, and only
+// under --assume: without the flag the object is byte-identical to what it was
+// before the flag existed. A caller which must never act on a hypothetical
+// tests that it is absent.
+type assumedBatch struct {
+	// Batch is the operation file as it was given, or "-" for standard input.
+	Batch string `json:"batch"`
+
+	// Operations is how many operations the batch holds.
+	Operations int `json:"operations"`
+
+	// Base is the digest of the tree that was read.
+	Base string `json:"base"`
+
+	// Digest is the digest of the tree the batch would produce, which is the
+	// digest every payload which carries one reports.
+	Digest string `json:"digest"`
+}
+
 // newEnvelope is the head of a result written by the named command.
 func newEnvelope(command string) envelope {
 	return envelope{Version: outputVersion, Command: command}
@@ -136,7 +159,12 @@ func emit(stdout io.Writer, result any) error {
 	out := encoded.Bytes()
 	answer, joined := stdout.(*answerStream)
 	if joined {
-		closed, err := answer.close(out)
+		marked, err := answer.mark(out)
+		if err != nil {
+			return err
+		}
+
+		closed, err := answer.close(marked)
 		if err != nil {
 			return err
 		}
@@ -176,6 +204,11 @@ type diagnosticStream struct {
 	// could not be written — which is not one.
 	refused bool
 
+	// assumed is the batch the run answered over, where it was told to assume
+	// one and the model that batch would produce loaded. It is nil on every
+	// other run, and [answerStream.mark] then writes the object as it was.
+	assumed *assumedBatch
+
 	// model is the model the run loaded as a [dfcad.Graph], which is what names
 	// the things each diagnostic is about: see [aboutDiagnostic]. It is nil for
 	// a run which held none — a change, whose refused spans are in a model the
@@ -195,6 +228,17 @@ type diagnosticStream struct {
 func hold(stderr io.Writer, model *dfcad.Graph) {
 	if stream, ok := stderr.(*diagnosticStream); ok {
 		stream.model = model
+	}
+}
+
+// assume notes on a run's stderr the batch the run answers over, so that the
+// object it writes says it is hypothetical.
+//
+// It is called where the read gate interprets the model a batch would produce
+// — [loadGate] — and nowhere else.
+func assume(stderr io.Writer, assumed assumedBatch) {
+	if stream, ok := stderr.(*diagnosticStream); ok {
+		stream.assumed = &assumed
 	}
 }
 
@@ -334,6 +378,67 @@ func sortedIDs(set map[dfcad.ID]bool) []dfcad.ID {
 type renderedDiagnostics struct {
 	Suppressed  int               `json:"diagnostics-suppressed,omitempty"`
 	Diagnostics []aboutDiagnostic `json:"diagnostics"`
+}
+
+// mark returns the encoded object with "assumed" written after its envelope, or
+// exactly as it was given where the run assumed no batch.
+//
+// It splices, as [answerStream.close] does, because the envelope is embedded in
+// every command's own result and no command sets the member itself: a read
+// cannot answer over a hypothetical and leave out that it did, because there is
+// no field for it to forget to fill in. The member goes after "command" rather
+// than at the end, because it is part of the envelope — what a caller reads
+// before it knows which payload it holds.
+func (a *answerStream) mark(encoded []byte) ([]byte, error) {
+	stream := a.diagnostics
+	if stream == nil || stream.assumed == nil {
+		return encoded, nil
+	}
+
+	after, ok := enveloped(encoded)
+	if !ok {
+		return encoded, nil
+	}
+
+	// Encoded as [emit] encodes the rest of the object, so that a path is
+	// written in the same bytes wherever in the object it appears.
+	var written bytes.Buffer
+	encoder := json.NewEncoder(&written)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(stream.assumed); err != nil {
+		return nil, err
+	}
+	member := bytes.TrimRight(written.Bytes(), "\n")
+
+	out := make([]byte, 0, len(encoded)+len(member)+len(`,"assumed":`))
+	out = append(out, encoded[:after]...)
+	out = append(out, `,"assumed":`...)
+	out = append(out, member...)
+	out = append(out, encoded[after:]...)
+
+	return out, nil
+}
+
+// enveloped is the offset in an encoded object just after its envelope — the
+// value of "command" — and whether the object opens with one at all.
+func enveloped(encoded []byte) (int, bool) {
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+
+	if open, err := decoder.Token(); err != nil || open != json.Delim('{') {
+		return 0, false
+	}
+
+	for _, key := range []string{"version", "command"} {
+		name, err := decoder.Token()
+		if err != nil || name != key {
+			return 0, false
+		}
+		if _, err := decoder.Token(); err != nil {
+			return 0, false
+		}
+	}
+
+	return int(decoder.InputOffset()), true
 }
 
 // close returns the encoded object with the run's diagnostics written after

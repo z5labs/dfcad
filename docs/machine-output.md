@@ -85,6 +85,40 @@ once it does.
 subcommand. The thing being versioned is this contract — the envelope, the streams either
 side of it and the exit codes — and a caller reads it once for every command it drives.
 
+### `assumed`
+
+A read given [`--assume`](#global-flags) answers over the model an operation file would
+produce rather than over the one on disk
+([0030](./decisions/0030-a-read-may-assume-a-batch.md)), and its envelope says so with a third
+member, written after `command` and before every field of the payload:
+
+```json
+{
+  "version": 2,
+  "command": "check",
+  "assumed": {
+    "batch": "into-setback.json",
+    "operations": 1,
+    "base": "fc1a3f31762ffb626ebb3b786ac3ebced0f785fa9f99a73c4673f37fa335215e",
+    "digest": "0abd955519383d486e92c9f69c7bf7b68422b32ff3170288816bb0d8220f601f"
+  },
+  "refused": false
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `assumed` | object, optional | Written only under `--assume`, on every read. Absent otherwise, and the object is then byte-identical to what it is without the flag. |
+| `assumed.batch` | string | The operation file exactly as it was given on the command line, or `-` for standard input. |
+| `assumed.operations` | integer | How many operations the batch holds. |
+| `assumed.base` | string | The digest of the tree that was read, lower-case hex: which tree the batch was assumed over. |
+| `assumed.digest` | string | The digest of the tree the batch would produce, lower-case hex — what `DigestOf` would compute were the batch written. Every payload which carries a `digest` reports this same value under the flag; `check`, which carries none, is marked by `assumed` alone. |
+
+A caller which must never act on a hypothetical tests `.assumed == null`. [The
+refusal](#the-refusal) never carries it, as it carries no `digest`: a batch the run refused
+produced no answer to mark. The member is an added optional field, so the contract stays at
+version `2` ([the versioning rule](#the-versioning-rule)).
+
 ## The versioning rule
 
 - A field may be **added** at any time, to the envelope or to any payload. A caller that
@@ -354,6 +388,38 @@ It is taken by every command, `version` among them, which is the cheapest form o
 because it reads no model: `dfcad version --entity-format 1.2` exits `0` where this engine
 loads a 1.2 model and `2` where it does not. [`versioning.md`](./versioning.md) is what a
 consumer does with that.
+
+### The flag every read takes
+
+Every command which reads the model and changes nothing in it — `list-types`,
+`list-predicates`, `list-tolerances`, `list-frames`, `list-instances`, `list-geometry`, `get`,
+`resolve`, `traverse`, `claims`, `conflicts`, `route`, `measure`, `tessellate`, `buildable`,
+`site`, `plan`, `export`, `export-map` and `check` — also takes this one. The rule is the
+definition and the list is its membership: a read added later takes it because it is a read.
+Every other command — the writes, which have `--dry-run`, and `version`, `fmt` and `review` —
+refuses it as a usage error, exit `3`, nothing on stdout.
+
+| Flag | Default | Meaning |
+|------|---------|---------|
+| `--assume <file>` | off | Answer over the model the [operation file](./operation-file.md) would produce, rather than over the one on disk. Nothing is written to the authored tree and nothing is locked. The path is resolved against the model root, as `apply`'s is, and `-` reads the batch from standard input. Written once. |
+
+The defining property is `apply`'s: for every batch `apply` accepts, `dfcad <read> --assume F`
+writes the same stdout and exits with the same code as `dfcad apply F` followed by
+`dfcad <read>`, apart from the envelope's [`assumed`](#assumed) member. Every `digest` a
+payload reports is therefore that of the tree the batch would produce, and `export` and
+`export-map` write beneath `.dfcad/export/<assumed.digest>/` unless `--out` names a
+destination — the artefact `apply` followed by the export would write, byte for byte.
+
+**A batch is refused as `apply --dry-run` refuses it, and the read does not run.** A file which
+cannot be read or is not a batch exits `2` with nothing on stdout; an operation the model
+refuses exits `3` with nothing on stdout; a base tree which does not load, or a result which
+would not load, exits `2` with [the refusal](#the-refusal) on stdout, under the command that was
+run. That holds for the discovery reads and for `check` as well, which answer through a refused
+tree without the flag: a model nobody could write is not answered about. Stderr is `apply`'s,
+in `apply`'s words.
+
+Standard input is one input. `get - --assume -`, which would read the ids and the batch from
+it both, is a usage error, exit `3`.
 
 ## Filters
 
@@ -2035,7 +2101,7 @@ separately.
 | `subject` | string | The id the measurement was asked about. Written whatever the outcome. |
 | `family` | string, optional | Which family holds it: `node`, `vertex`, `edge` or `loop`. |
 | `derived` | bool | Whether the figures below were computed. Written whatever the outcome, so a thing which measures nothing — a node referencing no loop — reads as `derived` true with no figures, where a boundary which could not be read reads as `derived` false. |
-| `digest` | string, optional | The digest of the source tree the answer was computed against, lower-case hex, so a caller can check the computation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `digest` | string, optional | The digest of the source tree the answer was computed against, lower-case hex, so a caller can check the computation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. Under [`--assume`](#assumed), the digest of the tree the batch would produce. |
 | `frame` | string, optional | The frame the answer was computed in. |
 | `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
@@ -2120,7 +2186,7 @@ model ([0009](decisions/0009-derived-values-are-never-written-back.md)).
 |-------|------|---------|
 | `subject` | string | The id the drawing was asked about. Written whatever the outcome. |
 | `derived` | bool | Whether there is a region below. Written whatever the outcome, so a node with no outline to draw (`derived` true, `region.empty` true) reads differently from one whose outline could not be read (`derived` false). |
-| `digest` | string, optional | The digest of the source tree the drawing was derived from, lower-case hex, so a caller can check the drawing against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `digest` | string, optional | The digest of the source tree the drawing was derived from, lower-case hex, so a caller can check the drawing against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. Under [`--assume`](#assumed), the digest of the tree the batch would produce. |
 | `frame` | string, optional | The frame the boundary and the drawing are expressed in. |
 | `unit` | string, optional | That frame's linear unit. Nothing is converted into any other ([0005](decisions/0005-one-linear-unit-per-frame.md)). |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
@@ -2218,7 +2284,7 @@ the one a permanent structure gets placed against.
 |-------|------|---------|
 | `subject` | string | The id the derivation was asked about. |
 | `derived` | bool | Whether there is a region below. Written whatever the outcome, so a parcel whose setbacks left nothing of it (`derived` true, `region.empty` true) reads differently from one whose setbacks could not be read (`derived` false). |
-| `digest` | string, optional | The digest of the source tree the region was derived from, lower-case hex, so a caller can check the derivation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `digest` | string, optional | The digest of the source tree the region was derived from, lower-case hex, so a caller can check the derivation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. Under [`--assume`](#assumed), the digest of the tree the batch would produce. |
 | `frame` | string, optional | The frame the boundary and the answer are expressed in. |
 | `unit` | string, optional | That frame's linear unit. Every distance here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
@@ -2338,7 +2404,7 @@ of the setbacks rather than instead of them.
 | `subject` | string | The id which was sited. |
 | `within` | string | The id it had to sit inside. |
 | `sited` | bool | Whether there is an answer below. Written whatever the outcome, so a subject which does not fit (`sited` true, `verdict` `does-not-fit`) reads differently from a question which could not be asked (`sited` false). |
-| `digest` | string, optional | The digest of the source tree the answer was computed against, lower-case hex, so a caller can check the computation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `digest` | string, optional | The digest of the source tree the answer was computed against, lower-case hex, so a caller can check the computation against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. Under [`--assume`](#assumed), the digest of the tree the batch would produce. |
 | `frame` | string, optional | The frame the answer is expressed in, which is the envelope's. |
 | `declared-in` | string, optional | The frame the subject was written in. |
 | `carried` | bool | Whether a frame chain was walked to compare the two, which is what says whether a georeference is in the budget at all. |
@@ -2453,7 +2519,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 |-------|------|---------|
 | `subject` | string | The id the plan was asked about. |
 | `planned` | bool | Whether every ring below could be read. Written whatever the outcome, so a storey nobody has outlined yet (`planned` true, `outlines` empty) reads differently from one a room of which could not be read (`planned` false). |
-| `digest` | string, optional | The digest of the source tree the rings and the claims were read from, lower-case hex, so a consumer can say which model a sheet was drawn from. Written on a refusal too. Absent for a model that was not read from disk. |
+| `digest` | string, optional | The digest of the source tree the rings and the claims were read from, lower-case hex, so a consumer can say which model a sheet was drawn from. Written on a refusal too. Absent for a model that was not read from disk. Under [`--assume`](#assumed), the digest of the tree the batch would produce. |
 | `frame` | string, optional | The frame every coordinate here is in. It is the frame the subject declares; where the subject declares none, the frame of its first boundary loop, which is how a node's frame is read everywhere else; and where it has neither, the root frame. |
 | `unit` | string, optional | That frame's linear unit. Every coordinate here is in it and every area in the square of it. |
 | `tolerance` | object, optional | The tolerance corners were judged coincident against: `name`, `value` and `unit`. |
@@ -3893,7 +3959,7 @@ first of them could not invent one.
 | Field | Type | Meaning |
 |-------|------|---------|
 | `derived` | bool | Whether an artefact was produced. Written whatever the outcome, with the same meaning it has on [`measure`](#measure), [`buildable`](#buildable) and [`site`](#site): an artefact that was written reads as `derived` true, and a model no artefact could be made of reads as `derived` false. |
-| `digest` | string, optional | The digest of the source tree the artefact was derived from, lower-case hex, so a caller can check the artefact against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. |
+| `digest` | string, optional | The digest of the source tree the artefact was derived from, lower-case hex, so a caller can check the artefact against the tree in front of them. Written on a refusal too. Absent for a model which was not read from disk, or one a file of which could not be read at all. Under [`--assume`](#assumed), the digest of the tree the batch would produce. |
 | `files` | array | One entry per file the artefact consists of, ascending by `path` compared byte-wise. Empty rather than null when nothing was written. |
 | `files[].path` | string | Where the file is, exactly as it would be opened. An artefact under the build directory is written beneath a directory named for the key it was produced under ([0021](./decisions/0021-an-export-is-a-build-output-keyed-by-its-source-digest.md)), which is a path a caller cannot predict — so this field is how what was just produced is found. |
 | `files[].status` | string | One of `written`, `unchanged`. |

@@ -236,6 +236,42 @@ func (v *verbosity) IsBoolFlag() bool {
 // repeatable implements [repeatable]: -v written twice says more than -v.
 func (v *verbosity) repeatable() {}
 
+// ErrEmptyAssume is an --assume which names no file.
+//
+// It is refused rather than read as no flag at all, because a caller which
+// wrote the flag asked for a hypothetical, and answering over the model on disk
+// instead would hand it an answer about a model it did not ask about.
+var ErrEmptyAssume = errors.New(`--assume names no operation file: want a path, or "-" for standard input`)
+
+// assumption is the value of --assume: the operation file a read answers over,
+// and whether the flag was written at all.
+//
+// It is a [flag.Value] rather than a plain string so that --assume= is told
+// apart from no flag, which a string cannot do.
+type assumption struct {
+	// path is the file as it was written, which is what the answer reports.
+	path string
+
+	// given reports that the flag was written.
+	given bool
+}
+
+// String implements [flag.Value].
+//
+// The nil check is not defensive: see [verbosity.String].
+func (a *assumption) String() string {
+	if a == nil {
+		return ""
+	}
+	return a.path
+}
+
+// Set implements [flag.Value].
+func (a *assumption) Set(value string) error {
+	a.path, a.given = value, true
+	return nil
+}
+
 // endOfFlags is the argument which says that nothing after it is a flag,
 // however it is spelled. It is the flag package's own spelling, and is named
 // here because [parse] has to recognise one the flag package has already eaten.
@@ -263,6 +299,11 @@ type globals struct {
 	// command which writes takes it, so it is false on every other run and
 	// nothing reads it there.
 	DryRun bool
+
+	// Assume is the operation file a read answers over, as it was written, and
+	// is empty where the run was not asked to assume one. Only a command which
+	// reads the model takes it: see [command.reads].
+	Assume assumption
 
 	// EntityFormat is the version of the entity format the caller says its
 	// model was authored against, as it was written. Empty is the default and
@@ -301,6 +342,10 @@ func (g *globals) register(cmd command, flags *flag.FlagSet) {
 	if cmd.writes {
 		flags.BoolVar(&g.DryRun, "dry-run", false, "")
 	}
+
+	if cmd.reads {
+		flags.Var(&g.Assume, "assume", "")
+	}
 }
 
 // validate checks the global flags against each other and against nothing
@@ -309,6 +354,10 @@ func (g *globals) register(cmd command, flags *flag.FlagSet) {
 func (g *globals) validate() error {
 	if !slices.Contains(formats, g.Format) {
 		return UnknownFormatError{Format: g.Format, Known: formats}
+	}
+
+	if g.Assume.given && g.Assume.path == "" {
+		return ErrEmptyAssume
 	}
 
 	if g.EntityFormat == "" {

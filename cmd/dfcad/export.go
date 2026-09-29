@@ -409,6 +409,7 @@ warnings: the file is still produced, and a gap somebody is told about is one
 they can close.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object export writes carries "derived", the "digest" of the source tree the
 artefact was derived from, the "schema" it was written in, and "files": one
@@ -687,7 +688,7 @@ type exportedClassification struct {
 }
 
 // runExport is the export command.
-func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runExport(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -756,7 +757,10 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		destination = resolved
 	}
 
-	graph, refused := loadGate(cmd, globals, stderr)
+	graph, refused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if refused {
 		return exitLoad
 	}

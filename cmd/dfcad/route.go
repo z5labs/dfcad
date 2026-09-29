@@ -45,6 +45,7 @@ registry: overlapping rules are made disjoint, and a node nothing covers gets a
 rule.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object route writes carries "destination": the file, the rule which chose
 it, whether it was overridden, and whether the model already holds that file.
@@ -103,7 +104,7 @@ func (MissingIDError) Error() string {
 }
 
 // runRoute is the route command.
-func runRoute(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runRoute(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -135,7 +136,10 @@ func runRoute(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	// The model is loaded before the flags are checked because the registry is
 	// what says whether a type is declared and what the routing rules are, and
 	// the registry is the model.
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}
