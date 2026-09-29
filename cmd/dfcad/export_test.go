@@ -6,6 +6,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -845,7 +846,7 @@ func TestExportedRefusesAModelWhichPinsNoURL(t *testing.T) {
 
 	graph, _ := dfcad.LoadGraph(root)
 
-	_, manifest, classifications, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
+	_, manifest, classifications, _, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
 
 	assert.Empty(t, manifest)
 	assert.Empty(t, classifications)
@@ -1250,6 +1251,355 @@ func TestRunExportRefusesAStoreyWhoseFrameChainCannotBeWalked(t *testing.T) {
 
 			assert.NoDirExists(t, filepath.Join(root, dfcad.BuildDir, "export"),
 				"an artefact is all or nothing, and nothing was produced")
+		})
+	}
+}
+
+// atticFrame is a third plan grid, measured above the upstairs one rather than
+// above the root, which is what gives a level a chain of two fits to the
+// building's datum.
+const atticFrame = `
+(frame frame:plan-attic
+  (label "Attic plan grid")
+  (unit m)
+  (parent frame:plan-upstairs)
+  (transform site:C-0002)
+  (frame-transform
+    (id site:C-0002)
+    (value
+      (transform
+        (translation 0.0 0.0 2.8)
+        (rotation 1.0 0.0 0.0 0.0 1.0 0.0 0.0 0.0 1.0)
+        (scale 1.0)))
+    (source "Setting-out record SO-2026-021, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.003 m))
+    (date "2026-03-09")))
+`
+
+// atticStorey is a level declared on the attic grid which holds nothing, so
+// no corner is drawn in its frame and its elevation is read off the chain
+// alone.
+const atticStorey = `
+(node site:L-03
+  (label "Attic")
+  (kind Storey)
+  (type Level)
+  (frame frame:plan-attic)
+  (within site:B-01))
+`
+
+// atticModel is the two-storey fixture with a third level two fits above the
+// root.
+func atticModel() map[string]string {
+	files := storeyModel()
+	files["registry.dfc"] += atticFrame
+	files["entities/site.dfc"] += atticStorey
+	return files
+}
+
+// storeyless is a site holding a building and nothing else, so the file it
+// exports holds no IfcBuildingStorey at all.
+func storeyless() map[string]string {
+	return map[string]string{
+		"registry.dfc": exportRegistry,
+		"entities/site.dfc": `(node site:P-01
+  (label "Plot one")
+  (kind Site)
+  (type Parcel))
+
+(node site:B-01
+  (label "Block A")
+  (kind Building)
+  (type OfficeBuilding)
+  (within site:P-01))
+`,
+	}
+}
+
+// accountedFor is the storeys an export run under --evidence reports.
+func accountedFor(t *testing.T, files map[string]string, args ...string) (exportResult, []exportedStorey) {
+	t.Helper()
+
+	result, _, _ := exporting(t, exitSuccess, files, append(args, "--evidence")...)
+	require.NotNil(t, result.Storeys, "an export under --evidence accounts for its storeys")
+
+	return result, *result.Storeys
+}
+
+func TestRunExportAccountsForTheElevationEachStoreyIsWrittenAt(t *testing.T) {
+	levelled := append(drawingFlags(), "--height", "clear-height")
+
+	unstated := atticModel()
+	unstated["registry.dfc"] = strings.Replace(unstated["registry.dfc"],
+		"    (accuracy (independent 0.003 m))\n", "", 1)
+
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		args     []string
+		storey   string
+		expected *exportedElevation
+	}{
+		{
+			name:     "reports the root frame's own storey at nought with no budget",
+			files:    atticModel(),
+			args:     levelled,
+			storey:   "site:L-01",
+			expected: &exportedElevation{Value: 0, Unit: "m", Frame: "frame:plan-ground"},
+		},
+		{
+			name:   "reports a storey one fit above the root with that fit as its budget",
+			files:  atticModel(),
+			args:   levelled,
+			storey: "site:L-02",
+			expected: &exportedElevation{
+				Value: 3, Unit: "m", Frame: "frame:plan-ground",
+				Budget: &budgetReport{
+					From: "frame:plan-upstairs",
+					To:   "frame:plan-ground",
+					Terms: []budgetTerm{
+						{Kind: "independent", Name: "site:C-0001", Magnitude: 0.004, Unit: "m", Contributors: []string{"site:C-0001"}},
+					},
+					Combined: &combinedUncertainty{Magnitude: 0.004, Unit: "m", CoverageFactor: 1},
+				},
+			},
+		},
+		{
+			name:   "reports a storey two fits above the root with both fits in its budget, in route order",
+			files:  atticModel(),
+			args:   levelled,
+			storey: "site:L-03",
+			expected: &exportedElevation{
+				Value: 5.8, Unit: "m", Frame: "frame:plan-ground",
+				Budget: &budgetReport{
+					From: "frame:plan-attic",
+					To:   "frame:plan-ground",
+					Terms: []budgetTerm{
+						{Kind: "independent", Name: "site:C-0002", Magnitude: 0.003, Unit: "m", Contributors: []string{"site:C-0002"}},
+						{Kind: "independent", Name: "site:C-0001", Magnitude: 0.004, Unit: "m", Contributors: []string{"site:C-0001"}},
+					},
+					Combined: &combinedUncertainty{Magnitude: 0.005, Unit: "m", CoverageFactor: 1},
+				},
+			},
+		},
+		{
+			name:   "names a fit which states no accuracy rather than combining the budget",
+			files:  unstated,
+			args:   levelled,
+			storey: "site:L-03",
+			expected: &exportedElevation{
+				Value: 5.8, Unit: "m", Frame: "frame:plan-ground",
+				Budget: &budgetReport{
+					From: "frame:plan-attic",
+					To:   "frame:plan-ground",
+					Terms: []budgetTerm{
+						{Kind: "independent", Name: "site:C-0001", Magnitude: 0.004, Unit: "m", Contributors: []string{"site:C-0001"}},
+					},
+					Unknown:  []string{"site:C-0002"},
+					Unranked: []string{"frame:plan-attic"},
+				},
+			},
+		},
+		{
+			name:   "reports a storey declaring no frame with no elevation",
+			files:  exportModel(),
+			storey: "site:L-01",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, storeys := accountedFor(t, testCase.files, testCase.args...)
+
+			index := slices.IndexFunc(storeys, func(s exportedStorey) bool { return s.ID == testCase.storey })
+			require.GreaterOrEqual(t, index, 0, "the account holds an entry for %s", testCase.storey)
+
+			got := storeys[index].Elevation
+			if testCase.expected == nil {
+				assert.Nil(t, got)
+				return
+			}
+			require.NotNil(t, got)
+
+			if testCase.expected.Budget != nil && testCase.expected.Budget.Combined != nil {
+				require.NotNil(t, got.Budget)
+				require.NotNil(t, got.Budget.Combined)
+				assert.InDelta(t, testCase.expected.Budget.Combined.Magnitude, got.Budget.Combined.Magnitude, 1e-12)
+				got.Budget.Combined.Magnitude = testCase.expected.Budget.Combined.Magnitude
+			}
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+func TestRunExportListsEveryStoreyOnceInIDOrder(t *testing.T) {
+	levelled := append(drawingFlags(), "--height", "clear-height")
+
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "lists every storey of a building of three levels, ascending by id",
+			files:    atticModel(),
+			args:     levelled,
+			expected: []string{"site:L-01", "site:L-02", "site:L-03"},
+		},
+		{
+			name:     "lists a storey declaring no frame",
+			files:    exportModel(),
+			expected: []string{"site:L-01"},
+		},
+		{
+			name:     "lists nothing, rather than leaving the field out, for a file holding no storey",
+			files:    storeyless(),
+			expected: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, storeys := accountedFor(t, testCase.files, testCase.args...)
+
+			got := make([]string, 0, len(storeys))
+			for _, entry := range storeys {
+				got = append(got, entry.ID)
+			}
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestRunExportAccountsForTheElevationTheFileWrites is its own function
+// because its shape is a comparison between two outputs rather than a value:
+// every IfcBuildingStorey the file holds is read back, and the elevation it
+// was written at is exactly the one the answer reports. The two are one
+// computation, and this is the property that says so.
+func TestRunExportAccountsForTheElevationTheFileWrites(t *testing.T) {
+	testCases := []struct {
+		name  string
+		files map[string]string
+		args  []string
+	}{
+		{
+			name:  "the two-storey building",
+			files: storeyModel(),
+			args:  append(drawingFlags(), "--height", "clear-height"),
+		},
+		{
+			name:  "the sited two-storey building carried into the root frame",
+			files: carriedModel(),
+			args:  append(carriedFlags(), "--height", "clear-height"),
+		},
+		{
+			name:  "the three-level building with a level two fits above the root",
+			files: atticModel(),
+			args:  append(drawingFlags(), "--height", "clear-height"),
+		},
+		{
+			name:  "the building whose storey declares no frame",
+			files: exportModel(),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, storeys := accountedFor(t, testCase.files, testCase.args...)
+			source := artefact(t, result)
+
+			accounted := make(map[string]*exportedElevation, len(storeys))
+			for _, entry := range storeys {
+				accounted[entry.ID] = entry.Elevation
+			}
+
+			written := 0
+			for _, held := range parsed(t, source) {
+				if held.keyword != "IFCBUILDINGSTOREY" {
+					continue
+				}
+				written++
+
+				name := strings.Trim(held.attributes[2], "'")
+
+				elevation, ok := accounted[name]
+				require.True(t, ok, "the account holds an entry for the storey %s the file writes", name)
+
+				if held.attributes[9] == "$" {
+					assert.Nil(t, elevation, "a storey the file writes with no elevation is accounted for with none")
+					continue
+				}
+
+				require.NotNil(t, elevation, "a storey the file writes an elevation for is accounted for with it")
+				assert.Equal(t, real(t, held.attributes[9]), elevation.Value,
+					"the elevation the answer reports for %s is exactly the one the file writes", name)
+			}
+
+			assert.Len(t, storeys, written, "one entry per IfcBuildingStorey in the file")
+		})
+	}
+}
+
+// TestRunExportAccountsForStoreysOnlyUnderEvidence is its own function
+// because what it asserts is an absence and an identity rather than a value:
+// the default answer and the artefact are exactly what they were.
+func TestRunExportAccountsForStoreysOnlyUnderEvidence(t *testing.T) {
+	args := append(drawingFlags(), "--height", "clear-height")
+
+	root := tree(t, atticModel())
+	plain, _ := invoke(t, exitSuccess, root, append([]string{"export"}, args...)...)
+
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(plain), &fields))
+	assert.NotContains(t, fields, "storeys", "the elevations are evidence, and evidence is asked for")
+
+	without := artefact(t, listed[exportResult](t, plain))
+
+	evidenced, _ := accountedFor(t, atticModel(), args...)
+	assert.Equal(t, without, artefact(t, evidenced), "asking for the evidence does not change the artefact")
+}
+
+func TestRunExportAccountsForNoStoreyOnARefusal(t *testing.T) {
+	testCases := []struct {
+		name  string
+		files func() map[string]string
+		args  []string
+	}{
+		{
+			name: "a storey declared in a frame the registry does not declare",
+			files: func() map[string]string {
+				files := storeyModel()
+				files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"],
+					"(frame frame:plan-upstairs)", "(frame frame:plan-attic)", 1)
+				return files
+			},
+			args: append(drawingFlags(), "--height", "clear-height"),
+		},
+		{
+			name: "a model whose frames disagree about the linear unit",
+			files: func() map[string]string {
+				return map[string]string{
+					"registry.dfc":      exportRegistry + exportSecondFrame,
+					"entities/site.dfc": exportEntities,
+				}
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, testCase.files())
+			stdout, _ := invoke(t, exitCheck, root, append([]string{"export", "--evidence"}, testCase.args...)...)
+
+			var fields map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal([]byte(stdout), &fields))
+
+			assert.NotContains(t, fields, "storeys", "a refusal wrote no file, so it has no storeys to account for")
+			assert.NotContains(t, fields, "identifiers", "exactly as it has no manifest")
 		})
 	}
 }

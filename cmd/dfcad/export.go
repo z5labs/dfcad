@@ -170,7 +170,8 @@ Flags:
 	                           .dfcad/export, in a directory named for the
 	                           digest of the source tree)
 	--evidence                 add the identifier manifest: every node and the
-	                           GlobalId derived for it
+	                           GlobalId derived for it, and beside it the
+	                           elevation every storey was written at
 	--position <predicate>     the predicate a corner's position is claimed
 	                           under, which a space's outline is read from and
 	                           which a node drawn as a point is placed by
@@ -199,7 +200,10 @@ Flags:
 The manifest is asked for rather than sent by default because it grows one
 entry per node on a call whose answer is four fields, and because every entry
 of it is recomputable exactly, by anybody holding the model, from the node's id
-and the URL the project pins.
+and the URL the project pins. The storeys' elevations come with it for the
+first of those reasons: one entry per storey, each the number the file writes
+as that storey's Elevation, in the root frame's unit, with the budget of the
+fits its frame chain passes through.
 
 The first three geometry flags go together or not at all. A run which names
 none exports the spatial structure and the identifiers and no shape, which is
@@ -405,7 +409,11 @@ they can close.
 The object export writes carries "derived", the "digest" of the source tree the
 artefact was derived from, the "schema" it was written in, and "files": one
 entry per file the artefact consists of, each with the "path" it is at and a
-"status" of "written" or "unchanged".
+"status" of "written" or "unchanged". Under --evidence it carries the
+"identifiers" manifest too, and beside it "storeys": one entry per storey the
+file holds, ascending by id, each with the "elevation" it was written at, the
+root "frame" and "unit" that elevation is in, and the "budget" of the frame
+chain which put it there. A storey declaring no frame has no elevation.
 
 There is no --dry-run. What this command writes is disposable, ignored by git
 and reproducible, so there is nothing for a dry run to protect and no diff for
@@ -525,6 +533,54 @@ type exportResult struct {
 
 	// Identifiers is the manifest, written only under --evidence.
 	Identifiers []exportedIdentifier `json:"identifiers,omitempty"`
+
+	// Storeys is the account of where each storey of the file stands, one
+	// entry per IfcBuildingStorey ascending by id, written only under
+	// --evidence and only beside an artefact.
+	//
+	// It is a pointer so that the two things it must say are both sayable: a
+	// run which did not ask writes no field at all, and a run which asked of a
+	// file holding no storey writes [] rather than nothing, which is the
+	// answer rather than the absence of one.
+	Storeys *[]exportedStorey `json:"storeys,omitempty"`
+}
+
+// exportedStorey is one storey of the file and the elevation it was written
+// at.
+type exportedStorey struct {
+	// ID is the node written as the IfcBuildingStorey.
+	ID string `json:"id"`
+
+	// Elevation is the value the file writes as the storey's Elevation, and
+	// is absent for a storey declaring no frame, which the file writes with
+	// no elevation at all.
+	Elevation *exportedElevation `json:"elevation,omitempty"`
+}
+
+// exportedElevation is a storey's elevation as the file writes it, with the
+// account of how well the model knows it.
+type exportedElevation struct {
+	// Value is the elevation, exactly the number written into
+	// IfcBuildingStorey.Elevation: it is recorded from the value the writer
+	// was handed rather than derived a second time, so the file and this
+	// field cannot disagree.
+	Value float64 `json:"value"`
+
+	// Unit is the root frame's linear unit, which is the unit every
+	// coordinate in the file is written in
+	// ([0005](docs/decisions/0005-one-linear-unit-per-frame.md)).
+	Unit string `json:"unit"`
+
+	// Frame is the root frame, which is the frame every coordinate in the
+	// file is written in
+	// ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)).
+	Frame string `json:"frame"`
+
+	// Budget is the accumulated uncertainty of the fits the storey's frame
+	// chain passes through on its way to the root, in route order, and is
+	// absent for a storey declared on the root itself: nothing moved it, so
+	// there is nothing to be uncertain about.
+	Budget *budgetReport `json:"budget,omitempty"`
 }
 
 // exportedFile is one file of the artefact.
@@ -676,7 +732,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		result.Digest = digest.String()
 	}
 
-	model, manifest, classifications, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
+	model, manifest, classifications, storeys, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
 
 	// Reported whatever the outcome, refusal included: which classifications
 	// this writer could not carry is a fact about the model rather than about
@@ -721,6 +777,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 
 	if *evidencing {
 		result.Identifiers = manifest
+		result.Storeys = &storeys
 	}
 
 	reportExport(result, globals, stderr)
@@ -833,8 +890,8 @@ func reportExport(result exportResult, globals *globals, stderr io.Writer) {
 }
 
 // exported is the model as IFC holds it, the manifest of the identifiers it
-// carries, the classifications it could not carry, and whatever stopped any of
-// them being derivable.
+// carries, the classifications it could not carry, the elevation each of its
+// storeys was written at, and whatever stopped any of them being derivable.
 //
 // This function is where the two vocabularies meet, and it is on this side of
 // the boundary on purpose. A kind is this engine's word and an IfcSpace is
@@ -848,12 +905,12 @@ func exported(
 	epoch dfcad.Epoch,
 	drawn shapes,
 	sited georeference,
-) (ifc.Model, []exportedIdentifier, []exportedClassification, []dfcad.Diagnostic) {
+) (ifc.Model, []exportedIdentifier, []exportedClassification, []exportedStorey, []dfcad.Diagnostic) {
 	registry := graph.Registry()
 
 	project, held := registry.Project()
 	if !held || project.GlobalIDNamespace == "" {
-		return ifc.Model{}, nil, nil, []dfcad.Diagnostic{{
+		return ifc.Model{}, nil, nil, nil, []dfcad.Diagnostic{{
 			Severity: dfcad.SeverityError,
 			Span:     project.Span,
 			Message: "expected a project declaration pinning the URL identifiers derive from, found none: every object in " +
@@ -864,7 +921,7 @@ func exported(
 
 	units, diagnostic := exportedUnits(registry)
 	if diagnostic != nil {
-		return ifc.Model{}, nil, nil, []dfcad.Diagnostic{*diagnostic}
+		return ifc.Model{}, nil, nil, nil, []dfcad.Diagnostic{*diagnostic}
 	}
 
 	// The georeference is settled before the walk because it is a fact about
@@ -872,7 +929,7 @@ func exported(
 	// where it sits is refused before an artefact is built out of it.
 	placed, refused := georeferenced(registry, graph.Frames(), sited)
 	if len(refused) > 0 {
-		return ifc.Model{}, nil, nil, refused
+		return ifc.Model{}, nil, nil, nil, refused
 	}
 
 	// The frame every coordinate in the file is written in, settled once
@@ -954,7 +1011,7 @@ func exported(
 		},
 	}
 
-	return model, out.identifiers(), out.classifications(), out.diags
+	return model, out.identifiers(), out.classifications(), out.storeyed(), out.diags
 }
 
 // exporter is one traversal of the graph into IFC's shape.
@@ -1052,6 +1109,10 @@ type exporter struct {
 	// hundred doors of one type is told once about the type rather than a
 	// hundred times about the same line of the registry.
 	reclassify map[string]bool
+
+	// storeys is the elevation each storey was written at, in the order the
+	// walk wrote them. [exporter.storeyed] is what puts it in id order.
+	storeys []exportedStorey
 
 	// derived is every identifier derived so far, by the name it was derived
 	// from. It is what makes deriving one twice cost nothing and report once.
@@ -1266,6 +1327,13 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode, datum float64) []ifc.S
 		// declared on rather than after everything beneath it.
 		elevation := e.elevation(node)
 
+		// The account is recorded from the value the file is about to be
+		// handed, which is what makes the two one computation rather than two
+		// which happen to agree.
+		if node.Kind() == dfcad.KindStorey {
+			e.account(node, elevation)
+		}
+
 		// Where this element's own placement stands, which is where its shape
 		// and everything hanging off it are written from.
 		standingAt := datum
@@ -1385,6 +1453,62 @@ func (e *exporter) elevation(node *dfcad.SemanticNode) *float64 {
 	elevation := origin[2]
 
 	return &elevation
+}
+
+// account records the elevation a storey is written at, with the budget of
+// the frame chain which put it there.
+//
+// It reads the elevation it is handed rather than deriving one, because the
+// value it is handed is the one the file writes and a second derivation is a
+// second place an elevation could come from
+// ([0024](docs/decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)).
+// The budget is [dfcad.Frames.TransformBudget] over exactly the route
+// [dfcad.Frames.TransformPoint] took, rendered the way resolve --frame renders
+// one.
+func (e *exporter) account(node *dfcad.SemanticNode, elevation *float64) {
+	entry := exportedStorey{ID: string(node.ID())}
+
+	if elevation != nil {
+		written := &exportedElevation{Value: *elevation, Frame: string(e.root)}
+		if root, ok := e.registry.Frame(e.root); ok {
+			written.Unit = string(root.Unit)
+		}
+
+		// A storey is only handed an elevation when it declares a frame whose
+		// chain was walked, so the frame is there to read.
+		frame, _ := node.Frame()
+		if frame != e.root {
+			budget, err := e.graph.Frames().TransformBudget(frame, e.root)
+			if err != nil {
+				e.refuse(node, fmt.Sprintf(
+					"expected to accumulate the accuracy of the frame chain from %s to %s to account for the "+
+						"elevation of storey %s, found %s", frame, e.root, node.ID(), err),
+					"the chain this storey was placed by is the chain its accuracy is read along; a fit which "+
+						"places it has a claim, and that claim is what the budget reads")
+			} else {
+				report := budgetOf(budget)
+				report.From, report.To = string(frame), string(e.root)
+				written.Budget = &report
+			}
+		}
+
+		entry.Elevation = written
+	}
+
+	e.storeys = append(e.storeys, entry)
+}
+
+// storeyed is the account of every storey the file holds, ascending by id
+// compared byte-wise, and empty rather than nil when it holds none.
+func (e *exporter) storeyed() []exportedStorey {
+	out := slices.Clone(e.storeys)
+	if out == nil {
+		out = []exportedStorey{}
+	}
+
+	slices.SortFunc(out, func(a, b exportedStorey) int { return strings.Compare(a.ID, b.ID) })
+
+	return out
 }
 
 // standing is where a spatial element's own coordinate system sits inside its
