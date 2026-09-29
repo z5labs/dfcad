@@ -3429,7 +3429,7 @@ order the ring is walked.
 The order is the data: it is preserved exactly as written and is never sorted. Every edge id
 is resolved before anything is written; whether the ring closes is judged when the model the
 change produces is loaded, and a change that would produce a model that does not load is
-refused.
+refused. The ring is changed afterwards with [`set-edges`](#set-edges).
 
 The payload is the write payload above and nothing more.
 
@@ -3949,6 +3949,59 @@ earlier in the same batch still names the element
       "status": "rewritten",
       "effects": [{"op": "modified", "tag": "edge", "id": "geom:E-05"}],
       "diff": "--- model.dfc.orig\n+++ model.dfc\n@@ -80,8 +80,7 @@\n..."
+    }
+  ]
+}
+```
+
+### `set-edges`
+
+The edges a loop is traversed through: the whole ordered ring, replacing every edge it named
+before. It takes the loop, and one `--edge` per edge of the ring, and reports the write payload
+above with nothing added to it: the one effect is `modified` on the loop.
+
+| Flag | Meaning |
+|------|---------|
+| `--edge <edge-id>` | An edge of the ring. Repeat once per edge, in traversal order. At least one. |
+
+```console
+$ dfcad set-edges --edge geom:E-13 --edge geom:E-14 --edge geom:E-15 --edge geom:E-16 geom:L-13
+```
+
+The whole list is replaced, as `add-loop` writes it: the order is the data (SPEC §6.4), and a
+patch to an ordered ring is the edit most likely to be wrong. The edges are written in the
+order given and never sorted. The loop's label, frame, claims and assertions are untouched,
+and every node naming the loop in `boundary` reads the new ring with no edit of its own — so
+what `measure` answers for a room follows its outline.
+
+No `--edge`, no loop named, an id nothing holds, an id naming something other than a loop, and
+an edge id naming nothing or something other than an edge are each a **usage error**, exit
+`3`, answered before anything is written; the edges are resolved as `add-loop` resolves them.
+Whether its edges are in the loop's frame is judged when the model this would produce is
+interpreted (SPEC §6.4, §7.5.1) — so stdout carries [the refusal](#the-refusal), with the load
+failure exit code `2`, and the diagnostics are the ones a load of that model would have raised.
+
+**Whether the ring closes is not judged**, as it is not for `add-loop`: closure is judged
+against a tolerance the registry names, which a write has no way to choose. A ring which does
+not close is written, exit `0`, and [`check`](#check) over the result reports it through
+`boundary-loops-close`, exit `1` — which is the edit that proves that check can fail, and
+`check --assume` answers it without writing anything.
+
+Rerouting an outline through a new corner is a batch: the vertex, the edges to it and the ring
+restated, applied with [`apply`](#apply) as one change
+([`set-edges`](./operation-file.md#set-edges)).
+
+```json
+{
+  "version": 2,
+  "command": "set-edges",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "model.dfc",
+      "status": "rewritten",
+      "effects": [{"op": "modified", "tag": "loop", "id": "geom:L-13"}],
+      "diff": "--- model.dfc.orig\n+++ model.dfc\n@@ -96,7 +96,7 @@\n..."
     }
   ]
 }

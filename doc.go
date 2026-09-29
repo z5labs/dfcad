@@ -154,6 +154,12 @@
 // demolished are each one change. Whether the edge is a physical boundary is
 // computed from what it names and stored nowhere, so nothing else is edited.
 //
+// [Tx.SetEdges] restates the ordered ring a loop is traversed through, replacing
+// the whole list rather than patching it, because the order is the data. Every
+// node bounded by the loop reads the new ring with no edit of its own. Whether
+// the ring closes is not judged at commit, as it is not for [Tx.AddLoop]: the
+// `boundary-loops-close` check reports a ring which does not.
+//
 // [Tx.AddAssertion] writes a check on the one thing it constrains, refused
 // before anything is written by the validation [ValidateAssertion] runs at load
 // and at [Tx.Commit] by the passes which need the whole model. What must hold of

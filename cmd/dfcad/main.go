@@ -270,6 +270,13 @@ var commands = []command{
 		writes:  true,
 	},
 	{
+		name:    "set-edges",
+		summary: "replace the ordered ring of edges a loop runs through",
+		usage:   setEdgesUsage,
+		run:     runSetEdges,
+		writes:  true,
+	},
+	{
 		name:    "scaffold-loop",
 		summary: "write a room's corners, walls and outline in one change",
 		usage:   scaffoldLoopUsage,

@@ -2352,6 +2352,67 @@ func ExampleTx_SetBacking() {
 	// after: physical [site:W-14]
 }
 
+// ExampleTx_SetEdges restates the ring a loop is traversed through.
+//
+// The whole ordered list is replaced rather than patched, because the order is
+// the data. The room bounded by the loop reads the new ring with nothing else
+// written.
+func ExampleTx_SetEdges() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+
+	if err := os.CopyFS(root, os.DirFS("testdata/checks/satisfied")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	before, _ := dfcad.LoadGraph(root)
+	outline, _ := before.Topology().Loop("geom:L-13")
+	fmt.Println("before:", outline.Edges())
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = tx.Close() }()
+
+	ring := []dfcad.ID{"geom:E-16", "geom:E-15", "geom:E-14", "geom:E-13"}
+	if err := tx.SetEdges("geom:L-13", ring); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+
+	for _, effect := range commit.Effects() {
+		fmt.Printf("%s %s %s\n", effect.Op, effect.Tag, effect.ID)
+	}
+
+	after, _ := dfcad.LoadGraph(root)
+	outline, _ = after.Topology().Loop("geom:L-13")
+	store, _ := after.Node("site:S-901")
+	fmt.Println("after:", outline.Edges())
+	fmt.Println("bounded by:", store.Boundaries())
+
+	// Output:
+	// before: [geom:E-13 geom:E-14 geom:E-15 geom:E-16]
+	// modified loop geom:L-13
+	// after: [geom:E-16 geom:E-15 geom:E-14 geom:E-13]
+	// bounded by: [geom:L-13]
+}
+
 // ExampleTx_Retire records that a thing stopped existing, and moves what
 // referenced it onto the thing which replaced it.
 func ExampleTx_Retire() {
@@ -3141,7 +3202,7 @@ func ExampleParseBatch_refused() {
 	// Output:
 	// operation 1, add-node: a node is written with an id
 	// operation 2, add-node: json: unknown field "edges"
-	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim, add-assertion, set-backing
+	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim, add-assertion, set-backing, set-edges
 	// no id was written: true
 }
 

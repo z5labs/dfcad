@@ -170,6 +170,54 @@ change which would produce a model that does not load is refused.
 ` + outputContractHelp + `
 ` + writeOutputHelp
 
+const setEdgesUsage = `dfcad set-edges — replace the ordered ring of edges a loop runs through.
+
+Usage:
+
+	dfcad set-edges [flags] <loop> --edge <edge-id>...
+
+A loop's edges are its outline, and an outline changes: a partition moves, a room
+is split. This states the whole ring: every edge the loop named is replaced by the
+ones given here, in the order given, so a rerouted outline is one statement of the
+ring it runs through now rather than a patch to an ordered list. Its label, frame,
+claims and assertions are untouched, and every node which names the loop as its
+boundary reads the new ring with no edit of its own.
+
+Flags:
+
+	--edge <edge-id>     an edge of the ring; repeat once per edge, in the order
+	                     the loop is traversed. At least one is required
+
+The order is the data. It is preserved exactly as written and is never sorted,
+because it is the order in which the ring is walked.
+
+An id nothing holds, an id naming something which is not a loop, an edge id
+naming nothing or something which is not an edge, and no --edge at all are each
+a usage error, answered before anything is written. Whether its edges are in the
+loop's frame is judged when the model the change produces is loaded, and a
+change which would produce a model that does not load is refused.
+
+Whether the ring closes is not judged here, as it is not by "dfcad add-loop": it
+is judged against a tolerance the registry names, which a write has no way to
+choose. A ring which does not close is written, and "dfcad check" reports it
+through boundary-loops-close wherever the model asks for that check.
+
+To reroute an outline through a new corner, write the corner and its edges and
+restate the ring in one change, with ` + "`dfcad apply`" + `:
+
+	{"operations": [
+	  {"op": "add-vertex", "id": "geom:V-30", ...},
+	  {"op": "add-edge", "id": "geom:E-30", "start": "geom:V-11", "end": "geom:V-30", ...},
+	  {"op": "add-edge", "id": "geom:E-31", "start": "geom:V-30", "end": "geom:V-12", ...},
+	  {"op": "set-edges", "id": "geom:L-13",
+	   "edges": ["geom:E-13", "geom:E-14", "geom:E-30", "geom:E-31", "geom:E-16"]}
+	]}
+
+` + globalFlagsHelp + `
+` + writeFlagsHelp + `
+` + outputContractHelp + `
+` + writeOutputHelp
+
 const scaffoldLoopUsage = `dfcad scaffold-loop — write a room's corners, walls and outline in one change.
 
 Usage:
@@ -588,6 +636,52 @@ func runAddLoop(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 
 	reportRouted(cmd, globals, stderr, id, destination)
+
+	return commitChange(cmd, tx, globals, stdout, stderr)
+}
+
+// runSetEdges is the set-edges command.
+func runSetEdges(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+	globals := &globals{}
+	flags := newFlagSet(cmd, globals)
+
+	ring := &repeated{}
+	flags.Var(ring, "edge", "")
+
+	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
+	if done {
+		return exit
+	}
+
+	id, exit, ok := subject(cmd, arguments, 1, stderr)
+	if !ok {
+		return exit
+	}
+
+	// The ids on the command line are read before the model is, for the reason
+	// `dfcad set-backing` reads its elements there: nothing about the tree makes
+	// a malformed id well formed.
+	edges, err := identified(*ring)
+	if err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
+	// No --edge at all is answered before the model is read, for the reason
+	// `dfcad relate` answers a relation to nothing there: it is a property of the
+	// invocation, wrong whatever the model holds.
+	if len(edges) == 0 {
+		return usageError(cmd, dfcad.ErrNoEdges, stderr, true)
+	}
+
+	tx, exit, ok := begin(cmd, globals, stderr)
+	if !ok {
+		return exit
+	}
+	defer func() { _ = tx.Close() }()
+
+	if err := tx.SetEdges(id, edges); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
 
 	return commitChange(cmd, tx, globals, stdout, stderr)
 }
