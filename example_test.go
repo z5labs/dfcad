@@ -2886,6 +2886,77 @@ func ExampleTx_Apply() {
 	// site.dfc rewritten
 }
 
+// ExampleAssume answers over the model a batch would produce without writing
+// it: the batch is applied in memory, and the graph which comes back is the one
+// a load would read had it been written.
+//
+// Nothing beneath the root changes and no lock is taken, so the fixture is read
+// in place. The graph's digest is the digest of the tree the batch would
+// produce, which is what anything derived from it is keyed by; the digest of
+// the tree that was read comes back beside it.
+func ExampleAssume() {
+	batch, err := dfcad.ParseBatch(strings.NewReader(`{
+		"version": 1,
+		"operations": [
+			{"op": "supersede", "subject": "geom:V-21", "predicate": "position",
+			 "claim": {"value": "3.0 6.5 0.0", "unit": "m",
+			           "source": "Re-survey RS-2026-003, Acme Surveys",
+			           "method": "method:total-station",
+			           "accuracy": ["independent 0.002 m"],
+			           "date": "2026-06-01"}}
+		]
+	}`))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	assumption, diags, err := dfcad.Assume("testdata/checks/satisfied", batch)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	var collected dfcad.Diagnostics
+	collected.Add(diags...)
+	if collected.HasErrors() {
+		fmt.Println("refused")
+		return
+	}
+
+	for _, operation := range assumption.Applied {
+		for _, effect := range operation.Effects {
+			fmt.Printf("%d %s: %s %s %s\n",
+				operation.Index, operation.Operation, effect.Op, effect.Tag, effect.ID)
+		}
+	}
+
+	graph := assumption.Graph
+	resolution, err := graph.Claims().Resolve("geom:V-21", "position", graph.Registry())
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	value, _ := resolution.Value()
+	position, _ := value.Coordinate()
+	fmt.Println("geom:V-21 would be at", position, value.Unit())
+
+	digest, _ := graph.Digest()
+	on, err := dfcad.DigestOf("testdata/checks/satisfied")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("base is the tree on disk:", assumption.Base == on)
+	fmt.Println("the answer is keyed by another tree:", digest != assumption.Base)
+
+	// Output:
+	// 1 supersede: modified vertex geom:V-21
+	// 1 supersede: modified vertex geom:V-21
+	// geom:V-21 would be at [3 6.5 0] m
+	// base is the tree on disk: true
+	// the answer is keyed by another tree: true
+}
+
 // ExampleParseBatch_refused reports every problem an operation file has at
 // once, each naming the operation it is about by its place in the list.
 //
