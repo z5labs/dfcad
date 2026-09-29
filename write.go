@@ -391,15 +391,32 @@ func Begin(root string) (*Tx, []Diagnostic, error) {
 		return nil, nil, err
 	}
 
-	tx := &Tx{root: root, lock: lock, files: make(map[string]*staged)}
+	tx, diags := beginUnlocked(root)
+	tx.lock = lock
 
-	diags := tx.read()
 	if refused(diags) {
 		_ = tx.Close()
 		return nil, diags, nil
 	}
 
 	return tx, diags, nil
+}
+
+// beginUnlocked reads the model beneath root into a transaction which holds no
+// lock.
+//
+// It is everything [Begin] does apart from taking the root, so that a change
+// nobody means to write — [Assume] — is read, applied and interpreted by the
+// same code as one somebody does. Two copies of the read would be two answers to
+// what a batch means the first time one of them learned something the other did
+// not.
+//
+// The transaction comes back whether or not the tree loaded; refusing one which
+// did not is the caller's decision, because only the caller knows whether there
+// is a lock to release.
+func beginUnlocked(root string) (*Tx, []Diagnostic) {
+	tx := &Tx{root: root, files: make(map[string]*staged)}
+	return tx, tx.read()
 }
 
 // acquire creates the lock file in root, which is what says the root is held.
@@ -775,7 +792,7 @@ func (tx *Tx) Commit() (Commit, []Diagnostic, error) {
 	// naming the file, which is where a caller can act on it.
 	defer func() { _ = tx.finish() }()
 
-	pending, diags := tx.prepare()
+	pending, _, diags := tx.prepare()
 	if refused(diags) {
 		return Commit{}, diags, nil
 	}
@@ -845,11 +862,18 @@ func (p *pending) change() Change {
 // would have nowhere to point; printed and re-read, it has the position it
 // would have had on disk, and the author is sent to the line they would have
 // been sent to had the file been written and loaded.
-func (tx *Tx) prepare() ([]*pending, []Diagnostic) {
+//
+// The graph it interpreted comes back too, digested from the bytes the tree
+// would hold once the change was written: what is on disk for every file
+// nothing touched and the printing of every file something did. [Tx.Commit]
+// needs only whether it loads; [Assume] needs the model itself, and building it
+// here is what keeps the two from coming to disagree about what a batch means.
+func (tx *Tx) prepare() ([]*pending, *Graph, []Diagnostic) {
 	var (
 		out    []*pending
 		parsed []source
 		diags  []Diagnostic
+		after  []digested
 	)
 
 	// Lexically, which is the order a walk reaches files in, so that a change
@@ -859,6 +883,12 @@ func (tx *Tx) prepare() ([]*pending, []Diagnostic) {
 
 		if !file.touched {
 			parsed = append(parsed, source{path: file.path, file: file.file})
+
+			// A file a mutation named and then never wrote into is not on
+			// disk and would not be once the change was written either.
+			if file.existed {
+				after = append(after, digested{path: file.path, content: file.src})
+			}
 			continue
 		}
 
@@ -880,11 +910,77 @@ func (tx *Tx) prepare() ([]*pending, []Diagnostic) {
 
 		out = append(out, &pending{staged: file, src: printed.Bytes()})
 		parsed = append(parsed, source{path: file.path, file: read})
+		after = append(after, digested{path: file.path, content: printed.Bytes()})
 	}
 
-	_, diags = loadGraph(tx.root, parsed, diags, registeredChecks)
+	graph, diags := loadGraph(tx.root, parsed, diags, registeredChecks)
+	graph.digest = digestOfFiles(tx.root, after)
 
-	return out, diags
+	return out, graph, diags
+}
+
+// digested is one file of a tree which is not on disk: where it would be, and
+// the bytes it would hold.
+type digested struct {
+	path    string
+	content []byte
+}
+
+// digestOfFiles is the digest [DigestOf] would compute were files the whole of
+// the tree beneath root.
+//
+// The files are digested in the order a walk would reach them, which is not the
+// lexical order of their paths: a walk reads a directory's entries by name and
+// descends into each as it reaches it, so `a/b.dfc` comes before `a-b.dfc`
+// although `-` sorts before `/`. Comparing the paths element by element is
+// exactly that order, and a digest accumulated in any other would be the digest
+// of no tree anybody could read.
+func digestOfFiles(root string, files []digested) Digest {
+	named := make([]digested, 0, len(files))
+	for _, file := range files {
+		named = append(named, digested{path: digestPathOf(root, file.path), content: file.content})
+	}
+
+	slices.SortFunc(named, func(a, b digested) int {
+		return slices.Compare(
+			strings.Split(digestName(root, a.path), "/"),
+			strings.Split(digestName(root, b.path), "/"),
+		)
+	})
+
+	digest := newTreeDigest(root)
+	for _, file := range named {
+		digest.file(file.path, file.content)
+	}
+
+	return digest.digest()
+}
+
+// digestPathOf spells path the way root is spelled, absolute or relative, so
+// that its name relative to the root can be taken.
+//
+// A mutation may name a file absolutely beneath a root given relatively, and
+// the two cannot be related as written: the name would fall back to the file's
+// base name, and the digest would describe a tree with that file at its top.
+func digestPathOf(root, path string) string {
+	if filepath.IsAbs(root) == filepath.IsAbs(path) {
+		return path
+	}
+
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return path
+	}
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	rel, err := filepath.Rel(absoluteRoot, absolutePath)
+	if err != nil {
+		return path
+	}
+
+	return filepath.Join(root, rel)
 }
 
 // write puts every prepared file on disk, all of them or none.
