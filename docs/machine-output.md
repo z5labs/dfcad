@@ -319,7 +319,7 @@ allows: a caller that never reads it sees the object it always did.
 | 0 | Success. The command did what was asked. | The result object, or empty for help. |
 | 1 | Check failure. It ran and answered, and the answer is no. | The result object. |
 | 2 | Load failure. Input could not be read, did not parse, or was not written. | The result object; or [the refusal](#the-refusal) where a load refused the model and the command has no answer to give through it; or empty when nothing could be loaded at all, or for an error that is not a diagnostic. |
-| 3 | Usage error. The invocation itself was wrong, including a name given on the command line which the model does not hold, such as a `--tolerance` or `--chord` naming a tolerance the registry does not declare. | Empty. |
+| 3 | Usage error. The invocation itself was wrong, including a name given on the command line which the model does not hold, such as a `--tolerance`, `--chord` or `claims --worse-than` naming a tolerance the registry does not declare. | Empty. |
 | 4 | Ambiguous. Resolution could not choose between the claims, and every one it could not choose between is in the result. | The result object. |
 | 5 | Strict ambiguity. The same, under a predicate the registry declares strict. | The result object. |
 
@@ -1708,7 +1708,7 @@ A walk that reaches nothing is not an error — it is an empty `results` and exi
 ### `claims`
 
 Every claim written on one thing, live and retracted alike — or, with no id, on every thing.
-It takes an optional id, a predicate after the id, and five filters. The id may name a node,
+It takes an optional id, a predicate after the id, and six filters. The id may name a node,
 a vertex, an edge or a loop, or a **frame** the registry declares, as it may for
 [`get`](#a-frame): a frame carries claims — the transform placing it in its parent among
 them — and they are answered exactly as any other subject's are, each row carrying
@@ -1721,6 +1721,7 @@ them — and they are answered exactly as any other subject's are, each row carr
 | `--family <family>` | Only claims on a thing of this family: `node`, `vertex`, `edge` or `loop`. [Repeatable](#filters). |
 | `--method <id>` | Only claims obtained by this method, matched exactly against `claims[].method`. [Repeatable](#filters). |
 | `--unrankable` | Only claims resolution cannot rank: those that state no accuracy, and those whose accuracy is in more than one unit ([SPEC §6.5](../SPEC.md#65-claims)). Takes no value. |
+| `--worse-than <tolerance>` | Only claims whose combined accuracy is worse than this tolerance: `claims[].combined.magnitude` strictly greater than the tolerance's value, with `claims[].combined.unit` equal to the tolerance's unit. Names a tolerance the registry declares, never a number ([0012](decisions/0012-tolerances-are-registry-data.md)). Written once. |
 
 Filters combine: a claim is listed when it satisfies every filter given, and a filter written
 more than once is satisfied by any of its values; see [Filters](#filters). They apply with an
@@ -1754,6 +1755,68 @@ figure, and its entry carries `units` and no `combined`. Every entry `--unrankab
 one with no `combined`. Retracted claims are listed beside live ones, each still marked with its
 `resolution`, and the flag combines with every other filter, with an id or without one. A model
 in which every claim states an accuracy answers `"claims": []` and exit `0`.
+
+`--worse-than` selects the claims a field visit should re-check because they are not known well
+enough. **The threshold is a name, not a number.** No numeric literal tolerance appears on the
+command line any more than in engine code: an operation that needs one takes a name and reports
+which name it used ([0012](decisions/0012-tolerances-are-registry-data.md)), as `--tolerance`
+and `--chord` already do. A literal would be the first figure on the command line the model does
+not hold, and its unit would need a grammar of its own. The consumer declares the threshold in
+its registry — `(tolerance field-recheck (value 0.02 m) (description "…"))` — and writes
+`--worse-than field-recheck`, so the threshold stays the consumer's and is versioned with the
+model.
+
+A claim is listed when its `combined` figure — the one resolution ranks it by, which the row
+itself carries — is **strictly greater** than the tolerance's value and is in exactly the
+tolerance's unit. A claim exactly at the tolerance is not worse than it and is not listed.
+Retracted claims are listed beside live ones, each still marked with its `resolution`, and the
+flag combines with every other filter, with an id or without one, under the rule in
+[Filters](#filters).
+
+**Nothing converts.** A figure in `mm` is not compared with a tolerance in `m`, as a budget never
+combines terms in two units ([SPEC §6.6.5](../SPEC.md#665-accuracy-terms)). A claim that cannot be compared is
+neither listed nor silently dropped: the answer counts it under `incomparable`, so that a punch
+list cannot read "nothing worse than 20 mm" off an answer that judged nothing. A claim with no
+figure — no accuracy, or terms in more than one unit — counts under `no-figure`; one whose figure
+is in another unit than the tolerance's counts under `other-unit`. Both are counts over the claims
+the other filters selected, and both are written even when zero.
+
+```sh
+dfcad claims --worse-than field-recheck --predicate position
+```
+
+```json
+{
+  "version": 2,
+  "command": "claims",
+  "refused": false,
+  "worse-than": {"name": "field-recheck", "value": 0.02, "unit": "m"},
+  "incomparable": {"no-figure": 1, "other-unit": 0},
+  "claims": [
+    {
+      "subject": "geom:V-07",
+      "family": "vertex",
+      "id": "survey:P-0031",
+      "predicate": "position",
+      "value": {"shape": "coordinate", "unit": "m", "coordinate": [12.4, 3.1, 0]},
+      "source": "Plan set A-101, sheet 3",
+      "method": "method:scaled-from-plan",
+      "accuracy": [{"kind": "independent", "magnitude": 0.05, "unit": "m"}],
+      "combined": {"magnitude": 0.05, "unit": "m", "coverage-factor": 1},
+      "date": "2026-01-09",
+      "rank": "normal",
+      "resolution": "current",
+      "span": "model.dfc:88:3-94:25"
+    }
+  ]
+}
+```
+
+A `--worse-than` naming a tolerance the registry does not declare is a **usage error** — exit
+`3`, with nothing on stdout — naming every tolerance it does declare: the
+`dfcad.UnknownAxisError` on the `tolerance` axis that every derivation's `--tolerance` and
+`--chord` give for the same mistake, from the same check. `--worse-than` written twice is refused
+as every single-valued flag is, rather than answered with the last of the two.
 
 `get` answers what the model says about a thing now; `claims` answers everything anybody has
 said about it and what became of each statement. Deprecated claims are therefore in the
@@ -1808,6 +1871,8 @@ replaced them, so a retraction is followable forward without a second call.
 |-------|------|---------|
 | `refused` | boolean | True where the load refused the model — an error among the diagnostics on stderr, the ones `check` exits `2` for — and what follows was read through it. False over a model which loads. See [Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read). |
 | `subject` | string, optional | The id the claims below are written on, which is the id that was asked for. Absent when no id was, and the claims are every subject's. |
+| `worse-than` | object, optional | The tolerance `--worse-than` named: `name`, `value` and `unit`, as the registry declares it, so that a stored listing says which question it answers. Absent when `--worse-than` was not given. |
+| `incomparable` | object, optional | Written exactly when `--worse-than` was given: `{"no-figure": <count>, "other-unit": <count>}`, how many of the claims the other filters selected could not be compared with the tolerance, and why. `no-figure` counts those that state no accuracy or whose terms are in more than one unit; `other-unit` those whose `combined.unit` is not the tolerance's. Each count is written even when zero. |
 | `claims` | array | Every claim written on it, in predicate order and then by where each was written — or, with no id, every claim on every subject, in subject id order first. Empty rather than null when nothing is claimed. Each entry is the claim object `get` writes, documented above, with the four fields below beside it. |
 | `claims[].subject` | string | The id of the thing the claim is written on. Written whether or not an id was asked about, so that an entry has one shape whatever narrowed the listing. |
 | `claims[].family` | string | Which family holds that thing: `node`, `vertex`, `edge` or `loop`, or `frame` where the id asked about is a frame. |
