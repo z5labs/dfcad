@@ -643,12 +643,15 @@ func TestRunTessellateANodeWithNoOutline(t *testing.T) {
 	assert.Nil(t, result.Deviation, "and nothing to have departed from anything")
 }
 
+// TestRunTessellateRefusesWhatItCannotDraw is the drawings a declared chord
+// tolerance cannot make. A chord tolerance the registry does not declare is not
+// one of them: that is the invocation rather than the drawing, and is refused
+// before anything is drawn (TestTolerancesTheRegistryDoesNotDeclareAreUsageErrors).
 func TestRunTessellateRefusesWhatItCannotDraw(t *testing.T) {
 	testCases := []struct {
 		name  string
 		chord string
 	}{
-		{name: "refuses a chord tolerance the registry does not declare", chord: "no-such-tolerance"},
 		{name: "refuses a tolerance finer than anything behind the arc supports", chord: "hair-chord-deviation"},
 	}
 

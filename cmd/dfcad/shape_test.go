@@ -14,6 +14,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
 
 // shapeRegistry is the vocabulary the drawn fixture below is authored against.
@@ -1037,15 +1039,20 @@ func lineModel(t *testing.T) map[string]string {
 // because it is about a name rather than about a shape: there is no default
 // tolerance and there never will be, so a run named against one the registry
 // does not declare is refused rather than judged against nothing.
+//
+// It is refused as the invocation it is, before anything is derived — a usage
+// error naming the tolerances the registry does declare — rather than as a
+// diagnostic at the run which happened to read the name first: the mistake is
+// on the command line, and nothing is wrong with site:W-01.
 func TestRunExportRefusesARunItHasNoDeclaredToleranceToJudge(t *testing.T) {
-	result, _, stderr := exporting(t, exitCheck, lineModel(t),
+	result, _, stderr := exporting(t, exitUsage, lineModel(t),
 		"--position", "position", "--tolerance", "nonesuch", "--chord", "facet",
 		"--height", "clear-height", "--thickness", "nominal-thickness")
 
-	assert.False(t, result.Derived)
-	assert.Empty(t, result.Files, "an artefact is all or nothing, and nothing was produced")
-	assert.Contains(t, stderr, "nonesuch", "the refusal names the tolerance nobody declared")
-	assert.Contains(t, stderr, "site:W-01", "and a run it could not judge")
+	expected := dfcad.UnknownAxisError{Axis: "tolerance", Value: "nonesuch", Permitted: []string{"corner", "facet"}}
+
+	assert.Equal(t, exportResult{}, result, "a usage error writes nothing on stdout")
+	assert.Equal(t, "dfcad export: "+expected.Error()+"\n", stderr, "the refusal names the tolerance nobody declared, and nothing about the model")
 }
 
 // TestRunExportNamesTheQuantityBehindAnAmbiguousClaim is its own function
