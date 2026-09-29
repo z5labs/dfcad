@@ -1427,10 +1427,18 @@ func (o *SetBackingOperation) apply(tx *Tx, _ *Applied) error {
 		return err
 	}
 
-	spec := BackingSpec{Virtual: len(*o.BackedBy) == 0}
+	// A batch built in code rather than read by [ParseBatch] never had its
+	// members checked, so an absent member reaches here as nil. It states
+	// nothing, and [Tx.SetBacking] refuses a spec which states nothing in the
+	// same words the parse would have used.
+	var spec BackingSpec
 
-	if spec.BackedBy, err = identifyAll(*o.BackedBy); err != nil {
-		return err
+	if o.BackedBy != nil {
+		spec.Virtual = len(*o.BackedBy) == 0
+
+		if spec.BackedBy, err = identifyAll(*o.BackedBy); err != nil {
+			return err
+		}
 	}
 
 	return tx.SetBacking(id, spec)

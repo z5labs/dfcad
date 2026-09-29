@@ -415,3 +415,22 @@ func TestTxSetBackingNamesAnEdgeTheSameChangeWrote(t *testing.T) {
 
 	assert.Equal(t, []ID{"site:W-16"}, edgeOf(t, graph, "geom:E-08").BackedBy())
 }
+
+// TestTxApplyRefusesASetBackingBuiltWithoutItsMember checks a batch built in
+// code rather than read from a file, which [ParseBatch] never checked: the
+// absent member is refused as the parse would have refused it, not
+// dereferenced.
+func TestTxApplyRefusesASetBackingBuiltWithoutItsMember(t *testing.T) {
+	root := copied(t, backedFixture)
+
+	err := rejected(t, root, func(tx *Tx) error {
+		_, err := tx.Apply(Batch{Version: BatchVersion, Operations: []Operation{&SetBackingOperation{ID: "geom:E-05"}}})
+		return err
+	})
+
+	var problem OperationError
+	require.ErrorAs(t, err, &problem)
+	assert.Equal(t, 1, problem.Index)
+	assert.Equal(t, "set-backing", problem.Operation)
+	assert.ErrorIs(t, err, ErrNoBacking)
+}
