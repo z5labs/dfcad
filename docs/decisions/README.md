@@ -79,3 +79,4 @@ the code in front of them and needs the part that is not in the code.
 | [0026](./0026-reading-a-revision-out-of-git-is-a-host-command.md) | Reading a revision out of git is a host command, and the image stays scratch | Accepted |
 | [0027](./0027-an-element-fills-an-opening-because-its-type-says-so.md) | An element fills an opening because its type says so | Accepted |
 | [0028](./0028-a-measurement-may-run-to-an-elements-face-and-the-face-is-the-only-derived-anchor.md) | A measurement may run to an element's face, and the face is the only derived anchor | Accepted |
+| [0029](./0029-every-diagnostic-a-run-renders-is-written-in-its-answer-on-stdout.md) | Every diagnostic a run renders is written in its answer on stdout | Accepted |
