@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+**See also:** [0030](./0030-a-read-may-assume-a-batch.md) — an answer over an assumed batch reports the digest of the tree the batch would produce.
+
 ## Context
 
 A great deal of what the engine computes is expensive: the area of a space, the centroid of

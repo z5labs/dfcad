@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+**See also:** [0030](./0030-a-read-may-assume-a-batch.md) — a read given a batch refuses it exactly as `apply --dry-run` does, and writes and locks nothing.
+
 ## Context
 
 Once the command line interface writes files ([0015](./0015-the-cli-is-the-primary-write-path.md)),
