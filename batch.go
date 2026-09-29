@@ -49,6 +49,7 @@ const (
 	addClaimOperation       = "add-claim"
 	supersedeOperation      = "supersede"
 	deprecateClaimOperation = "deprecate-claim"
+	addAssertionOperation   = "add-assertion"
 )
 
 // ErrNoOperations is an operation file which carries no operation at all.
@@ -230,6 +231,7 @@ var made = []struct {
 	{addClaimOperation, func() Operation { return &AddClaimOperation{} }},
 	{supersedeOperation, func() Operation { return &SupersedeOperation{} }},
 	{deprecateClaimOperation, func() Operation { return &DeprecateClaimOperation{} }},
+	{addAssertionOperation, func() Operation { return &AddAssertionOperation{} }},
 }
 
 // Operations is the name of every operation an operation file may carry, in the
@@ -1350,6 +1352,45 @@ func (o *DeprecateClaimOperation) apply(tx *Tx, out *Applied) error {
 	out.Replaced, out.Notices = ids[0], notices
 
 	return nil
+}
+
+// AddAssertionOperation writes a check the thing it names has to satisfy. It is
+// `add-assertion`.
+type AddAssertionOperation struct {
+	// Subject is the thing the assertion constrains: a node, a vertex, an edge
+	// or a loop.
+	Subject string `json:"subject"`
+
+	// Check is the name of the check it applies, which the engine's closed
+	// registry must register.
+	Check string `json:"check"`
+
+	// Parameters are its parameters, each written as the entity format writes
+	// one without its parentheses — `tolerance boundary-closure` — and in the
+	// order they are written. A check which takes none is written with none.
+	Parameters []string `json:"parameters,omitempty"`
+}
+
+// Name implements [Operation].
+func (o *AddAssertionOperation) Name() string { return addAssertionOperation }
+
+func (o *AddAssertionOperation) check() error {
+	if o.Subject == "" {
+		return ErrNoAssertionSubject
+	}
+	if o.Check == "" {
+		return ErrNoCheck
+	}
+	return nil
+}
+
+func (o *AddAssertionOperation) apply(tx *Tx, _ *Applied) error {
+	subject, err := identify(o.Subject)
+	if err != nil {
+		return err
+	}
+
+	return tx.AddAssertion(AssertionSpec{Subject: subject, Check: o.Check, Parameters: o.Parameters})
 }
 
 // claimed reports what is missing from an operation which writes a claim,

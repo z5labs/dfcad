@@ -280,6 +280,45 @@ That a claim was retracted.
 | `claim` | The id of the claim being retracted, which is the id it wrote. Required. |
 | `supersededBy` | The claim that stands in its place. Required. |
 
+### `add-assertion`
+
+A check the thing it names has to satisfy, written on that thing.
+
+| Member | Meaning |
+|--------|---------|
+| `subject` | The thing the assertion constrains: a node, a vertex, an edge or a loop. Required. |
+| `check` | The name of the check it applies, which the engine must register. Required. |
+| `parameters` | Its parameters, as an array, each written as the entity format writes one without its parentheses: `"tolerance boundary-closure"`, `"predicate width"`, `"zone site:Z-90"`. Left out for a check which takes none. |
+
+```json
+{"op": "add-assertion", "subject": "geom:L-10", "check": "boundary-loops-close",
+ "parameters": ["tolerance boundary-closure", "position position"]}
+```
+
+A parameter is spelled the way an accuracy term is, and for the same reason: which sort of
+datum it takes — a tolerance name, a declared predicate, an id, a number — is the check's
+declaration, exactly as which shape a value takes is the predicate's. So a parameter written
+here and one written with `--parameter` on the command line are read by the same code, and
+refused in the same words as the same assertion typed into a file by hand. Canonical form
+sorts an assertion's parameters, so the order they are written in decides nothing.
+
+Refused when the operation is applied, before anything is written: a subject nothing holds; a
+frame, which is registry data and carries no assertion (SPEC §7.5); a check the engine does
+not register, naming the ones it does; a parameter the check does not take, one it requires
+and which is missing, one written twice, and a value not of the sort the check declares.
+
+Refused when the model the batch produces is interpreted, with that load's diagnostics: a
+check which cannot examine the subject's form, kind or geometry (SPEC §6.8); an assertion
+restating a value the subject's claims already carry (SPEC §6.8.1); a parameter naming an id
+nothing holds.
+
+A subject the same batch wrote counts, so a node and the rule it has to satisfy are one
+batch.
+
+What must hold of every instance of a type is not this. That is the type's `invariant`,
+which is registry data, and adding one stays an edit to the registry file that declares the
+type.
+
 ## What one operation may assume of another
 
 **An operation may name what an earlier one wrote.** The ids the batch has already written

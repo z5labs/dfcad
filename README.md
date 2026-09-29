@@ -23,6 +23,31 @@ that model in four ways:
 - **Checks assertions** over the graph, so that the properties a model is
   supposed to hold are enforced in CI rather than remembered.
 
+## Changing a model
+
+Every change goes through a command, and every command which changes the model is also an
+operation of an [operation file](./docs/operation-file.md), so a batch of them is applied as
+one change with `apply`:
+
+| Command           | Writes                                                                  |
+|-------------------|-------------------------------------------------------------------------|
+| `add-node`        | a semantic node                                                         |
+| `add-vertex`      | a corner, with where it is and how that is known                        |
+| `add-edge`        | a connection between two corners                                        |
+| `add-loop`        | an ordered ring of edges                                                |
+| `scaffold-loop`   | a room's corners, walls and outline in one change                       |
+| `relate`          | what a node is inside, grouped with and bounded by                      |
+| `classify-type`   | how a scheme outside this model names a type                            |
+| `set-label`       | what a thing is called, and nothing else                                |
+| `retire`          | that a thing stopped existing                                           |
+| `add-claim`       | a measured value on a thing, with its provenance                        |
+| `supersede`       | a corrected value, retracting the old one                               |
+| `deprecate-claim` | that a claim was retracted                                              |
+| `add-assertion`   | a named check the one thing it is written on has to satisfy             |
+
+An invariant — a check every instance of a type has to satisfy — is registry data rather
+than a change to the model, and stays a hand edit to the registry file declaring the type.
+
 ## The closed sets
 
 Two vocabularies are compiled into the engine, and they are closed. Nothing else

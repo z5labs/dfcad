@@ -258,6 +258,20 @@ func TestParseBatchReadsEveryOperationsAxes(t *testing.T) {
 			written:  `{"op": "deprecate-claim", "claim": "survey:W-0002", "supersededBy": "survey:W-0003"}`,
 			expected: &DeprecateClaimOperation{Claim: "survey:W-0002", SupersededBy: "survey:W-0003"},
 		},
+		{
+			name: "reads an assertion with its parameters as the entity format spells them",
+			written: `{"op": "add-assertion", "subject": "geom:L-10", "check": "boundary-loops-close",
+			           "parameters": ["tolerance boundary-closure", "position position"]}`,
+			expected: &AddAssertionOperation{
+				Subject: "geom:L-10", Check: "boundary-loops-close",
+				Parameters: []string{"tolerance boundary-closure", "position position"},
+			},
+		},
+		{
+			name:     "reads an assertion whose check takes no parameter",
+			written:  `{"op": "add-assertion", "subject": "geom:E-06", "check": "edge-backing-resolves"}`,
+			expected: &AddAssertionOperation{Subject: "geom:E-06", Check: "edge-backing-resolves"},
+		},
 	}
 
 	for _, testCase := range testCases {
@@ -398,6 +412,20 @@ func TestParseBatchNamesTheOperationEachProblemIsAbout(t *testing.T) {
 			expectedError:     ErrNoSupersedingClaim,
 		},
 		{
+			name:              "refuses an assertion written on nothing",
+			written:           `{"op": "add-assertion", "check": "edge-backing-resolves"}`,
+			expectedIndex:     2,
+			expectedOperation: "add-assertion",
+			expectedError:     ErrNoAssertionSubject,
+		},
+		{
+			name:              "refuses an assertion naming no check",
+			written:           `{"op": "add-assertion", "subject": "geom:E-06"}`,
+			expectedIndex:     2,
+			expectedOperation: "add-assertion",
+			expectedError:     ErrNoCheck,
+		},
+		{
 			name:              "refuses a member the operation does not read",
 			written:           `{"op": "add-node", "id": "site:S-201", "edges": ["geom:E-01"]}`,
 			expectedIndex:     2,
@@ -509,6 +537,20 @@ func TestTxApply(t *testing.T) {
 				 "claim": {"value": "0.12", "unit": "m", "source": "As-built check AB-2026-020",
 				           "method": "method:total-station", "accuracy": ["independent 0.003 m"],
 				           "date": "2026-05-06"}}
+			]}`,
+			expectedEffects: [][]string{
+				{"created node site:S-103"},
+				{"modified node site:S-103"},
+			},
+			expectedFiles: []string{"entities/site.dfc"},
+		},
+		{
+			name: "applies a batch which writes a node and the rule it has to satisfy",
+			written: `{"operations": [
+				{"op": "add-node", "id": "site:S-103", "kind": "Space", "type": "MeetingRoom",
+				 "geometry": "area", "frame": "frame:building", "label": "Meeting Room C"},
+				{"op": "add-assertion", "subject": "site:S-103", "check": "required-claim",
+				 "parameters": ["predicate width"]}
 			]}`,
 			expectedEffects: [][]string{
 				{"created node site:S-103"},

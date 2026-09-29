@@ -318,6 +318,13 @@ var commands = []command{
 		run:     runDeprecateClaim,
 		writes:  true,
 	},
+	{
+		name:    "add-assertion",
+		summary: "write a check the thing it names has to satisfy",
+		usage:   addAssertionUsage,
+		run:     runAddAssertion,
+		writes:  true,
+	},
 }
 
 // lookup is the subcommand of that name.

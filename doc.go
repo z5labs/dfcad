@@ -149,6 +149,12 @@
 // a subject and predicate at all. Each is a legitimate state for a model to be
 // in, and none is a thing to find out about later.
 //
+// [Tx.AddAssertion] writes a check on the one thing it constrains, refused
+// before anything is written by the validation [ValidateAssertion] runs at load
+// and at [Tx.Commit] by the passes which need the whole model. What must hold of
+// every instance of a type is the type's invariant, which is registry data and
+// is written by hand.
+//
 // It is the mechanism every authoring command is built on rather than a command
 // itself. See docs/decisions/0015-the-cli-is-the-primary-write-path.md for why
 // the command line interface writes at all,

@@ -622,6 +622,20 @@ type checkValidator struct {
 	// registry is the model's vocabulary, which the parameters naming an entry
 	// of it are resolved against.
 	registry *Registry
+
+	// refusals are the same problems as the diagnostics, each as the typed
+	// error a caller authoring an assertion asserts on, in the order they were
+	// found. They are recorded beside the diagnostics rather than derived from
+	// them, so that an assertion refused by the write path and the same
+	// assertion refused by a load are one validation and not two.
+	refusals []error
+}
+
+// refuse records one problem both ways: as the diagnostic a load reports, and
+// as the typed error the write path returns.
+func (v *checkValidator) refuse(err error, diagnostic Diagnostic) {
+	v.add(diagnostic)
+	v.refusals = append(v.refusals, err)
 }
 
 // assertion reads one written `assert` or `invariant`.
@@ -641,7 +655,8 @@ func (v *checkValidator) assertion(form *Node) {
 
 	declared, ok := v.set.lookup(name)
 	if !ok {
-		v.add(v.set.unknown(tag, name, span))
+		diagnostic := v.set.unknown(tag, name, span)
+		v.refuse(UnregisteredCheckError{Check: name, Registered: slices.Clone(v.set.names), Diagnostic: diagnostic}, diagnostic)
 		return
 	}
 
@@ -663,12 +678,18 @@ func (v *checkValidator) parameters(form *Node, declared CheckDeclaration) {
 
 		parameter, ok := declared.Parameter(name)
 		if !ok {
-			v.add(unknownParameter(declared, name, tagSpan(child)))
+			diagnostic := unknownParameter(declared, name, tagSpan(child))
+			v.refuse(UnknownParameterError{
+				Check:      declared.Name,
+				Parameter:  name,
+				Takes:      declared.parameterNames(),
+				Diagnostic: diagnostic,
+			}, diagnostic)
 			continue
 		}
 
 		if first, repeated := written[name]; repeated {
-			v.add(Diagnostic{
+			diagnostic := Diagnostic{
 				Severity: SeverityError,
 				Span:     tagSpan(child),
 				Message: fmt.Sprintf(
@@ -678,12 +699,25 @@ func (v *checkValidator) parameters(form *Node, declared CheckDeclaration) {
 				Hint: "a parameter takes every value it has at once; a parameter which may have more than one is written (" +
 					name + " <value> <value>)",
 				Related: []RelatedLocation{{Span: first, Message: "the first is written here"}},
-			})
+			}
+			v.refuse(RepeatedParameterError{Check: declared.Name, Parameter: name, Diagnostic: diagnostic}, diagnostic)
 			continue
 		}
 		written[name] = tagSpan(child)
 
+		// Every diagnostic reading the values raises is a value which is not
+		// what the parameter takes, however many different ways it can be
+		// wrong, so they are classified here once rather than at each of them.
+		mark := len(v.diags)
 		v.values(child, parameter)
+		for _, diagnostic := range v.diags[mark:] {
+			v.refusals = append(v.refusals, ParameterValueError{
+				Check:      declared.Name,
+				Parameter:  name,
+				Want:       parameter.Type,
+				Diagnostic: diagnostic,
+			})
+		}
 	}
 
 	for _, parameter := range declared.Parameters {
@@ -694,7 +728,7 @@ func (v *checkValidator) parameters(form *Node, declared CheckDeclaration) {
 			continue
 		}
 
-		v.add(Diagnostic{
+		diagnostic := Diagnostic{
 			Severity: SeverityError,
 			Span:     form.Span,
 			Message: fmt.Sprintf(
@@ -702,7 +736,13 @@ func (v *checkValidator) parameters(form *Node, declared CheckDeclaration) {
 				parameter.Name, declared.Name,
 			),
 			Hint: fmt.Sprintf("%s takes %s: %s", declared.Name, parameter.Type.spelling(), parameter.Description),
-		})
+		}
+		v.refuse(MissingParameterError{
+			Check:      declared.Name,
+			Parameter:  parameter.Name,
+			Want:       parameter.Type,
+			Diagnostic: diagnostic,
+		}, diagnostic)
 	}
 }
 
