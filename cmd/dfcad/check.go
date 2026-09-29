@@ -66,6 +66,7 @@ reported as a load failure, so that a --root with a character wrong cannot pass
 the gate by having nothing in it.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object check writes carries "summary" — how many rules there were, how many
 would run, how many ran, and how many passed and failed — and "violations": one
@@ -305,7 +306,7 @@ const (
 )
 
 // runCheck is the check command.
-func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runCheck(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -331,7 +332,10 @@ func runCheck(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer)
 	// what says whether a type is declared and whether an id names anything.
 	// Its diagnostics reach stderr either way, so a filter which is unknown
 	// because a registry file did not parse is reported beside the reason.
-	graph, refused := loadGate(cmd, globals, stderr)
+	graph, refused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	filter, err := ruleFilter(graph, *subjects, *types, *checks)
 	if err != nil {

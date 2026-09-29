@@ -326,6 +326,33 @@ The model the batch produces is validated last, exactly as it is for a single wr
 and a batch that would produce a model that does not load is refused with the diagnostics
 that load would have raised.
 
+## Assuming a batch without writing it
+
+The same file is also an input to every read. `dfcad <read> --assume <file>` answers over the
+model the batch would produce, and writes nothing to the authored tree and takes no lock
+([0030](./decisions/0030-a-read-may-assume-a-batch.md)):
+
+```sh
+dfcad check --root testdata/checks/satisfied --assume into-setback.json
+```
+
+The file is found exactly as `apply` finds it — a relative path is resolved against the model
+root, and `-` is standard input — and read by the same parser, so **a batch which may be
+assumed is a batch which may be applied**, and the other way round. No operation exists only
+for a hypothetical. For every batch `apply` accepts, the read writes the same stdout and exits
+with the same code as `apply` followed by the read, apart from the envelope's
+[`assumed`](./machine-output.md#assumed) member, which says which batch was assumed over which
+tree. Every digest the answer reports is that of the tree the batch would produce, so an
+export written under the flag is keyed as the applied tree's export would be.
+
+A batch is refused exactly as `apply --dry-run` refuses it — the same exit code, the same words
+on stderr — and the read does not run. Everything [above](#what-is-refused-and-how) holds
+unchanged.
+
+The flag is how a consumer proves a check can fail: it writes the batch which should break the
+rule, in the model's own vocabulary, and expects `check --assume` to exit `1`, with no copy of
+the model and nothing depending on how the printer lays a file out.
+
 ## What it reports
 
 The result object is documented with the other payloads, under

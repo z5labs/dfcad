@@ -147,6 +147,7 @@ A walk from a shape starts with bounds: it names the nodes the shape is the
 boundary of, and every other query walks on from them.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object traverse writes carries "subject", "query", the "depth" it was bounded
 by, and "results": what the walk reached, each with the relation which reached
@@ -680,7 +681,7 @@ func (d *traversalDepth) Set(value string) error {
 }
 
 // runTraverse is the traverse command.
-func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runTraverse(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -729,7 +730,10 @@ func runTraverse(cmd command, args []string, _ io.Reader, stdout, stderr io.Writ
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	kinds, types := filterOf(*kindFlag), filterOf(*typeFlag)
 

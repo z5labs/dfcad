@@ -84,6 +84,7 @@ fits is counted once. Nothing converts between units: a route whose fits were
 written in different units reports the terms and no combined figure.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object resolve writes carries "subject" and "predicate", the "outcome" and
 the "reason" for it, and the "value", its "accuracy" and the "claim-id" it came
@@ -359,7 +360,7 @@ type combinedUncertainty struct {
 }
 
 // runResolve is the resolve command.
-func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runResolve(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -390,7 +391,10 @@ func runResolve(cmd command, args []string, _ io.Reader, stdout, stderr io.Write
 	}
 	predicate := arguments[1]
 
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}

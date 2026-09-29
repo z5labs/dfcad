@@ -90,6 +90,7 @@ batch, because the shape of the answer must not depend on how many ids a
 computed listing happened to hold; write - and pipe them instead.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object get writes carries "entity": the thing found, its axes, the ids it
 references, where it was written, its claims in predicate order, the plain
@@ -178,6 +179,13 @@ func (e SeveralIDsError) Error() string {
 		len(e.IDs), strings.Join(e.IDs, " "), stdinPath,
 	)
 }
+
+// ErrStandardInputTwice is a get which was told to read its ids and the batch
+// it assumes from standard input both.
+var ErrStandardInputTwice = errors.New(
+	"the ids and the batch --assume names are both to be read from standard input, which holds one of them: " +
+		"write the batch to a file and name it instead",
+)
 
 // BatchIDsError is every id read from standard input which could not be
 // retrieved: each one malformed or naming nothing the model holds.
@@ -682,6 +690,12 @@ func runGet(cmd command, args []string, stdin io.Reader, stdout, stderr io.Write
 	asked := retrieval{selection: *selection, deprecated: *deprecated, observations: *observations}
 
 	if arguments[0] == stdinPath {
+		// Standard input is one input, so it is read for the ids or for the
+		// batch and never for both: which bytes were meant for which is not a
+		// guess this command makes.
+		if globals.Assume.path == stdinPath {
+			return usageError(cmd, ErrStandardInputTwice, stderr, false)
+		}
 		return getMany(cmd, globals, asked, stdin, stdout, stderr)
 	}
 
@@ -694,7 +708,10 @@ func runGet(cmd command, args []string, stdin io.Reader, stdout, stderr io.Write
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	found, ok := retrieve(graph, id)
 	if !ok {
@@ -804,7 +821,10 @@ func getMany(cmd command, globals *globals, asked retrieval, stdin io.Reader, st
 		return exitLoad
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	entities, err := retrieveAll(graph, written)
 	if err != nil {

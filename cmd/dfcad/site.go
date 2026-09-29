@@ -116,6 +116,7 @@ to five and no answer at all where it is known to sixty. Both come back as a
 number; only the verdict tells them apart.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object site writes carries "subject" and "within", "sited" and the
 "digest" of the source tree it was computed against, the "frame" the answer is
@@ -286,7 +287,7 @@ type clearanceEntry struct {
 }
 
 // runSite is the site command.
-func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runSite(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -336,7 +337,10 @@ func runSite(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) 
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}

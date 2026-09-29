@@ -66,6 +66,7 @@ almost every edge is and what every edge in a model nobody has claimed an arc
 in is.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object tessellate writes carries "subject", "derived" and the "digest" of
 the source tree the drawing was derived from, the "frame" and "unit" it is
@@ -213,7 +214,7 @@ type tessellateResult struct {
 }
 
 // runTessellate is the tessellate command.
-func runTessellate(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runTessellate(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -252,7 +253,10 @@ func runTessellate(cmd command, args []string, _ io.Reader, stdout, stderr io.Wr
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loadRefused := loadGate(cmd, globals, stderr)
+	graph, loadRefused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if loadRefused {
 		return exitLoad
 	}

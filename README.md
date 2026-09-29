@@ -164,6 +164,20 @@ $ docker run --rm -v "$PWD:/model:ro" ghcr.io/z5labs/dfcad:v1.2.3 \
 {"value":{"shape":"scalar","unit":"m2","scalar":32},"accuracy":[{"kind":"independent","magnitude":0.08,"unit":"m2"}]}
 ```
 
+Every read also answers over a change before it is made. `--assume` names an
+[operation file](./docs/operation-file.md) — the batch `apply` would write — and the read
+answers over the model that batch would produce, writing nothing and locking nothing, so it
+runs over a read-only mount as readily as the question above:
+
+```sh
+docker run --rm -v "$PWD:/model:ro" ghcr.io/z5labs/dfcad:v1.2.3 \
+    check --root /model --assume into-setback.json
+```
+
+The answer carries `assumed`, naming the batch and the digests of the tree read and of the
+tree it would produce; [`docs/machine-output.md`](./docs/machine-output.md#assumed) has the
+member.
+
 Pin the digest rather than the tag in anything automated —
 `ghcr.io/z5labs/dfcad@sha256:…`. Digests are authoritative and tags are advisory; there is
 no `latest`. [`docs/publishing.md`](./docs/publishing.md) has the tag convention, how long a

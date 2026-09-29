@@ -112,6 +112,7 @@ misspelling forever. A declared predicate nothing is claimed under is an empty
 list and exit zero.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object claims writes carries "subject", the id it was asked about, when one
 was, and "claims", every claim written on it — or on every subject, where no id
@@ -165,6 +166,7 @@ it finds. Whether a disagreement is allowed is what "dfcad check" answers, and
 answering it twice, in two commands, is how the two come to disagree.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object conflicts writes carries "conflicts": one entry per pair, in subject
 and then predicate order, each with the competing claims and whether resolution
@@ -324,7 +326,7 @@ type conflictEntry struct {
 }
 
 // runClaims is the claims command.
-func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runClaims(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -386,7 +388,10 @@ func runClaims(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		return usageError(cmd, err, stderr, false)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	registry := graph.Registry()
 
 	// The id is looked up as get looks one up, so that a frame — which the
@@ -646,7 +651,7 @@ func subjectOf(subject held) claimRow {
 }
 
 // runConflicts is the conflicts command.
-func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runConflicts(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -670,7 +675,10 @@ func runConflicts(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 	// The model is loaded before the filters are checked because the registry is
 	// what says whether a type or a predicate exists, and the registry is the
 	// model.
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	registry := graph.Registry()
 
 	if *ambiguous && *resolved {

@@ -6,6 +6,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -51,6 +52,7 @@ empty registry rather than a failure, and it is what a tree nobody has written
 a registry file into looks like.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object list-types writes carries "types": one entry per declared type, in
 name order, each with its name, the kinds and geometry forms it permits,
@@ -91,6 +93,7 @@ A model which declares no predicate at all lists nothing and succeeds. That is
 an empty registry rather than a failure.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object list-predicates writes carries "predicates": one entry per declared
 predicate, in name order, each with its name, its shape, its unit where it has
@@ -130,6 +133,7 @@ A model which declares no tolerance at all lists nothing and succeeds. That is
 an empty registry rather than a failure.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object list-tolerances writes carries "tolerances": one entry per declared
 tolerance, in name order, each with its name, its value and its unit.
@@ -164,6 +168,7 @@ A model which declares no frame at all lists nothing and succeeds. That is an
 empty registry rather than a failure.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object list-frames writes carries "frames": one entry per declared frame,
 in id order, each with its id, its label where one was written, its unit, and —
@@ -206,6 +211,7 @@ the seven and for a frame the registry does not declare, whichever of a
 repeated filter's values it is.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object list-instances writes carries "instances": one entry per instance,
 in id order, each with its id, its label, the type and kind it declares and the
@@ -291,6 +297,7 @@ three and for a frame the registry does not declare, whichever of a repeated
 filter's values it is.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object list-geometry writes carries "predicate", the predicate it was asked
 about, and "nodes": one entry per geometric node carrying a live claim under it,
@@ -721,7 +728,7 @@ type listedGeometry struct {
 }
 
 // runListTypes is the list-types command.
-func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runListTypes(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -737,7 +744,10 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	result := listTypesResult{
 		envelope:  newEnvelope(cmd.name),
@@ -777,7 +787,7 @@ func runListTypes(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 }
 
 // runListPredicates is the list-predicates command.
-func runListPredicates(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runListPredicates(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -792,7 +802,10 @@ func runListPredicates(cmd command, args []string, _ io.Reader, stdout, stderr i
 		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	result := listPredicatesResult{
 		envelope:  newEnvelope(cmd.name),
@@ -831,7 +844,7 @@ func runListPredicates(cmd command, args []string, _ io.Reader, stdout, stderr i
 }
 
 // runListTolerances is the list-tolerances command.
-func runListTolerances(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runListTolerances(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -846,7 +859,10 @@ func runListTolerances(cmd command, args []string, _ io.Reader, stdout, stderr i
 		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	result := listTolerancesResult{
 		envelope:  newEnvelope(cmd.name),
@@ -880,7 +896,7 @@ func runListTolerances(cmd command, args []string, _ io.Reader, stdout, stderr i
 }
 
 // runListFrames is the list-frames command.
-func runListFrames(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runListFrames(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -893,7 +909,10 @@ func runListFrames(cmd command, args []string, _ io.Reader, stdout, stderr io.Wr
 		return usageError(cmd, UnexpectedArgumentsError{Extra: extra}, stderr, true)
 	}
 
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	result := listFramesResult{
 		envelope:  newEnvelope(cmd.name),
@@ -924,7 +943,7 @@ func runListFrames(cmd command, args []string, _ io.Reader, stdout, stderr io.Wr
 }
 
 // runListInstances is the list-instances command.
-func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runListInstances(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -956,7 +975,10 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 	// model. Its diagnostics reach stderr either way, so a name which is
 	// unknown because a registry file did not parse is reported beside the
 	// reason it did not.
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	registry := graph.Registry()
 
 	if err := checkFilters(registry, filterOf([]string{declaredType}), kinds, frames); err != nil {
@@ -1016,7 +1038,7 @@ func runListInstances(cmd command, args []string, _ io.Reader, stdout, stderr io
 }
 
 // runListGeometry is the list-geometry command.
-func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runListGeometry(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -1101,7 +1123,10 @@ func runListGeometry(cmd command, args []string, _ io.Reader, stdout, stderr io.
 	// model. Its diagnostics reach stderr either way, so a predicate which is
 	// unknown because a registry file did not parse is reported beside the
 	// reason it did not.
-	graph, loaded := loadModel(cmd, globals, stderr)
+	graph, loaded, exit := loadModel(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 
 	if err := checkPredicate(graph.Registry(), predicate); err != nil {
 		return usageError(cmd, err, stderr, false)
@@ -1429,9 +1454,13 @@ func classificationsOf(declared dfcad.Type) []listedClassification {
 // model, and a figure computed out of a model the load refused is an answer to
 // a question nobody asked, so it loads through [loadGate] and exits as a load
 // failure instead.
-func loadModel(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, loadState) {
-	graph, refused := loadGate(cmd, globals, stderr)
-	return graph, loadState{Refused: refused}
+//
+// A run told to assume a batch is the exception: a batch whose base tree or
+// result the load refused is refused outright, as [loadGate] says, and the
+// exit code that comes back is what the command returns without answering.
+func loadModel(cmd command, globals *globals, stdin io.Reader, stderr io.Writer) (*dfcad.Graph, loadState, int) {
+	graph, refused, exit := loadGate(cmd, globals, stdin, stderr)
+	return graph, loadState{Refused: refused}, exit
 }
 
 // loadState is what a discovery read's answer says about the load it was read
@@ -1451,7 +1480,21 @@ type loadState struct {
 // error rather than a warning — and is the one place which decides that, so
 // that a read which ignores it and a gate which acts on it are reading the same
 // answer.
-func loadGate(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, bool) {
+//
+// It is also the one place a read honours --assume, which is what makes every
+// read answer over a hypothetical without any of them knowing: under the flag
+// the graph which comes back is the model the batch would produce
+// ([dfcad.Assume]), which a command cannot tell from one read off disk. The exit
+// code is [exitSuccess] where the command should go on and answer, and the code
+// it returns without answering otherwise — which only a run under --assume ever
+// sees, because a batch is refused as apply refuses it and the read does not
+// run (docs/decisions/0030-a-read-may-assume-a-batch.md).
+func loadGate(cmd command, globals *globals, stdin io.Reader, stderr io.Writer) (*dfcad.Graph, bool, int) {
+	if globals.Assume.given {
+		graph, exit := assumeGate(cmd, globals, stdin, stderr)
+		return graph, false, exit
+	}
+
 	reportLoading(cmd, globals, stderr)
 
 	graph, found := dfcad.LoadGraph(globals.Root)
@@ -1462,7 +1505,58 @@ func loadGate(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, bo
 		refuse(stderr)
 	}
 
-	return graph, refused
+	return graph, refused, exitSuccess
+}
+
+// assumeGate is [loadGate] under --assume: it reads the batch, interprets the
+// model it would produce and notes the batch on the run's stderr, so that the
+// object the command writes says it is hypothetical.
+//
+// Every refusal is apply's, with apply's exit code and in apply's words, because
+// a batch which may be assumed is a batch which may be applied and the other way
+// round: a file which cannot be read or is not a batch, a base tree which does
+// not load and a result which would not load exit 2, and an operation the model
+// refuses exits 3. Stdout is what `apply --dry-run` writes for the same input —
+// nothing, or the refusal where a load refused — and never an answer, because a
+// model nobody could write is not answered about. That holds for the discovery
+// reads and `check` as well, which answer through a refused tree without the
+// flag.
+func assumeGate(cmd command, globals *globals, stdin io.Reader, stderr io.Writer) (*dfcad.Graph, int) {
+	batch, exit, ok := batched(cmd, globals, []string{globals.Assume.path}, stdin, stderr)
+	if !ok {
+		return nil, exit
+	}
+
+	reportLoading(cmd, globals, stderr)
+
+	assumed, diags, err := dfcad.Assume(globals.Root, batch)
+
+	refused := render(diags, stderr)
+
+	if err != nil {
+		if errors.As(err, new(dfcad.RootError)) {
+			_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+			return nil, exitLoad
+		}
+		return nil, usageError(cmd, err, stderr, false)
+	}
+
+	if refused || assumed.Graph == nil {
+		refuse(stderr)
+		return nil, exitLoad
+	}
+
+	hold(stderr, assumed.Graph)
+
+	digest, _ := assumed.Graph.Digest()
+	assume(stderr, assumedBatch{
+		Batch:      globals.Assume.path,
+		Operations: len(batch.Operations),
+		Base:       assumed.Base.String(),
+		Digest:     digest.String(),
+	})
+
+	return assumed.Graph, exitSuccess
 }
 
 // usageError reports an invocation which named something that does not exist.

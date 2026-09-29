@@ -40,6 +40,19 @@ type command struct {
 	// anybody remembering to add it.
 	writes bool
 
+	// reads reports whether the subcommand answers a question about the model
+	// and changes nothing in it, which is what says it takes --assume: that it
+	// can answer over the model a batch would produce as readily as over the
+	// one on disk.
+	//
+	// It is a field rather than a list for the reason writes is one: a read
+	// added later takes the flag because it is a read, and the walk which
+	// checks that reaches it without anybody remembering to add it. Neither
+	// field is set on a command which reads no model — version and fmt — nor
+	// on review, which compares two revisions, and a batch assumed on one side
+	// of that comparison is a third thing that is neither.
+	reads bool
+
 	// run does the work and returns the exit code.
 	//
 	// The reader is the run's standard input, which one command reads a batch
@@ -73,120 +86,140 @@ var commands = []command{
 		summary: "list the node types the model declares",
 		usage:   listTypesUsage,
 		run:     runListTypes,
+		reads:   true,
 	},
 	{
 		name:    "list-predicates",
 		summary: "list the claim predicates the registry declares",
 		usage:   listPredicatesUsage,
 		run:     runListPredicates,
+		reads:   true,
 	},
 	{
 		name:    "list-tolerances",
 		summary: "list the named tolerances the registry declares",
 		usage:   listTolerancesUsage,
 		run:     runListTolerances,
+		reads:   true,
 	},
 	{
 		name:    "list-frames",
 		summary: "list the coordinate frames the registry declares",
 		usage:   listFramesUsage,
 		run:     runListFrames,
+		reads:   true,
 	},
 	{
 		name:    "list-instances",
 		summary: "list the instances of a type",
 		usage:   listInstancesUsage,
 		run:     runListInstances,
+		reads:   true,
 	},
 	{
 		name:    "list-geometry",
 		summary: "list the geometric nodes which carry a claim under a predicate",
 		usage:   listGeometryUsage,
 		run:     runListGeometry,
+		reads:   true,
 	},
 	{
 		name:    "get",
 		summary: "retrieve one thing by its id, or many from stdin, with their claims",
 		usage:   getUsage,
 		run:     runGet,
+		reads:   true,
 	},
 	{
 		name:    "resolve",
 		summary: "answer one predicate about one thing, with its evidence",
 		usage:   resolveUsage,
 		run:     runResolve,
+		reads:   true,
 	},
 	{
 		name:    "traverse",
 		summary: "walk the model: what contains, belongs to or borders what",
 		usage:   traverseUsage,
 		run:     runTraverse,
+		reads:   true,
 	},
 	{
 		name:    "claims",
 		summary: "list every claim written on one thing, or on every thing",
 		usage:   claimsUsage,
 		run:     runClaims,
+		reads:   true,
 	},
 	{
 		name:    "conflicts",
 		summary: "list every disagreement in the model",
 		usage:   conflictsUsage,
 		run:     runConflicts,
+		reads:   true,
 	},
 	{
 		name:    "route",
 		summary: "say which file a new node would be written to",
 		usage:   routeUsage,
 		run:     runRoute,
+		reads:   true,
 	},
 	{
 		name:    "measure",
 		summary: "compute how big one thing is from the geometry it is written in terms of",
 		usage:   measureUsage,
 		run:     runMeasure,
+		reads:   true,
 	},
 	{
 		name:    "tessellate",
 		summary: "draw the boundary of one thing as straight segments, to a chord tolerance you name",
 		usage:   tessellateUsage,
 		run:     runTessellate,
+		reads:   true,
 	},
 	{
 		name:    "buildable",
 		summary: "derive what may be built inside a boundary once its setbacks are taken off",
 		usage:   buildableUsage,
 		run:     runBuildable,
+		reads:   true,
 	},
 	{
 		name:    "site",
 		summary: "decide whether one thing fits inside another, and how well that is known",
 		usage:   siteUsage,
 		run:     runSite,
+		reads:   true,
 	},
 	{
 		name:    "plan",
 		summary: "report what a spatial node contains as rings, with the claims written on them",
 		usage:   planUsage,
 		run:     runPlan,
+		reads:   true,
 	},
 	{
 		name:    "export",
 		summary: "write the model's spatial structure as an IFC4 file",
 		usage:   exportUsage,
 		run:     runExport,
+		reads:   true,
 	},
 	{
 		name:    "export-map",
 		summary: "write the model's regions as a georeferenced vector file",
 		usage:   exportMapUsage,
 		run:     runExportMap,
+		reads:   true,
 	},
 	{
 		name:    "check",
 		summary: "run every rule the model states and say whether it holds",
 		usage:   checkUsage,
 		run:     runCheck,
+		reads:   true,
 	},
 	{
 		name:    "review",
@@ -333,6 +366,25 @@ const writeFlagsHelp = `Flags every command which changes the model takes:
 	--dry-run        do everything except the writing: load, apply the change,
 	                 validate the model it would produce, and report what would
 	                 have changed with the diff of every file
+`
+
+// readFlagsHelp describes the flags every command which reads the model takes
+// beyond the global ones.
+//
+// It is written once, for the reason [writeFlagsHelp] is: a hypothetical which
+// meant one thing for one read and something else for another is a flag
+// nobody can rely on, and a read added later cannot forget it.
+const readFlagsHelp = `Flags every command which reads the model takes:
+
+	--assume <file>  answer over the model the operation file would produce,
+	                 rather than over the one on disk, writing nothing to the
+	                 model and taking no lock. The file is the one apply
+	                 reads, resolved against the model root, or standard
+	                 input where it is "-"; a batch apply would refuse is
+	                 refused in apply's words and with its exit code, and
+	                 the read does not run. The answer carries "assumed",
+	                 and every digest in it is that of the tree the batch
+	                 would produce
 `
 
 // outputContractHelp describes the two streams, the versioning rule and the

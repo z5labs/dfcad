@@ -198,7 +198,7 @@ type reviewSummary struct {
 }
 
 // runReview is the review command.
-func runReview(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runReview(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -222,7 +222,10 @@ func runReview(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		return usageError(cmd, err, stderr, false)
 	}
 
-	head, refused := loadGate(cmd, globals, stderr)
+	head, refused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if refused {
 		return exitLoad
 	}

@@ -164,6 +164,7 @@ step with the writer. A reader which refuses a document it cannot resolve a
 schema for will refuse this one.
 
 ` + globalFlagsHelp + `
+` + readFlagsHelp + `
 ` + outputContractHelp + `
 The object export-map writes carries "derived", the "digest" of the source tree
 the artefact was derived from, the "schema" it was written in, the "chord"
@@ -406,7 +407,7 @@ const (
 )
 
 // runExportMap is the export-map command.
-func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer) int {
+func runExportMap(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	globals := &globals{}
 	flags := newFlagSet(cmd, globals)
 
@@ -464,7 +465,10 @@ func runExportMap(cmd command, args []string, _ io.Reader, stdout, stderr io.Wri
 		destination = resolved
 	}
 
-	graph, refused := loadGate(cmd, globals, stderr)
+	graph, refused, exit := loadGate(cmd, globals, stdin, stderr)
+	if exit != exitSuccess {
+		return exit
+	}
 	if refused {
 		return exitLoad
 	}
