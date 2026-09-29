@@ -439,7 +439,7 @@ func TestRunExportLeavesAnUnresolvedBackingAsTheLoadErrorItAlreadyIs(t *testing.
 	root := tree(t, files)
 	stdout, stderr := invoke(t, exitLoad, root, append([]string{"export"}, boundaryFlags()...)...)
 
-	assert.Empty(t, stdout)
+	refusedObject(t, stdout, "export")
 	assert.Contains(t, stderr, "site:W-nothing")
 
 	// The edge said something backs it. Reporting it as a boundary with

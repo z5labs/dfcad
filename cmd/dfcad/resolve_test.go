@@ -861,7 +861,7 @@ func TestRunResolveReportsAFrameTheModelCannotRelate(t *testing.T) {
 	code := run([]string{"resolve", "--frame", "frame:annexe", "geom:V-01", "position"}, &stdout, &stderr)
 
 	require.Equal(t, exitLoad, code, stderr.String())
-	assert.Empty(t, stdout.String())
+	refusedObject(t, stdout.String(), "resolve")
 	assert.Contains(t, stderr.String(), "frame:annexe")
 }
 

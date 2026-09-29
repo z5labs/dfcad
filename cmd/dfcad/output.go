@@ -132,7 +132,8 @@ func emit(stdout io.Writer, result any) error {
 	}
 
 	out := encoded.Bytes()
-	if answer, ok := stdout.(*answerStream); ok {
+	answer, joined := stdout.(*answerStream)
+	if joined {
 		closed, err := answer.close(out)
 		if err != nil {
 			return err
@@ -141,6 +142,9 @@ func emit(stdout io.Writer, result any) error {
 	}
 
 	_, err := stdout.Write(out)
+	if joined {
+		answer.written = true
+	}
 	return err
 }
 
@@ -161,6 +165,27 @@ type diagnosticStream struct {
 	// suppressed is how many diagnostics the limit held back from the
 	// rendering, summed over every rendering which held any back.
 	suppressed int
+
+	// refused reports that a load the run made refused what it read: the model
+	// beneath the root, a revision `review` compared against, or the model a
+	// change would produce. It is what tells [answerStream.refuse] that a run
+	// which exits 2 with nothing on stdout exited for its diagnostics, rather
+	// than for an error — a root held by another transaction, a file which
+	// could not be written — which is not one.
+	refused bool
+}
+
+// refuse notes on a run's stderr that a load it made refused what it read.
+//
+// It is called where that is decided — [loadGate], [begin], [apply] and
+// `review`'s comparison — and nowhere else, so that a diagnostic which is an
+// error is not on its own taken for a refusal: `review` renders its findings as
+// errors and can still fail to write the file --annotate names, and that run
+// has no answer to refuse.
+func refuse(stderr io.Writer) {
+	if stream, ok := stderr.(*diagnosticStream); ok {
+		stream.refused = true
+	}
 }
 
 // record notes the diagnostics one rendering wrote, in the order it wrote
@@ -177,6 +202,42 @@ type answerStream struct {
 
 	// diagnostics is the run's stderr.
 	diagnostics *diagnosticStream
+
+	// written reports that the run wrote its object.
+	written bool
+}
+
+// refusedResult is the object a run writes where a load refused the model it read
+// and the command has no answer to give through that: the envelope, "refused"
+// true, and — written after it by [emit] — the diagnostics that refused it.
+//
+// It carries no subject, digest, file or anything else a command's own object
+// would, because every one of those is a property of an answer, and there is
+// none: a figure computed out of a model the load refused is an answer to a
+// question nobody asked, and a change refused wrote nothing.
+type refusedResult struct {
+	envelope
+
+	// Refused is always true. It is written rather than implied so that a
+	// caller reads the same field it reads on a discovery read or `check` over
+	// the same tree.
+	Refused bool `json:"refused"`
+}
+
+// refuse writes the refusal of a run which exited 2 because a load refused
+// what it read, where the command itself wrote nothing.
+//
+// It is here rather than at each place a command returns, so that no command
+// which reads the model can exit 2 for its diagnostics and leave stdout empty:
+// a command added later is covered the day it is added. A run which wrote its
+// own object — `check`, which reports a refused model as its answer — is left
+// as it is, and so is a run whose exit 2 is an error rather than a refusal.
+func (a *answerStream) refuse(command string, code int) error {
+	if code != exitLoad || a.written || a.diagnostics == nil || !a.diagnostics.refused {
+		return nil
+	}
+
+	return emit(a, refusedResult{envelope: newEnvelope(command), Refused: true})
 }
 
 // renderedDiagnostics is the tail of an object whose run rendered a

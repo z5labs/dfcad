@@ -7,12 +7,56 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/z5labs/dfcad"
 )
+
+// refusedObject requires that stdout is the object a run writes where a load
+// refused what it read and the command has no answer to give through that —
+// the envelope, "refused" true and the diagnostics, and no other key — and
+// returns the diagnostics it carries.
+//
+// It asserts the keys rather than the fields it knows of, because what the
+// object leaves out is the point: a subject, a digest, a file or a dry run
+// would each describe an answer the run did not give.
+func refusedObject(t *testing.T, stdout, command string) []dfcad.Diagnostic {
+	t.Helper()
+
+	result := object(t, stdout)
+
+	keys := objectKeys(t, json.RawMessage(stdout))
+	expected := []string{"version", "command", "refused", "diagnostics"}
+	if _, held := result["diagnostics-suppressed"]; held {
+		expected = []string{"version", "command", "refused", "diagnostics-suppressed", "diagnostics"}
+	}
+	assert.Equal(t, expected, keys, "a refused run writes the envelope, refused and its diagnostics, and nothing else")
+
+	assert.Equal(t, float64(outputVersion), result["version"])
+	assert.Equal(t, command, result["command"])
+	assert.Equal(t, true, result["refused"])
+
+	diagnostics, _ := carried(t, stdout)
+	assert.True(t, hasError(diagnostics), "a load is refused by an error, and the object carries it")
+
+	return diagnostics
+}
+
+// hasError reports whether any of the diagnostics is an error.
+func hasError(diagnostics []dfcad.Diagnostic) bool {
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Severity == dfcad.SeverityError {
+			return true
+		}
+	}
+	return false
+}
 
 // answersThrough is every command which answers through a load the model refused,
 // reporting that it did in its answer object rather than in its exit code.
@@ -62,8 +106,10 @@ func unloadable(t *testing.T) map[string]string {
 
 // TestEveryCommandWhichReadsTheModelSaysTheLoadRefusedIt walks every command
 // over a tree whose load reports an error, and asserts that none of them
-// answers as though it had loaded: a derivation, a gate or a write exits 2, and
-// a discovery read answers with "refused" true in its object.
+// answers as though it had loaded: a discovery read answers with "refused" true
+// in its object, `check` exits 2 with its whole report, and every other command
+// exits 2 writing the envelope, "refused" true and the diagnostics which
+// refused the model — and nothing else.
 //
 // It walks [commands] rather than naming them so that a command added later has
 // to be placed on one side of that line the day it is added.
@@ -88,19 +134,32 @@ func TestEveryCommandWhichReadsTheModelSaysTheLoadRefusedIt(t *testing.T) {
 			continue
 		}
 
-		t.Run(cmd.name+" exits as a load failure", func(t *testing.T) {
+		if cmd.name == "check" {
+			t.Run(cmd.name+" exits as a load failure and reports the refusal as its answer", func(t *testing.T) {
+				t.Chdir(tree(t, unloadable(t)))
+
+				var stdout, stderr bytes.Buffer
+				require.Equal(t, exitLoad, run(sample(t, cmd), &stdout, &stderr), stderr.String())
+
+				result := object(t, stdout.String())
+				assert.Equal(t, true, result["refused"])
+				assert.Contains(t, result, "summary", "check writes its whole object over a refused model")
+			})
+
+			continue
+		}
+
+		t.Run(cmd.name+" exits as a load failure and says why on stdout", func(t *testing.T) {
 			t.Chdir(tree(t, unloadable(t)))
 
 			var stdout, stderr bytes.Buffer
 			require.Equal(t, exitLoad, run(sample(t, cmd), &stdout, &stderr), stderr.String())
 
-			// Nothing, or — for a gate whose report of a refused model is
-			// itself the answer — an object which says the load refused it.
-			if stdout.Len() > 0 {
-				result := object(t, stdout.String())
-				assert.Equal(t, true, result["refused"])
-			}
+			diagnostics := refusedObject(t, stdout.String(), cmd.name)
+			assert.True(t, spannedIn(diagnostics, "registry.dfc"), "the load's error names the registry it is about")
 			assert.Contains(t, stderr.String(), "registry.dfc:", "the diagnostic the load reported is rendered for whoever wrote the file")
+
+			assertRoundTrips(t, stdout.String(), stderr.String())
 		})
 	}
 }
@@ -136,7 +195,7 @@ func TestAQueryOverATreeTheLoadRefuses(t *testing.T) {
 		name         string
 		args         []string
 		expectedCode int
-		refused      bool
+		answers      bool
 	}{
 		{
 			name: "measure exits as a load failure rather than measuring",
@@ -157,13 +216,13 @@ func TestAQueryOverATreeTheLoadRefuses(t *testing.T) {
 			name:         "check exits as a load failure, which is what the others now agree with",
 			args:         []string{"check"},
 			expectedCode: exitLoad,
-			refused:      true,
+			answers:      true,
 		},
 		{
 			name:         "conflicts answers and says the load refused the model",
 			args:         []string{"conflicts"},
 			expectedCode: exitSuccess,
-			refused:      true,
+			answers:      true,
 		},
 	}
 
@@ -176,13 +235,81 @@ func TestAQueryOverATreeTheLoadRefuses(t *testing.T) {
 
 			assert.Contains(t, stderr.String(), "registry.dfc:", "the diagnostic the load reported is rendered for whoever wrote the file")
 
-			if !testCase.refused {
-				assert.Empty(t, stdout.String(), "a load failure answers nothing")
+			if !testCase.answers {
+				refusedObject(t, stdout.String(), testCase.args[0])
 				return
 			}
 
 			result := object(t, stdout.String())
 			assert.Equal(t, true, result["refused"])
+		})
+	}
+}
+
+// TestARunWithNoDiagnosticToGiveStillWritesNothing holds the other side of the
+// refusal: a run which exits 2 for an error rather than for a diagnostic has no
+// refusal to write, and stdout stays empty. What those runs have to say is on
+// stderr as a `dfcad <cmd>:` line, which is not a diagnostic and is not in any
+// object.
+//
+// The annotation case is the one that could be mistaken for a refusal: the run
+// renders its findings as errors, and then fails to write the file it was told
+// to. Its exit 2 is the write, not the findings.
+func TestARunWithNoDiagnosticToGiveStillWritesNothing(t *testing.T) {
+	testCases := []struct {
+		name          string
+		args          func(t *testing.T) []string
+		rendersErrors bool
+	}{
+		{
+			name: "a model root held by another transaction",
+			args: func(t *testing.T) []string {
+				root := tree(t, authored())
+
+				tx, diags, err := dfcad.Begin(root)
+				require.NoError(t, err)
+				require.Empty(t, diags)
+				t.Cleanup(func() { _ = tx.Close() })
+
+				return []string{"set-label", "--root", root, "site:S-101", "Board Room"}
+			},
+		},
+		{
+			name: "an operation file which could not be read at all",
+			args: func(t *testing.T) []string {
+				root := tree(t, authored())
+				return []string{"apply", "--root", root, "missing.json"}
+			},
+		},
+		{
+			name: "a review whose summary could not be written, over findings rendered as errors",
+			args: func(t *testing.T) []string {
+				base := tree(t, model())
+				head := tree(t, map[string]string{
+					"registry.dfc":          listRegistry,
+					"entities/site.dfc":     withoutTheCampus(t),
+					"entities/geometry.dfc": listGeometry,
+					"entities/parcels.dfc":  listParcels,
+				})
+				unwritable := filepath.Join(t.TempDir(), "missing", "step-summary.md")
+
+				return []string{"review", "--root", head, "--base-root", base, "--annotate", unwritable}
+			},
+			rendersErrors: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			require.Equal(t, exitLoad, run(testCase.args(t), &stdout, &stderr), stderr.String())
+
+			assert.Empty(t, stdout.String(), "an error is not a refusal, and a run which has only an error writes no object")
+			assert.NotEmpty(t, stderr.String())
+
+			if testCase.rendersErrors {
+				assert.Contains(t, stderr.String(), ": error: ", "the run rendered a diagnostic which is an error, and still refused nothing")
+			}
 		})
 	}
 }

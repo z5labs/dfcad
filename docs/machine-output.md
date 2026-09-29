@@ -20,13 +20,25 @@ terminal, not on the first run. That includes help: `dfcad --help` writes to std
 exits zero, so that `dfcad ... | jq` reads a result object or nothing at all, and never a
 page of prose.
 
-Stdout carries a result object exactly when the run produced a result. A run that produced
-none writes nothing at all to stdout:
+Stdout carries a result object exactly when the run produced a result or read a model and was
+refused. A run that did neither writes nothing at all to stdout:
 
 - help
 - a usage error — no subcommand, an unknown one, a malformed flag, an unknown `--format`
 - a load failure that stopped the run before it began, such as a model root that is not
-  there or is not a directory
+  there, is not a directory or cannot be read, or an `--entity-format` this engine does not
+  implement
+- a model root held by another transaction
+- a file that could not be written, or an operation file that could not be read at all
+
+Each of those is an error rather than a diagnostic: it is reported on stderr as a
+`dfcad <cmd>: …` line, and there is nothing in the model for a diagnostic to point at.
+
+A run that read the model and was **refused** by what it read — a derivation, an export,
+`review` or a change, over a model the load refused, or a change refused because the model it
+would produce does not load — writes an object carrying no answer, only the envelope,
+`"refused": true` and the diagnostics that refused it, and exits `2`
+([The refusal](#the-refusal)).
 
 A run that *ran* and found something wrong did produce a result. A file that does not parse
 and a file that is not in canonical form are both reported in the object on stdout, with a
@@ -43,7 +55,7 @@ was refused — a derivation, an export, `review`, or a change — writes the en
 `"refused": true` and `diagnostics`, and nothing else, with its exit code unchanged. Help, a
 usage error and a load failure that read no model still write nothing. The record is the
 rule; [Diagnostics](#diagnostics) says what every object carries today, and the sections below
-come to state the rest command by command as each is brought into line.
+state the rest command by command.
 
 Output is deterministic: the same input produces byte-identical stdout. Keys come out in a
 fixed order, collections in a documented order, and nothing timing-dependent appears at
@@ -182,12 +194,56 @@ which commands have a second place for some of it.
 **`fmt` is the exception, and only in where it writes them.** Its `files[].diagnostics`
 already is this form, grouped by the file each is about, so it writes no top-level copy.
 
-A run which writes nothing on stdout still writes nothing: a derivation, an export, `review`
-and a write over a model the load refused exit `2` with an empty stdout, and their
-diagnostics are on stderr only. The record decides that such a run will write the envelope,
-`"refused": true` and `diagnostics`; until it does, the empty stream and the exit code are
-the whole of what a caller has. The record also gives each entry `ids` and `nodes` naming the
-things it is about. Neither is written yet, and a caller cannot rely on either being present.
+The record also gives each entry `ids` and `nodes` naming the things it is about. Neither is
+written yet, and a caller cannot rely on either being present.
+
+### The refusal
+
+A command which reads the model and has no answer to give through a load that refused it —
+every derivation (`resolve`, `route`, `measure`, `tessellate`, `buildable`, `site`, `plan`),
+`export`, `export-map`, `review` over a head or a base revision that does not load, `apply`
+and every write command — exits `2` and writes exactly this:
+
+```json
+{
+  "version": 2,
+  "command": "measure",
+  "refused": true,
+  "diagnostics": [
+    {
+      "severity": "error",
+      "span": "dangling/model.dfc:181:40-181:49",
+      "message": "expected an edge id something in this model holds, found geom:E-99, which names no edge"
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `refused` | boolean | Always `true`. The same field, meaning the same thing, as a discovery read's and `check`'s over the same tree. |
+| `diagnostics-suppressed` | integer, optional | As under [Diagnostics](#diagnostics). |
+| `diagnostics` | array | Every diagnostic the run rendered on stderr, at least one of them an error. It is the whole of the reason. |
+
+Nothing else is written: no `derived`, no `digest`, no `files`, no `dryRun`, no subject and no
+comparison. Each of those describes an answer, and there is none — a figure computed out of a
+model the load refused is an answer to a question nobody asked, and a refused change changed
+nothing. A caller tells a refusal from an answer by `refused` alone, whichever command it ran.
+
+A write is refused the same way whether it was the tree it read or the model it would produce
+that does not load, and `review` whether it was the head or the base; either way the
+diagnostics say which. `review` over a base that does not load also writes a
+`dfcad review: …` line on stderr, which is an error message and not a diagnostic.
+
+It is written only where a load refused what it read. A run that exits `2` for an error — the
+cases listed under [The two streams](#the-two-streams) — still writes nothing, even where it
+rendered diagnostics before the error: `review --annotate` renders the findings a policy ruled
+failures as errors, and then failing to write its summary is a file that could not be written,
+not a refusal.
+
+A discovery read over a refused model still answers in full with `refused` true and exit `0`,
+and `check` still writes its whole object with exit `2` — see
+[Diagnostics and the exit code of a read](#diagnostics-and-the-exit-code-of-a-read).
 
 The field was added under version `2`, which the [versioning rule](#the-versioning-rule)
 allows: a caller that never reads it sees the object it always did.
@@ -198,7 +254,7 @@ allows: a caller that never reads it sees the object it always did.
 |------|---------|--------|
 | 0 | Success. The command did what was asked. | The result object, or empty for help. |
 | 1 | Check failure. It ran and answered, and the answer is no. | The result object. |
-| 2 | Load failure. Input could not be read, did not parse, or was not written. | The result object, or empty when nothing could be loaded at all. |
+| 2 | Load failure. Input could not be read, did not parse, or was not written. | The result object; or [the refusal](#the-refusal) where a load refused the model and the command has no answer to give through it; or empty when nothing could be loaded at all, or for an error that is not a diagnostic. |
 | 3 | Usage error. The invocation itself was wrong. | Empty. |
 | 4 | Ambiguous. Resolution could not choose between the claims, and every one it could not choose between is in the result. | The result object. |
 | 5 | Strict ambiguity. The same, under a predicate the registry declares strict. | The result object. |
@@ -3009,7 +3065,7 @@ diff between two runs is about what changed in the branch.
 |------|------|
 | `0` | Nothing the policy ruled a failure. A revision which changed nothing suspicious, and one whose every finding was warned about or acknowledged, both land here. |
 | `1` | At least one finding the policy ruled a failure. Every finding is in the result. |
-| `2` | A revision could not be read: the model root is not inside a git working tree, the branch does not exist, the checkout is too shallow to reach the merge base, or the merge base itself does not load. A review needs both revisions, and half a comparison would report every id in the half it did not read as an id which disappeared. |
+| `2` | A revision could not be read: the model root is not inside a git working tree, the branch does not exist, the checkout is too shallow to reach the merge base, or the merge base itself does not load. A review needs both revisions, and half a comparison would report every id in the half it did not read as an id which disappeared. Where the head or the base did not load, stdout carries [the refusal](#the-refusal); where a revision could not be reached at all, nothing. |
 | `3` | The invocation was wrong: an argument the command does not take, or a `--policy` naming no check or no ruling. |
 
 **A shallow checkout is refused rather than answered from.** Git reports a merge base at the
@@ -3105,7 +3161,7 @@ Exit codes:
 | Code | When |
 |------|------|
 | `0` | The change was written, or, under `--dry-run`, would have been. |
-| `2` | The change was refused because the resulting model would not load, the tree did not load to begin with, the model root is held by another transaction, or a file could not be written. |
+| `2` | The change was refused because the resulting model would not load or the tree did not load to begin with — stdout carries [the refusal](#the-refusal) — or the model root is held by another transaction or a file could not be written, which write nothing to stdout. |
 | `3` | The invocation itself was wrong. |
 
 A refused change writes nothing at all, and its diagnostics are the ones a load of the
@@ -3113,8 +3169,12 @@ result would have raised — every independent problem, each with its position, 
 the first. Because the model is unchanged, the correct response to a refusal is to fix the
 command and reissue it: there is no partial state to inspect and nothing to reconcile.
 
-A refused change also writes nothing to **stdout**. It produced no result, and an object
-describing a change that did not happen reads exactly like one describing a change that did.
+A refused change writes no result to **stdout**: an object describing a change that did not
+happen reads exactly like one describing a change that did. It writes [the refusal](#the-refusal)
+instead — the envelope, `"refused": true` and the diagnostics that refused it, with no
+`dryRun` and no `files` — so a caller reads why from stdout. A model root held by another
+transaction and a file that could not be written are errors rather than refusals, and write
+nothing.
 
 ### `add-node`
 
@@ -3384,8 +3444,8 @@ loop, and is added the same way ([0001](./decisions/0001-two-node-families.md)).
 **Nothing is resolved here.** A parent that does not exist, a parent the hierarchy does not
 permit, a `--member-of` naming something that is not a Zone and a `--boundary` naming
 something that is not a loop are each refused when the model this would produce is
-interpreted — so nothing reaches stdout, the diagnostics on stderr are the whole of the
-answer, and the exit code is the load failure one. They are the diagnostics a load of the
+interpreted — so stdout carries [the refusal](#the-refusal), its diagnostics are the whole of
+the answer, and the exit code is the load failure one. They are the diagnostics a load of the
 result would have raised, which are the same ones the same mistake gets when it is typed
 into a file by hand.
 
@@ -3720,11 +3780,13 @@ Exit codes are the ones every write command has, with the operation file reading
 | Code | When |
 |------|------|
 | `0` | The batch was applied, or, under `--dry-run`, would have been. |
-| `2` | The operation file could not be read or is not a batch; or the change was refused because the resulting model would not load, the tree did not load to begin with, or a file could not be written. |
+| `2` | The operation file could not be read or is not a batch, or a file could not be written, which write nothing to stdout; or the change was refused because the resulting model would not load or the tree did not load to begin with, where stdout carries [the refusal](#the-refusal). |
 | `3` | The invocation was wrong, or an operation of the batch was: an id something already holds, a type nothing declares, a value of the wrong shape. It is the code the same mistake gets from the command that makes the change on its own. |
 
-A refused batch writes nothing at all and nothing reaches stdout, whichever of the three
-passes refused it. What is wrong with the *file* is reported in full — every operation that
+A refused batch writes nothing at all, whichever of the three passes refused it. A file which
+could not be read or is not a batch is an error, and nothing reaches stdout; a batch whose
+model would not load, or a tree which did not load to begin with, is a refusal, and stdout
+carries [the refusal](#the-refusal) with the diagnostics that refused it. What is wrong with the *file* is reported in full — every operation that
 has a problem, each named by its index — because an author fixing a generated batch should
 not have to reissue it once per mistake. What the *model* refuses is the first operation it
 refuses: the operations after it may depend on it, and the failures they would then have
@@ -3820,7 +3882,7 @@ Exit codes:
 |------|------|
 | `0` | The command answered. Either the artefact exists — `derived` true, with `files` naming it — or the model held nothing the format carries, which is `derived` true with `files` empty. |
 | `1` | The artefact could not be produced from the model that was read. `derived` false, `files` empty, `digest` written, and the refusal under [`diagnostics`](#diagnostics), so a caller reads why from the object rather than from stderr. |
-| `2` | The model could not be read: the root is not there, the tree did not load, or a file of it could not be read. |
+| `2` | The model could not be read: the root is not there, the tree did not load, or a file of it could not be read. Where the tree did not load, stdout carries [the refusal](#the-refusal) — the envelope, `"refused": true` and the diagnostics, and no `derived`, `digest` or `files`; where it could not be read at all, nothing. |
 | `3` | The invocation was wrong: a required flag missing, or a destination inside the authored tree, which is refused before anything is read. |
 
 A model that exports to nothing is **exit `0`**, and it is the same judgement `buildable`
@@ -4427,9 +4489,12 @@ the value a predicate resolves to, the file a node would be written to, an area,
 fit, a sheet — rather than reporting what the model holds. A figure computed out of a model the
 load refused is, in `check`'s words, answering a question nobody asked: a caller reading the
 exit code of `measure` could not tell it from a figure over a model which loads, and would
-carry it on. So each of them is a **load failure** — exit `2`, nothing on stdout — on any tree
-whose load reports an error, whether or not that error is anywhere near the subject it was
-asked about. The exports, `review` and every write command already were, for the same reason.
+carry it on. So each of them is a **load failure** — exit `2` — on any tree whose load reports
+an error, whether or not that error is anywhere near the subject it was asked about. The
+exports, `review` and every write command are too, for the same reason. What each writes on
+stdout is [the refusal](#the-refusal): the envelope, `"refused": true` and the diagnostics,
+and none of the answer's own fields, so a caller reads why from the object as a discovery
+read's caller does, and cannot read a figure out of it.
 
 The line is drawn by what the command answers and not by which error the load reported. An
 error a derivation could be shown not to depend on — a frame declared in a namespace nothing

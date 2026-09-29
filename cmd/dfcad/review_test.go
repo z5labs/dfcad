@@ -370,7 +370,9 @@ func TestRunReviewWithoutAHistory(t *testing.T) {
 
 		require.Equal(t, exitLoad, run(args, &stdout, &stderr))
 
-		assert.Empty(t, stdout.String())
+		// The base was read and refused, so the run says why on stdout as
+		// well; the two cases above read no model and write nothing.
+		refusedObject(t, stdout.String(), "review")
 		assert.Contains(t, stderr.String(), "does not load")
 	})
 }

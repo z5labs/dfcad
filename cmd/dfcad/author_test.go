@@ -473,7 +473,8 @@ func TestWriteIsRefusedByTheModelItWouldProduce(t *testing.T) {
 
 	stdout, stderr := invoke(t, exitLoad, root, "set-label", "site:S-101", "Board Room")
 
-	assert.Empty(t, stdout, "a run which produced no result writes no result object")
+	refusedObject(t, stdout, "set-label")
+	assertRoundTrips(t, stdout, stderr)
 	assert.Contains(t, stderr, "site:S-999")
 }
 
@@ -650,7 +651,8 @@ func TestRunRelateRefusesAnInvocationWhichRelatesNothing(t *testing.T) {
 
 // TestRunRelateIsRefusedByTheModelItWouldProduce checks that relating a node to
 // something which does not exist, or which the hierarchy forbids, comes back as
-// the diagnostic a load of the result would have raised.
+// the diagnostic a load of the result would have raised — on stderr, and in the
+// refusal the run writes on stdout.
 //
 // It is what makes the write path and a hand-authored file answer the same
 // mistake in the same words: the rules live in the loader and are not copied
@@ -685,7 +687,11 @@ func TestRunRelateIsRefusedByTheModelItWouldProduce(t *testing.T) {
 
 			stdout, stderr := invoke(t, exitLoad, root, testCase.args...)
 
-			assert.Empty(t, stdout, "a refused change writes no result")
+			// The change did not happen, so there is no commit, no file and no
+			// dry run to report: only the refusal, and the diagnostics which
+			// are the reason for it.
+			refusedObject(t, stdout, "relate")
+			assertRoundTrips(t, stdout, stderr)
 			assert.Equal(t, before, contents(t, root), "a refused change writes nothing")
 			assert.Contains(t, stderr, testCase.expected)
 		})

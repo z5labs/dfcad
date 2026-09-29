@@ -123,15 +123,10 @@ func TestEveryObjectCarriesTheDiagnosticsItsRunRendered(t *testing.T) {
 			code := run(sample(t, cmd), &stdout, &stderr)
 			require.Contains(t, []int{exitSuccess, exitLoad}, code, stderr.String())
 
-			// A discovery read answers through the refusal and `check`
-			// reports it; everything else writes nothing over a refused model
-			// yet, which is a story of its own.
-			if answersThrough[cmd.name] || cmd.name == "check" {
-				require.NotEmpty(t, stdout.String(), "a run which answers over a refused load writes an object")
-			}
-			if stdout.Len() == 0 {
-				return
-			}
+			// A discovery read answers through the refusal, `check` reports
+			// it, and everything else writes the refusal: every one of them
+			// writes an object.
+			require.NotEmpty(t, stdout.String(), "a run over a refused load writes an object")
 
 			diagnostics := assertRoundTrips(t, stdout.String(), stderr.String())
 			assert.True(t, spannedIn(diagnostics, "registry.dfc"), "the load's error names the registry it is about")
