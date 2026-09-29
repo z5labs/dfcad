@@ -112,6 +112,12 @@ whole of what keeps "deprecated" from becoming a delete button: a rank cannot be
 used to make a measurement quietly go away. A replacement which names no claim,
 and a claim named as its own replacement, are refused for the same reason.
 
+A frame whose transform names the claim being retracted is re-pointed at the
+replacement in the same change, and is reported as a frame it modified. A frame
+reads exactly the claim its transform names, so leaving it naming a retracted one
+would change no answer across it. A replacement whose value is not a transform
+is refused, and nothing is written.
+
 Retracting the only live claim of a subject and predicate is permitted and is
 reported: nothing then resolves under that predicate, which is a state a model
 may legitimately be in — a value somebody withdrew and has not yet re-measured
@@ -156,6 +162,11 @@ The new claim is given an id, because the claim it replaces names it. That is
 when a claim id is generated, and the format is ` + "`<subject>:<predicate>:<n>`" + `,
 where n is the lowest ordinal from one which nothing in the model already holds.
 Nothing is inferred back out of it: it is a name and not a schema.
+
+A frame whose transform names the claim being corrected is re-pointed at the new
+claim in the same change, and is reported as a frame it modified: a frame reads
+exactly the claim its transform names, so a correction which left it naming the
+retracted one would change no answer across it.
 
 ` + globalFlagsHelp + `
 ` + writeFlagsHelp + `

@@ -1130,6 +1130,9 @@ func (tx *Tx) DeprecateClaim(id, supersededBy ID) ([]Notice, error) {
 // therefore does not yet hold. A replacement which names no claim at all is
 // refused at [Tx.Commit] by the pass which resolves every reference to a claim,
 // in the one wording that failure has.
+//
+// A frame whose `transform` names the claim being retracted is re-pointed at
+// the replacement in the same change; see [Tx.retransform].
 func (tx *Tx) retract(claim *Claim, supersededBy ID) error {
 	form, ok := tx.Form(claim.Subject())
 	if !ok {
@@ -1141,7 +1144,95 @@ func (tx *Tx) retract(claim *Claim, supersededBy ID) error {
 		return UnknownFormError{Span: claim.Span()}
 	}
 
-	return tx.Replace(form, rewritten)
+	if err := tx.Replace(form, rewritten); err != nil {
+		return err
+	}
+
+	// A claim which wrote no id is one no frame can name, so there is nothing
+	// to re-point.
+	id, ok := claim.ID()
+	if !ok {
+		return nil
+	}
+
+	return tx.retransform(id, supersededBy)
+}
+
+// retransform points every frame whose `transform` names the claim `from` at
+// the claim `to` instead.
+//
+// A frame reads exactly the claim its transform names, and never follows the
+// supersession chain from it: following the chain at read time would change
+// what a currently valid file means. So retracting the claim a frame names
+// without re-pointing the frame would leave every cross-frame answer reading a
+// value the model now says is wrong. The write path re-points it instead, in the
+// same change, for the reason [Tx.Retire] redirects the references to what it
+// retires: the redirection is the whole of what a replacement is for, and
+// leaving it to a second command is leaving it to somebody who may not run it.
+//
+// The replacement is not judged here. One whose value is not a transform is
+// refused at [Tx.Commit] by the pass which resolves frames, with the diagnostic
+// a load of the same file would have raised.
+//
+// The frames are read from the files the transaction holds rather than from the
+// registry it loaded, so a frame an earlier mutation of the same change rewrote
+// is rewritten again from what that mutation left rather than from what was on
+// disk.
+func (tx *Tx) retransform(from, to ID) error {
+	var frames []*Node
+
+	for _, key := range tx.order {
+		for _, node := range tx.files[key].file.Nodes {
+			if tag, ok := formTag(node); ok && tag == frameTag {
+				frames = append(frames, node)
+			}
+		}
+	}
+
+	for _, frame := range frames {
+		rewritten, changed := retransformed(frame, from, to)
+		if !changed {
+			continue
+		}
+
+		if err := tx.Replace(frame, rewritten); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// retransformed is a frame form with its `transform` child naming `to` where it
+// named `from`, and whether anything changed.
+//
+// Only the frame's own children are read. A `transform` written deeper — the
+// value of a transform-shaped claim is spelled `(value (transform ...))` — is a
+// value rather than a reference, and is not this rewrite's to touch.
+func retransformed(frame *Node, from, to ID) (*Node, bool) {
+	var children []*Node
+
+	for i, child := range frame.Children {
+		if tag, ok := formTag(child); !ok || tag != transformChild {
+			continue
+		}
+
+		rewritten, changed := repointed(child, from, to)
+		if !changed {
+			continue
+		}
+
+		if children == nil {
+			children = slices.Clone(frame.Children)
+		}
+		children[i] = rewritten
+	}
+
+	if children == nil {
+		return frame, false
+	}
+
+	return relisted(frame, children), true
 }
 
 // leftAsserted reports that retracting a claim leaves its subject and predicate

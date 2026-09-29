@@ -6,6 +6,10 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -779,4 +783,258 @@ func TestClaimCommandsReportWhetherTheAccuracyCombines(t *testing.T) {
 			}
 		})
 	}
+}
+
+// refit is the claim the siting fixture's building grid is re-fitted with: the
+// georeference it carries, moved four hundred and ninety-five metres east, which
+// takes the building off the plot entirely.
+var refit = []string{
+	"--value", "500 4 0 1 0 0 0 1 0 0 0 1 1",
+	"--source", "Georeferencing report GR-2026-009, Acme Surveys",
+	"--method", "method:gnss-static",
+	"--accuracy", "independent 0.012 m",
+	"--date", "2026-06-02",
+}
+
+// refitAxes is [refit] as an operation file writes a claim.
+const refitAxes = `{"value": "500 4 0 1 0 0 0 1 0 0 0 1 1", "source": "Georeferencing report GR-2026-009, Acme Surveys",
+  "method": "method:gnss-static", "accuracy": ["independent 0.012 m"], "date": "2026-06-02"%s}`
+
+// sitedFrame is the part of a site answer the re-pointing tests read: whether
+// the building fits the plot, where it was carried to, and which claims the
+// budget of that answer cites.
+type sitedFrame struct {
+	Verdict  string `json:"verdict"`
+	Proposal struct {
+		Pieces []struct {
+			Outer [][]float64 `json:"outer"`
+		} `json:"pieces"`
+	} `json:"proposal"`
+	Budget struct {
+		Terms []struct {
+			Contributors []string `json:"contributors"`
+		} `json:"terms"`
+	} `json:"budget"`
+}
+
+// siteBuilding asks the reproduction's question of the model beneath root:
+// whether the building's footprint, written on its own grid, fits the plot
+// surveyed on the site's.
+func siteBuilding(t *testing.T, root string) sitedFrame {
+	t.Helper()
+
+	stdout, _ := invoke(t, exitSuccess, root,
+		"site", "--position", "position", "--tolerance", "boundary-closure",
+		"--within", "plan:P-01", "plan:S-01")
+
+	return listed[sitedFrame](t, stdout)
+}
+
+// cited is every claim a site answer's budget cites.
+func cited(answer sitedFrame) []string {
+	var out []string
+	for _, term := range answer.Budget.Terms {
+		out = append(out, term.Contributors...)
+	}
+	return out
+}
+
+// effectsOf is every effect a write reported, spelled "op tag id".
+func effectsOf(t *testing.T, stdout string) []string {
+	t.Helper()
+
+	var result struct {
+		Files []struct {
+			Effects []struct {
+				Op  string `json:"op"`
+				Tag string `json:"tag"`
+				ID  string `json:"id"`
+			} `json:"effects"`
+		} `json:"files"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stdout), &result), stdout)
+
+	var out []string
+	for _, file := range result.Files {
+		for _, effect := range file.Effects {
+			out = append(out, effect.Op+" "+effect.Tag+" "+effect.ID)
+		}
+	}
+	return out
+}
+
+// TestRetractingTheClaimAFrameNamesMovesTheFrame is the reproduction the story
+// was written from, asked of every way a claim is retracted: correcting the
+// claim a frame's transform names moves every answer across that frame onto the
+// correction.
+func TestRetractingTheClaimAFrameNamesMovesTheFrame(t *testing.T) {
+	testCases := []struct {
+		name     string
+		change   func(t *testing.T, root string) string
+		expected string
+	}{
+		{
+			name: "supersede as a command re-points the frame at the claim it wrote",
+			change: func(t *testing.T, root string) string {
+				stdout, _ := invoke(t, exitSuccess, root,
+					append(append([]string{"supersede"}, refit...), "frame:building", "frame-transform")...)
+				return stdout
+			},
+			expected: "frame:building:frame-transform:1",
+		},
+		{
+			name: "supersede as an operation re-points the frame at the claim it wrote",
+			change: func(t *testing.T, root string) string {
+				stdout, _ := invoke(t, exitSuccess, root, "apply", batchFile(t, `{"version": 1, "operations": [
+  {"op": "supersede", "subject": "frame:building", "predicate": "frame-transform",
+   "claim": `+fmt.Sprintf(refitAxes, "")+`}
+]}`))
+				return stdout
+			},
+			expected: "frame:building:frame-transform:1",
+		},
+		{
+			name: "deprecate-claim as a command re-points the frame at the claim named as its replacement",
+			change: func(t *testing.T, root string) string {
+				invoke(t, exitSuccess, root,
+					append(append([]string{"add-claim", "--id", "survey:C-0009"}, refit...), "frame:building", "frame-transform")...)
+
+				stdout, _ := invoke(t, exitSuccess, root,
+					"deprecate-claim", "survey:C-0001", "--superseded-by", "survey:C-0009")
+				return stdout
+			},
+			expected: "survey:C-0009",
+		},
+		{
+			name: "deprecate-claim as an operation re-points the frame at the claim named as its replacement",
+			change: func(t *testing.T, root string) string {
+				stdout, _ := invoke(t, exitSuccess, root, "apply", batchFile(t, `{"version": 1, "operations": [
+  {"op": "add-claim", "subject": "frame:building", "predicate": "frame-transform",
+   "claim": `+fmt.Sprintf(refitAxes, `, "id": "survey:C-0009"`)+`},
+  {"op": "deprecate-claim", "claim": "survey:C-0001", "supersededBy": "survey:C-0009"}
+]}`))
+				return stdout
+			},
+			expected: "survey:C-0009",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := copied(t, surveyedFixture)
+
+			before := siteBuilding(t, root)
+			require.Equal(t, "fits", before.Verdict)
+			require.NotEmpty(t, before.Proposal.Pieces)
+			require.Equal(t, [][]float64{{5, 12, 0}, {5, 4, 0}, {15, 4, 0}, {15, 12, 0}}, before.Proposal.Pieces[0].Outer)
+			require.Contains(t, cited(before), "survey:C-0001")
+
+			stdout := testCase.change(t, root)
+			assert.Contains(t, effectsOf(t, stdout), "modified frame frame:building",
+				"re-pointing the frame is reported as the frame it modified")
+
+			// The building has moved with its grid, off the plot, and the budget
+			// of the answer is the correction's rather than the retracted fit's.
+			after := siteBuilding(t, root)
+			assert.Equal(t, "does-not-fit", after.Verdict)
+			require.NotEmpty(t, after.Proposal.Pieces)
+			assert.Equal(t, [][]float64{{500, 12, 0}, {500, 4, 0}, {510, 4, 0}, {510, 12, 0}}, after.Proposal.Pieces[0].Outer)
+			assert.Contains(t, cited(after), testCase.expected)
+			assert.NotContains(t, cited(after), "survey:C-0001")
+
+			// The round trip: the rewritten registry loads, names the
+			// replacement, and the frame resolves to the replacement's value.
+			graph, diags := dfcad.LoadGraph(root)
+			require.Empty(t, diags)
+
+			frame, ok := graph.Registry().Frame("frame:building")
+			require.True(t, ok)
+			assert.Equal(t, dfcad.ID(testCase.expected), frame.Transform)
+
+			transform, ok := graph.Frames().Transform("frame:building")
+			require.True(t, ok)
+			assert.Equal(t, [3]float64{500, 4, 0}, transform.Translation)
+		})
+	}
+}
+
+// TestRepointingAFrameAtAClaimWhichIsNoTransformIsRefused is its own function
+// because the refusal is the commit's rather than the command's: the
+// replacement is a perfectly good claim, and what it is not is a fit.
+func TestRepointingAFrameAtAClaimWhichIsNoTransformIsRefused(t *testing.T) {
+	root := copied(t, surveyedFixture)
+
+	// A setback claimed on the building grid, which is a scalar.
+	invoke(t, exitSuccess, root,
+		"add-claim", "--id", "survey:C-0009", "--value", "0.5", "--unit", "m",
+		"--source", "Setting-out check SC-2026-003, Acme Surveys", "--method", "method:gnss-static",
+		"--accuracy", "independent 0.01 m", "--date", "2026-06-02",
+		"frame:building", "setback")
+
+	before := contents(t, root)
+
+	stdout, stderr := invoke(t, exitLoad, root,
+		"deprecate-claim", "survey:C-0001", "--superseded-by", "survey:C-0009")
+
+	refusedObject(t, stdout, "deprecate-claim")
+	assert.Contains(t, stderr, "expected a claim whose value is a transform, found survey:C-0009")
+	assert.Equal(t, before, contents(t, root), "a refused change writes nothing")
+}
+
+// TestAFrameNamingARetractedClaimLoadsWithAWarning is its own function because
+// it is about reading a hand edit rather than making a change: it loads, it is
+// warned about, and no exit code moves.
+func TestAFrameNamingARetractedClaimLoadsWithAWarning(t *testing.T) {
+	root := copied(t, surveyedFixture)
+
+	invoke(t, exitSuccess, root,
+		append(append([]string{"supersede"}, refit...), "frame:building", "frame-transform")...)
+
+	// Put the frame back by hand on the claim the supersession retracted.
+	path := filepath.Join(root, "registry.dfc")
+	src, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	edited := strings.Replace(string(src), "(transform frame:building:frame-transform:1)", "(transform survey:C-0001)", 1)
+	require.NotEqual(t, string(src), edited)
+	require.NoError(t, os.WriteFile(path, []byte(edited), 0o644))
+
+	_, stderr := invoke(t, exitSuccess, root, "check")
+
+	assert.Contains(t, stderr, "warning:")
+	assert.Contains(t, stderr, "frame:building")
+	assert.Contains(t, stderr, "survey:C-0001")
+	assert.Contains(t, stderr, "(transform frame:building:frame-transform:1)")
+
+	// It still reads what it names: the building is where the retracted fit
+	// put it.
+	answer := siteBuilding(t, root)
+	assert.Equal(t, "fits", answer.Verdict)
+}
+
+// TestRetractingAFrameClaimNoTransformNamesRepointsNothing is its own function
+// because what it asserts is an absence.
+func TestRetractingAFrameClaimNoTransformNamesRepointsNothing(t *testing.T) {
+	root := copied(t, surveyedFixture)
+
+	// A second fit of the building grid, beside the one its transform names and
+	// named by nothing.
+	invoke(t, exitSuccess, root,
+		append(append([]string{"add-claim", "--id", "survey:C-0009"}, refit...), "frame:building", "frame-transform")...)
+
+	stdout, _ := invoke(t, exitSuccess, root,
+		"deprecate-claim", "survey:C-0009", "--superseded-by", "survey:C-0001")
+
+	// One modification: the retraction written on the frame, and nothing
+	// re-pointed after it.
+	assert.Equal(t, []string{"modified frame frame:building"}, effectsOf(t, stdout))
+
+	graph, diags := dfcad.LoadGraph(root)
+	require.Empty(t, diags)
+
+	frame, ok := graph.Registry().Frame("frame:building")
+	require.True(t, ok)
+	assert.Equal(t, dfcad.ID("survey:C-0001"), frame.Transform)
+
+	assert.Equal(t, "fits", siteBuilding(t, root).Verdict)
 }

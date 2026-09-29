@@ -652,6 +652,8 @@ func (l *frameResolver) resolve(frame Frame) {
 		return
 	}
 
+	l.retracted(frame, claim)
+
 	value := claim.Value()
 	if value.Shape() == ShapeTransform {
 		l.frames.measured[frame.ID] = claim
@@ -677,5 +679,55 @@ func (l *frameResolver) resolve(frame Frame) {
 		// it has children, and what is wrong with this one is the one line of it
 		// which says what it measures.
 		Related: []RelatedLocation{{Span: value.Span(), Message: "the value the claim it names carries is written here"}},
+	})
+}
+
+// retracted warns about a frame whose transform names a claim which was
+// deprecated in favour of another.
+//
+// The frame still reads the claim it names. It does not follow the supersession
+// chain from it, because following the chain at read time would change what a
+// currently valid file means — which is why the write path re-points a frame's
+// transform when it retracts the claim the frame names, and why a frame left
+// naming a retracted claim can only be a hand edit. That edit loads, as it
+// always has: what this says is that every answer across the frame now reads a
+// value the model itself says is wrong, and which claim to name instead.
+//
+// A deprecation which names no replacement is not warned about here. It is a
+// load error of its own, reported where the claim is read, and a frame reading
+// it has no replacement to be pointed at.
+func (l *frameResolver) retracted(frame Frame, claim *Claim) {
+	if claim.Rank() != RankDeprecated {
+		return
+	}
+
+	replacement, ok := claim.SupersededBy()
+	if !ok {
+		return
+	}
+
+	// The hint names the end of the chain rather than the next step along it:
+	// naming a replacement which was itself retracted would earn the same
+	// warning again, one claim further on.
+	named := replacement
+	if current, ok := l.claims.Current(claim); ok {
+		if id, ok := current.ID(); ok {
+			named = id
+		}
+	}
+
+	l.add(Diagnostic{
+		Severity: SeverityWarning,
+		Span:     frame.Span,
+		Message: fmt.Sprintf(
+			"expected the transform of %s to name a claim which is still asserted, found %s, which was superseded by %s",
+			frame.ID, frame.Transform, replacement,
+		),
+		Hint: fmt.Sprintf(
+			"the frame still reads the retracted claim, so every answer across it uses a value the model says is wrong; "+
+				"name the claim which stands in its place: (transform %s)",
+			named,
+		),
+		Related: []RelatedLocation{{Span: claim.Span(), Message: "the retracted claim is written here"}},
 	})
 }

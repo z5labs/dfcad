@@ -156,6 +156,7 @@ is where the tests of that layer read them from.
 | 6.3, 6.4, 7.5 | An edge running to a vertex in another frame, and a loop traversing an edge in one | `topology/two-frames/`   |
 | 6.1, 6.9, 7.5 | A node bounded by a loop declared in another frame     | `boundary/two-frames/`                      |
 | 6.6.3, 7.5    | A frame whose `transform` names a claim whose value is not a transform | `frame/not-a-transform/`    |
+| 6.5, 7.5      | A frame whose `transform` names a deprecated claim, which loads with a warning | `frame/retracted-transform/` |
 | 4.1, 6.9      | One id held by two of the three families, which no single pass can see | `graph/duplicate-id/`       |
 | 6.9           | One reference of each class naming something the model does not hold | `graph/unresolved/`          |
 | 6.9, 6.9.1    | A ring in each of the three relations which can hold one: containment, frame parents and claim supersession | `graph/cyclic/` |
