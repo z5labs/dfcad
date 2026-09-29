@@ -1455,6 +1455,7 @@ func loadGate(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, bo
 	reportLoading(cmd, globals, stderr)
 
 	graph, found := dfcad.LoadGraph(globals.Root)
+	hold(stderr, graph)
 
 	refused := render(found, stderr)
 	if refused {

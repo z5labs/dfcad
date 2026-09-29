@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"maps"
+	"slices"
 
 	"github.com/z5labs/dfcad"
 )
@@ -173,6 +175,27 @@ type diagnosticStream struct {
 	// than for an error — a root held by another transaction, a file which
 	// could not be written — which is not one.
 	refused bool
+
+	// model is the model the run loaded as a [dfcad.Graph], which is what names
+	// the things each diagnostic is about: see [aboutDiagnostic]. It is nil for
+	// a run which held none — a change, whose refused spans are in a model the
+	// run never held as one — and every diagnostic is then written without
+	// `ids` or `nodes`.
+	model *dfcad.Graph
+}
+
+// hold notes on a run's stderr the model the run loaded, so that the
+// diagnostics written in its object can name the entities and nodes they are
+// about.
+//
+// It is called where a read loads the model beneath the root — [loadGate] — and
+// nowhere else. A change loads through a transaction and never holds the model
+// it would produce as a graph, and `review` holds its head revision and not the
+// base it compares against, whose spans are in a tree extracted somewhere else.
+func hold(stderr io.Writer, model *dfcad.Graph) {
+	if stream, ok := stderr.(*diagnosticStream); ok {
+		stream.model = model
+	}
 }
 
 // refuse notes on a run's stderr that a load it made refused what it read.
@@ -240,14 +263,77 @@ func (a *answerStream) refuse(command string, code int) error {
 	return emit(a, refusedResult{envelope: newEnvelope(command), Refused: true})
 }
 
+// aboutDiagnostic is one diagnostic as the object writes it: every field
+// [dfcad.Diagnostic] writes, then the ids of the entities it is about and the
+// nodes those belong to.
+//
+// The two are computed from the spans against the model the run held, and never
+// read out of the message: `ids` is every entity whose form encloses the span or
+// the span of a related location, and `nodes` is every node each of those
+// belongs to ([dfcad.Graph.Owners]). Both are ascending and distinct, and both
+// are absent where empty — a diagnostic on a registry form, or from a run which
+// held no model, carries neither.
+type aboutDiagnostic struct {
+	dfcad.Diagnostic
+
+	// IDs are the entities whose forms enclose the diagnostic's span or one of
+	// its related spans.
+	IDs []dfcad.ID `json:"ids,omitempty"`
+
+	// Nodes are the semantic nodes those entities belong to.
+	Nodes []dfcad.ID `json:"nodes,omitempty"`
+}
+
+// about is diagnostic with the entities and nodes it is about, read from model.
+func about(model *dfcad.Graph, diagnostic dfcad.Diagnostic) aboutDiagnostic {
+	out := aboutDiagnostic{Diagnostic: diagnostic}
+	if model == nil {
+		return out
+	}
+
+	spans := []dfcad.Span{diagnostic.Span}
+	for _, related := range diagnostic.Related {
+		spans = append(spans, related.Span)
+	}
+
+	ids := make(map[dfcad.ID]bool)
+	nodes := make(map[dfcad.ID]bool)
+	for _, span := range spans {
+		entity, ok := model.Enclosing(span)
+		if !ok || entity.ID() == "" {
+			continue
+		}
+		ids[entity.ID()] = true
+
+		for node := range model.Owners(entity) {
+			if node.ID() != "" {
+				nodes[node.ID()] = true
+			}
+		}
+	}
+
+	out.IDs = sortedIDs(ids)
+	out.Nodes = sortedIDs(nodes)
+
+	return out
+}
+
+// sortedIDs is the ids of a set, ascending, or nil for an empty one.
+func sortedIDs(set map[dfcad.ID]bool) []dfcad.ID {
+	if len(set) == 0 {
+		return nil
+	}
+	return slices.Sorted(maps.Keys(set))
+}
+
 // renderedDiagnostics is the tail of an object whose run rendered a
 // diagnostic, in the order the fields are written.
 //
 // The count comes first so that `diagnostics` is the last field of the object,
 // which is where docs/machine-output.md says it is.
 type renderedDiagnostics struct {
-	Suppressed  int                `json:"diagnostics-suppressed,omitempty"`
-	Diagnostics []dfcad.Diagnostic `json:"diagnostics"`
+	Suppressed  int               `json:"diagnostics-suppressed,omitempty"`
+	Diagnostics []aboutDiagnostic `json:"diagnostics"`
 }
 
 // close returns the encoded object with the run's diagnostics written after
@@ -272,9 +358,9 @@ func (a *answerStream) close(encoded []byte) ([]byte, error) {
 	encoder := json.NewEncoder(&tail)
 	encoder.SetEscapeHTML(false)
 
-	diagnostics := stream.rendered
-	if diagnostics == nil {
-		diagnostics = []dfcad.Diagnostic{}
+	diagnostics := make([]aboutDiagnostic, 0, len(stream.rendered))
+	for _, diagnostic := range stream.rendered {
+		diagnostics = append(diagnostics, about(stream.model, diagnostic))
 	}
 	if err := encoder.Encode(renderedDiagnostics{Suppressed: stream.suppressed, Diagnostics: diagnostics}); err != nil {
 		return nil, err

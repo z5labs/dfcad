@@ -86,6 +86,14 @@ type Boundaries struct {
 	bounded map[*Loop][]*SemanticNode
 	regions map[*Edge][]*SemanticNode
 
+	// cornersOf is the nodes each vertex is a corner of: every node whose
+	// boundary's vertices include it, in the order the walk read the nodes. It is
+	// the reverse of vertices, as regions is of edges, and is indexed for the
+	// same reason — a diagnostic about a corner is answered with the rooms it is
+	// a corner of, and scanning every node's vertices per diagnostic would make
+	// the answer quadratic in the size of the model.
+	cornersOf map[*Vertex][]*SemanticNode
+
 	// backing is the elements which physically realise each edge, in the order
 	// the edge named them and holding only the references which resolved.
 	//
@@ -159,6 +167,17 @@ func (b *Boundaries) Regions(edge *Edge) iter.Seq[*SemanticNode] {
 	return sequence(b.index().regions[edge])
 }
 
+// corners iterates the nodes vertex is a corner of: every node whose boundary's
+// vertices include it, in the order the walk read them.
+//
+// It is the reverse of [Boundaries.Vertices], as [Boundaries.Regions] is of
+// [Boundaries.Edges]. It is unexported because a vertex is reached through the
+// edges which name it and is not itself a boundary; [Graph.Owners] is where a
+// caller asks the question.
+func (b *Boundaries) corners(vertex *Vertex) iter.Seq[*SemanticNode] {
+	return sequence(b.index().cornersOf[vertex])
+}
+
 // index is the receiver with its maps readable, so that every method above works
 // on a nil Boundaries and on the zero value alike.
 func (b *Boundaries) index() *Boundaries {
@@ -213,12 +232,13 @@ func ResolveBoundaries(nodes *Nodes, topology *Topology) (*Boundaries, []Diagnos
 		nodes:    nodes,
 		topology: topology,
 		boundaries: &Boundaries{
-			loops:    make(map[*SemanticNode][]*Loop),
-			edges:    make(map[*SemanticNode][]*Edge),
-			vertices: make(map[*SemanticNode][]*Vertex),
-			bounded:  make(map[*Loop][]*SemanticNode),
-			regions:  make(map[*Edge][]*SemanticNode),
-			backing:  make(map[*Edge][]*SemanticNode),
+			loops:     make(map[*SemanticNode][]*Loop),
+			edges:     make(map[*SemanticNode][]*Edge),
+			vertices:  make(map[*SemanticNode][]*Vertex),
+			bounded:   make(map[*Loop][]*SemanticNode),
+			regions:   make(map[*Edge][]*SemanticNode),
+			cornersOf: make(map[*Vertex][]*SemanticNode),
+			backing:   make(map[*Edge][]*SemanticNode),
 		},
 	}
 
@@ -415,6 +435,7 @@ func (l *boundaryLoader) assembleDependencies() {
 					seenVertices[vertex] = true
 
 					l.boundaries.vertices[node] = append(l.boundaries.vertices[node], vertex)
+					l.boundaries.cornersOf[vertex] = append(l.boundaries.cornersOf[vertex], node)
 				}
 			}
 		}

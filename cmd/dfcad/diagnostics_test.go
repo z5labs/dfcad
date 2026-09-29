@@ -61,8 +61,21 @@ func rerendered(t *testing.T, diagnostics []dfcad.Diagnostic) string {
 	return out.String()
 }
 
+// carriedAbout is the diagnostics a run's object carries, decoded with the
+// entities and nodes each is about.
+func carriedAbout(t *testing.T, stdout string) []aboutDiagnostic {
+	t.Helper()
+
+	_, raw := carried(t, stdout)
+
+	var diagnostics []aboutDiagnostic
+	require.NoError(t, json.Unmarshal(raw, &diagnostics))
+
+	return diagnostics
+}
+
 // reencoded is diagnostics written again, the way the object writes them.
-func reencoded(t *testing.T, diagnostics []dfcad.Diagnostic) []byte {
+func reencoded(t *testing.T, diagnostics []aboutDiagnostic) []byte {
 	t.Helper()
 
 	var out bytes.Buffer
@@ -87,7 +100,7 @@ func assertRoundTrips(t *testing.T, stdout, stderr string) []dfcad.Diagnostic {
 	diagnostics, raw := carried(t, stdout)
 
 	assert.Equal(t, stderr, rerendered(t, diagnostics), "the object's diagnostics rendered in order are the run's stderr")
-	assert.Equal(t, string(raw), string(reencoded(t, diagnostics)), "decoding the diagnostics and writing them again gives back the same bytes")
+	assert.Equal(t, string(raw), string(reencoded(t, carriedAbout(t, stdout))), "decoding the diagnostics and writing them again gives back the same bytes")
 
 	return diagnostics
 }
