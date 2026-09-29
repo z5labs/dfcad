@@ -4015,10 +4015,19 @@ its own.
 | `storeys[].elevation.unit` | string | The root frame's linear unit, which every coordinate in the file is written in ([0005](./decisions/0005-one-linear-unit-per-frame.md)). |
 | `storeys[].elevation.frame` | string | The root frame, which is the frame every coordinate in the file is written in ([0024](./decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)). An elevation in any other frame would be a value the artefact does not hold. |
 | `storeys[].elevation.budget` | object, optional | The accumulated uncertainty of the fits the storey's frame chain passes through on its way to the root, in route order, with `from` the storey's frame and `to` the root: the [`budget`](#budget) `resolve --frame` writes, field for field, including `unknown` for a fit stating no accuracy and `units` for fits written in different units. Absent where the storey's frame is the root, because nothing moved it and its value is `0`. |
+| `bodies` | array, optional | Written only under `--evidence`, and only beside an artefact: absent without the flag and absent on a refusal, exactly as `storeys` is. One entry per node the file gives a `Body` representation — the swept solids of a node drawn as an area or as a line — ascending by `id` compared byte-wise, and `[]` rather than absent when there are none, which is what a run naming no `--height` writes. A node drawn as several solids is one entry, because its base and height are read once for the node. An opening cut for a filling is not a body of any node and is not listed. |
+| `bodies[].id` | string | The node the body was written for. |
+| `bodies[].entity` | string | The entity the node was written as, upper-case as `classifications[].entity` spells it: `IFCSPACE`, `IFCWALL`, `IFCBUILDINGELEMENTPROXY`. |
+| `bodies[].base` | object | Where the body starts, in the shape [`storeys[].elevation`](#export) takes: `value`, `unit`, `frame` and `budget`. |
+| `bodies[].base.value` | number | The level the boundary lies at in the root frame, moved by the offset claimed of it under `--offset`: exactly the position the file gives the solids plus the datum the node's placement stands at, which is what a reader composing the file's placement chain with the solid's position arrives at. It is recorded from the values the writer wrote rather than derived a second time. |
+| `bodies[].base.unit` | string | The root frame's linear unit, as for `storeys[].elevation.unit`. |
+| `bodies[].base.frame` | string | The root frame, as for `storeys[].elevation.frame`. |
+| `bodies[].base.budget` | object | The [`budget`](#budget) of the boundary carried into the root frame — the claims its corners were read from and the fits on the route — with the offset claim added where one was read. Written without `from` or `to`, because it is a computation rather than a route, as `buildable` writes one. A claim stating no accuracy is named in `unknown` and `combined` is absent. |
+| `bodies[].top` | object | Where the body ends, in the same shape: `value` is `base.value` plus the depth the solids are swept through, and `budget` is `base.budget` with the height claim added. A term the two share is counted once. |
 
 Everything else — `derived`, `digest`, `files[]`, `identifiers` under `--evidence` — is the
-shared shape, with the meanings documented there. `storeys` is the one field `--evidence` adds
-beside the manifest which is this command's own.
+shared shape, with the meanings documented there. `storeys` and `bodies` are the two fields
+`--evidence` adds beside the manifest which are this command's own.
 
 A storey two fits above the root, with the one below it on the root itself, reads:
 
@@ -4030,6 +4039,24 @@ A storey two fits above the root, with the one below it on the root itself, read
       "terms": [{"kind": "independent", "name": "site:C-0002", "magnitude": 0.003, "unit": "m", "contributors": ["site:C-0002"]},
                 {"kind": "independent", "name": "site:C-0001", "magnitude": 0.004, "unit": "m", "contributors": ["site:C-0001"]}],
       "combined": {"magnitude": 0.005, "unit": "m", "coverage-factor": 1}}}}
+]
+```
+
+A room drawn on a plan grid lifted 3 m above the root, with its floor stepped up by a claimed
+0.15 m and a claimed clear height of 2.4 m, reads (corner terms elided):
+
+```json
+"bodies": [
+  {"id": "site:S-02", "entity": "IFCSPACE",
+   "base": {"value": 3.15, "unit": "m", "frame": "frame:plan-ground",
+     "budget": {"terms": [{"kind": "independent", "name": "the position of geom:V-302-A", "magnitude": 0.004, "unit": "m", "contributors": ["..."]},
+                          {"kind": "independent", "name": "site:C-0001", "magnitude": 0.004, "unit": "m", "contributors": ["site:C-0001"]},
+                          {"kind": "independent", "name": "the step of site:S-02", "magnitude": 0.005, "unit": "m", "contributors": ["..."]}],
+       "combined": {"magnitude": 0.0102, "unit": "m", "coverage-factor": 1}}},
+   "top": {"value": 5.55, "unit": "m", "frame": "frame:plan-ground",
+     "budget": {"terms": ["... the base's terms ...",
+                          {"kind": "independent", "name": "the clear-height of site:S-02", "magnitude": 0.006, "unit": "m", "contributors": ["..."]}],
+       "combined": {"magnitude": 0.0119, "unit": "m", "coverage-factor": 1}}}}
 ]
 ```
 

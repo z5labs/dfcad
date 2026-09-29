@@ -316,6 +316,7 @@ func offsetVocabularyOf(drawn shapes) error {
 // and a representation holding no shapes is a file IFC refuses.
 func (e *exporter) shaped(
 	node *dfcad.SemanticNode,
+	entity ifc.Entity,
 	datum float64,
 ) (*ifc.Representation, []ifc.PropertySet, dfcad.RegionTessellation) {
 	drawn, diags := e.graph.Topology().TessellateRegion(
@@ -384,11 +385,14 @@ func (e *exporter) shaped(
 
 	properties := e.provenance(node, swept, drawn.Unit(), height, resolution)
 
-	base, offset, sweepable := e.based(node, elevation, drawn.Unit())
+	base, raised, offset, sweepable := e.based(node, elevation, drawn.Unit())
 	if !sweepable {
 		return representation, nil, drawn
 	}
 	properties = append(properties, offset...)
+
+	measured, _ := current(resolution)
+	e.body(node, entity, drawn.Region(), sweep{datum: datum, base: base, height: height, offset: raised, claim: measured})
 
 	solids := make([]ifc.Item, 0, len(plans))
 	for _, piece := range plans {
@@ -434,11 +438,12 @@ func (e *exporter) shaped(
 // only which entity the shape is written on.
 func (e *exporter) modelled(
 	node *dfcad.SemanticNode,
+	entity ifc.Entity,
 	datum float64,
 ) (*ifc.Representation, []ifc.PropertySet) {
 	switch geometry, _ := node.Geometry(); geometry {
 	case dfcad.GeometryLine:
-		return e.thickened(node, datum)
+		return e.thickened(node, entity, datum)
 	case dfcad.GeometryPoint:
 		// A point is placed rather than drawn, which [exporter.placed] does on
 		// the product itself. There is no representation to write and no
@@ -447,7 +452,7 @@ func (e *exporter) modelled(
 		return nil, nil
 	}
 
-	representation, properties, _ := e.shaped(node, datum)
+	representation, properties, _ := e.shaped(node, entity, datum)
 
 	return representation, properties
 }
@@ -470,6 +475,7 @@ func (e *exporter) modelled(
 // model does not state one.
 func (e *exporter) thickened(
 	node *dfcad.SemanticNode,
+	entity ifc.Entity,
 	datum float64,
 ) (*ifc.Representation, []ifc.PropertySet) {
 	runs, unit, drew := e.runs(node)
@@ -546,13 +552,27 @@ func (e *exporter) thickened(
 
 	properties = append(properties, e.provenance(node, swept, unit, height, over)...)
 
-	base, offset, sweepable := e.based(node, elevation, unit)
+	base, raised, offset, sweepable := e.based(node, elevation, unit)
 	if !sweepable {
 		return representation, properties
 	}
 	properties = append(properties, offset...)
 
 	drawn.base, drawn.height, drawn.swept = base, height, true
+
+	// The run is drawn edge by edge above, which is what writes it; the region
+	// read here is what accounts for it, because the region is what carries
+	// the claims its corners were read from. Its diagnostics are the ones the
+	// edges already reported, so they are not reported a second time.
+	region, _ := e.graph.Topology().TessellateRegion(
+		node,
+		e.graph.Boundaries(),
+		bent(e.graph, e.shapes.position, e.shapes.tolerance, e.shapes.curvature(), node),
+		e.shapes.chord,
+	)
+
+	measured, _ := current(over)
+	e.body(node, entity, region.Region(), sweep{datum: datum, base: base, height: height, offset: raised, claim: measured})
 
 	solids := make([]ifc.Item, 0, len(plans))
 	for _, plan := range plans {
@@ -577,8 +597,9 @@ func (e *exporter) thickened(
 }
 
 // based is the elevation a node's body starts at — the level its boundary lies
-// at, moved by the offset claimed of it — the property set recording that
-// offset, and whether the body can be swept at all.
+// at, moved by the offset claimed of it — the claim that offset was read from,
+// where one was, the property set recording it, and whether the body can be
+// swept at all.
 //
 // It is one function for both shapes because the offset moves the sweep, and
 // the sweep is one operation: a window drawn as a run along its wall and a slab
@@ -598,7 +619,7 @@ func (e *exporter) based(
 	node *dfcad.SemanticNode,
 	elevation float64,
 	unit dfcad.Unit,
-) (float64, []ifc.PropertySet, bool) {
+) (float64, *dfcad.Claim, []ifc.PropertySet, bool) {
 	claimed := offsetOf(e.shapes.offset)
 
 	before := len(e.diags)
@@ -609,10 +630,12 @@ func (e *exporter) based(
 		// where its boundary lies. One which was refused is no body at all: a
 		// solid swept from somewhere the model said it does not start is one
 		// the file gives no reason for.
-		return elevation, nil, len(e.diags) == before
+		return elevation, nil, nil, len(e.diags) == before
 	}
 
-	return elevation + offset, e.provenance(node, claimed, unit, offset, resolution), true
+	claim, _ := current(resolution)
+
+	return elevation + offset, claim, e.provenance(node, claimed, unit, offset, resolution), true
 }
 
 // placed is where a node drawn as a point stands, as the placement of the
