@@ -84,6 +84,12 @@ type Graph struct {
 	byKind map[Kind][]*SemanticNode
 	byType map[string][]*SemanticNode
 
+	// forms is every entity grouped by the file its form was written in, each
+	// file's in the order the forms start. It is what [Graph.Enclosing] reads,
+	// indexed at load for the reason byKind is: a run which rendered a hundred
+	// diagnostics asks it a hundred times and more.
+	forms map[string][]Entity
+
 	// observations reads the observation files the entities link to, once each
 	// and only when something asks for them.
 	//
@@ -641,6 +647,8 @@ func (g *Graph) index() {
 	for range g.claims.Conflicts() {
 		conflicts++
 	}
+
+	g.forms = indexForms(g.entities())
 
 	g.summary = Summary{
 		nodes:      g.nodes.Len(),

@@ -153,7 +153,9 @@ command — with one exception, `fmt`, below.
       "severity": "error",
       "span": "surveyed/model.dfc:178:7-178:16",
       "message": "expected the loop geom:L-11 not to cross itself, found the segment geom:V-12 to geom:V-13 crossing geom:V-14 to geom:V-11 at (5.0 4.0 0.0) m",
-      "hint": "a ring which crosses itself encloses no one region; …"
+      "hint": "a ring which crosses itself encloses no one region; …",
+      "ids": ["geom:L-11"],
+      "nodes": ["plan:S-01"]
     }
   ]
 }
@@ -168,13 +170,44 @@ command — with one exception, `fmt`, below.
 | `diagnostics[].message` | string | What was expected and what was found. |
 | `diagnostics[].hint` | string, optional | What to do about it, where the diagnostic says. |
 | `diagnostics[].related` | array, optional | The other places that explain it, each with its own `span` and `message`. |
+| `diagnostics[].ids` | array of strings, optional | The entities it is about: the id of every vertex, edge, loop or node whose form encloses its `span` or the `span` of one of its `related` entries, ascending and each once. Absent where none does — a diagnostic on a registry form, between forms, or from a run which held no model. |
+| `diagnostics[].nodes` | array of strings, optional | The nodes those belong to, ascending and each once: a node itself; for a loop, every node it bounds; for an edge, every node whose boundary it is part of; for a vertex, every node whose boundary's vertices include it. Absent where empty. |
 
-Each entry is exactly the shape `fmt` writes under `files[].diagnostics`: both are
-`dfcad.Diagnostic` written by `encoding/json`, from the same fields `Diagnostic.Render` writes
-the stderr rendering from. Neither is derived by parsing the other, so there is nothing to keep
-in step — decode the entries into `[]dfcad.Diagnostic`, render each in order with
-`Diagnostic.Render` and `dfcad.FileSources{}`, and the result is the run's stderr under the
-default format, wherever that stderr held only diagnostics.
+Each entry is the shape `fmt` writes under `files[].diagnostics` — `dfcad.Diagnostic` written
+by `encoding/json`, from the same fields `Diagnostic.Render` writes the stderr rendering from —
+followed by `ids` and `nodes`. Neither rendering is derived by parsing the other, so there is
+nothing to keep in step — decode the entries into `[]dfcad.Diagnostic`, render each in order
+with `Diagnostic.Render` and `dfcad.FileSources{}`, and the result is the run's stderr under
+the default format, wherever that stderr held only diagnostics. Decoding into
+`[]dfcad.Diagnostic` drops `ids` and `nodes`, which the rendering does not read.
+
+**`ids` and `nodes` name what a diagnostic is about, computed from its spans.** A refusal is
+about a loop, an edge or a vertex, because that is what is wrong; what a caller acts on is
+usually the node that shape belongs to — the room missing from the sheet — and these two fields
+say which without reading `message` and without a second parser of the entity files. Both are
+computed from the spans against the model the run loaded, and neither is read out of `message`:
+
+- `ids` is `Graph.Enclosing` of the diagnostic's `span` and of each `related[].span`: the
+  entity whose declaring form, matched by path, line and column, encloses it. A span inside a
+  claim is inside the node the claim is written on, so a diagnostic about a claim names that
+  node. A span in a registry file, in a comment between forms, or in a file the model does not
+  hold encloses nothing.
+- `nodes` is `Graph.Owners` of each of those. For a loop it is `Graph.Bounded` and for an edge
+  `Graph.Regions` — the same lookup [`traverse bounds`](#traverse) answers from — so it is the
+  reverse of `traverse boundary-of`: the `nodes` of a diagnostic about one loop or one edge are
+  exactly what `traverse bounds` answers for it, and the query and the diagnostic cannot
+  disagree about which node a shape belongs to. For a vertex it is every node whose boundary
+  reaches it, through the edges `traverse boundary-of` lists.
+
+They are written wherever the run loaded the model as a graph: the discovery reads, `check`,
+`resolve`, `route`, the derivations, `export`, `export-map`, and `review` against its head
+revision. They are never written on a write command's diagnostics — a refused change's spans
+are in a model the run never held as a graph. `review` reads every diagnostic against its head
+revision, so one about the base it compares against — extracted from the repository, or read
+from another `--base-root` — is in a file the head does not hold, and names nothing. A load
+that failed early, such as a file that does not parse, has less model to derive them from, and
+they are absent there rather than guessed. Both are added fields, so the contract version is
+unchanged.
 
 **`diagnostics` is the last field of the object.** `diagnostics-suppressed`, where it is
 written, is the field before it. Everything the command answers comes first, so a caller
@@ -193,9 +226,6 @@ which commands have a second place for some of it.
 
 **`fmt` is the exception, and only in where it writes them.** Its `files[].diagnostics`
 already is this form, grouped by the file each is about, so it writes no top-level copy.
-
-The record also gives each entry `ids` and `nodes` naming the things it is about. Neither is
-written yet, and a caller cannot rely on either being present.
 
 ### The refusal
 
@@ -2462,7 +2492,7 @@ project would then disagree with — the same rule that keeps domain vocabulary 
 | `undrawn[].kind` | string, optional | The kind it declares. |
 | `undrawn[].type` | string, optional | The type it declares. |
 | `undrawn[].within` | string | The id of the node it is directly within, exactly as `outlines[].within` is, and always written for the same reason. |
-| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read, `no-position` for a node drawn as a point which nothing claims a position of under `--position`, `uncarried` for one whose shape was read in another frame and could not be carried into `frame` — the two frames are not related, a transform on the way could not be applied, or `frame` is in a unit other than the tolerance's. A closed set. |
+| `undrawn[].reason` | string | Why it was not drawn: `no-boundary` for a node that references no loop, `unreadable-boundary` for one whose loops this run could not read, `no-position` for a node drawn as a point which nothing claims a position of under `--position`, `uncarried` for one whose shape was read in another frame and could not be carried into `frame` — the two frames are not related, a transform on the way could not be applied, or `frame` is in a unit other than the tolerance's. A closed set. The detail — which loop, which corner, where — is the diagnostic behind it in [`diagnostics`](#diagnostics), whose `nodes` names this node and whose `ids` names the shapes it is about. |
 | `undrawn[].declared-in` | string, optional | The frame the node's shape was read in — or, for a node with no shape, the frame it declares — written only where it is not `frame`, so that its claims can be read in the frame they were written in. |
 | `undrawn[].annotations` | array | The claims reported on it, in the same order and the same shape as an outline's. Empty rather than null. A node that references no loop has no edges, so what it carries is exactly its own claims and no edge anchors. |
 | `budget` | object, optional | The accuracy of the rings, over the position claims that put every drawn corner where it is, and the transform claims of every frame an outline was carried through, and over the rings that were **drawn** — a ring that was refused put no corner anywhere. Same shape as [`budget`](#budget), without `from` and `to`. Absent where there is nothing to report — no terms, no combined figure and no reason for there being none — because an object carrying neither the figure nor a reason for its absence reads as an answer known exactly. |
@@ -3139,7 +3169,9 @@ the decision looks like and for what happens when the rules do not place a node.
 
 **A change carries what the model it produced rendered.** A change which is written can still
 render warnings — about the model the change produced, or the one it was made to — and those
-are in [`diagnostics`](#diagnostics). A change the model refuses writes nothing to stdout, as
+are in [`diagnostics`](#diagnostics). They carry no `ids` and no `nodes`: a write reads the model
+through a transaction and never holds it, or the model it would produce, as a graph, so there is
+nothing to compute them against — a refused change's spans are in a model the run never held. A change the model refuses writes nothing to stdout, as
 below, so its diagnostics are on stderr only.
 
 Statuses:
@@ -4342,7 +4374,7 @@ field of its own that [`export`](#export) does.
 | `chorded[].span` | object | Where that edge was written. |
 | `undrawn[].node` | string | A node the model gives a shape to — one with a boundary, or one drawn as a point — which is not a feature of the document, in id order. Absent where every such node was drawn. |
 | `undrawn[].label`, `undrawn[].kind`, `undrawn[].type` | string, optional | What that node is called and what it is, each absent where the node has none. |
-| `undrawn[].reason` | string | Why: `unreadable-boundary` for edges this run could not read, `no-position` for a point nothing places, `unrooted` for a model whose frames reach no root, `uncarried` for a frame the chain does not relate to the root, `not-level` for corners which do not lie at one level. The first two are [`plan`](#plan)'s words for the same findings. |
+| `undrawn[].reason` | string | Why: `unreadable-boundary` for edges this run could not read, `no-position` for a point nothing places, `unrooted` for a model whose frames reach no root, `uncarried` for a frame the chain does not relate to the root, `not-level` for corners which do not lie at one level. The first two are [`plan`](#plan)'s words for the same findings. The detail is the diagnostic behind it in [`diagnostics`](#diagnostics), whose `nodes` names this node and whose `ids` names the shapes it is about. |
 
 Everything else — `derived`, `digest`, `files[]` — is the shared shape, with the meanings
 documented there. There is no `identifiers`: this format derives no identifier of the

@@ -1236,6 +1236,52 @@ func ExampleBoundaries_Adjacent() {
 	// site:S-C is 2 away
 }
 
+func ExampleGraph_Enclosing() {
+	graph, _ := dfcad.LoadGraph("testdata/boundary/adjacent")
+
+	// A diagnostic says where it is. What is written there is a fact about the
+	// model, so the step from one to the other is a lookup rather than a field
+	// every diagnostic has to remember to carry. Line 111 is the edge list of
+	// the corridor's outline.
+	at := dfcad.Position{Path: "testdata/boundary/adjacent/model.dfc", Line: 111, Column: 10}
+	if entity, ok := graph.Enclosing(at.Span()); ok {
+		fmt.Println(entity.ID())
+	}
+
+	// A registry declares vocabulary rather than things, so a place in one is
+	// in no entity's form.
+	vocabulary := dfcad.Position{Path: "testdata/boundary/adjacent/registry.dfc", Line: 22, Column: 3}
+	_, ok := graph.Enclosing(vocabulary.Span())
+	fmt.Println(ok)
+
+	// Output:
+	// geom:L-02
+	// false
+}
+
+func ExampleGraph_Owners() {
+	graph, _ := dfcad.LoadGraph("testdata/boundary/adjacent")
+
+	// What a caller acts on is usually the room rather than the shape: the
+	// partition between room A and the corridor belongs to both of them, and
+	// a corner belongs to every room it is a corner of.
+	for _, id := range []dfcad.ID{"geom:E-02", "geom:L-03", "geom:V-06", "site:S-A"} {
+		entity, _ := graph.Entity(id)
+
+		var owners []string
+		for node := range graph.Owners(entity) {
+			owners = append(owners, string(node.ID()))
+		}
+		fmt.Println(id, "belongs to", strings.Join(owners, " and "))
+	}
+
+	// Output:
+	// geom:E-02 belongs to site:S-A and site:S-B
+	// geom:L-03 belongs to site:S-C
+	// geom:V-06 belongs to site:S-B and site:S-C
+	// site:S-A belongs to site:S-A
+}
+
 // ExampleBoundaries_AdjacentWalk answers what can be reached from a room rather
 // than what is next to it, by saying which shared edges are ways through.
 func ExampleBoundaries_AdjacentWalk() {
