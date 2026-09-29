@@ -662,7 +662,13 @@ a date like any other.
   other storage convention, and a figure quoted at any other coverage is converted at the
   point it enters the model, by whoever enters it
   ([0006](./docs/decisions/0006-accuracy-is-one-sigma.md)).
-- Each term's unit must be a unit of the same quantity as the claim's value.
+- Each term's unit must be a unit of the same quantity as the claim's value. The engine enforces
+  this where it knows the value's quantity: a value in a linear unit (§4.5's closed set) takes
+  only terms in linear units, and a value in the square of one (`m2`, `ft2`, …) only terms in
+  squares of linear units; any other term is a load error at that term. A value in any other unit
+  is not judged. Predicate units are open, and whether `arcsec` measures what `deg` does is
+  knowledge of the consuming repository rather than of the engine
+  ([0010](./docs/decisions/0010-the-engine-carries-no-domain-vocabulary.md)).
 - **A systematic term names the source it is shared with, as an id.** Two systematic terms
   are the same term when their term ids are byte-equal — not when their magnitudes happen to
   match — and a term contributing to two inputs of one derivation is counted once. The

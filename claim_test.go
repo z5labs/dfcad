@@ -578,6 +578,206 @@ func TestLoadClaimsOrdersMixedUnitsWarnings(t *testing.T) {
 	assert.Less(t, diags[0].Span.Start.Offset, diags[1].Span.Start.Offset)
 }
 
+// quantityRegistry declares what the quantity tests write: a predicate in a
+// linear unit, one in the square of a linear unit, one in a unit of a quantity
+// the engine does not know, and one in the US survey foot.
+const quantityRegistry = `(project (globalid-namespace "https://example.org/models/quantity"))
+(namespace method (description "Measurement methods used on this project."))
+(namespace site (description "Semantic nodes minted by this model."))
+(namespace control (description "Survey control points."))
+(type MeetingRoom (kind Space) (geometry area) (description "An enclosed room."))
+(predicate width (unit m) (shape scalar) (description "How wide the thing is."))
+(predicate area (unit m2) (shape scalar) (description "How much floor it has."))
+(predicate bearing (unit deg) (shape scalar) (description "Which way it faces."))
+(predicate run (unit usft) (shape scalar) (description "How far it runs on the state plane."))
+`
+
+// quantityNode writes one node carrying one claim under predicate, whose value
+// is written as given and whose accuracy is the terms given.
+func quantityNode(id, predicate, value, terms string) string {
+	return "(node " + id + "\n  (kind Space)\n  (type MeetingRoom)\n  (geometry area)\n  (" + predicate + "\n" +
+		"    (value " + value + ")\n    (source \"Resurvey RS-2026-011\")\n    (method method:total-station)\n" +
+		"    (accuracy " + terms + ")\n    (date \"2026-09-28\")))\n"
+}
+
+// TestLoadClaimsRefusesAnAccuracyTermOfAnotherQuantity checks specification
+// section 6.6.5's rule that every term is in a unit of the value's quantity:
+// an error at each offending term where the engine knows the value's quantity,
+// and nothing where it does not.
+func TestLoadClaimsRefusesAnAccuracyTermOfAnotherQuantity(t *testing.T) {
+	testCases := []struct {
+		name      string
+		predicate string
+		value     string
+		terms     string
+		expected  []string
+	}{
+		{
+			name:      "refuses an area term on a value in a linear unit",
+			predicate: "width",
+			value:     "5.0 m",
+			terms:     "(independent 4.0 m2)",
+			expected:  []string{"(independent 4.0 m2)"},
+		},
+		{
+			name:      "refuses a linear term on a value in the square of a linear unit",
+			predicate: "area",
+			value:     "18.4 m2",
+			terms:     "(independent 0.05 m)",
+			expected:  []string{"(independent 0.05 m)"},
+		},
+		{
+			name:      "accepts another linear unit on a value in a linear unit, which only fails to convert",
+			predicate: "width",
+			value:     "5.0 m",
+			terms:     "(independent 2.0 mm)",
+		},
+		{
+			name:      "refuses a term in a unit the engine does not know on a value in a linear unit",
+			predicate: "width",
+			value:     "5.0 m",
+			terms:     "(independent 0.5 deg)",
+			expected:  []string{"(independent 0.5 deg)"},
+		},
+		{
+			name:      "does not judge a term on a value in a unit the engine does not know",
+			predicate: "bearing",
+			value:     "90.0 deg",
+			terms:     "(independent 3.0 arcsec)",
+		},
+		{
+			name:      "accepts the international foot on a value in the US survey foot",
+			predicate: "run",
+			value:     "1200.0 usft",
+			terms:     "(independent 0.01 ft)",
+		},
+		{
+			name:      "refuses each offending term of one claim on its own",
+			predicate: "width",
+			value:     "5.0 m",
+			terms:     "(independent 4.0 m2) (independent 0.002 m) (systematic 1.0 m2 control:CP-3)",
+			expected:  []string{"(independent 4.0 m2)", "(systematic 1.0 m2 control:CP-3)"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := quantityNode("site:CDU-01", testCase.predicate, testCase.value, testCase.terms)
+			claims, diags := loadClaimModel(t, quantityRegistry, written)
+
+			var errs []Diagnostic
+			for _, diag := range diags {
+				if diag.Severity == SeverityError {
+					errs = append(errs, diag)
+				}
+			}
+			require.Len(t, errs, len(testCase.expected))
+
+			claim := slices.Collect(claims.Under("site:CDU-01", testCase.predicate))
+			require.Len(t, claim, 1, "the claim is still read")
+
+			value := strings.Index(written, "(value ")
+			require.GreaterOrEqual(t, value, 0)
+
+			for i, term := range testCase.expected {
+				start := strings.Index(written, term)
+				require.GreaterOrEqual(t, start, 0)
+
+				assert.Equal(t, start, errs[i].Span.Start.Offset, "term %d", i)
+				assert.Equal(t, start+len(term), errs[i].Span.End.Offset, "term %d", i)
+
+				require.Len(t, errs[i].Related, 1, "term %d", i)
+				assert.Equal(t, value, errs[i].Related[0].Span.Start.Offset, "the value the term disagrees with")
+				assert.Equal(t, claim[0].Value().Span(), errs[i].Related[0].Span)
+			}
+		})
+	}
+}
+
+// TestLoadClaimsSaysWhichQuantityATermWasExpectedIn checks what the error says:
+// the claim it is about, as a diagnostic spells a claim, the quantity expected
+// with the value's unit as the example, and the unit the term was found in.
+func TestLoadClaimsSaysWhichQuantityATermWasExpectedIn(t *testing.T) {
+	testCases := []struct {
+		name             string
+		predicate        string
+		value            string
+		terms            string
+		expectedMentions []string
+	}{
+		{
+			name:             "expects a unit of length like the value's, and names the area found",
+			predicate:        "width",
+			value:            "5.0 m",
+			terms:            "(independent 4.0 m2)",
+			expectedMentions: []string{"length", "m", "m2", "mm", "usft"},
+		},
+		{
+			name:             "expects a unit of area like the value's, and names the length found",
+			predicate:        "area",
+			value:            "18.4 m2",
+			terms:            "(independent 0.05 m)",
+			expectedMentions: []string{"area", "m2", "mm2", "usft2"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			written := quantityNode("site:CDU-01", testCase.predicate, testCase.value, testCase.terms)
+			claims, diags := loadClaimModel(t, quantityRegistry, written)
+			require.Len(t, diags, 1)
+
+			claim := slices.Collect(claims.Under("site:CDU-01", testCase.predicate))
+			require.Len(t, claim, 1)
+
+			report := diags[0].Message + "\n" + diags[0].Hint
+			assert.Contains(t, diags[0].Message, claimName(claim[0]))
+			for _, mention := range testCase.expectedMentions {
+				assert.Contains(t, report, mention)
+			}
+		})
+	}
+}
+
+// TestLoadClaimsOrdersTermQuantityErrors checks that the errors about several
+// claims across several files come back collected, one per offending term, and
+// ordered by file and then by position.
+func TestLoadClaimsOrdersTermQuantityErrors(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, "registry"+Extension), []byte(quantityRegistry), 0o644))
+
+	const bad = "(independent 4.0 m2) (independent 9.0 m2)"
+	files := map[string]string{
+		"a" + Extension: quantityNode("site:A-01", "width", "5.0 m", bad) +
+			quantityNode("site:A-02", "width", "5.0 m", "(independent 4.0 m2)"),
+		"b" + Extension: quantityNode("site:B-01", "area", "18.4 m2", "(independent 0.05 m)"),
+	}
+	for name, text := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), []byte(text), 0o644))
+	}
+
+	registry := mustLoadRegistry(t, root)
+	_, diags := LoadClaims(root, registry)
+	require.Len(t, diags, 4)
+
+	for i, want := range []struct {
+		file    string
+		subject string
+	}{
+		{file: "a" + Extension, subject: "site:A-01"},
+		{file: "a" + Extension, subject: "site:A-01"},
+		{file: "a" + Extension, subject: "site:A-02"},
+		{file: "b" + Extension, subject: "site:B-01"},
+	} {
+		assert.Equal(t, SeverityError, diags[i].Severity, "error %d", i)
+		assert.Equal(t, want.file, filepath.Base(diags[i].Span.Start.Path), "error %d", i)
+		assert.Contains(t, diags[i].Message, want.subject, "error %d", i)
+	}
+
+	assert.Less(t, diags[0].Span.Start.Offset, diags[1].Span.Start.Offset)
+	assert.Less(t, diags[1].Span.Start.Offset, diags[2].Span.Start.Offset)
+}
+
 // TestLoadClaimsRankDefaultsToNormal checks the default the canonical printer
 // leaves out, and that the closed set has exactly one other member.
 func TestLoadClaimsRankDefaultsToNormal(t *testing.T) {
