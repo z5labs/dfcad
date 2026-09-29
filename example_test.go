@@ -2196,6 +2196,105 @@ func ExampleTx_Relate_refused() {
 	// expected a kind the hierarchy permits to contain a Space, found site:S-01, which is a Site
 }
 
+// ExampleTx_AddAssertion writes a rule on the one thing it constrains: a check
+// the engine registers, with the parameters it takes spelled as the entity
+// format writes them without their parentheses.
+func ExampleTx_AddAssertion() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+
+	if err := os.CopyFS(root, os.DirFS("testdata/checks/satisfied")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = tx.Close() }()
+
+	if err := tx.AddAssertion(dfcad.AssertionSpec{
+		Subject:    "geom:L-10",
+		Check:      "boundary-loops-close",
+		Parameters: []string{"tolerance boundary-closure", "position position"},
+	}); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	commit, refused, err := tx.Commit()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	for _, diagnostic := range refused {
+		fmt.Println(diagnostic)
+	}
+	for _, effect := range commit.Effects() {
+		fmt.Println(effect.Op, effect.Tag, effect.ID)
+	}
+
+	graph, _ := dfcad.LoadGraph(root)
+	loop, _ := graph.Entity("geom:L-10")
+
+	for _, binding := range graph.Assertions(loop) {
+		fmt.Println(binding)
+	}
+
+	// Output:
+	// modified loop geom:L-10
+	// geom:L-10 boundary-loops-close (position position) (tolerance boundary-closure)
+}
+
+// ExampleTx_AddAssertion_refused writes a tolerance as a number where the check
+// takes the name of one.
+//
+// It is refused before anything is written, by the validation a load runs over
+// the same assertion typed into a file by hand, and the reason is a typed error
+// naming the parameter rather than a sentence to parse.
+func ExampleTx_AddAssertion_refused() {
+	root, err := os.MkdirTemp("", "dfcad")
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = os.RemoveAll(root) }()
+
+	if err := os.CopyFS(root, os.DirFS("testdata/checks/satisfied")); err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	tx, _, err := dfcad.Begin(root)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer func() { _ = tx.Close() }()
+
+	err = tx.AddAssertion(dfcad.AssertionSpec{
+		Subject:    "geom:L-10",
+		Check:      "boundary-loops-close",
+		Parameters: []string{"tolerance 0.005"},
+	})
+
+	var value dfcad.ParameterValueError
+	if errors.As(err, &value) {
+		fmt.Println("parameter:", value.Parameter)
+		fmt.Println("takes:", value.Want)
+	}
+
+	// Output:
+	// parameter: tolerance
+	// takes: tolerance
+}
+
 // ExampleTx_Retire records that a thing stopped existing, and moves what
 // referenced it onto the thing which replaced it.
 func ExampleTx_Retire() {
@@ -2985,7 +3084,7 @@ func ExampleParseBatch_refused() {
 	// Output:
 	// operation 1, add-node: a node is written with an id
 	// operation 2, add-node: json: unknown field "edges"
-	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim
+	// operation 3, add-widget: unknown operation "add-widget": want one of add-node, add-vertex, add-edge, add-loop, scaffold-loop, relate, classify-type, set-label, retire, add-claim, supersede, deprecate-claim, add-assertion
 	// no id was written: true
 }
 

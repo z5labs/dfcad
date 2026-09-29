@@ -3844,6 +3844,61 @@ Retracting the only live claim of a subject and predicate is permitted, and is r
 }
 ```
 
+### `add-assertion`
+
+A check the thing it names has to satisfy, written on that thing. It takes the subject and
+the check, and reports the write payload above with nothing added to it: the one effect is
+`modified` on the subject.
+
+| Flag | Meaning |
+|------|---------|
+| `--parameter "<name> <value>..."` | One parameter, written as the entity format writes it without its parentheses: `"tolerance boundary-closure"`, `"predicate width"`, `"zone site:Z-90"`. Repeat for more than one; a check which takes none is written with none. |
+
+```console
+$ dfcad add-assertion --parameter "tolerance boundary-closure" --parameter "position position" \
+    geom:L-10 boundary-loops-close
+```
+
+The subject is a node, a vertex, an edge or a loop — the four forms SPEC §6.1–6.4 give an
+`assert` child — and the assertion is printed there, after the children the specification
+tables before it and with its parameters in canonical order.
+
+Which sort of datum a parameter takes is the check's declaration, exactly as which shape a
+value takes is the predicate's, so a parameter is read and refused by the validation a load
+runs over every assertion. What is wrong with the assertion itself is a **usage error**,
+exit `3`, answered before anything is written: a subject nothing holds; a frame, which is
+registry data and carries no assertion (SPEC §7.5); a check the engine does not register,
+naming the ones it does; a parameter the check does not take, one it requires and which is
+missing, one written twice, a value not of the sort the check declares, and text which is not
+one parameter at all.
+
+What is wrong with the assertion in this model is refused when the model this would produce
+is interpreted — so stdout carries [the refusal](#the-refusal), with the load failure exit
+code, and the diagnostics are the ones a load of that model would have raised: a check which
+cannot examine the subject's form, kind or geometry (SPEC §6.8); an assertion restating a
+value the subject's claims already carry (SPEC §6.8.1); a parameter naming an id nothing
+holds.
+
+What must hold of every instance of a type is not this. That is the type's `invariant`,
+which is registry data, and adding one stays an edit to the registry file that declares the
+type.
+
+```json
+{
+  "version": 2,
+  "command": "add-assertion",
+  "dryRun": false,
+  "files": [
+    {
+      "path": "model.dfc",
+      "status": "rewritten",
+      "effects": [{"op": "modified", "tag": "loop", "id": "geom:L-10"}],
+      "diff": "--- model.dfc.orig\n+++ model.dfc\n@@ -171,7 +171,8 @@\n..."
+    }
+  ]
+}
+```
+
 ### `apply`
 
 A batch of edits from an operation file, applied as one change. It takes the file to read,

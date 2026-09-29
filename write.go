@@ -356,6 +356,14 @@ type Tx struct {
 	// graph is the model as the transaction found it.
 	graph *Graph
 
+	// checks is the check registry the model's assertions are read against,
+	// which is the engine's closed one for every transaction a caller can
+	// begin. It is a field rather than a constant so that an assertion written
+	// through the transaction and the model it produces are judged against one
+	// set, and so that a test can exercise both halves with a set assembled for
+	// it through the same code every change goes through.
+	checks *checkSet
+
 	// finished reports whether Commit has run.
 	finished bool
 }
@@ -415,7 +423,7 @@ func Begin(root string) (*Tx, []Diagnostic, error) {
 // did not is the caller's decision, because only the caller knows whether there
 // is a lock to release.
 func beginUnlocked(root string) (*Tx, []Diagnostic) {
-	tx := &Tx{root: root, files: make(map[string]*staged)}
+	tx := &Tx{root: root, files: make(map[string]*staged), checks: registeredChecks}
 	return tx, tx.read()
 }
 
@@ -500,7 +508,7 @@ func (tx *Tx) read() []Diagnostic {
 		parsed = append(parsed, source{path: path, file: file})
 	}
 
-	graph, diags := loadGraph(tx.root, parsed, diags, registeredChecks)
+	graph, diags := loadGraph(tx.root, parsed, diags, tx.checks)
 	graph.digest = digest.digest()
 	tx.graph = graph
 
@@ -913,7 +921,7 @@ func (tx *Tx) prepare() ([]*pending, *Graph, []Diagnostic) {
 		after = append(after, digested{path: file.path, content: printed.Bytes()})
 	}
 
-	graph, diags := loadGraph(tx.root, parsed, diags, registeredChecks)
+	graph, diags := loadGraph(tx.root, parsed, diags, tx.checks)
 	graph.digest = digestOfFiles(tx.root, after)
 
 	return out, graph, diags

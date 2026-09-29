@@ -199,6 +199,7 @@ var samples = map[string][]string{
 		"site:S-101", "area",
 	},
 	"deprecate-claim": {"site:M-0001", "--superseded-by", "site:M-0002"},
+	"add-assertion":   {"--parameter", "predicate area", "site:S-101", "required-claim"},
 }
 
 // sample is the invocation of cmd against the fixture model, command name and

@@ -142,7 +142,7 @@ container. The one is `review` against a revision.
 | `version`, `fmt`, `check` | yes |
 | the queries — `list-types`, `list-predicates`, `list-tolerances`, `list-frames`, `list-instances`, `list-geometry`, `get`, `resolve`, `traverse`, `claims`, `conflicts`, `route`, `measure`, `tessellate`, `buildable`, `site`, `plan` | yes |
 | the exports — `export`, `export-map` | yes |
-| the authoring commands — `apply`, `add-node`, `add-vertex`, `add-edge`, `add-loop`, `scaffold-loop`, `relate`, `classify-type`, `set-label`, `retire`, `add-claim`, `supersede`, `deprecate-claim` | yes, with a writable mount and `--user` |
+| the authoring commands — `apply`, `add-node`, `add-vertex`, `add-edge`, `add-loop`, `scaffold-loop`, `relate`, `classify-type`, `set-label`, `retire`, `add-claim`, `supersede`, `deprecate-claim`, `add-assertion` | yes, with a writable mount and `--user` |
 | `review --base-root <dir>` | yes, with the revision to compare against mounted as a second directory |
 | `review --against <ref>`, and `review` with neither flag | **no** — a host command |
 
