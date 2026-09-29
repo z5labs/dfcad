@@ -212,15 +212,16 @@ func (r Rule) violation(failure Failure) Violation {
 	}
 
 	return Violation{
-		Instance:  instance,
-		Type:      r.Type,
-		Check:     r.Check.Name,
-		Arguments: written,
-		Declared:  r.Declared,
-		Subject:   subject,
-		Message:   failure.Message,
-		Hint:      failure.Hint,
-		Related:   failure.Related,
+		Instance:   instance,
+		Type:       r.Type,
+		Check:      r.Check.Name,
+		Arguments:  written,
+		Parameters: r.Parameters(),
+		Declared:   r.Declared,
+		Subject:    subject,
+		Message:    failure.Message,
+		Hint:       failure.Hint,
+		Related:    failure.Related,
 	}
 }
 
@@ -247,13 +248,14 @@ func (r Rule) applied(band Band) AppliedBand {
 	}
 
 	return AppliedBand{
-		Instance:  instance,
-		Type:      r.Type,
-		Check:     r.Check.Name,
-		Arguments: written,
-		Declared:  r.Declared,
-		Subject:   subject,
-		Band:      band,
+		Instance:   instance,
+		Type:       r.Type,
+		Check:      r.Check.Name,
+		Arguments:  written,
+		Parameters: r.Parameters(),
+		Declared:   r.Declared,
+		Subject:    subject,
+		Band:       band,
 	}
 }
 
@@ -282,6 +284,10 @@ type AppliedBand struct {
 	// Arguments are the parameters it was evaluated with, each rendered the way
 	// it was written.
 	Arguments []string `json:"arguments,omitempty"`
+
+	// Parameters are the same parameters as data, one per entry of Arguments
+	// and in the same order ([Rule.Parameters]).
+	Parameters []Parameter `json:"parameters,omitempty"`
 
 	// Declared is where the rule was written: a position in a registry file for
 	// an invariant, and the thing itself for an assertion.

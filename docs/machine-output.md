@@ -2678,6 +2678,7 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
       "type": "MeetingRoom",
       "check": "required-claim",
       "arguments": ["(predicate width)"],
+      "parameters": [{"name": "predicate", "type": "predicate", "values": ["width"]}],
       "declared": "registry.dfc:37:3-37:40",
       "subject": "entities/site.dfc:29:1-34:24",
       "message": "expected a claim under width on the subject, found none",
@@ -2689,6 +2690,12 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
       "instance": "site:S-107",
       "check": "claim-agrees-with-geometry",
       "arguments": ["(predicate area)", "(position position)", "(tolerance boundary-closure)", "(discrepancy area-discrepancy)"],
+      "parameters": [
+        {"name": "predicate", "type": "predicate", "values": ["area"]},
+        {"name": "position", "type": "predicate", "values": ["position"]},
+        {"name": "tolerance", "type": "tolerance", "values": ["boundary-closure"]},
+        {"name": "discrepancy", "type": "tolerance", "values": ["area-discrepancy"]}
+      ],
       "declared": "entities/site.dfc:198:3-202:36",
       "subject": "entities/site.dfc:185:1-202:37",
       "band": {
@@ -2722,7 +2729,8 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `violations[].instance` | string | The id of the thing that failed. |
 | `violations[].type` | string, optional | The type that declared the rule. Absent for an assertion, which is declared on the thing itself. |
 | `violations[].check` | string | The check name the rule names. |
-| `violations[].arguments` | array, optional | The parameters it ran with, each rendered as it was written — the tolerance it was measured against among them. |
+| `violations[].arguments` | array, optional | The parameters it ran with, each rendered as it was written — the tolerance it was measured against among them. `parameters` is the same thing as data. |
+| `violations[].parameters` | array, optional | The same parameters as data, one entry per entry of `arguments` and in the same order, so `parameters[i]` and `arguments[i]` are one parameter. Absent where `arguments` is. See [Parameters as data](#parameters-as-data). |
 | `violations[].declared` | span | Where the rule is written: a registry file for an invariant, the thing itself for an assertion. |
 | `violations[].subject` | span | Where what failed is written: the thing, or the part of it the check pointed at. |
 | `violations[].message` | string | What was expected and what was found. |
@@ -2732,7 +2740,8 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `bands[].instance` | string | The id of the thing the rule ran against. |
 | `bands[].type` | string, optional | The type that declared the rule. Absent for an assertion. |
 | `bands[].check` | string | The check name the rule names. |
-| `bands[].arguments` | array, optional | The parameters it ran with, each rendered as it was written. |
+| `bands[].arguments` | array, optional | The parameters it ran with, each rendered as it was written. `parameters` is the same thing as data. |
+| `bands[].parameters` | array, optional | The same parameters as data, as in `violations`. |
 | `bands[].declared` | span | Where the rule is written. |
 | `bands[].subject` | span | Where the thing it ran against is written. |
 | `bands[].band.tolerance` | string | The name of the declared tolerance the rule was given, which is where to go to change the floor. |
@@ -2753,14 +2762,15 @@ rule written on a vertex, an edge or a loop, because none of them declares a typ
 | `chorded[].instance` | string | The id of the thing the rule is bound to. |
 | `chorded[].type` | string, optional | The type that declared the rule. Absent for an assertion. |
 | `chorded[].check` | string | The check name the rule names. |
-| `chorded[].arguments` | array, optional | The parameters it is written with, each rendered as it was written. |
+| `chorded[].arguments` | array, optional | The parameters it is written with, each rendered as it was written. `parameters` is the same thing as data. |
+| `chorded[].parameters` | array, optional | The same parameters as data, as in `violations`. |
 | `chorded[].declared` | span | Where the rule is written, which is where to name the vocabulary that reads the curve. |
 | `chorded[].subject` | span | Where the thing it is bound to is written. |
 | `chorded[].edge` | string | The edge read straight: one bounding a shape the rule reads, which claims a position the rule did not read as an arc. |
 | `chorded[].predicates` | array | The predicates that edge states a position under, in name order — the shape of `chorded` on `measure` and `site`, and what to name on the rule. |
 | `chorded[].span` | span | Where that edge is written. |
 | `drawn` | array, optional | One entry per rule that read a curve through straight segments, in the order the rules ran. Absent where no rule drew one. |
-| `drawn[].instance`, `drawn[].type`, `drawn[].check`, `drawn[].arguments`, `drawn[].declared`, `drawn[].subject` | | The rule, as in `bands`. |
+| `drawn[].instance`, `drawn[].type`, `drawn[].check`, `drawn[].arguments`, `drawn[].parameters`, `drawn[].declared`, `drawn[].subject` | | The rule, as in `bands`. |
 | `drawn[].chord` | string | The name of the declared tolerance the curves were drawn to — the rule's `(chord ...)`. |
 | `drawn[].value` | number | That tolerance's value. |
 | `drawn[].deviation` | number | How far the worst segment of the drawing fell from the curve it stands in for: what was achieved, never more than `value`. |
@@ -2797,8 +2807,8 @@ report.
 `--list` adds `checks` beside an empty `violations` — nothing ran, so nothing failed. It is
 one entry per rule the filters selected, in the order it would run in, each carrying
 `subject`, `form` — `node`, `vertex`, `edge` or `loop` — `rule`, which is `invariant` or
-`assertion`, the `type` that declared it where one did, the `check` name, its `arguments`,
-its `declared` span, and two booleans: `runs`, which says whether running it would decide
+`assertion`, the `type` that declared it where one did, the `check` name, its `arguments`
+and the same parameters as data under `parameters`, its `declared` span, and two booleans: `runs`, which says whether running it would decide
 anything, and `applicable`, which says whether the check can examine the thing it is bound
 to.
 
@@ -2902,6 +2912,35 @@ set becoming slow is visible without stdout ceasing to be diffable.
 Every violation is also rendered to stderr as a diagnostic, on every run and in every format,
 because it is a problem in something somebody wrote. The struct above is the machine form of
 the same finding, and neither is produced by parsing the other.
+
+#### Parameters as data
+
+Every entry naming a rule — under `checks`, `violations`, `bands`, `chorded` and `drawn` —
+carries its parameters twice. `arguments` is each parameter as it was written,
+`"(tolerance boundary-closure)"`; `parameters` is the same parameter as data, so a caller
+wanting the tolerance or the predicate a rule runs with reads it rather than parsing an
+s-expression back out of a string:
+
+```json
+"parameters": [
+  {"name": "tolerance", "type": "tolerance", "values": ["boundary-closure"]},
+  {"name": "position", "type": "predicate", "values": ["position"]}
+]
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `name` | string | The tag the parameter is written with. |
+| `type` | string, optional | What the check declares the parameter takes: one of `id`, `real`, `string`, `boolean`, `kind`, `geometry`, `type`, `predicate`, `frame` or `tolerance`. It is what says `height` in `(predicate height)` is the name of a predicate rather than a string. Absent where the check declares no parameter by that name, which only a model the load refused can hold. |
+| `values` | array | The values written for it, one element per value and in the order written — always an array, whether the check takes one value or several. A `real` is a number, a `boolean` a boolean, and every other type a string holding the name, the id or the text as written, unquoted. A value that is not an atom of the declared type — again, only in a model the load refused — is `null`. |
+
+A parameter the check declares as taking one or more values may be written as a sequence after
+its tag or as one parenthesised list — `(kinds Space Element)` and `(kinds (Space Element))`
+— and both give the same `values`. `arguments` renders the second `(kinds …)`, which is the
+lossy rendering `parameters` exists to replace; `arguments` stays byte for byte as it was.
+
+Nothing a value names is resolved: a tolerance is its name here, and the figure it stands for
+is `bands[].band.floor`'s to report.
 
 #### `claim-agrees-with-geometry`
 

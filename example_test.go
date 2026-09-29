@@ -605,6 +605,27 @@ func ExampleRules_Run_bands() {
 	//   corners: 0.008 m × 14 = 0.112 m2
 }
 
+func ExampleRule_Parameters() {
+	graph, _ := dfcad.LoadGraph("testdata/checks/violating")
+
+	// A rule's parameters come back as data as well as the text they were
+	// written in: the tolerance a rule runs with is read by name, rather than
+	// parsed back out of "(tolerance boundary-closure)". Each carries the type
+	// the check declares it takes, which is what says "position" here names a
+	// predicate rather than being a string.
+	rule := graph.Rules()[0]
+	fmt.Println(rule)
+
+	for _, parameter := range rule.Parameters() {
+		fmt.Printf("%s (%s): %v\n", parameter.Name, parameter.Type, parameter.Values)
+	}
+
+	// Output:
+	// site:L-01 contained-areas-do-not-overlap (tolerance boundary-closure) (position position)
+	// tolerance (tolerance): [boundary-closure]
+	// position (predicate): [position]
+}
+
 func ExampleGraph_Assertions() {
 	graph, _ := dfcad.LoadGraph("testdata/assert/valid")
 

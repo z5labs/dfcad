@@ -73,6 +73,14 @@ entry per way a rule was not satisfied. Asked to --list, it carries "checks" as
 well, one entry per rule in the order it would run in, and nothing ran so
 "violations" is empty.
 
+Every entry naming a rule — under "checks", "violations", "bands", "chorded"
+and "drawn" — carries its parameters twice: "arguments", each as it was written,
+and "parameters", the same ones as data and in the same order. A parameter is
+its "name", the "type" the check declares it takes and its "values", always an
+array: a real as a number, a boolean as a boolean, and anything else as the
+name, id or text written. A caller wanting the tolerance a rule runs with reads
+it there rather than parsing it back out of "(tolerance boundary-closure)".
+
 It carries "bands" too: one entry per comparison decided against a figure the
 tolerance the rule names is only the floor under. Some checks widen that floor to
 the combined accuracy of what they are comparing, because a claim cannot be held
@@ -247,6 +255,10 @@ type listedCheck struct {
 	// Arguments are the parameters it would run with, each rendered as it was
 	// written.
 	Arguments []string `json:"arguments,omitempty"`
+
+	// Parameters are the same parameters as data, one per entry of Arguments
+	// and in the same order ([dfcad.Rule.Parameters]).
+	Parameters []dfcad.Parameter `json:"parameters,omitempty"`
 
 	// Runs reports whether running it would decide anything. It is false both
 	// for a check which declares itself and has no implementation and for one
@@ -479,6 +491,7 @@ func listChecks(rules dfcad.Rules) []listedCheck {
 			Type:       rule.Type,
 			Check:      rule.Check.Name,
 			Arguments:  arguments,
+			Parameters: rule.Parameters(),
 			Runs:       rule.Runs(),
 			Applicable: rule.Applicable(),
 			Declared:   rule.Declared,
