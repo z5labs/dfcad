@@ -319,7 +319,7 @@ allows: a caller that never reads it sees the object it always did.
 | 0 | Success. The command did what was asked. | The result object, or empty for help. |
 | 1 | Check failure. It ran and answered, and the answer is no. | The result object. |
 | 2 | Load failure. Input could not be read, did not parse, or was not written. | The result object; or [the refusal](#the-refusal) where a load refused the model and the command has no answer to give through it; or empty when nothing could be loaded at all, or for an error that is not a diagnostic. |
-| 3 | Usage error. The invocation itself was wrong — a name given on the command line which the model does not hold included, such as a `--tolerance` or `--chord` naming a tolerance the registry does not declare. | Empty. |
+| 3 | Usage error. The invocation itself was wrong, including a name given on the command line which the model does not hold, such as a `--tolerance` or `--chord` naming a tolerance the registry does not declare. | Empty. |
 | 4 | Ambiguous. Resolution could not choose between the claims, and every one it could not choose between is in the result. | The result object. |
 | 5 | Strict ambiguity. The same, under a predicate the registry declares strict. | The result object. |
 
