@@ -151,6 +151,10 @@ var samples = map[string][]string{
 		"--start", "geom:V-04", "--end", "geom:V-01",
 		"geom:E-04",
 	},
+	// The fixture holds no Element to back an edge with, so the sample states
+	// the backing the edge already has: virtual. It is still a change which
+	// goes through the whole write path, which is what the walks need.
+	"set-backing": {"--virtual", "geom:E-01"},
 	"add-loop": {
 		"--frame", "frame:building",
 		"--edge", "geom:E-01", "--edge", "geom:E-02", "--edge", "geom:E-03",

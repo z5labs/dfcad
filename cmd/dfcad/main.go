@@ -256,6 +256,13 @@ var commands = []command{
 		writes:  true,
 	},
 	{
+		name:    "set-backing",
+		summary: "replace what physically realises an edge",
+		usage:   setBackingUsage,
+		run:     runSetBacking,
+		writes:  true,
+	},
+	{
 		name:    "add-loop",
 		summary: "write an ordered ring of edges",
 		usage:   addLoopUsage,

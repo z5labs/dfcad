@@ -149,6 +149,11 @@
 // a subject and predicate at all. Each is a legitimate state for a model to be
 // in, and none is a thing to find out about later.
 //
+// [Tx.SetBacking] states what an edge is physically realised by, replacing every
+// element it named before, so a wall built after its edge was drawn and a wall
+// demolished are each one change. Whether the edge is a physical boundary is
+// computed from what it names and stored nowhere, so nothing else is edited.
+//
 // [Tx.AddAssertion] writes a check on the one thing it constrains, refused
 // before anything is written by the validation [ValidateAssertion] runs at load
 // and at [Tx.Commit] by the passes which need the whole model. What must hold of
