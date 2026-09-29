@@ -765,6 +765,10 @@ func runExport(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wr
 		return exitLoad
 	}
 
+	if err := declaredTolerances(graph.Registry(), *tolerance, *chord); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	result := exportResult{
 		envelope:        newEnvelope(cmd.name),
 		Files:           []exportedFile{},

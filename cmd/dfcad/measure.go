@@ -310,6 +310,10 @@ func runMeasure(cmd command, args []string, stdin io.Reader, stdout, stderr io.W
 		return exitLoad
 	}
 
+	if err := declaredTolerances(graph.Registry(), *tolerance, *chord); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	// Any of the four families answers, so the lookup is the whole of the
 	// dispatch: what a measurement of an id is depends on which family holds it,
 	// and a flag saying which would be a second statement of something the model

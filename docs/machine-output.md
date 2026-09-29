@@ -319,7 +319,7 @@ allows: a caller that never reads it sees the object it always did.
 | 0 | Success. The command did what was asked. | The result object, or empty for help. |
 | 1 | Check failure. It ran and answered, and the answer is no. | The result object. |
 | 2 | Load failure. Input could not be read, did not parse, or was not written. | The result object; or [the refusal](#the-refusal) where a load refused the model and the command has no answer to give through it; or empty when nothing could be loaded at all, or for an error that is not a diagnostic. |
-| 3 | Usage error. The invocation itself was wrong. | Empty. |
+| 3 | Usage error. The invocation itself was wrong, including a name given on the command line which the model does not hold, such as a `--tolerance` or `--chord` naming a tolerance the registry does not declare. | Empty. |
 | 4 | Ambiguous. Resolution could not choose between the claims, and every one it could not choose between is in the result. | The result object. |
 | 5 | Strict ambiguity. The same, under a predicate the registry declares strict. | The result object. |
 
@@ -2082,6 +2082,14 @@ Which predicate carries a position and how close two corners are one corner are 
 ([0012](decisions/0012-tolerances-are-registry-data.md)), so a run that names neither is a
 **usage error** naming both flags at once.
 
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
+
 **The id is the whole of the dispatch.** There is no flag saying which family it names: a
 semantic node is measured through the loops which bound it, a loop through the ring its edges
 traverse, an edge from its two ends and a vertex from where it is. `family` says which
@@ -2167,6 +2175,14 @@ followed is a decision a project makes — a millimetre for a setting-out drawin
 millimetres for an area take-off — and a value compiled into the command would be the engine
 choosing the resolution of somebody else's drawing. A run that names none of the three is a
 **usage error** naming every flag it was not given at once.
+
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
 
 The last two are the vocabulary an arc is written in, and **they are a pair**: a centre with
 no point on the curve beside it leaves two arcs between the same two ends — the short way
@@ -2274,6 +2290,14 @@ default compiled into the command would be the engine deciding one of them on a 
 behalf, so a run that names none of the three is a **usage error** naming every flag it was
 not given at once.
 
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
+
 Nothing in the model says what is buildable, and nothing here writes it back
 ([0009](decisions/0009-derived-values-are-never-written-back.md)). The region is read out of
 the corners, the edges and the claims every time it is asked for, so it cannot disagree with
@@ -2366,6 +2390,14 @@ how well that answer is known. It takes the id of the subject and five flags.
 | `--tolerance <name>` | The tolerance corners are judged coincident against and rounded corners are drawn to. Required. |
 | `--clearance <distance>` | How much room the subject has to keep between itself and the envelope's boundary, in the linear unit of the envelope's frame. Default `0`, which is "inside it at all". |
 | `--setback <predicate>` | The predicate an edge's setback distance is claimed under. Given, the subject is sited inside what the envelope's setbacks leave buildable rather than inside its outline. No default: without it the subject is sited inside the outline, exactly as before the flag existed. |
+
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
 
 The subject is read out of the corners surveyed in its own frame, carried into the envelope's
 frame across the transform claims which relate the two, grown by the required clearance,
@@ -2477,6 +2509,14 @@ so naming one and not the other is a **usage error**. A run which names both and
 reads a curve it meets as a ring it cannot draw — that room comes back under `undrawn` as
 `unreadable-boundary`, with a diagnostic saying no chord tolerance was named — rather than
 drawing it to a resolution nobody chose.
+
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
 
 A run which names neither predicate draws every edge as the straight line between its two
 ends, and says so wherever the model states otherwise: `chorded` lists every edge which claims
@@ -4195,7 +4235,7 @@ Exit codes:
 | `0` | The command answered. Either the artefact exists — `derived` true, with `files` naming it — or the model held nothing the format carries, which is `derived` true with `files` empty. |
 | `1` | The artefact could not be produced from the model that was read. `derived` false, `files` empty, `digest` written, and the refusal under [`diagnostics`](#diagnostics), so a caller reads why from the object rather than from stderr. |
 | `2` | The model could not be read: the root is not there, the tree did not load, or a file of it could not be read. Where the tree did not load, stdout carries [the refusal](#the-refusal) — the envelope, `"refused": true` and the diagnostics, and no `derived`, `digest` or `files`; where it could not be read at all, nothing. |
-| `3` | The invocation was wrong: a required flag missing, or a destination inside the authored tree, which is refused before anything is read. |
+| `3` | The invocation was wrong: a required flag missing, or a destination inside the authored tree, which is refused before anything is read; or a `--tolerance` or `--chord` naming a tolerance the registry does not declare, which is refused once the model is read and before anything is derived from it. |
 
 A model that exports to nothing is **exit `0`**, and it is the same judgement `buildable`
 makes about a parcel its own setbacks consumed: the command answered, and the answer is that
@@ -4463,6 +4503,14 @@ it, holes included, drawn to the named chord tolerance — so a curved wall reac
 the curve it is rather than as the straight line between its ends. Arcs are read only where
 `--arc-centre` and `--arc-through` name the vocabulary they are written in, exactly as in
 [`tessellate`](#tessellate).
+
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
 
 **What is drawn is decided by a node's boundary and its declared geometry, never by its
 kind.** A room and a countertop are both an area with a height over it, and the sweep which
@@ -4794,6 +4842,14 @@ way this command's invocation differs from `export`'s. `--position`, `--toleranc
 `--chord` go together and a run naming none of them is exit `3`. A spatial structure with no
 shape in it is a correct IFC file; a vector layer with no shape in it is a file with nothing
 in it at all.
+
+A `--tolerance` or `--chord` naming a tolerance the registry does not declare is a **usage
+error** — exit `3`, with nothing on stdout — naming every tolerance it does declare. It is
+refused once, after the model loads and before anything is derived, whether or not anything
+would have read it: the mistake is on the command line, and a diagnostic at every node which
+read the name would point into a model with nothing wrong with it. A declared tolerance in a unit
+other than a frame's is still reported where it is read, because whether it fits is a fact about
+the frame each node is in.
 
 **Every feature is expressed in the coordinates of the frame the chain is rooted at.** A
 region outlined on another frame is carried there by the chain of measured transforms the

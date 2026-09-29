@@ -561,6 +561,10 @@ func runPlan(cmd command, args []string, stdin io.Reader, stdout, stderr io.Writ
 		return exitLoad
 	}
 
+	if err := declaredTolerances(graph.Registry(), *tolerance, *chord); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	node, err := traversable(graph, subject)
 	if err != nil {
 		return usageError(cmd, err, stderr, false)

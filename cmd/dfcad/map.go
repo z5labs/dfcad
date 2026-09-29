@@ -473,6 +473,10 @@ func runExportMap(cmd command, args []string, stdin io.Reader, stdout, stderr io
 		return exitLoad
 	}
 
+	if err := declaredTolerances(graph.Registry(), *tolerance, *chord); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+
 	result := exportMapResult{
 		envelope: newEnvelope(cmd.name),
 		Files:    []exportedFile{},
