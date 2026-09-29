@@ -277,6 +277,7 @@ func (r Rule) Chorded() []ChordedEdge {
 	}
 
 	written := r.written()
+	parameters := r.Parameters()
 
 	var instance ID
 	var at Span
@@ -292,6 +293,7 @@ func (r Rule) Chorded() []ChordedEdge {
 			Type:       r.Type,
 			Check:      r.Check.Name,
 			Arguments:  written,
+			Parameters: parameters,
 			Declared:   r.Declared,
 			Subject:    at,
 			Predicates: arc.Predicates(),
@@ -347,6 +349,10 @@ type ChordedEdge struct {
 	// Arguments are the parameters the rule is written with, each rendered as
 	// it was written.
 	Arguments []string `json:"arguments,omitempty"`
+
+	// Parameters are the same parameters as data, one per entry of Arguments
+	// and in the same order ([Rule.Parameters]).
+	Parameters []Parameter `json:"parameters,omitempty"`
 
 	// Declared is where the rule is written.
 	Declared Span `json:"declared"`
@@ -445,6 +451,10 @@ type DrawnCurve struct {
 	// written.
 	Arguments []string `json:"arguments,omitempty"`
 
+	// Parameters are the same parameters as data, one per entry of Arguments
+	// and in the same order ([Rule.Parameters]).
+	Parameters []Parameter `json:"parameters,omitempty"`
+
 	// Declared is where the rule is written.
 	Declared Span `json:"declared"`
 
@@ -481,16 +491,17 @@ func (r Rule) drawnBy(log *curveLog) (DrawnCurve, bool) {
 	}
 
 	return DrawnCurve{
-		Instance:  instance,
-		Type:      r.Type,
-		Check:     r.Check.Name,
-		Arguments: r.written(),
-		Declared:  r.Declared,
-		Subject:   at,
-		Chord:     log.tolerance.Name,
-		Value:     log.tolerance.Value,
-		Deviation: log.deviation,
-		Unit:      log.unit,
+		Instance:   instance,
+		Type:       r.Type,
+		Check:      r.Check.Name,
+		Arguments:  r.written(),
+		Parameters: r.Parameters(),
+		Declared:   r.Declared,
+		Subject:    at,
+		Chord:      log.tolerance.Name,
+		Value:      log.tolerance.Value,
+		Deviation:  log.deviation,
+		Unit:       log.unit,
 	}, true
 }
 

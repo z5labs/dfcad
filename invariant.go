@@ -363,6 +363,10 @@ type Violation struct {
 	// it was written.
 	Arguments []string `json:"arguments,omitempty"`
 
+	// Parameters are the same parameters as data, one per entry of Arguments
+	// and in the same order ([Rule.Parameters]).
+	Parameters []Parameter `json:"parameters,omitempty"`
+
 	// Declared is where the rule was written. For an invariant that is a
 	// position in a registry file rather than in the file the instance is in;
 	// for an assertion it is the assertion, on the thing which failed.

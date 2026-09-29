@@ -8,6 +8,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -1266,6 +1268,167 @@ func TestRunCheckOverAModelWithNoCurveIsUnchanged(t *testing.T) {
 				assert.NotContains(t, stdout.String(), key)
 			}
 			assert.NotContains(t, stderr.String(), "warning:")
+		})
+	}
+}
+
+// checkFixtureRoots is every fixture model under testdata/checks, by absolute
+// root.
+func checkFixtureRoots(t *testing.T) []string {
+	t.Helper()
+
+	base, err := filepath.Abs(filepath.Join("..", "..", "testdata", "checks"))
+	require.NoError(t, err)
+
+	var roots []string
+	err = filepath.WalkDir(base, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() && entry.Name() == "registry.dfc" {
+			roots = append(roots, filepath.Dir(path))
+		}
+		return nil
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, roots)
+
+	return roots
+}
+
+// checkedAt runs the check command against a model on disk and returns the
+// result object and what reached stdout.
+//
+// A model the load refused is run like any other: the fixtures hold one on
+// purpose, and a refused run still reports every rule it bound.
+func checkedAt(t *testing.T, root string, args ...string) (checkResult, string) {
+	t.Helper()
+
+	var stdout, stderr bytes.Buffer
+	code := run(append([]string{"check", "--root", root}, args...), &stdout, &stderr)
+	require.Contains(t, []int{exitSuccess, exitCheck, exitLoad}, code, stderr.String())
+
+	return listed[checkResult](t, stdout.String()), stdout.String()
+}
+
+// TestRunCheckReportsParametersAsData is its own function because it is about
+// every place a rule is named rather than about what a run decides: under
+// "checks", "violations", "bands", "chorded" and "drawn" alike, each parameter
+// written is reported as data, one per entry of "arguments" and in its order,
+// and as the library reads it.
+func TestRunCheckReportsParametersAsData(t *testing.T) {
+	// pairs asserts that one reported rule carries a parameter for each of its
+	// arguments, in the same order.
+	pairs := func(t *testing.T, arguments []string, parameters []dfcad.Parameter) {
+		t.Helper()
+
+		require.Len(t, parameters, len(arguments))
+		for i, parameter := range parameters {
+			assert.True(t, strings.HasPrefix(arguments[i], "("+parameter.Name+" "), "%s against %s", parameter.Name, arguments[i])
+			assert.NotEmpty(t, parameter.Type, arguments[i])
+		}
+	}
+
+	for _, root := range checkFixtureRoots(t) {
+		t.Run(filepath.Base(filepath.Dir(root))+"/"+filepath.Base(root), func(t *testing.T) {
+			graph, _ := dfcad.LoadGraph(root)
+			require.NotNil(t, graph)
+
+			rules := graph.Rules()
+
+			t.Run("lists each rule's parameters as data", func(t *testing.T) {
+				result, _ := checkedAt(t, root, "--list")
+
+				require.Len(t, result.Checks, len(rules))
+				for i, entry := range result.Checks {
+					pairs(t, entry.Arguments, entry.Parameters)
+					assert.Equal(t, rules[i].Parameters(), entry.Parameters, writtenRule(entry))
+				}
+			})
+
+			t.Run("reports each rule's parameters as data wherever a run names it", func(t *testing.T) {
+				result, _ := checkedAt(t, root)
+				expected := rules.Run()
+
+				require.Len(t, result.Violations, len(expected.Violations))
+				for i, violation := range result.Violations {
+					pairs(t, violation.Arguments, violation.Parameters)
+					assert.Equal(t, expected.Violations[i].Parameters, violation.Parameters)
+				}
+
+				require.Len(t, result.Bands, len(expected.Bands))
+				for i, band := range result.Bands {
+					pairs(t, band.Arguments, band.Parameters)
+					assert.Equal(t, expected.Bands[i].Parameters, band.Parameters)
+				}
+
+				require.Len(t, result.Chorded, len(expected.Chorded))
+				for i, chorded := range result.Chorded {
+					pairs(t, chorded.Arguments, chorded.Parameters)
+					assert.Equal(t, expected.Chorded[i].Parameters, chorded.Parameters)
+				}
+
+				require.Len(t, result.Drawn, len(expected.Drawn))
+				for i, drawn := range result.Drawn {
+					pairs(t, drawn.Arguments, drawn.Parameters)
+					assert.Equal(t, expected.Drawn[i].Parameters, drawn.Parameters)
+				}
+			})
+		})
+	}
+}
+
+// TestRunCheckListsParametersExactly is its own function because it asserts the
+// bytes a caller reads rather than the values they decode to: which keys are
+// written, in what order, and what each value is written as.
+func TestRunCheckListsParametersExactly(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "checks", "violating"))
+	require.NoError(t, err)
+
+	var stdout, stderr bytes.Buffer
+	require.Equal(t, exitSuccess, run([]string{"check", "--list", "--root", root}, &stdout, &stderr), stderr.String())
+
+	var decoded struct {
+		Checks []struct {
+			Arguments  json.RawMessage `json:"arguments"`
+			Parameters json.RawMessage `json:"parameters"`
+		} `json:"checks"`
+	}
+	require.NoError(t, json.Unmarshal(stdout.Bytes(), &decoded))
+	require.NotEmpty(t, decoded.Checks)
+
+	assert.Equal(t, `["(tolerance boundary-closure)","(position position)"]`, string(decoded.Checks[0].Arguments))
+	assert.Equal(t,
+		`[{"name":"tolerance","type":"tolerance","values":["boundary-closure"]},`+
+			`{"name":"position","type":"predicate","values":["position"]}]`,
+		string(decoded.Checks[0].Parameters))
+}
+
+// TestRunCheckWritesNoParametersForARuleWrittenWithout is its own function
+// because it is about absence: a rule with no parameters carries neither
+// "arguments" nor "parameters", so a model whose rules take none writes what it
+// wrote before parameters were reported as data.
+func TestRunCheckWritesNoParametersForARuleWrittenWithout(t *testing.T) {
+	testCases := []struct {
+		name    string
+		fixture string
+		args    []string
+	}{
+		{name: "lists a model whose rules take no parameters without any", fixture: "standing", args: []string{"--list"}},
+		{name: "runs a model whose rules take no parameters without any", fixture: "standing"},
+		{name: "lists a model of vertices sharing a place without any", fixture: "coincident", args: []string{"--list"}},
+		{name: "runs a model of vertices sharing a place without any", fixture: "coincident"},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root, err := filepath.Abs(filepath.Join("..", "..", "testdata", "checks", testCase.fixture))
+			require.NoError(t, err)
+
+			_, stdout := checkedAt(t, root, testCase.args...)
+
+			assert.NotContains(t, stdout, `"arguments"`)
+			assert.NotContains(t, stdout, `"parameters"`)
 		})
 	}
 }
