@@ -171,7 +171,8 @@ Flags:
 	                           digest of the source tree)
 	--evidence                 add the identifier manifest: every node and the
 	                           GlobalId derived for it, and beside it the
-	                           elevation every storey was written at
+	                           elevation every storey was written at and the
+	                           base and top of every body
 	--position <predicate>     the predicate a corner's position is claimed
 	                           under, which a space's outline is read from and
 	                           which a node drawn as a point is placed by
@@ -203,7 +204,10 @@ of it is recomputable exactly, by anybody holding the model, from the node's id
 and the URL the project pins. The storeys' elevations come with it for the
 first of those reasons: one entry per storey, each the number the file writes
 as that storey's Elevation, in the root frame's unit, with the budget of the
-fits its frame chain passes through.
+fits its frame chain passes through. So do the bodies' bases and tops: one
+entry per node the file gives a body, each where its solids start and end once
+the placements they hang off are composed, with the budget of the claims that
+put them there.
 
 The first three geometry flags go together or not at all. A run which names
 none exports the spatial structure and the identifiers and no shape, which is
@@ -413,7 +417,12 @@ entry per file the artefact consists of, each with the "path" it is at and a
 "identifiers" manifest too, and beside it "storeys": one entry per storey the
 file holds, ascending by id, each with the "elevation" it was written at, the
 root "frame" and "unit" that elevation is in, and the "budget" of the frame
-chain which put it there. A storey declaring no frame has no elevation.
+chain which put it there. A storey declaring no frame has no elevation. Beside
+those is "bodies": one entry per node the file gives a Body, ascending by id,
+each with the "entity" it was written as and the "base" and "top" of its
+solids, both in the shape a storey's elevation takes. The budget of a base is
+its boundary's corners, the fits which carried them into the root frame and the
+offset claimed of it; the budget of a top adds the height claim.
 
 There is no --dry-run. What this command writes is disposable, ignored by git
 and reproducible, so there is nothing for a dry run to protect and no diff for
@@ -543,6 +552,37 @@ type exportResult struct {
 	// file holding no storey writes [] rather than nothing, which is the
 	// answer rather than the absence of one.
 	Storeys *[]exportedStorey `json:"storeys,omitempty"`
+
+	// Bodies is the account of where each body of the file starts and ends,
+	// one entry per node the file gives a Body representation ascending by id,
+	// written only under --evidence and only beside an artefact. It is a
+	// pointer for the reason Storeys is: a file holding no body answers [].
+	Bodies *[]exportedBody `json:"bodies,omitempty"`
+}
+
+// exportedBody is one node the file gives a body, and the base and top of the
+// solid it was swept as.
+//
+// It is one entry per node rather than per solid. A region of several pieces
+// and a run widened segment by segment are written as several solids, but the
+// base and the height are read once for the node, so every solid of it starts
+// and ends at the same two figures.
+type exportedBody struct {
+	// ID is the node the body was written for.
+	ID string `json:"id"`
+
+	// Entity is the entity the node was written as, spelled as the file and
+	// classifications[].entity spell it.
+	Entity string `json:"entity"`
+
+	// Base is where the body starts: the elevation its solids are placed at
+	// plus the datum the node's placement stands at, which is the figure a
+	// reader composing the file's placement chain arrives at.
+	Base exportedElevation `json:"base"`
+
+	// Top is where it ends: the base plus the depth the solids are swept
+	// through.
+	Top exportedElevation `json:"top"`
 }
 
 // exportedStorey is one storey of the file and the elevation it was written
@@ -557,8 +597,8 @@ type exportedStorey struct {
 	Elevation *exportedElevation `json:"elevation,omitempty"`
 }
 
-// exportedElevation is a storey's elevation as the file writes it, with the
-// account of how well the model knows it.
+// exportedElevation is an elevation as the file writes it — a storey's, or the
+// base or top of a body — with the account of how well the model knows it.
 type exportedElevation struct {
 	// Value is the elevation, exactly the number written into
 	// IfcBuildingStorey.Elevation: it is recorded from the value the writer
@@ -732,7 +772,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 		result.Digest = digest.String()
 	}
 
-	model, manifest, classifications, storeys, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
+	model, manifest, classifications, storeys, bodies, diags := exported(graph, dfcad.DerivationEpoch(digest), drawn, sited)
 
 	// Reported whatever the outcome, refusal included: which classifications
 	// this writer could not carry is a fact about the model rather than about
@@ -778,6 +818,7 @@ func runExport(cmd command, args []string, _ io.Reader, stdout, stderr io.Writer
 	if *evidencing {
 		result.Identifiers = manifest
 		result.Storeys = &storeys
+		result.Bodies = &bodies
 	}
 
 	reportExport(result, globals, stderr)
@@ -891,7 +932,8 @@ func reportExport(result exportResult, globals *globals, stderr io.Writer) {
 
 // exported is the model as IFC holds it, the manifest of the identifiers it
 // carries, the classifications it could not carry, the elevation each of its
-// storeys was written at, and whatever stopped any of them being derivable.
+// storeys was written at, the base and top of each body it sweeps, and
+// whatever stopped any of them being derivable.
 //
 // This function is where the two vocabularies meet, and it is on this side of
 // the boundary on purpose. A kind is this engine's word and an IfcSpace is
@@ -905,12 +947,12 @@ func exported(
 	epoch dfcad.Epoch,
 	drawn shapes,
 	sited georeference,
-) (ifc.Model, []exportedIdentifier, []exportedClassification, []exportedStorey, []dfcad.Diagnostic) {
+) (ifc.Model, []exportedIdentifier, []exportedClassification, []exportedStorey, []exportedBody, []dfcad.Diagnostic) {
 	registry := graph.Registry()
 
 	project, held := registry.Project()
 	if !held || project.GlobalIDNamespace == "" {
-		return ifc.Model{}, nil, nil, nil, []dfcad.Diagnostic{{
+		return ifc.Model{}, nil, nil, nil, nil, []dfcad.Diagnostic{{
 			Severity: dfcad.SeverityError,
 			Span:     project.Span,
 			Message: "expected a project declaration pinning the URL identifiers derive from, found none: every object in " +
@@ -921,7 +963,7 @@ func exported(
 
 	units, diagnostic := exportedUnits(registry)
 	if diagnostic != nil {
-		return ifc.Model{}, nil, nil, nil, []dfcad.Diagnostic{*diagnostic}
+		return ifc.Model{}, nil, nil, nil, nil, []dfcad.Diagnostic{*diagnostic}
 	}
 
 	// The georeference is settled before the walk because it is a fact about
@@ -929,7 +971,7 @@ func exported(
 	// where it sits is refused before an artefact is built out of it.
 	placed, refused := georeferenced(registry, graph.Frames(), sited)
 	if len(refused) > 0 {
-		return ifc.Model{}, nil, nil, nil, refused
+		return ifc.Model{}, nil, nil, nil, nil, refused
 	}
 
 	// The frame every coordinate in the file is written in, settled once
@@ -1011,7 +1053,7 @@ func exported(
 		},
 	}
 
-	return model, out.identifiers(), out.classifications(), out.storeyed(), out.diags
+	return model, out.identifiers(), out.classifications(), out.storeyed(), out.sweeps(), out.diags
 }
 
 // exporter is one traversal of the graph into IFC's shape.
@@ -1113,6 +1155,10 @@ type exporter struct {
 	// storeys is the elevation each storey was written at, in the order the
 	// walk wrote them. [exporter.storeyed] is what puts it in id order.
 	storeys []exportedStorey
+
+	// bodies is the base and top of each body the walk swept, in the order it
+	// swept them. [exporter.sweeps] is what puts it in id order.
+	bodies []exportedBody
 
 	// derived is every identifier derived so far, by the name it was derived
 	// from. It is what makes deriving one twice cost nothing and report once.
@@ -1371,7 +1417,7 @@ func (e *exporter) decompose(nodes []*dfcad.SemanticNode, datum float64) []ifc.S
 		// and did measure the height of is a storey this draws.
 		var drawn dfcad.RegionTessellation
 		if e.shapes.complete() {
-			element.Representation, element.Properties, drawn = e.shaped(node, standingAt)
+			element.Representation, element.Properties, drawn = e.shaped(node, element.Entity, standingAt)
 		}
 
 		// The boundaries are relationships rather than geometry, so they are
@@ -1511,6 +1557,90 @@ func (e *exporter) storeyed() []exportedStorey {
 	return out
 }
 
+// sweep is what one node's body was swept from: the figures the solids were
+// handed and the claims which set them.
+type sweep struct {
+	// datum is where the node's placement stands above the root frame's
+	// origin, which is what the file's placement chain composes to.
+	datum float64
+
+	// base is the elevation the solids are placed at, from that datum, and
+	// height the depth they are swept through.
+	base, height float64
+
+	// offset is the claim the base was moved by, and is nil where none was
+	// read; claim is the one the height was read from.
+	offset, claim *dfcad.Claim
+}
+
+// body records where a node's body starts and ends, with the budget of each.
+//
+// The two figures are recorded from the values the solids are handed rather
+// than derived a second time, for the reason [exporter.account] reads the
+// elevation it is handed: the file and the answer are then one computation,
+// and cannot disagree.
+//
+// The budget of the base is the boundary's, carried into the root frame the
+// way [dfcad.Region.In] carries it — the claims its corners were read from and
+// the fits on the route — with the offset claim added where one was read. The
+// budget of the top is that with the height claim added. A claim behind more
+// than one of them is counted once, which is [dfcad.Budget]'s own arithmetic.
+func (e *exporter) body(node *dfcad.SemanticNode, entity ifc.Entity, region dfcad.Region, swept sweep) {
+	if region.Frame() != e.root {
+		carried, refused := region.In(e.root, e.graph.Frames())
+		if len(refused) > 0 {
+			e.diags = append(e.diags, refused...)
+			return
+		}
+		region = carried
+	}
+
+	var below dfcad.Budget
+	below.Merge(region.Budget())
+	if swept.offset != nil {
+		below.Add(swept.offset)
+	}
+
+	var above dfcad.Budget
+	above.Merge(below)
+	if swept.claim != nil {
+		above.Add(swept.claim)
+	}
+
+	var unit string
+	if root, ok := e.registry.Frame(e.root); ok {
+		unit = string(root.Unit)
+	}
+
+	base := swept.base + swept.datum
+	top := base + swept.height
+
+	// Rendered without a from or a to, because each is a computation over
+	// claims rather than a route between two frames, which is how buildable
+	// writes one.
+	baseBudget, topBudget := budgetOf(below), budgetOf(above)
+
+	e.bodies = append(e.bodies, exportedBody{
+		ID:     string(node.ID()),
+		Entity: string(entity),
+		Base:   exportedElevation{Value: base, Unit: unit, Frame: string(e.root), Budget: &baseBudget},
+		Top:    exportedElevation{Value: top, Unit: unit, Frame: string(e.root), Budget: &topBudget},
+	})
+}
+
+// sweeps is the account of every body the file holds, ascending by id
+// compared byte-wise, and empty rather than nil when it holds none.
+func (e *exporter) sweeps() []exportedBody {
+	out := slices.Clone(e.bodies)
+	if out == nil {
+		out = []exportedBody{}
+	}
+
+	slices.SortFunc(out, func(a, b exportedBody) int { return strings.Compare(a.ID, b.ID) })
+
+	return out
+}
+
 // standing is where a spatial element's own coordinate system sits inside its
 // parent's: at the parent's origin, or at the elevation a storey's frame chain
 // put it at.
@@ -1540,7 +1670,7 @@ func (e *exporter) contained(nodes []*dfcad.SemanticNode, datum float64) []ifc.P
 
 		if e.shapes.complete() {
 			e.carriable(node)
-			product.Representation, product.Properties = e.modelled(node, datum)
+			product.Representation, product.Properties = e.modelled(node, entity, datum)
 
 			if placed, located := e.placed(node, datum); located {
 				product.Placement = placed

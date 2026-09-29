@@ -846,7 +846,7 @@ func TestExportedRefusesAModelWhichPinsNoURL(t *testing.T) {
 
 	graph, _ := dfcad.LoadGraph(root)
 
-	_, manifest, classifications, _, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
+	_, manifest, classifications, _, _, diags := exported(graph, dfcad.DerivationEpoch(dfcad.Digest{}), shapes{}, georeference{})
 
 	assert.Empty(t, manifest)
 	assert.Empty(t, classifications)
@@ -1599,6 +1599,7 @@ func TestRunExportAccountsForNoStoreyOnARefusal(t *testing.T) {
 			require.NoError(t, json.Unmarshal([]byte(stdout), &fields))
 
 			assert.NotContains(t, fields, "storeys", "a refusal wrote no file, so it has no storeys to account for")
+			assert.NotContains(t, fields, "bodies", "and no body to account for either")
 			assert.NotContains(t, fields, "identifiers", "exactly as it has no manifest")
 		})
 	}
@@ -2083,4 +2084,405 @@ func TestExportUsageNamesEveryEntityTheWriterHoldsAnAttributeListFor(t *testing.
 			assert.NotContains(t, documented, string(entity))
 		}
 	})
+}
+
+// steppedModel is the two-storey fixture with the upstairs room's floor
+// stepped up by a claim of its own, which is the reproduction the story
+// reporting a body's base and top was filed with.
+func steppedModel() map[string]string {
+	files := storeyModel()
+	files["registry.dfc"] += `
+(predicate step
+  (unit m)
+  (shape scalar)
+  (description "How far a body's base stands above the plan it is drawn on."))
+`
+	files["entities/site.dfc"] = strings.Replace(files["entities/site.dfc"], "  (boundary geom:L-302)\n", `  (boundary geom:L-302)
+  (step
+    (value 0.15 m)
+    (source "As-built check AB-2026-019, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.005 m))
+    (date "2026-05-06"))
+`, 1)
+	return files
+}
+
+// steppedFlags is the vocabulary the stepped fixture is read under.
+func steppedFlags() []string {
+	return append(drawingFlags(), "--height", "clear-height", "--offset", "step")
+}
+
+// bodiesOf is the bodies an export run under --evidence reports.
+func bodiesOf(t *testing.T, files map[string]string, args ...string) (exportResult, []exportedBody) {
+	t.Helper()
+
+	result, _, stderr := exporting(t, exitSuccess, files, append(args, "--evidence")...)
+	require.NotNil(t, result.Bodies, "an export under --evidence accounts for its bodies: %s", stderr)
+
+	return result, *result.Bodies
+}
+
+// bodyNamed is the entry of an account for one node.
+func bodyNamed(t *testing.T, bodies []exportedBody, id string) exportedBody {
+	t.Helper()
+
+	index := slices.IndexFunc(bodies, func(b exportedBody) bool { return b.ID == id })
+	require.GreaterOrEqual(t, index, 0, "the account holds an entry for %s", id)
+
+	return bodies[index]
+}
+
+func TestRunExportAccountsForTheBaseAndTopOfEachBody(t *testing.T) {
+	testCases := []struct {
+		name   string
+		files  func(t *testing.T) map[string]string
+		args   []string
+		id     string
+		entity string
+		frame  string
+		unit   string
+		base   float64
+		top    float64
+	}{
+		{
+			name:   "reports a room swept from its floor to its height",
+			files:  func(*testing.T) map[string]string { return storeyModel() },
+			args:   append(drawingFlags(), "--height", "clear-height"),
+			id:     "site:S-01",
+			entity: "IFCSPACE", frame: "frame:plan-ground", unit: "m",
+			base: 0, top: 2.7,
+		},
+		{
+			name:   "reports a room on a lifted plan grid at the lift",
+			files:  func(*testing.T) map[string]string { return storeyModel() },
+			args:   append(drawingFlags(), "--height", "clear-height"),
+			id:     "site:S-02",
+			entity: "IFCSPACE", frame: "frame:plan-ground", unit: "m",
+			base: 3, top: 5.4,
+		},
+		{
+			name:   "reports a room on a lifted plan grid at the lift plus the step claimed of it",
+			files:  func(*testing.T) map[string]string { return steppedModel() },
+			args:   steppedFlags(),
+			id:     "site:S-02",
+			entity: "IFCSPACE", frame: "frame:plan-ground", unit: "m",
+			base: 3.15, top: 5.55,
+		},
+		{
+			name:   "reports a wall widened segment by segment as one body from where its run lies",
+			files:  func(*testing.T) map[string]string { return offsetModel() },
+			args:   offsetFlags(),
+			id:     "site:W",
+			entity: "IFCWALL", frame: "frame:plan", unit: "usft",
+			base: 0, top: 9,
+		},
+		{
+			name:   "reports a window raised by the offset claimed of it",
+			files:  func(*testing.T) map[string]string { return offsetModel() },
+			args:   offsetFlags(),
+			id:     "site:N",
+			entity: "IFCWINDOW", frame: "frame:plan", unit: "usft",
+			base: 4, top: 7,
+		},
+		{
+			name:   "reports a room stepped down below its floor",
+			files:  func(*testing.T) map[string]string { return offsetModel() },
+			args:   offsetFlags(),
+			id:     "site:R",
+			entity: "IFCSPACE", frame: "frame:plan", unit: "usft",
+			base: -0.667, top: 8.333,
+		},
+		{
+			name:   "reports a slab stepped down below its floor",
+			files:  func(*testing.T) map[string]string { return offsetModel() },
+			args:   offsetFlags(),
+			id:     "site:S",
+			entity: "IFCSLAB", frame: "frame:plan", unit: "usft",
+			base: -1.167, top: -0.667,
+		},
+		{
+			name:   "reports a window in a storey at the storey's elevation plus its offset",
+			files:  func(t *testing.T) map[string]string { return withStoreyElevation(t, "2.5") },
+			args:   offsetFlags(),
+			id:     "site:N",
+			entity: "IFCWINDOW", frame: "frame:site", unit: "usft",
+			base: 6.5, top: 9.5,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, bodies := bodiesOf(t, testCase.files(t), testCase.args...)
+
+			got := bodyNamed(t, bodies, testCase.id)
+
+			assert.Equal(t, testCase.entity, got.Entity)
+			assert.InDelta(t, testCase.base, got.Base.Value, 1e-9, "the base of the body")
+			assert.InDelta(t, testCase.top, got.Top.Value, 1e-9, "the top of the body")
+
+			for _, side := range []exportedElevation{got.Base, got.Top} {
+				assert.Equal(t, testCase.frame, side.Frame, "in the root frame")
+				assert.Equal(t, testCase.unit, side.Unit, "in the root frame's unit")
+			}
+		})
+	}
+}
+
+func TestRunExportAccountsForTheBudgetOfEachBody(t *testing.T) {
+	upstairs := []string{
+		"the position of geom:V-302-A",
+		"the position of geom:V-302-B",
+		"the position of geom:V-302-C",
+		"the position of geom:V-302-D",
+	}
+	den := []string{
+		"the position of geom:R1",
+		"the position of geom:R2",
+		"the position of geom:R3",
+		"the position of geom:R4",
+	}
+
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		args     []string
+		id       string
+		top      bool
+		terms    []string
+		combined float64
+		unknown  int
+	}{
+		{
+			name:     "counts the corners, the fits carrying them and the step in a base",
+			files:    steppedModel(),
+			args:     steppedFlags(),
+			id:       "site:S-02",
+			terms:    append(slices.Clone(upstairs), "site:C-0001", "the step of site:S-02"),
+			combined: 0.010246950765959597,
+		},
+		{
+			name:     "adds the height claim to the base's budget for a top",
+			files:    steppedModel(),
+			args:     steppedFlags(),
+			id:       "site:S-02",
+			top:      true,
+			terms:    append(slices.Clone(upstairs), "site:C-0001", "the step of site:S-02", "the clear-height of site:S-02"),
+			combined: 0.011874342087037916,
+		},
+		{
+			name:     "counts no fit for a body drawn on the root frame",
+			files:    storeyModel(),
+			args:     append(drawingFlags(), "--height", "clear-height"),
+			id:       "site:S-01",
+			terms:    []string{"the position of geom:V-301-A", "the position of geom:V-301-B", "the position of geom:V-301-C", "the position of geom:V-301-D"},
+			combined: 0.008,
+		},
+		{
+			name:     "counts an offset claim stating its accuracy in a base",
+			files:    offsetModel(),
+			args:     offsetFlags(),
+			id:       "site:R",
+			terms:    append(slices.Clone(den), "claim:SILL-R"),
+			combined: 0.022360679774997897,
+		},
+		{
+			name:    "names a height claim stating no accuracy rather than combining a top",
+			files:   offsetModel(),
+			args:    offsetFlags(),
+			id:      "site:R",
+			top:     true,
+			terms:   append(slices.Clone(den), "claim:SILL-R"),
+			unknown: 1,
+		},
+		{
+			name:    "names an offset claim stating no accuracy rather than combining a base",
+			files:   offsetModel(),
+			args:    offsetFlags(),
+			id:      "site:N",
+			terms:   []string{"the position of geom:J1", "the position of geom:J2"},
+			unknown: 1,
+		},
+		{
+			name:    "names both claims stating no accuracy in a top",
+			files:   offsetModel(),
+			args:    offsetFlags(),
+			id:      "site:N",
+			top:     true,
+			terms:   []string{"the position of geom:J1", "the position of geom:J2"},
+			unknown: 2,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, bodies := bodiesOf(t, testCase.files, testCase.args...)
+
+			got := bodyNamed(t, bodies, testCase.id).Base.Budget
+			if testCase.top {
+				got = bodyNamed(t, bodies, testCase.id).Top.Budget
+			}
+			require.NotNil(t, got, "every body has a budget: its corners were read from claims")
+
+			assert.Empty(t, got.From, "a base is a computation rather than a route")
+			assert.Empty(t, got.To, "a base is a computation rather than a route")
+
+			names := make([]string, 0, len(got.Terms))
+			for _, term := range got.Terms {
+				names = append(names, term.Name)
+			}
+			assert.Equal(t, testCase.terms, names)
+
+			assert.Len(t, got.Unknown, testCase.unknown)
+			if testCase.unknown > 0 {
+				assert.Nil(t, got.Combined, "a budget naming a claim of unknown accuracy has no combined figure")
+				return
+			}
+
+			require.NotNil(t, got.Combined)
+			assert.InDelta(t, testCase.combined, got.Combined.Magnitude, 1e-12)
+		})
+	}
+}
+
+func TestRunExportListsEveryBodyOnceInIDOrder(t *testing.T) {
+	testCases := []struct {
+		name     string
+		files    map[string]string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "lists every node given a body, ascending by id",
+			files:    offsetModel(),
+			args:     offsetFlags(),
+			expected: []string{"site:N", "site:R", "site:S", "site:W"},
+		},
+		{
+			name:     "lists nothing, rather than leaving the field out, for a run naming no height",
+			files:    storeyModel(),
+			args:     drawingFlags(),
+			expected: []string{},
+		},
+		{
+			name:     "lists nothing for a run drawing no shape at all",
+			files:    exportModel(),
+			expected: []string{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			_, bodies := bodiesOf(t, testCase.files, testCase.args...)
+
+			got := make([]string, 0, len(bodies))
+			for _, entry := range bodies {
+				got = append(got, entry.ID)
+			}
+
+			assert.Equal(t, testCase.expected, got)
+		})
+	}
+}
+
+// TestRunExportAccountsForTheBodiesTheFileWrites is its own function because
+// its shape is a comparison between two outputs rather than a value: every
+// product and space the file gives a Body is read back, its placement chain is
+// composed with the position of each of its solids, and the base and top that
+// arrives at are exactly the ones the answer reports.
+func TestRunExportAccountsForTheBodiesTheFileWrites(t *testing.T) {
+	testCases := []struct {
+		name  string
+		files func(t *testing.T) map[string]string
+		args  []string
+	}{
+		{
+			name:  "the two-storey building",
+			files: func(*testing.T) map[string]string { return storeyModel() },
+			args:  append(drawingFlags(), "--height", "clear-height"),
+		},
+		{
+			name:  "the two-storey building with the upstairs room stepped up",
+			files: func(*testing.T) map[string]string { return steppedModel() },
+			args:  steppedFlags(),
+		},
+		{
+			name:  "the walls, window, room and slab moved by their offsets",
+			files: func(*testing.T) map[string]string { return offsetModel() },
+			args:  offsetFlags(),
+		},
+		{
+			name:  "the same, in a storey written at an elevation",
+			files: func(t *testing.T) map[string]string { return withStoreyElevation(t, "2.5") },
+			args:  offsetFlags(),
+		},
+		{
+			name:  "the sited two-storey building carried into the root frame",
+			files: func(*testing.T) map[string]string { return carriedModel() },
+			args:  append(carriedFlags(), "--height", "clear-height"),
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, bodies := bodiesOf(t, testCase.files(t), testCase.args...)
+			source := artefact(t, result)
+
+			accounted := make(map[string]exportedBody, len(bodies))
+			for _, entry := range bodies {
+				accounted[entry.ID] = entry
+			}
+
+			written := 0
+			for _, held := range parsed(t, source) {
+				if strings.HasPrefix(held.keyword, "IFCREL") || held.keyword == "IFCOPENINGELEMENT" ||
+					len(held.attributes) < 7 || !strings.HasPrefix(held.attributes[6], "#") ||
+					instance(t, source, held.attributes[6]).keyword != "IFCPRODUCTDEFINITIONSHAPE" {
+					continue
+				}
+
+				swept := solids(t, source, held.attributes[6])
+				if len(swept) == 0 {
+					continue
+				}
+				written++
+
+				name := strings.Trim(held.attributes[2], "'")
+
+				entry, ok := accounted[name]
+				require.True(t, ok, "the account holds an entry for the body of %s the file writes", name)
+				assert.Equal(t, held.keyword, entry.Entity, "the entity %s was written as", name)
+
+				low := elevationOf(t, source, held.attributes[5])
+				for _, solid := range swept {
+					bottom := low + elevationOf(t, source, solid.attributes[1])
+
+					assert.Equal(t, bottom, entry.Base.Value,
+						"the base the answer reports for %s is exactly where the file puts it", name)
+					assert.Equal(t, bottom+real(t, solid.attributes[3]), entry.Top.Value,
+						"the top the answer reports for %s is exactly where the file ends it", name)
+				}
+			}
+
+			require.NotZero(t, written, "the fixture writes a body")
+			assert.Len(t, bodies, written, "one entry per node the file gives a body")
+		})
+	}
+}
+
+// TestRunExportAccountsForBodiesOnlyUnderEvidence is its own function because
+// what it asserts is an absence and an identity rather than a value: the
+// default answer and the artefact are exactly what they were.
+func TestRunExportAccountsForBodiesOnlyUnderEvidence(t *testing.T) {
+	root := tree(t, steppedModel())
+	plain, _ := invoke(t, exitSuccess, root, append([]string{"export"}, steppedFlags()...)...)
+
+	var fields map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal([]byte(plain), &fields))
+	assert.NotContains(t, fields, "bodies", "the bodies are evidence, and evidence is asked for")
+
+	without := artefact(t, listed[exportResult](t, plain))
+
+	evidenced, _ := bodiesOf(t, steppedModel(), steppedFlags()...)
+	assert.Equal(t, without, artefact(t, evidenced), "asking for the evidence does not change the artefact")
 }
