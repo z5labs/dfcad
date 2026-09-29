@@ -301,6 +301,7 @@ func previous(cmd command, globals *globals, against, baseRoot string, stderr io
 
 		graph, found := dfcad.LoadGraph(root)
 		if render(found, stderr) {
+			refuse(stderr)
 			return nil, comparison{}, nil, ComparisonError{Revision: root}
 		}
 
@@ -349,6 +350,7 @@ func previous(cmd command, globals *globals, against, baseRoot string, stderr io
 
 	graph, found := dfcad.LoadGraph(root)
 	if render(found, stderr) {
+		refuse(stderr)
 		out.cleanup()
 		return nil, comparison{}, nil, ComparisonError{Revision: mergeBase}
 	}

@@ -22,10 +22,12 @@ written, and "files": one entry per file the change touched, in the lexical
 order of their paths, each with what happened to it, what the change did to the
 model in it, and the unified diff from what was on disk to what was written.
 
-A change which would produce a model that does not load is refused. Its
-diagnostics are the ones a load of the result would have raised, nothing at all
-is written, and nothing reaches stdout: the correct response is to fix the
-command and reissue it, because there is no partial state to reconcile.
+A change which would produce a model that does not load is refused, and so is
+any change to a tree which does not load to begin with. Its diagnostics are the
+ones a load would have raised, nothing at all is written, and the object on
+stdout is only the envelope, "refused": true and "diagnostics" — no "dryRun",
+no "files" — with exit code 2: the correct response is to fix the command and
+reissue it, because there is no partial state to reconcile.
 `
 
 const addNodeUsage = `dfcad add-node — write a new semantic node.
@@ -427,6 +429,7 @@ func begin(cmd command, globals *globals, stderr io.Writer) (*dfcad.Tx, int, boo
 	render(diags, stderr)
 
 	if tx == nil {
+		refuse(stderr)
 		return nil, exitLoad, false
 	}
 
@@ -469,11 +472,12 @@ func apply(cmd command, tx *dfcad.Tx, globals *globals, stderr io.Writer) (dfcad
 		return dfcad.Commit{}, exitLoad, false
 	}
 
-	// A refused change produced no result, so it writes nothing at all to
-	// stdout: the diagnostics on stderr are the whole of the answer, and an
-	// object describing a change which did not happen would read as one which
-	// did.
+	// A refused change produced no result, so it writes no result: an object
+	// describing a change which did not happen would read as one which did. It
+	// writes the refusal instead — the envelope, "refused" true and the
+	// diagnostics which refused it, and no commit, files or dry run.
 	if refused {
+		refuse(stderr)
 		return dfcad.Commit{}, exitLoad, false
 	}
 

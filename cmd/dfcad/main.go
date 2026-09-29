@@ -349,10 +349,13 @@ const outputContractHelp = `Output:
 
 	A run which produces no result — help, a usage error, a model root that
 	cannot be read, an entity format this engine does not implement, a
-	derivation over a model the load refused — writes nothing at all to
-	stdout. A discovery read — the listings, get, traverse, claims and
-	conflicts — over a model the load refused still answers, and says so
-	with "refused": true.
+	model root held by another transaction, a file that could not be
+	written — writes nothing at all to stdout. A discovery read — the
+	listings, get, traverse, claims and conflicts — over a model the load
+	refused still answers, and says so with "refused": true, and check
+	writes its whole report. Every other command a load refused — a
+	derivation, an export, review, a change — exits 2 writing only the
+	envelope, "refused": true and the diagnostics that refused it.
 
 	Diagnostics, progress and everything else for a person go to stderr, on
 	every run and in every format. Nothing human-facing is ever on stdout.
@@ -458,5 +461,13 @@ func runOn(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	rendered := &diagnosticStream{Writer: stderr}
 	answer := &answerStream{Writer: stdout, diagnostics: rendered}
 
-	return cmd.run(cmd, args[1:], stdin, answer, rendered)
+	code := cmd.run(cmd, args[1:], stdin, answer, rendered)
+
+	// A run a load refused says so on stdout as well as on stderr, whichever
+	// command it was: see [answerStream.refuse].
+	if err := answer.refuse(cmd.name, code); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
+	}
+
+	return code
 }

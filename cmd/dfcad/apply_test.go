@@ -76,8 +76,9 @@ func applied(t *testing.T, files map[string]string, written string, args ...stri
 	return listed[applyResult](t, stdout), root
 }
 
-// refusedBatch runs an apply which was refused, requiring the tree to be exactly
-// what it was and stdout to be empty.
+// refusedBatch runs an apply which was refused before any model was read —
+// an invocation, or a file which is not a batch — requiring the tree to be
+// exactly what it was and stdout to be empty.
 //
 // Both are the whole of what all-or-nothing means from the outside: a caller
 // piping stdout never has to tell a batch which landed from one which did not,
@@ -220,13 +221,24 @@ func TestRunApplyRefusesABatchWhoseModelWouldNotLoad(t *testing.T) {
 	// retirement names a replacement for the references it has to redirect.
 	// What the two produce together is a node contained by itself, which is a
 	// model that does not load — and the batch is refused by it.
-	stderr := refusedBatch(t, authored(), exitLoad, `{"operations": [
+	root := tree(t, authored())
+	path := operationFile(t, root, `{"operations": [
 		{"op": "add-node", "id": "site:S-104", "kind": "Space", "type": "MeetingRoom",
 		 "geometry": "area", "frame": "frame:building"},
 		{"op": "retire", "id": "site:S-101", "reason": "Merged into Meeting Room B.",
 		 "replacement": "site:S-102"}
 	]}`)
 
+	before := contents(t, root)
+
+	stdout, stderr := invoke(t, exitLoad, root, "apply", path)
+
+	// Unlike a file which is not a batch, this one was applied and the model
+	// it produced was read, so the refusal is diagnostics — and the run writes
+	// them on stdout, with nothing that would describe a change.
+	refusedObject(t, stdout, "apply")
+	assertRoundTrips(t, stdout, stderr)
+	assert.Equal(t, before, contents(t, root), "a refused batch writes nothing at all")
 	assert.Contains(t, stderr, "site:S-102")
 }
 

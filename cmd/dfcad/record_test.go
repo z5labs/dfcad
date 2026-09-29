@@ -364,7 +364,7 @@ func TestRunSupersedeIsAllOrNothing(t *testing.T) {
 		"site:S-101", "area",
 	)
 
-	assert.Empty(t, stdout, "a run which produced no result writes no result object")
+	refusedObject(t, stdout, "supersede")
 	assert.Contains(t, stderr, "site:S-999")
 	assert.Equal(t, before, contents(t, root), "neither half of the correction was written")
 }

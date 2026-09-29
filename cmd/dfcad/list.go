@@ -1456,7 +1456,12 @@ func loadGate(cmd command, globals *globals, stderr io.Writer) (*dfcad.Graph, bo
 
 	graph, found := dfcad.LoadGraph(globals.Root)
 
-	return graph, render(found, stderr)
+	refused := render(found, stderr)
+	if refused {
+		refuse(stderr)
+	}
+
+	return graph, refused
 }
 
 // usageError reports an invocation which named something that does not exist.
