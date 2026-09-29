@@ -2471,3 +2471,405 @@ func TestRunClaimsOfAFrameIsWhatGetReportsOfIt(t *testing.T) {
 		})
 	}
 }
+
+// recheckTolerance is the threshold a field visit re-checks claims against,
+// declared as registry data the way a consumer declares it.
+const recheckTolerance = `
+(tolerance field-recheck
+  (value 0.02 m)
+  (description "How well a placement has to be known before a field visit can skip it."))
+`
+
+// recheckModel is a room whose height has been claimed at every standing
+// against field-recheck: just under it, just over it and retracted, exactly at
+// it, over it only once its terms are combined — neither term is over on its
+// own — in millimetres, which nothing converts, and with no accuracy at all.
+const recheckModel = `
+(node site:S-107
+  (label "Meeting Room F")
+  (kind Space)
+  (type MeetingRoom)
+  (geometry area)
+  (frame frame:building)
+  (height
+    (id survey:H-0171)
+    (value 2.6 m)
+    (source "Section A-A, sheet 5")
+    (method method:tape)
+    (accuracy (independent 0.019 m))
+    (date "2026-04-01"))
+  (height
+    (id survey:H-0172)
+    (value 2.62 m)
+    (source "Plan set A-101, sheet 3")
+    (method method:scaled-from-plan)
+    (accuracy (independent 0.021 m))
+    (date "2026-01-09")
+    (rank deprecated)
+    (superseded-by survey:H-0171))
+  (height
+    (id survey:H-0173)
+    (value 2.61 m)
+    (source "Fit-out check FC-2026-002, Acme Surveys")
+    (method method:tape)
+    (accuracy (independent 0.02 m))
+    (date "2026-05-11"))
+  (height
+    (id survey:H-0174)
+    (value 2.63 m)
+    (source "Interior control set IC-02, Acme Surveys")
+    (method method:total-station)
+    (accuracy (independent 0.012 m) (systematic 0.017 m survey:CP-1))
+    (date "2026-03-18"))
+  (height
+    (id survey:H-0175)
+    (value 2.6 m)
+    (source "Resurvey RS-2026-011")
+    (method method:total-station)
+    (accuracy (independent 25.0 mm))
+    (date "2026-09-28"))
+  (height
+    (id survey:H-0176)
+    (value 2.6 m)
+    (source "Facilities handbook, 2026 edition")
+    (method method:assumed)
+    (date "2026-02-01")))
+`
+
+// recheckable is the audit fixture with a field-recheck tolerance declared and
+// the room above added, so that every standing a claim can have against a
+// threshold is somewhere in it.
+func recheckable() map[string]string {
+	files := auditable()
+	files["registry.dfc"] += recheckTolerance
+	files["entities/site.dfc"] += recheckModel
+	return files
+}
+
+// rechecked runs claims over a fresh [recheckable] and decodes what reached
+// stdout.
+func rechecked(t *testing.T, args ...string) (claimsResult, map[string]any) {
+	t.Helper()
+	return recheckedIn(t, tree(t, recheckable()), args...)
+}
+
+// recheckedIn runs claims over the tree at root, for the comparisons which need
+// two runs over one tree to write the same spans.
+func recheckedIn(t *testing.T, root string, args ...string) (claimsResult, map[string]any) {
+	t.Helper()
+
+	stdout, stderr := invoke(t, exitSuccess, root, append([]string{"claims"}, args...)...)
+	require.Empty(t, stderr, "the fixture loads clean")
+
+	result := listed[claimsResult](t, stdout)
+	assert.Equal(t, outputVersion, result.Version)
+	assert.Equal(t, "claims", result.Command)
+
+	return result, object(t, stdout)
+}
+
+func TestRunClaimsFiltersWorseThanATolerance(t *testing.T) {
+	testCases := []struct {
+		name         string
+		args         []string
+		expected     []string
+		incomparable incomparableClaims
+	}{
+		{
+			name: "lists the claims whose combined figure is strictly greater than the tolerance",
+			args: []string{"--worse-than", "field-recheck"},
+			expected: []string{
+				"site:S-107 height survey:H-0172 " + resolutionRetracted,
+				"site:S-107 height survey:H-0174 " + resolutionOutranked,
+			},
+			incomparable: incomparableClaims{NoFigure: 6, OtherUnit: 10},
+		},
+		{
+			name: "narrows one subject's claims",
+			args: []string{"site:S-107", "--worse-than", "field-recheck"},
+			expected: []string{
+				"site:S-107 height survey:H-0172 " + resolutionRetracted,
+				"site:S-107 height survey:H-0174 " + resolutionOutranked,
+			},
+			incomparable: incomparableClaims{NoFigure: 1, OtherUnit: 1},
+		},
+		{
+			name: "combines with a predicate",
+			args: []string{"--worse-than", "field-recheck", "--predicate", "height"},
+			expected: []string{
+				"site:S-107 height survey:H-0172 " + resolutionRetracted,
+				"site:S-107 height survey:H-0174 " + resolutionOutranked,
+			},
+			incomparable: incomparableClaims{NoFigure: 1, OtherUnit: 1},
+		},
+		{
+			name:         "counts every claim under a predicate in another unit, and lists none",
+			args:         []string{"--worse-than", "field-recheck", "--predicate", "area"},
+			expected:     []string{},
+			incomparable: incomparableClaims{OtherUnit: 9},
+		},
+		{
+			name:         "combines with a family every claim of which is within the tolerance",
+			args:         []string{"--worse-than", "field-recheck", "--family", "vertex"},
+			expected:     []string{},
+			incomparable: incomparableClaims{},
+		},
+		{
+			name:         "combines with a type",
+			args:         []string{"--worse-than", "field-recheck", "--type", "Corridor"},
+			expected:     []string{},
+			incomparable: incomparableClaims{NoFigure: 2, OtherUnit: 1},
+		},
+		{
+			name:         "combines with a method",
+			args:         []string{"--worse-than", "field-recheck", "--method", "method:scaled-from-plan"},
+			expected:     []string{"site:S-107 height survey:H-0172 " + resolutionRetracted},
+			incomparable: incomparableClaims{OtherUnit: 5},
+		},
+		{
+			name:         "combines with --unrankable, every claim of which has no figure",
+			args:         []string{"--worse-than", "field-recheck", "--unrankable"},
+			expected:     []string{},
+			incomparable: incomparableClaims{NoFigure: 6},
+		},
+		{
+			name:         "answers nothing, and counts nothing, for a subject nothing is claimed about",
+			args:         []string{"site:Z-01", "--worse-than", "field-recheck"},
+			expected:     []string{},
+			incomparable: incomparableClaims{},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, raw := rechecked(t, testCase.args...)
+
+			assert.Equal(t, testCase.expected, rows(result.Claims))
+			require.NotNil(t, result.Incomparable)
+			assert.Equal(t, testCase.incomparable, *result.Incomparable)
+
+			// Both counts are written even where they are zero, so that a caller
+			// reads a zero rather than a missing field.
+			assert.Equal(t, map[string]any{
+				"no-figure":  float64(testCase.incomparable.NoFigure),
+				"other-unit": float64(testCase.incomparable.OtherUnit),
+			}, raw["incomparable"])
+
+			for _, row := range result.Claims {
+				require.NotNil(t, row.Combined)
+				assert.Equal(t, "m", row.Combined.Unit)
+				assert.Greater(t, row.Combined.Magnitude, 0.02)
+			}
+		})
+	}
+}
+
+// TestRunClaimsWorseThanStandsEachClaimAgainstTheTolerance names each claim of
+// the room built to sit at every standing, so that a change to the comparison
+// says which standing moved.
+func TestRunClaimsWorseThanStandsEachClaimAgainstTheTolerance(t *testing.T) {
+	every, _ := rechecked(t, "site:S-107")
+	narrowed, _ := rechecked(t, "site:S-107", "--worse-than", "field-recheck")
+
+	picked := make(map[string]bool)
+	for _, row := range narrowed.Claims {
+		picked[row.ID] = true
+	}
+	figures := make(map[string]*combinedUncertainty)
+	for _, row := range every.Claims {
+		figures[row.ID] = row.Combined
+	}
+
+	testCases := []struct {
+		name     string
+		id       string
+		expected bool
+	}{
+		{name: "leaves out a claim just under the tolerance", id: "survey:H-0171", expected: false},
+		{name: "lists a retracted claim just over the tolerance", id: "survey:H-0172", expected: true},
+		{name: "leaves out a claim exactly at the tolerance, which is not worse than it", id: "survey:H-0173", expected: false},
+		{name: "lists a claim over the tolerance only once its terms are combined", id: "survey:H-0174", expected: true},
+		{name: "leaves out a claim in another unit, however large its figure", id: "survey:H-0175", expected: false},
+		{name: "leaves out a claim with no accuracy", id: "survey:H-0176", expected: false},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			assert.Equal(t, testCase.expected, picked[testCase.id])
+		})
+	}
+
+	// The fixture says what it is meant to, or the cases above prove nothing.
+	require.NotNil(t, figures["survey:H-0173"])
+	assert.Equal(t, 0.02, figures["survey:H-0173"].Magnitude, "the claim at the tolerance combines to exactly its value")
+	require.NotNil(t, figures["survey:H-0175"])
+	assert.Equal(t, "mm", figures["survey:H-0175"].Unit)
+	assert.Nil(t, figures["survey:H-0176"])
+}
+
+// TestRunClaimsWorseThanIsTheListingNarrowed is the filter as a property: the
+// rows of claims --worse-than t are exactly the rows of claims whose
+// combined.unit is t's unit and whose combined.magnitude exceeds t's value, in
+// the same order and with every field the same, and the incomparable counts are
+// the rows of claims it could not compare. So the filter and the printed figure
+// cannot disagree.
+func TestRunClaimsWorseThanIsTheListingNarrowed(t *testing.T) {
+	const unit, value = "m", 0.02
+
+	narrowed := func(every []claimRow) ([]claimRow, incomparableClaims) {
+		expected := make([]claimRow, 0)
+		var counted incomparableClaims
+		for _, row := range every {
+			switch {
+			case row.Combined == nil:
+				counted.NoFigure++
+			case row.Combined.Unit != unit:
+				counted.OtherUnit++
+			case row.Combined.Magnitude > value:
+				expected = append(expected, row)
+			}
+		}
+		return expected, counted
+	}
+
+	root := tree(t, recheckable())
+	every, _ := recheckedIn(t, root)
+
+	filters := [][]string{
+		nil,
+		{"--predicate", "height"},
+		{"--predicate", "position"},
+		{"--family", "node"},
+		{"--method", "method:tape"},
+		{"--type", "MeetingRoom"},
+	}
+	for _, subject := range slices.Compact(subjectsOf(every.Claims)) {
+		filters = append(filters, []string{subject})
+	}
+
+	for _, filter := range filters {
+		t.Run("holds of claims "+strings.Join(filter, " "), func(t *testing.T) {
+			listing, _ := recheckedIn(t, root, filter...)
+			expected, counted := narrowed(listing.Claims)
+
+			result, _ := recheckedIn(t, root, append(slices.Clone(filter), "--worse-than", "field-recheck")...)
+
+			assert.Equal(t, expected, result.Claims)
+			require.NotNil(t, result.Incomparable)
+			assert.Equal(t, counted, *result.Incomparable)
+		})
+	}
+}
+
+func TestRunClaimsWorseThanEchoesTheTolerance(t *testing.T) {
+	result, raw := rechecked(t, "--worse-than", "field-recheck")
+
+	require.NotNil(t, result.WorseThan)
+	assert.Equal(t, toleranceEntry{Name: "field-recheck", Value: 0.02, Unit: "m"}, *result.WorseThan)
+	assert.Equal(t, map[string]any{"name": "field-recheck", "value": 0.02, "unit": "m"}, raw["worse-than"])
+}
+
+// TestRunClaimsWithoutWorseThanIsUnchanged checks that a listing which does not
+// ask the question carries none of its answer: no worse-than and no
+// incomparable, whatever else narrowed it.
+func TestRunClaimsWithoutWorseThanIsUnchanged(t *testing.T) {
+	testCases := []struct {
+		name string
+		args []string
+	}{
+		{name: "writes neither field over the whole model", args: nil},
+		{name: "writes neither field over one subject", args: []string{"site:S-107"}},
+		{name: "writes neither field beside another filter", args: []string{"--unrankable"}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			result, raw := rechecked(t, testCase.args...)
+
+			assert.Nil(t, result.WorseThan)
+			assert.Nil(t, result.Incomparable)
+			assert.NotContains(t, raw, "worse-than")
+			assert.NotContains(t, raw, "incomparable")
+		})
+	}
+
+	t.Run("lists what the audit fixture always listed", func(t *testing.T) {
+		assert.Equal(t, everyClaim(), rows(claimed(t).Claims))
+	})
+}
+
+func TestRunClaimsRefusesAWorseThanTheRegistryDoesNotDeclare(t *testing.T) {
+	testCases := []struct {
+		name string
+		args []string
+	}{
+		{name: "refuses it over the whole model", args: []string{"--worse-than", "no-such"}},
+		{name: "refuses it over one subject", args: []string{"site:S-107", "--worse-than", "no-such"}},
+		{name: "refuses it beside another filter", args: []string{"--predicate", "height", "--worse-than", "no-such"}},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := tree(t, recheckable())
+			stdout, stderr := invoke(t, exitUsage, root, append([]string{"claims"}, testCase.args...)...)
+
+			assert.Empty(t, stdout)
+
+			// The refusal is the one every derivation gives for an undeclared
+			// --tolerance or --chord, from the one helper which gives it.
+			graph, diags := dfcad.LoadGraph(root)
+			require.Empty(t, diags)
+
+			err := declaredTolerances(graph.Registry(), "no-such")
+
+			var got dfcad.UnknownAxisError
+			require.ErrorAs(t, err, &got)
+			assert.Equal(t, string(dfcad.SortTolerance), got.Axis)
+			assert.Equal(t, "no-such", got.Value)
+			assert.Equal(t, []string{"field-recheck"}, got.Permitted)
+			assert.Equal(t, "dfcad claims: "+err.Error()+"\n", stderr, "the helper's error, and nothing said about the model")
+		})
+	}
+}
+
+func TestRunClaimsRefusesWorseThanWrittenTwice(t *testing.T) {
+	testCases := []struct {
+		name     string
+		args     []string
+		expected []string
+	}{
+		{
+			name:     "refuses two tolerances",
+			args:     []string{"claims", "--worse-than", "field-recheck", "--worse-than", "other"},
+			expected: []string{"field-recheck", "other"},
+		},
+		{
+			name:     "refuses one tolerance written twice",
+			args:     []string{"claims", "--worse-than", "field-recheck", "--worse-than", "field-recheck"},
+			expected: []string{"field-recheck", "field-recheck"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			err := refused(t, testCase.args)
+
+			var got RepeatedFlagError
+			require.ErrorAs(t, err, &got)
+			assert.Equal(t, flagWorseThan, got.Flag)
+			assert.Equal(t, testCase.expected, got.Values)
+		})
+	}
+}
+
+func TestRunClaimsWorseThanHumanOutputNeverChangesStdout(t *testing.T) {
+	root := tree(t, recheckable())
+
+	machine, machineReport := invoke(t, exitSuccess, root, "claims", "--worse-than", "field-recheck")
+	human, humanReport := invoke(t, exitSuccess, root, "claims", "--worse-than", "field-recheck", "--format", formatHuman)
+
+	assert.Equal(t, machine, human)
+	assert.Empty(t, machineReport)
+	assert.Contains(t, humanReport, "2 claims of 1 subject under 1 predicate, 1 retracted")
+	assert.Contains(t, humanReport, "worse than field-recheck (0.02 m); not compared: 6 with no figure, 10 in another unit")
+}

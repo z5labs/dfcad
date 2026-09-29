@@ -58,6 +58,9 @@ Flags:
 	--unrankable        only claims resolution cannot rank: those which state
 	                    no accuracy, and those whose accuracy is in more than
 	                    one unit
+	--worse-than <name> only claims whose combined accuracy is worse than this
+	                    tolerance: its figure strictly greater than the
+	                    tolerance's value, in the tolerance's unit
 
 Filters combine: a claim is listed when it satisfies every filter given, and a
 filter written more than once is satisfied by any of its values. They apply with
@@ -85,6 +88,22 @@ unrankable for the same reason, since nothing reduces them to one figure, and is
 listed too, carrying its "units". Retracted claims are listed beside live ones,
 each still marked with its resolution. A model in which every claim states an
 accuracy answers an empty list.
+
+--worse-than names a tolerance the registry declares rather than taking a
+number, because a threshold is project data rather than a figure typed at the
+command line (docs/decisions/0012-tolerances-are-registry-data.md): the
+consumer declares (tolerance field-recheck (value 0.02 m)) and writes
+--worse-than field-recheck. A claim is listed when its "combined" figure — the
+one resolution ranks it by — is strictly greater than the tolerance's value and
+is in exactly the tolerance's unit. Nothing converts, so a figure in mm is not
+compared with a tolerance in m. A claim which cannot be compared is not listed,
+and not silently dropped either: the answer carries "incomparable", counting
+the claims the other filters selected which have no figure — no accuracy, or
+terms in more than one unit — under "no-figure", and those whose figure is in
+another unit under "other-unit", so that an empty list is never read as every
+claim being good enough when nothing was judged. It echoes the tolerance as
+"worse-than". A tolerance the registry does not declare is a usage error
+naming every one it does, and the flag is written once.
 
 Claims come back in subject id order, then in predicate order and then in the
 order they were written, so two runs over one model diff against each other and
@@ -116,7 +135,9 @@ list and exit zero.
 ` + outputContractHelp + `
 The object claims writes carries "subject", the id it was asked about, when one
 was, and "claims", every claim written on it — or on every subject, where no id
-was given — in subject, predicate and written order.
+was given — in subject, predicate and written order. With --worse-than it also
+carries "worse-than", the tolerance compared against, and "incomparable", how
+many of the claims the other filters selected could not be compared with it.
 `
 
 const conflictsUsage = `dfcad conflicts — every disagreement in the model.
@@ -217,6 +238,10 @@ var ErrTypeNeedsNodeFamily = errors.New(
 // warning about an unused method spells the flag.
 const flagMethod = "method"
 
+// flagWorseThan is the filter on how well a claim is known, which names the
+// tolerance its combined accuracy is compared with.
+const flagWorseThan = "worse-than"
+
 // claimFamilies are the four families a subject of a claim can belong to, in
 // the order the usage lists them.
 //
@@ -250,10 +275,38 @@ type claimsResult struct {
 	// for. Absent where no id was, and the claims are every subject's.
 	Subject string `json:"subject,omitempty"`
 
+	// WorseThan is the tolerance --worse-than named, echoed so that a stored
+	// listing says which question it answers. Absent where the flag was not
+	// given.
+	WorseThan *toleranceEntry `json:"worse-than,omitempty"`
+
+	// Incomparable counts the claims the other filters selected which
+	// --worse-than could not compare with its tolerance. Absent where the flag
+	// was not given, and written whole, zeros and all, where it was.
+	Incomparable *incomparableClaims `json:"incomparable,omitempty"`
+
 	// Claims is every claim written on it, in predicate order, or on every
 	// subject in subject and then predicate order. Empty rather than null when
 	// nothing is claimed.
 	Claims []claimRow `json:"claims"`
+}
+
+// incomparableClaims is how many of the claims a --worse-than listing
+// considered could not be compared with its tolerance, and why.
+//
+// They are counted rather than dropped because a listing which left them out
+// without a word would read as every claim being good enough, when some were
+// never judged at all: a field-visit punch list reading "nothing worse than
+// 20 mm" off an answer which compared nothing is the failure this prevents.
+type incomparableClaims struct {
+	// NoFigure is the claims whose accuracy combines to no figure: those which
+	// state no accuracy, and those whose terms are in more than one unit.
+	NoFigure int `json:"no-figure"`
+
+	// OtherUnit is the claims whose combined figure is in a unit other than
+	// the tolerance's. Nothing converts between units, so a figure in mm is
+	// not compared with a tolerance in m.
+	OtherUnit int `json:"other-unit"`
 }
 
 // claimRow is one claim as claims reports it: the claim object get writes,
@@ -340,6 +393,7 @@ func runClaims(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wr
 	flags.Var(familyFlag, flagFamily, "")
 	flags.Var(methodFlag, flagMethod, "")
 	unrankable := flags.Bool("unrankable", false, "")
+	worseThan := flags.String(flagWorseThan, "", "")
 
 	arguments, exit, done := parse(cmd, flags, globals, args, stderr)
 	if done {
@@ -415,6 +469,18 @@ func runClaims(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wr
 		return usageError(cmd, err, stderr, false)
 	}
 
+	// The threshold is a name, refused as every derivation refuses an
+	// undeclared one, and it is looked up only once the name is known to be
+	// declared.
+	if err := declaredTolerances(registry, *worseThan); err != nil {
+		return usageError(cmd, err, stderr, false)
+	}
+	var threshold *dfcad.Tolerance
+	if *worseThan != "" {
+		declared, _ := registry.Tolerance(*worseThan)
+		threshold = &declared
+	}
+
 	subjects := []dfcad.ID{subject}
 	if subject == "" {
 		subjects = claimedSubjects(graph)
@@ -428,6 +494,10 @@ func runClaims(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wr
 		// Made rather than declared so that a model nothing is claimed about
 		// writes an empty list rather than a null.
 		Claims: make([]claimRow, 0),
+	}
+	if threshold != nil {
+		result.WorseThan = &toleranceEntry{Name: threshold.Name, Value: threshold.Value, Unit: string(threshold.Unit)}
+		result.Incomparable = &incomparableClaims{}
 	}
 
 	// One predicate is handed to the walk rather than filtered after it, so that
@@ -451,6 +521,9 @@ func runClaims(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wr
 				continue
 			}
 			if *unrankable && ranked(claim) {
+				continue
+			}
+			if threshold != nil && !worse(claim, *threshold, result.Incomparable) {
 				continue
 			}
 			row.claimEntry = claim
@@ -480,6 +553,27 @@ func runClaims(cmd command, args []string, stdin io.Reader, stdout, stderr io.Wr
 // disagree with it.
 func ranked(claim claimEntry) bool {
 	return claim.Combined != nil
+}
+
+// worse reports whether a claim's combined accuracy is worse than a tolerance:
+// strictly greater than its value, and in exactly its unit. A claim which cannot
+// be compared with it is counted in incomparable, under why, and is not worse.
+//
+// The figure is read off the entry the listing writes, for the reason [ranked]
+// reads it there: the filter and the printed "combined" are one reading of the
+// claim, so they cannot disagree. Nothing converts between units
+// (specification section 6.6.5), so a figure in mm is another unit from a
+// tolerance in m rather than a smaller number.
+func worse(claim claimEntry, tolerance dfcad.Tolerance, incomparable *incomparableClaims) bool {
+	switch {
+	case claim.Combined == nil:
+		incomparable.NoFigure++
+		return false
+	case claim.Combined.Unit != string(tolerance.Unit):
+		incomparable.OtherUnit++
+		return false
+	}
+	return claim.Combined.Magnitude > tolerance.Value
 }
 
 // parseMethods is the --method values as ids, in the order they were written,
@@ -881,6 +975,18 @@ func reportClaims(result claimsResult, globals *globals, stderr io.Writer) {
 		plural(len(predicates), "predicate"),
 		retracted,
 	)
+
+	// The claims which could not be compared are said beside the count, so that
+	// a person reading "0 claims" is told how many were never judged.
+	if result.WorseThan != nil {
+		_, _ = fmt.Fprintf(stderr, "worse than %s (%s %s); not compared: %d with no figure, %d in another unit\n",
+			result.WorseThan.Name,
+			number(result.WorseThan.Value),
+			result.WorseThan.Unit,
+			result.Incomparable.NoFigure,
+			result.Incomparable.OtherUnit,
+		)
+	}
 }
 
 // reportConflicts renders a conflicts result for a person, on stderr.
