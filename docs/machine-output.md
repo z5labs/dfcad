@@ -4008,9 +4008,30 @@ its own.
 | `classifications[].code` | string | The classification the type declares under the `IFC4` system, exactly as the registry spells it — the registry's spelling and not the upper-cased one the writer compares, because it is what a person would search the registry for. |
 | `classifications[].entity` | string | What the node was written as instead: `IFCBUILDINGELEMENTPROXY`. Stated rather than assumed. |
 | `classifications[].reason` | string | `unwritten` or `unknown`; see below. |
+| `storeys` | array, optional | Written only under `--evidence`, and only beside an artefact: absent without the flag and absent on a refusal, exactly as `identifiers` is. One entry per `IfcBuildingStorey` in the file, ascending by `id` compared byte-wise, and `[]` rather than absent when the file holds none. It sits under `--evidence` for the reason the manifest does: it grows with the model, on a call whose default answer is a handful of fields ([0022](./decisions/0022-a-command-whose-product-is-a-file-answers-on-stdout.md)). |
+| `storeys[].id` | string | The node written as the storey. |
+| `storeys[].elevation` | object, optional | Where the storey was written. Absent for a storey declaring no frame, which the file writes with `Elevation` `$`. |
+| `storeys[].elevation.value` | number | The elevation, exactly the number the file writes as the storey's `IfcBuildingStorey.Elevation` and as the lift of its placement. It is recorded from the value the writer wrote rather than derived a second time, so the file and the answer cannot disagree. |
+| `storeys[].elevation.unit` | string | The root frame's linear unit, which every coordinate in the file is written in ([0005](./decisions/0005-one-linear-unit-per-frame.md)). |
+| `storeys[].elevation.frame` | string | The root frame, which is the frame every coordinate in the file is written in ([0024](./decisions/0024-every-coordinate-in-an-export-is-written-in-the-root-frame.md)). An elevation in any other frame would be a value the artefact does not hold. |
+| `storeys[].elevation.budget` | object, optional | The accumulated uncertainty of the fits the storey's frame chain passes through on its way to the root, in route order, with `from` the storey's frame and `to` the root: the [`budget`](#budget) `resolve --frame` writes, field for field, including `unknown` for a fit stating no accuracy and `units` for fits written in different units. Absent where the storey's frame is the root, because nothing moved it and its value is `0`. |
 
 Everything else — `derived`, `digest`, `files[]`, `identifiers` under `--evidence` — is the
-shared shape, with the meanings documented there.
+shared shape, with the meanings documented there. `storeys` is the one field `--evidence` adds
+beside the manifest which is this command's own.
+
+A storey two fits above the root, with the one below it on the root itself, reads:
+
+```json
+"storeys": [
+  {"id": "site:L-01", "elevation": {"value": 0, "unit": "m", "frame": "frame:plan-ground"}},
+  {"id": "site:L-03", "elevation": {"value": 5.8, "unit": "m", "frame": "frame:plan-ground",
+    "budget": {"from": "frame:plan-attic", "to": "frame:plan-ground",
+      "terms": [{"kind": "independent", "name": "site:C-0002", "magnitude": 0.003, "unit": "m", "contributors": ["site:C-0002"]},
+                {"kind": "independent", "name": "site:C-0001", "magnitude": 0.004, "unit": "m", "contributors": ["site:C-0001"]}],
+      "combined": {"magnitude": 0.005, "unit": "m", "coverage-factor": 1}}}}
+]
+```
 
 **The spatial structure crosses the boundary always, and the geometry only when the run says
 what to read it under.**
