@@ -247,31 +247,75 @@ from" figure differs by a token or two from the same call in the tables above.
 
 One figure per encoding, in the order of the table above.
 
+## The measured outcome
+
+What the tables above come to. This section is generated with them, from the same
+totals, so its verdict is the one they support; the outcome written after the block
+argues from it and quotes none of its figures.
+
+### The gates
+
+| Path | Target | `o200k_base` | `cl100k_base` | Verdict |
+|------|--------|-------|-------|---------|
+| discovery | 500 | 438, 62 under | 416, 84 under | **met** |
+| a dimensional question from a cold start | 500 | 528, 28 over | 502, 2 over | **missed** |
+| the same question once the vocabulary is known | 300 | 278, 22 under | 273, 27 under | **met** |
+
+A path is met only when it lands at or under its target under every encoding.
+
+### The bet
+
+- **discovery** costs 438 tokens under `o200k_base` and 416 under `cl100k_base`. That is 47.3× and 50.1× cheaper than reading the whole model, and 8.4× and 8.9× cheaper than reading `entities/level-01.dfc` alone.
+- **a dimensional question from a cold start** costs 528 tokens under `o200k_base` and 502 under `cl100k_base`. That is 39.2× and 41.5× cheaper than reading the whole model, and 6.9× and 7.3× cheaper than reading `entities/level-01.dfc` alone.
+
+### The plan
+
+**reading a storey as an annotated plan** costs 8368 tokens under `o200k_base` and 8236 under `cl100k_base`, against 20724 and 20834 to read the whole model. That is 2.5× and 2.5× cheaper, where it claims 2.
+
 <!-- end measurements -->
 
 ## The outcome
 
-**The bet holds. The gate is met, and it was not met by moving it.**
+The figures are in "The measured outcome" above, and they are only there. This section
+argues from them and quotes none of them, because it is the part of the record nothing
+regenerates: the outcome once written here went on saying the gate was met, one token
+inside its target, after a field added to every discovery answer had taken the cold start
+over it. Every test passed, because the regression ceiling had room in it, and the
+headline of the record said the opposite of its table. **Where this prose and the
+generated verdict disagree, the generated verdict is right**, and the prose is the thing
+to fix.
 
-The bet is the ratio, and it was never close: discovery costs 428 tokens against 20,600 to
-read the model, which is 48 times cheaper, and the cold-start question costs 499, which is
-41 times cheaper. Against the single file the answer is written in — the harder comparison,
-because knowing which file to open is itself something discovery had to supply — discovery
-is 8.6 times cheaper and the question 7.4 times. Nothing here suggests reading the files is
-the better arrangement.
+**The bet holds. The absolute gate on the cold start does not.**
 
-The gate is the absolute figure, and it now lands inside it.
-[#38](https://github.com/z5labs/dfcad/issues/38) asked discovery plus a targeted fetch to
-cost the low hundreds of tokens; it costs 499 under `o200k_base` and 474 under
-`cl100k_base`, against a target of 500. Discovery alone costs 428 against the "few hundred"
-[#33](https://github.com/z5labs/dfcad/issues/33) claimed for it. Asked a second time by an
-agent that already has the vocabulary, the same question costs 254.
+The bet is the ratio, and it was never close. Discovery, and the dimensional question
+asked from a cold start, cost a small fraction of reading the model — the standing claim
+in `cmd/dfcad/budget_test.go` is four times, and both clear it many times over.
+Against the single file the answer is written in — the harder comparison, because knowing
+which file to open is itself something discovery had to supply — both still come out
+several times ahead. Nothing here suggests reading the files is the better arrangement.
 
-**499 against 500 is one token of margin, and that is worth saying out loud.** The
-`o200k_base` figure would read `missed` if a single field grew by a word. The margin is not
-what makes the arrangement right — the ratio is — and the ceiling in
-`cmd/dfcad/budget_test.go` is what stops the next change spending it without anybody
-noticing.
+The gate is the absolute figure. [#38](https://github.com/z5labs/dfcad/issues/38) asked
+the cold-start question to cost the low hundreds of tokens and set its target at 500.
+[#114](https://github.com/z5labs/dfcad/issues/114) measured it and
+[#113](https://github.com/z5labs/dfcad/issues/113) brought it inside that target, and it
+has been **missed since 88be26c** ([#252](https://github.com/z5labs/dfcad/pull/252), story
+[#250](https://github.com/z5labs/dfcad/issues/250)), which made every discovery answer
+write `"refused": false` — five tokens on each of `list-types` and `list-instances`, which
+was enough. Later stories have moved it further, and the generated gates table says by
+how much under each encoding. Discovery alone is still inside the "few hundred"
+[#33](https://github.com/z5labs/dfcad/issues/33) claimed for it, and so is the same
+question asked by an agent that already has the vocabulary.
+
+**The margin is now negative, and that is worth saying out loud.** The cold start had a
+single token of margin before 88be26c, and the record warned that one field growing by a
+word would spend it; one did, and nothing failed. The ceiling in
+`cmd/dfcad/budget_test.go` stops the miss growing unnoticed, and it did not stop it
+starting: a ceiling above the target is a ceiling that lets the target go. That is why the
+verdict is now written by the harness from the same totals as the tables — a regeneration
+that crosses a target changes the word in the record, and the diff is where somebody sees
+it. Winning the tokens back is a question about what every discovery answer writes, which
+is an output-contract change for a story of its own; the targets stay where the stories put
+them.
 
 ### The one path that is not a question about one thing
 
@@ -279,19 +323,22 @@ noticing.
 answers a different shape of question. Every other path above asks about one named thing, and
 its cost does not grow with the model; a plan enumerates a whole floor plate — every ring of
 every room, corner by corner, with the claims anchored to them — so what it costs is the size
-of the storey rather than of the arrangement. It costs 7,369 tokens against 20,724 to read
-the model, which is 2.8 times cheaper, and the `path.ratio` field in
-`cmd/dfcad/budget_test.go` is where that weaker claim is stated rather than dropped.
+of the storey rather than of the arrangement. The generated plan line sets it against reading
+the whole model, and the `path.ratio` field in `cmd/dfcad/budget_test.go` is where that weaker
+claim — two times rather than four — is stated rather than dropped.
 
-The `0.5×` in the ratio table beside it is not a finding that reading a file is cheaper. That
-column divides by `entities/level-01.dfc` alone, which is the file the *dimensional* question's
-answer is written in and holds none of the geometry; a plan replaces that file and
-`geometry/level-01.dfc` together, and beats the two of them by a little under two.
+The figure below `1×` in the ratio table's one-file column beside it is not a finding that
+reading a file is cheaper. That column divides by `entities/level-01.dfc` alone, which is the
+file the *dimensional* question's answer is written in and holds none of the geometry; a plan
+replaces that file and `geometry/level-01.dfc` together, which is why the generated plan line
+leaves the one file out.
 
-A third of the payload is `region.boundary`, a quarter the budget's terms and a quarter the
-claims themselves. None of the three is obviously the one to drop — the boundary is what
-pairs a wall with a run of the ring, which is the whole premise of an annotated plan — so the
-figure is recorded rather than tuned, and the ceiling is what stops it growing quietly.
+When the plan was first measured
+([83d1fb0](https://github.com/z5labs/dfcad/commit/83d1fb0), #188), a third of the payload
+was `region.boundary`, a quarter the budget's terms and a quarter the claims themselves. None
+of the three is obviously the one to drop — the boundary is what pairs a wall with a run of
+the ring, which is the whole premise of an annotated plan — so the figure is recorded rather
+than tuned, and the ceiling is what stops it growing quietly.
 
 ### What the review changed
 
@@ -300,7 +347,11 @@ triggered. Its finding was not that the partitioning is wrong; it is that the an
 carrying the audit trail by default, and that an audit trail costs more than an answer.
 Three changes, each a version-2 change to the machine output contract, and the reasoning
 behind them is
-[0017. The answer is the default and the evidence is asked for](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md):
+[0017. The answer is the default and the evidence is asked for](./decisions/0017-the-answer-is-the-default-and-the-evidence-is-asked-for.md).
+They landed in [f205b64](https://github.com/z5labs/dfcad/commit/f205b64)
+([#146](https://github.com/z5labs/dfcad/pull/146)), and every figure in this section was
+measured under `o200k_base` at that commit. They are history: what each change bought
+when it was made, not what the calls cost now, which is the tables above.
 
 - **A span is a string.** `entities/level-01.dfc:234:3-239:25` rather than two nested
   objects of four fields with the path in both. `dfcad get` fell from 392 tokens to 275 on
@@ -314,10 +365,10 @@ behind them is
   cold start begins with.
 
 One thing the review considered and did not do: `list-instances MeetingRoom` repeats
-`"type": "MeetingRoom"` on every entry, which is 30 tokens of the 183 it costs. Leaving it
-out when the type was the argument would buy the margin the cold path is short of, and it
-would mean an entry whose shape depends on how the listing was narrowed. That is a worse
-interface for a caller than a tighter number is a better one.
+`"type": "MeetingRoom"` on every entry, which at f205b64 was 30 tokens of the 183 it cost.
+Leaving it out when the type was the argument would buy the margin the cold path is short
+of, and it would mean an entry whose shape depends on how the listing was narrowed. That is
+a worse interface for a caller than a tighter number is a better one.
 
 The numbers above are held where they are rather than allowed to drift:
 `TestTheDiscoveryPathDoesNotGetMoreExpensive` asserts a ceiling just above what was
