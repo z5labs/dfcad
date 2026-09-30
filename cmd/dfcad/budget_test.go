@@ -557,9 +557,10 @@ func subjectFile(t testing.TB) string {
 // TestTheDiscoveryPathDoesNotGetMoreExpensive holds the measured cost where it
 // is.
 //
-// It asserts the ceiling rather than the target. The two gated paths now meet
-// their targets, and asserting a target directly would make the first field
-// anybody adds a failure reported as though the bet had come apart. What this
+// It asserts the ceiling rather than the target. Whether a gated path meets its
+// target is the verdict docs/token-budget.md reports, and asserting a target
+// directly would make the first field anybody adds a failure reported as though
+// the bet had come apart, where the bet is the ratio. What this
 // is for is the change nobody measured: a field added to a listing entry, a
 // span widened, a description restored to a default. Each arrives here as a
 // failing test naming the path and the figure, to be weighed against the gate
@@ -848,6 +849,81 @@ func TestTheRecordedTokenBudgetIsCurrent(t *testing.T) {
 		"docs/token-budget.md is stale; regenerate it with: go test ./cmd/dfcad -update")
 }
 
+// TestTheOutcomeSaysWhereEachGateStands checks the generated outcome against
+// totals fixed here rather than measured, so that what it says of a path which
+// meets its target and of one which misses it is pinned down independently of
+// wherever the representative model's figures happen to sit today.
+func TestTheOutcomeSaysWhereEachGateStands(t *testing.T) {
+	read := reading{whole: []int{20000, 21000}, one: []int{4000, 4200}, file: "entities/level-01.dfc"}
+	plan := costed{path: path{name: "a plan", ratio: 2}, totals: []int{8000, 7000}}
+
+	testCases := []struct {
+		name     string
+		gate     costed
+		expected []string
+	}{
+		{
+			name: "calls a path under its target on every encoding met",
+			gate: costed{path: path{name: "a cheap path", target: 500}, totals: []int{400, 420}},
+			expected: []string{
+				"| a cheap path | 500 | 400, 100 under | 420, 80 under | **met** |",
+				"- **a cheap path** costs 400 tokens under `o200k_base` and 420 under `cl100k_base`. " +
+					"That is 50.0× and 50.0× cheaper than reading the whole model, " +
+					"and 10.0× and 10.0× cheaper than reading `entities/level-01.dfc` alone.",
+			},
+		},
+		{
+			name: "calls a path exactly at its target met",
+			gate: costed{path: path{name: "a path at its target", target: 500}, totals: []int{500, 480}},
+			expected: []string{
+				"| a path at its target | 500 | 500, at it | 480, 20 under | **met** |",
+			},
+		},
+		{
+			name: "calls a path over its target on one encoding missed",
+			gate: costed{path: path{name: "a cold path", target: 500}, totals: []int{509, 484}},
+			expected: []string{
+				"| a cold path | 500 | 509, 9 over | 484, 16 under | **missed** |",
+				"- **a cold path** costs 509 tokens under `o200k_base` and 484 under `cl100k_base`. " +
+					"That is 39.3× and 43.4× cheaper than reading the whole model, " +
+					"and 7.9× and 8.7× cheaper than reading `entities/level-01.dfc` alone.",
+			},
+		},
+		{
+			name: "calls a path over its target on every encoding missed",
+			gate: costed{path: path{name: "an expensive path", target: 300}, totals: []int{310, 305}},
+			expected: []string{
+				"| an expensive path | 300 | 310, 10 over | 305, 5 over | **missed** |",
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := outcomeSection([]costed{testCase.gate}, []costed{testCase.gate}, plan, read)
+
+			for _, line := range testCase.expected {
+				assert.Contains(t, got, line)
+			}
+		})
+	}
+}
+
+// TestTheOutcomeSetsThePlanAgainstTheWholeModelAlone checks the plan's line: its
+// cost against reading the whole model and the weaker ratio it claims, and no
+// comparison with the one file, which is not a file a plan stands in for.
+func TestTheOutcomeSetsThePlanAgainstTheWholeModelAlone(t *testing.T) {
+	read := reading{whole: []int{20000, 21000}, one: []int{4000, 4200}, file: "entities/level-01.dfc"}
+	plan := costed{path: path{name: "a plan", ratio: 2}, totals: []int{8000, 7000}}
+
+	got := outcomeSection(nil, nil, plan, read)
+
+	assert.Contains(t, got,
+		"**a plan** costs 8000 tokens under `o200k_base` and 7000 under `cl100k_base`, "+
+			"against 20000 and 21000 to read the whole model. That is 2.5× and 3.0× cheaper, where it claims 2.")
+	assert.NotContains(t, got, "entities/level-01.dfc")
+}
+
 // surrounding splits the record either side of the generated block, returning
 // everything up to and including the opening marker and everything from the
 // closing one on.
@@ -898,8 +974,14 @@ func measurements(t testing.TB) string {
 	subject := subjectFile(t)
 
 	answered := make([][]string, len(paths))
+	measuredPaths := make([]costed, len(paths))
 	for i, p := range paths {
 		answered[i] = answers(t, p)
+
+		measuredPaths[i] = costed{path: p, totals: make([]int, len(encodings))}
+		for j, e := range encodings {
+			_, measuredPaths[i].totals[j] = cost(t, codecFor(t, e), answered[i])
+		}
 	}
 
 	for i, p := range paths {
@@ -939,13 +1021,9 @@ func measurements(t testing.TB) string {
 			continue
 		}
 
-		verdict := "**missed**"
-		if p.met(totals) {
-			verdict = "**met**"
-		}
 		fmt.Fprintf(&out, "\n\nTarget %d tokens: %s. Regression ceiling %d tokens. "+
 			"Claimed at %d times cheaper than reading the model.\n",
-			p.target, verdict, p.ceiling, p.claimed())
+			p.target, verdict(p, totals), p.ceiling, p.claimed())
 	}
 
 	fmt.Fprintf(&out, "\n## Where the tokens go\n\n")
@@ -1007,12 +1085,11 @@ func measurements(t testing.TB) string {
 	fmt.Fprintf(&out, "\n## The ratio\n\n")
 	fmt.Fprintf(&out, "| Path | Against the whole model | Against the one file |\n")
 	fmt.Fprintf(&out, "|------|-------------------------|----------------------|\n")
-	for i, p := range paths {
-		fmt.Fprintf(&out, "| %s |", p.name)
+	for _, m := range measuredPaths {
+		fmt.Fprintf(&out, "| %s |", m.path.name)
 
 		var wholeRatios, oneRatios []string
-		for j, e := range encodings {
-			_, total := cost(t, codecFor(t, e), answered[i])
+		for j, total := range m.totals {
 			wholeRatios = append(wholeRatios, ratio(whole[j], total))
 			oneRatios = append(oneRatios, ratio(one[j], total))
 		}
@@ -1021,7 +1098,179 @@ func measurements(t testing.TB) string {
 	}
 	fmt.Fprintf(&out, "\nOne figure per encoding, in the order of the table above.\n")
 
+	var gates []costed
+	for _, m := range measuredPaths {
+		if m.path.gated() {
+			gates = append(gates, m)
+		}
+	}
+	read := reading{whole: whole, one: one, file: strings.TrimPrefix(subject, budgetRoot+"/")}
+	out.WriteString(outcomeSection(
+		gates,
+		[]costed{costedOf(t, measuredPaths, discovery), costedOf(t, measuredPaths, coldQuestion)},
+		costedOf(t, measuredPaths, annotatedPlan),
+		read,
+	))
+
 	return out.String()
+}
+
+// costed is a path together with what it came to: its total under each
+// encoding, in the order of [encodings].
+type costed struct {
+	path   path
+	totals []int
+}
+
+// costedOf is the measurement of one path, found by its name among all of them.
+func costedOf(t testing.TB, measured []costed, p path) costed {
+	t.Helper()
+
+	for _, m := range measured {
+		if m.path.name == p.name {
+			return m
+		}
+	}
+
+	t.Fatalf("%q was not measured", p.name)
+	return costed{}
+}
+
+// reading is what the alternative costs under each encoding, in the order of
+// [encodings]: the whole model, and the one file the answer is written in.
+type reading struct {
+	whole []int
+	one   []int
+
+	// file is the one file, as the record names it.
+	file string
+}
+
+// verdict is what the record says of a gated path: met when it came in at or
+// under its target under every encoding, and missed otherwise.
+//
+// It is the one place the word is chosen, so that the table a path is measured
+// in and the outcome restating it cannot disagree.
+func verdict(p path, totals []int) string {
+	if p.met(totals) {
+		return "**met**"
+	}
+	return "**missed**"
+}
+
+// margin is how far one total landed from a target, in the words the record
+// uses for it.
+func margin(target, total int) string {
+	switch {
+	case total < target:
+		return fmt.Sprintf("%d under", target-total)
+	case total > target:
+		return fmt.Sprintf("%d over", total-target)
+	default:
+		return "at it"
+	}
+}
+
+// outcomeSection renders the part of the record which says where the gates stand and
+// what the bet comes to.
+//
+// It is generated rather than written because it is made of figures, and the
+// hand-written outcome it replaced was not: it went on saying the gate was met,
+// one token inside its target, after a field added to every discovery answer
+// had taken the cold start over it. Every test passed, because the ceiling had
+// room in it, and the headline of the record said the opposite of its table.
+// Written here, from the same totals and the same [verdict] the tables use, the
+// sentences that carry a number move when the number does, and the prose after
+// the block is left to argue from them without quoting any.
+//
+// gated are the paths with a target. compared are the paths the bet is argued
+// from, set against the whole model and against the one file. plan is the one
+// path whose claim is weaker, set against the whole model alone — see
+// [annotatedPlan] for why the one file is not a comparison it can be held to.
+func outcomeSection(gated, compared []costed, plan costed, read reading) string {
+	var out strings.Builder
+
+	fmt.Fprintf(&out, "\n## The measured outcome\n\n")
+	fmt.Fprintf(&out, "What the tables above come to. This section is generated with them, from the same\n")
+	fmt.Fprintf(&out, "totals, so its verdict is the one they support; the outcome written after the block\n")
+	fmt.Fprintf(&out, "argues from it and quotes none of its figures.\n")
+
+	fmt.Fprintf(&out, "\n### The gates\n\n")
+	fmt.Fprintf(&out, "| Path | Target |")
+	for _, e := range encodings {
+		fmt.Fprintf(&out, " `%s` |", e.name)
+	}
+	fmt.Fprintf(&out, " Verdict |\n|------|--------|")
+	for range encodings {
+		fmt.Fprintf(&out, "-------|")
+	}
+	fmt.Fprintf(&out, "---------|\n")
+	for _, g := range gated {
+		fmt.Fprintf(&out, "| %s | %d |", g.path.name, g.path.target)
+		for _, total := range g.totals {
+			fmt.Fprintf(&out, " %d, %s |", total, margin(g.path.target, total))
+		}
+		fmt.Fprintf(&out, " %s |\n", verdict(g.path, g.totals))
+	}
+	fmt.Fprintf(&out, "\nA path is met only when it lands at or under its target under every encoding.\n")
+
+	fmt.Fprintf(&out, "\n### The bet\n\n")
+	for _, c := range compared {
+		var againstWhole, againstOne []string
+		for j, total := range c.totals {
+			againstWhole = append(againstWhole, ratio(read.whole[j], total))
+			againstOne = append(againstOne, ratio(read.one[j], total))
+		}
+		fmt.Fprintf(&out, "- **%s** costs %s. That is %s cheaper than reading the whole model, "+
+			"and %s cheaper than reading `%s` alone.\n",
+			c.path.name, tokensUnder(c.totals), and(againstWhole), and(againstOne), read.file)
+	}
+
+	var planRatios []string
+	for j, total := range plan.totals {
+		planRatios = append(planRatios, ratio(read.whole[j], total))
+	}
+	fmt.Fprintf(&out, "\n### The plan\n\n")
+	fmt.Fprintf(&out, "**%s** costs %s, against %s to read the whole model. "+
+		"That is %s cheaper, where it claims %d.\n",
+		plan.path.name, tokensUnder(plan.totals), and(numbers(read.whole)), and(planRatios), plan.path.claimed())
+
+	return out.String()
+}
+
+// tokensUnder spells one total per encoding as a phrase: "438 tokens under
+// `o200k_base` and 416 under `cl100k_base`".
+func tokensUnder(totals []int) string {
+	var parts []string
+	for j, total := range totals {
+		unit := ""
+		if j == 0 {
+			unit = " tokens"
+		}
+		parts = append(parts, fmt.Sprintf("%d%s under `%s`", total, unit, encodings[j].name))
+	}
+	return and(parts)
+}
+
+// numbers spells each of a list of integers.
+func numbers(values []int) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		out = append(out, fmt.Sprint(v))
+	}
+	return out
+}
+
+// and joins a list the way a sentence would: "a", "a and b", "a, b and c".
+func and(items []string) string {
+	switch len(items) {
+	case 0:
+		return ""
+	case 1:
+		return items[0]
+	default:
+		return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+	}
 }
 
 // lineCount is how many lines a file holds.
