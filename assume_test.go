@@ -379,8 +379,18 @@ func TestAssumeRefusesABatchWhoseModelWouldNotLoad(t *testing.T) {
 	out, diags, err := Assume(root, batched(t, written))
 
 	require.NoError(t, err)
-	assert.Equal(t, Assumption{}, out)
+	assert.Nil(t, out.Graph, "a model nobody could write is not answered about")
+	assert.Empty(t, out.Applied)
+	assert.Zero(t, out.Base)
 	require.True(t, refused(diags))
+
+	// What comes back is only what the refusal was raised over, which is the
+	// tree the batch would produce and not the one on disk.
+	require.NotNil(t, out.Sources, "a refusal carries the sources its diagnostics point into")
+	for _, diagnostic := range diags {
+		_, ok := out.Sources.Source(diagnostic.Span.Start.Path)
+		assert.True(t, ok, "%s has a source", diagnostic.Span.Start.Path)
+	}
 
 	// The diagnostics are the ones a dry-run commit of the same batch gives.
 	tx := begin(t, copied(t, assumeSatisfied))

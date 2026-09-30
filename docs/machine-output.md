@@ -212,8 +212,15 @@ by `encoding/json`, from the same fields `Diagnostic.Render` writes the stderr r
 followed by `ids` and `nodes`. Neither rendering is derived by parsing the other, so there is
 nothing to keep in step — decode the entries into `[]dfcad.Diagnostic`, render each in order
 with `Diagnostic.Render` and `dfcad.FileSources{}`, and the result is the run's stderr under
-the default format, wherever that stderr held only diagnostics. Decoding into
-`[]dfcad.Diagnostic` drops `ids` and `nodes`, which the rendering does not read.
+the default format, wherever that stderr held only diagnostics and was about the tree on disk.
+Decoding into `[]dfcad.Diagnostic` drops `ids` and `nodes`, which the rendering does not read.
+
+A run about a tree which is not on disk — a read under `--assume`, `apply --dry-run`, or any
+change refused at commit — quotes each diagnostic about a file the change touched from the
+bytes the change would write, and a diagnostic about a file it left alone from disk. Its spans
+are positions in that proposed text, so the lines on disk at them are lines of a different
+file. A caller re-rendering such a run's diagnostics renders against the same layering:
+`dfcad.Assumption.Sources`, or `dfcad.Tx.Sources` after the commit.
 
 **`ids` and `nodes` name what a diagnostic is about, computed from its spans.** A refusal is
 about a loop, an edge or a vertex, because that is what is wrong; what a caller acts on is

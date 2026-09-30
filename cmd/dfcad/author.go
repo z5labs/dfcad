@@ -465,7 +465,10 @@ func commitChange(cmd command, tx *dfcad.Tx, globals *globals, stdout, stderr io
 func apply(cmd command, tx *dfcad.Tx, globals *globals, stderr io.Writer) (dfcad.Commit, int, bool) {
 	out, diags, err := tx.Commit()
 
-	refused := render(diags, stderr)
+	// Quoted from what the change would write, not from disk: a refused change
+	// and a dry run wrote nothing, so the disk holds the tree the diagnostics
+	// are not about.
+	refused := renderFrom(diags, tx.Sources(), stderr)
 
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "dfcad %s: %v\n", cmd.name, err)
@@ -507,14 +510,41 @@ func emitted(cmd command, stdout, stderr io.Writer, result any) int {
 // was rendered, and [emit] writes it after every other field of the object. A
 // diagnostic rendered anywhere but here would reach a person and not a caller,
 // which is the one thing this is here to rule out.
+//
+// It quotes each diagnostic, and each of its notes, from the bytes the
+// diagnostic was raised over. For a run over the tree on disk — a read, a load,
+// a change being begun — that is the files on disk. For a run over a tree which
+// is not on disk it is not: the tree a refused change or a dry run would write,
+// or the one a read under --assume answers over, is text nothing wrote, and a
+// line quoted from disk at a position in it is a line of a different file,
+// under a caret beneath text the message does not describe. So under --assume
+// it quotes from what [quoteFrom] noted on the stream, and a change passes
+// what its commit printed to [renderFrom]. Both are the engine's own printing
+// of every file the change touched, over the disk for every file it did not.
 func render(diags []dfcad.Diagnostic, stderr io.Writer) bool {
+	return renderFrom(diags, sourcesOf(stderr), stderr)
+}
+
+// renderFrom is [render] quoting from src, the bytes the diagnostics were
+// raised over.
+//
+// The engine hands those back rather than this re-reading anything —
+// [dfcad.Tx.Sources] after a commit, [dfcad.Assumption.Sources] after an
+// assumption — because what a change would write is known only to the
+// transaction which printed it, and printing it again here would be a second
+// printing that could come to disagree with the one the diagnostics point into.
+// Each is every touched file's printing over the files on disk, so a
+// diagnostic about a file the change left alone still quotes the disk. A nil
+// src is the disk.
+func renderFrom(diags []dfcad.Diagnostic, src dfcad.SourceMap, stderr io.Writer) bool {
+	if src == nil {
+		src = dfcad.FileSources{}
+	}
+
 	var collected dfcad.Diagnostics
 	collected.Add(diags...)
 
-	// The files are read from disk to quote them, which is right in every case:
-	// a read wrote to none of them, a refused change wrote nothing, and a change
-	// which was written is what is there.
-	_ = collected.Render(stderr, dfcad.FileSources{})
+	_ = collected.Render(stderr, src)
 
 	if stream, ok := stderr.(*diagnosticStream); ok {
 		stream.record(collected)

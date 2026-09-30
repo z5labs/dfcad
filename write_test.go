@@ -875,3 +875,127 @@ func TestRollbackErrorNamesWhatItCouldNotPutBack(t *testing.T) {
 	assert.ErrorIs(t, err, failure)
 	assert.Contains(t, err.Error(), "a.dfc, b.dfc")
 }
+
+// lineAt is line n of src, counted from one, and empty past its last line.
+func lineAt(src []byte, n int) string {
+	lines := strings.Split(string(src), "\n")
+	if n < 1 || n > len(lines) {
+		return ""
+	}
+	return lines[n-1]
+}
+
+// TestTxSourcesQuoteACommitFromWhatItWouldWrite is about which bytes a commit's
+// diagnostics point into: every file the change touched is its printing, which
+// is not on disk for a refused change or a dry run, and every file it did not
+// touch is the disk.
+func TestTxSourcesQuoteACommitFromWhatItWouldWrite(t *testing.T) {
+	testCases := []struct {
+		name   string
+		dryRun bool
+	}{
+		{
+			name:   "quotes a refused change from the printing it refused",
+			dryRun: false,
+		},
+		{
+			name:   "quotes a refused dry run from the printing it refused",
+			dryRun: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := writeFixture(t)
+			before := contents(t, root)
+
+			// site:Z-02 is declared in other.dfc, which nothing touches, so
+			// the refusal points into the file the change printed and notes
+			// the file it left alone.
+			tx := begin(t, root)
+			tx.DryRun = testCase.dryRun
+			require.NoError(t, tx.Insert("entities/site.dfc",
+				written(t, `(node site:Z-02 (label "Second northern campus") (kind Zone) (type Campus))`)))
+
+			_, diags, err := tx.Commit()
+			require.NoError(t, err)
+			require.True(t, refused(diags), "the change is refused")
+
+			src := tx.Sources()
+
+			var spans []Span
+			for _, diagnostic := range diags {
+				spans = append(spans, diagnostic.Span)
+				for _, related := range diagnostic.Related {
+					spans = append(spans, related.Span)
+				}
+			}
+
+			var touched, untouched int
+			for _, span := range spans {
+				path := span.Start.Path
+				rel, err := filepath.Rel(root, path)
+				require.NoError(t, err)
+
+				got, ok := src.Source(path)
+				require.True(t, ok, "%s has a source", path)
+				quoted := lineAt(got, span.Start.Line)
+
+				switch filepath.ToSlash(rel) {
+				case "entities/site.dfc":
+					touched++
+					assert.Contains(t, quoted, "Second northern campus",
+						"the touched file is quoted from what the change would write")
+					assert.NotEqual(t, lineAt([]byte(before[rel]), span.Start.Line), quoted,
+						"what the change would write is not what is on disk at that line")
+				case "entities/other.dfc":
+					untouched++
+					assert.Equal(t, lineAt([]byte(before[rel]), span.Start.Line), quoted,
+						"a file the change did not touch is quoted from disk")
+				}
+			}
+
+			assert.NotZero(t, touched, "a diagnostic points into the file the change touched")
+			assert.NotZero(t, untouched, "a diagnostic points into the file it did not")
+			assert.Equal(t, before, contents(t, root), "nothing was written")
+		})
+	}
+}
+
+// TestTxSourcesHoldWhatADryRunWouldWrite is its own function because a dry run
+// which validates raises nothing to quote: what it is about is that the bytes a
+// caller would quote are the bytes the diff says would be written.
+func TestTxSourcesHoldWhatADryRunWouldWrite(t *testing.T) {
+	root := writeFixture(t)
+	before := contents(t, root)
+
+	tx := begin(t, root)
+	tx.DryRun = true
+
+	require.NoError(t, tx.Insert("entities/site.dfc",
+		written(t, `(node site:Z-03 (kind Zone) (type Campus))`)))
+
+	out := commit(t, tx)
+	require.Len(t, out.Files, 1)
+
+	got, ok := tx.Sources().Source(out.Files[0].Path)
+	require.True(t, ok)
+	assert.Contains(t, string(got), "(node site:Z-03 (kind Zone) (type Campus))")
+	assert.Equal(t, before, contents(t, root), "a dry run writes nothing")
+}
+
+// TestTxSourcesBeforeCommitAreTheDisk is its own function because nothing has
+// been printed: every diagnostic so far is about what was read, and the tree
+// which was read is on disk.
+func TestTxSourcesBeforeCommitAreTheDisk(t *testing.T) {
+	root := writeFixture(t)
+
+	tx := begin(t, root)
+	require.NoError(t, tx.Insert("entities/site.dfc",
+		written(t, `(node site:Z-03 (kind Zone) (type Campus))`)))
+
+	site := filepath.Join(root, "entities", "site.dfc")
+	got, ok := tx.Sources().Source(site)
+	require.True(t, ok)
+	assert.Equal(t, writeSite, string(got))
+}

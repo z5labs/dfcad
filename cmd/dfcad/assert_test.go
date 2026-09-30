@@ -227,11 +227,13 @@ func TestRunAddAssertionIsRefusedByTheModelItWouldProduce(t *testing.T) {
 	testCases := []struct {
 		name     string
 		args     []string
+		batch    string
 		expected string
 	}{
 		{
 			name:     "a check which cannot examine the subject's form",
 			args:     []string{"add-assertion", "site:S-101", "edge-backing-resolves"},
+			batch:    `{"operations": [{"op": "add-assertion", "subject": "site:S-101", "check": "edge-backing-resolves"}]}`,
 			expected: "expected an assertion naming a check which applies to a node, found edge-backing-resolves",
 		},
 		{
@@ -243,6 +245,8 @@ func TestRunAddAssertionIsRefusedByTheModelItWouldProduce(t *testing.T) {
 				"--parameter", "position position",
 				"site:A-01", "stays-clear-of-zone",
 			},
+			batch: `{"operations": [{"op": "add-assertion", "subject": "site:A-01", "check": "stays-clear-of-zone",
+				"parameters": ["zone site:Z-90", "tolerance boundary-closure", "position position"]}]}`,
 			expected: "applies to the geometry site:A-01 has",
 		},
 		{
@@ -254,6 +258,8 @@ func TestRunAddAssertionIsRefusedByTheModelItWouldProduce(t *testing.T) {
 				"--parameter", "position position",
 				"site:S-101", "stays-clear-of-zone",
 			},
+			batch: `{"operations": [{"op": "add-assertion", "subject": "site:S-101", "check": "stays-clear-of-zone",
+				"parameters": ["zone site:Z-99", "tolerance boundary-closure", "position position"]}]}`,
 			expected: "found site:Z-99, which nothing answers to",
 		},
 	}
@@ -266,7 +272,7 @@ func TestRunAddAssertionIsRefusedByTheModelItWouldProduce(t *testing.T) {
 			stdout, stderr := invoke(t, exitLoad, root, testCase.args...)
 
 			refusedObject(t, stdout, "add-assertion")
-			assertRoundTrips(t, stdout, stderr)
+			assertRoundTripsOver(t, stdout, stderr, proposed(t, root, testCase.batch))
 			assert.Equal(t, before, contents(t, root), "a refused change writes nothing")
 			assert.Contains(t, stderr, testCase.expected)
 		})

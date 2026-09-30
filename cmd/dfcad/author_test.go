@@ -7,6 +7,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -661,21 +662,25 @@ func TestRunRelateIsRefusedByTheModelItWouldProduce(t *testing.T) {
 	testCases := []struct {
 		name     string
 		args     []string
+		batch    string
 		expected string
 	}{
 		{
 			name:     "a parent nothing in the model holds",
 			args:     []string{"relate", "--within", "site:S-909", "site:S-103"},
+			batch:    `{"operations": [{"op": "relate", "id": "site:S-103", "within": "site:S-909"}]}`,
 			expected: "expected a node id something in this model holds, found site:S-909",
 		},
 		{
 			name:     "a membership naming something which is not a Zone",
 			args:     []string{"relate", "--member-of", "site:S-101", "site:S-103"},
+			batch:    `{"operations": [{"op": "relate", "id": "site:S-103", "memberOf": ["site:S-101"]}]}`,
 			expected: "expected a node of kind Zone",
 		},
 		{
 			name:     "a boundary naming a node rather than a loop",
 			args:     []string{"relate", "--boundary", "site:S-101", "site:S-103"},
+			batch:    `{"operations": [{"op": "relate", "id": "site:S-103", "boundary": ["site:S-101"]}]}`,
 			expected: "site:S-101",
 		},
 	}
@@ -691,7 +696,7 @@ func TestRunRelateIsRefusedByTheModelItWouldProduce(t *testing.T) {
 			// dry run to report: only the refusal, and the diagnostics which
 			// are the reason for it.
 			refusedObject(t, stdout, "relate")
-			assertRoundTrips(t, stdout, stderr)
+			assertRoundTripsOver(t, stdout, stderr, proposed(t, root, testCase.batch))
 			assert.Equal(t, before, contents(t, root), "a refused change writes nothing")
 			assert.Contains(t, stderr, testCase.expected)
 		})
@@ -705,4 +710,181 @@ func orNone(ids []dfcad.ID) []dfcad.ID {
 		return nil
 	}
 	return ids
+}
+
+// agreementFixture is the checked-in model whose area claims are checked
+// against the shapes they describe.
+const agreementFixture = "../../testdata/checks/agreement"
+
+// metresOnAnArea is a batch over the agreement fixture adding an area claim to
+// site:S-101 whose accuracy is in m rather than in a unit of area, which the
+// model refuses. The claim it adds is printed in the middle of model.dfc, so
+// the lines its refusal points at hold a vertex on disk.
+const metresOnAnArea = `{"version": 1, "operations": [
+  {"op": "add-claim", "subject": "site:S-101", "predicate": "area",
+   "claim": {"value": "12.1", "unit": "m2", "source": "Re-measure RM-2026-004",
+             "method": "method:total-station", "accuracy": ["independent 0.004 m"], "date": "2026-05-06"}}
+]}
+`
+
+// quotedUnder is the source line quoted beneath the first line of stderr
+// beginning with header, without its gutter, and whether there was one.
+func quotedUnder(stderr, header string) (string, bool) {
+	lines := strings.Split(stderr, "\n")
+	for i, line := range lines {
+		if !strings.HasPrefix(line, header) || i+1 >= len(lines) {
+			continue
+		}
+		_, quoted, ok := strings.Cut(lines[i+1], " | ")
+		return quoted, ok
+	}
+	return "", false
+}
+
+// diskLine is line n of the file at path as it is on disk, counted from one,
+// and empty past its last line.
+func diskLine(t *testing.T, path string, n int) string {
+	t.Helper()
+
+	src, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	lines := strings.Split(string(src), "\n")
+	if n < 1 || n > len(lines) {
+		return ""
+	}
+
+	return lines[n-1]
+}
+
+func TestADiagnosticAboutAChangeQuotesTheLineTheChangeWouldWrite(t *testing.T) {
+	testCases := []struct {
+		name string
+		args func(batch string) []string
+	}{
+		{
+			name: "quotes a read under --assume from the tree the batch would produce",
+			args: func(batch string) []string { return []string{"get", "--assume", batch, "site:S-101"} },
+		},
+		{
+			name: "quotes a dry run from the tree it would write",
+			args: func(batch string) []string { return []string{"apply", "--dry-run", batch} },
+		},
+		{
+			name: "quotes a refused apply from the tree it refused to write",
+			args: func(batch string) []string { return []string{"apply", batch} },
+		},
+		{
+			name: "quotes a refused single-operation command from the tree it refused to write",
+			args: func(string) []string {
+				return []string{"add-claim", "--value", "12.1", "--unit", "m2",
+					"--source", "Re-measure RM-2026-004", "--method", "method:total-station",
+					"--accuracy", "independent 0.004 m", "--date", "2026-05-06",
+					"site:S-101", "area"}
+			},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := copied(t, agreementFixture)
+			before := contents(t, root)
+
+			stdout, stderr := invoke(t, exitLoad, root, testCase.args(batchFile(t, metresOnAnArea))...)
+
+			assert.Equal(t, before, contents(t, root), "nothing was written")
+
+			diagnostics, _ := carried(t, stdout)
+			require.Len(t, diagnostics, 1, stderr)
+
+			diagnostic := diagnostics[0]
+			require.Len(t, diagnostic.Related, 1, stderr)
+			related := diagnostic.Related[0]
+
+			model := filepath.Join(root, "model.dfc")
+			require.Equal(t, model, diagnostic.Span.Start.Path)
+			require.Equal(t, model, related.Span.Start.Path)
+
+			quoted, ok := quotedUnder(stderr, fmt.Sprintf("%s: %s:", diagnostic.Span.Start, diagnostic.Severity))
+			require.True(t, ok, stderr)
+			assert.Equal(t, "    (accuracy (independent 0.004 m))", quoted,
+				"the refusal quotes the accuracy the change would write")
+			assert.NotEqual(t, diskLine(t, model, diagnostic.Span.Start.Line), quoted)
+
+			note, ok := quotedUnder(stderr, fmt.Sprintf("%s: note:", related.Span.Start))
+			require.True(t, ok, stderr)
+			assert.Equal(t, "    (value 12.1 m2)", note,
+				"its note quotes the value the change would write")
+			assert.NotEqual(t, diskLine(t, model, related.Span.Start.Line), note)
+		})
+	}
+}
+
+// TestADiagnosticAboutAFileAChangeLeftAloneQuotesTheDisk is its own function
+// because the batch is accepted and the diagnostics are a check's over the
+// model it produces: none of them is about the file the batch wrote into, and
+// every one of them is quoted from the file on disk it is about.
+func TestADiagnosticAboutAFileAChangeLeftAloneQuotesTheDisk(t *testing.T) {
+	root := copied(t, agreementFixture)
+
+	batch := batchFile(t, `{"version": 1, "operations": [
+  {"op": "add-vertex", "id": "geom:V-90", "frame": "frame:building", "label": "Set-out mark",
+   "file": "extra.dfc"}
+]}
+`)
+
+	stdout, stderr := invoke(t, exitCheck, root, "check", "--assume", batch)
+
+	diagnostics, _ := carried(t, stdout)
+	require.NotEmpty(t, diagnostics)
+
+	model := filepath.Join(root, "model.dfc")
+	for _, diagnostic := range diagnostics {
+		require.Equal(t, model, diagnostic.Span.Start.Path, "the batch wrote extra.dfc and nothing is wrong with it")
+
+		quoted, ok := quotedUnder(stderr, fmt.Sprintf("%s: %s:", diagnostic.Span.Start, diagnostic.Severity))
+		require.True(t, ok, stderr)
+		assert.Equal(t, diskLine(t, model, diagnostic.Span.Start.Line), quoted)
+	}
+}
+
+// TestAReadUnderAssumeQuotesWhatItAnsweredOver is its own function because the
+// batch is accepted: the diagnostics are not the refusal's but the ones the
+// read goes on to render over the model the batch would produce, and the line
+// each quotes is the line the same read quotes once the batch is applied.
+func TestAReadUnderAssumeQuotesWhatItAnsweredOver(t *testing.T) {
+	// A second, more accurate area for site:S-101 which disagrees with its
+	// outline, printed into the middle of model.dfc.
+	written := `{"version": 1, "operations": [
+  {"op": "add-claim", "subject": "site:S-101", "predicate": "area",
+   "claim": {"value": "30.0", "unit": "m2", "source": "Re-measure RM-2026-004",
+             "method": "method:total-station", "accuracy": ["independent 0.01 m2"], "date": "2026-05-06"}}
+]}
+`
+
+	assumed := copied(t, agreementFixture)
+	stdout, stderr := invoke(t, exitCheck, assumed, "check", "--assume", batchFile(t, written))
+
+	applied := copied(t, agreementFixture)
+	invoke(t, exitSuccess, applied, "apply", batchFile(t, written))
+
+	diagnostics, _ := carried(t, stdout)
+	model := filepath.Join(assumed, "model.dfc")
+
+	var moved int
+	for _, diagnostic := range diagnostics {
+		require.Equal(t, model, diagnostic.Span.Start.Path)
+
+		line := diagnostic.Span.Start.Line
+		quoted, ok := quotedUnder(stderr, fmt.Sprintf("%s: %s:", diagnostic.Span.Start, diagnostic.Severity))
+		require.True(t, ok, stderr)
+		assert.Equal(t, diskLine(t, filepath.Join(applied, "model.dfc"), line), quoted,
+			"the line quoted is the line the batch would put there")
+
+		if quoted != diskLine(t, model, line) {
+			moved++
+		}
+	}
+
+	assert.NotZero(t, moved, "a diagnostic points at a line the batch moved")
 }
