@@ -58,6 +58,18 @@ type Assumption struct {
 	// Base is the digest of the tree that was read, which is what tells a caller
 	// which tree the batch was assumed over.
 	Base Digest
+
+	// Sources is what the diagnostics [Assume] returned beside it were raised
+	// over: the printing of every file the batch touched, over the files on
+	// disk it did not. A caller rendering those diagnostics quotes from it, so
+	// that each one is shown the line of the tree the batch would produce
+	// rather than the line at the same position on disk.
+	//
+	// It is set wherever the batch produced a tree, including a tree which
+	// would not load — whose diagnostics are the ones that most need it — and
+	// nil where it produced none, in which case every diagnostic is about the
+	// tree on disk.
+	Sources SourceMap
 }
 
 // Assume reads the model beneath root, applies batch to it in memory and
@@ -84,7 +96,8 @@ type Assumption struct {
 //     it was, beside the diagnostics the tree raised as it was read — which are
 //     warnings, since it loaded.
 //   - A result which would not load returns the diagnostics that load raised
-//     and a zero Assumption, with a nil error.
+//     and an Assumption carrying only the Sources they were raised over, with
+//     a nil error.
 //
 // Otherwise the diagnostics are those of the model the batch would produce, the
 // warnings a load of it would raise. Refusal is [Diagnostics.HasErrors] over
@@ -113,12 +126,12 @@ func Assume(root string, batch Batch) (Assumption, []Diagnostic, error) {
 
 	_, graph, diags := tx.prepare()
 	if refused(diags) {
-		return Assumption{}, diags, nil
+		return Assumption{Sources: tx.Sources()}, diags, nil
 	}
 
 	base, _ := tx.graph.Digest()
 
-	return Assumption{Graph: graph, Applied: applied, Base: base}, diags, nil
+	return Assumption{Graph: graph, Applied: applied, Base: base, Sources: tx.Sources()}, diags, nil
 }
 
 // readableDirectory reports why root cannot be read as a model root, or nil

@@ -49,16 +49,52 @@ func carried(t *testing.T, stdout string) ([]dfcad.Diagnostic, json.RawMessage) 
 }
 
 // rerendered is each diagnostic rendered for a person, one by one and in the
-// order given, quoting the files the run quoted.
+// order given, quoting the files on disk, which is what a run over the tree on
+// disk quoted.
 func rerendered(t *testing.T, diagnostics []dfcad.Diagnostic) string {
+	t.Helper()
+
+	return rerenderedOver(t, diagnostics, dfcad.FileSources{})
+}
+
+// rerenderedOver is [rerendered] quoting from src, which is what a run over a
+// tree that is not on disk — a change it refused — quoted.
+func rerenderedOver(t *testing.T, diagnostics []dfcad.Diagnostic, src dfcad.SourceMap) string {
 	t.Helper()
 
 	var out strings.Builder
 	for _, diagnostic := range diagnostics {
-		require.NoError(t, diagnostic.Render(&out, dfcad.FileSources{}))
+		require.NoError(t, diagnostic.Render(&out, src))
 	}
 
 	return out.String()
+}
+
+// proposed is what a change refused at commit quoted its diagnostics from: the
+// bytes the batch would write beneath root, over the files on disk it leaves
+// alone. It is read from a dry run of the batch through the library, which
+// writes nothing, so a command's refusal over root can be rendered again from
+// the text it was about.
+func proposed(t *testing.T, root, written string) dfcad.SourceMap {
+	t.Helper()
+
+	batch, err := dfcad.ParseBatch(strings.NewReader(written))
+	require.NoError(t, err)
+
+	tx, _, err := dfcad.Begin(root)
+	require.NoError(t, err)
+	require.NotNil(t, tx)
+	t.Cleanup(func() { _ = tx.Close() })
+
+	tx.DryRun = true
+	_, err = tx.Apply(batch)
+	require.NoError(t, err)
+
+	_, diags, err := tx.Commit()
+	require.NoError(t, err)
+	require.NotEmpty(t, diags, "the batch is refused as the command was")
+
+	return tx.Sources()
 }
 
 // carriedAbout is the diagnostics a run's object carries, decoded with the
@@ -97,9 +133,18 @@ func reencoded(t *testing.T, diagnostics []aboutDiagnostic) []byte {
 func assertRoundTrips(t *testing.T, stdout, stderr string) []dfcad.Diagnostic {
 	t.Helper()
 
+	return assertRoundTripsOver(t, stdout, stderr, dfcad.FileSources{})
+}
+
+// assertRoundTripsOver is [assertRoundTrips] for a run whose diagnostics were
+// quoted from src rather than from disk: a change refused at commit, whose
+// diagnostics are about the text it would have written.
+func assertRoundTripsOver(t *testing.T, stdout, stderr string, src dfcad.SourceMap) []dfcad.Diagnostic {
+	t.Helper()
+
 	diagnostics, raw := carried(t, stdout)
 
-	assert.Equal(t, stderr, rerendered(t, diagnostics), "the object's diagnostics rendered in order are the run's stderr")
+	assert.Equal(t, stderr, rerenderedOver(t, diagnostics, src), "the object's diagnostics rendered in order are the run's stderr")
 	assert.Equal(t, string(raw), string(reencoded(t, carriedAbout(t, stdout))), "decoding the diagnostics and writing them again gives back the same bytes")
 
 	return diagnostics

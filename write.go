@@ -364,6 +364,11 @@ type Tx struct {
 	// it through the same code every change goes through.
 	checks *checkSet
 
+	// printed is the canonical printing of every file the last [Tx.prepare]
+	// printed, keyed by the path its diagnostics name. It is what those
+	// diagnostics were raised over, and nil until something was printed.
+	printed Sources
+
 	// finished reports whether Commit has run.
 	finished bool
 }
@@ -821,6 +826,27 @@ func (tx *Tx) Commit() (Commit, []Diagnostic, error) {
 	return out, diags, nil
 }
 
+// Sources returns the bytes the transaction's diagnostics were raised over,
+// so that a caller rendering them quotes the line each one is about.
+//
+// Before [Tx.Commit] that is the tree on disk, because nothing has been
+// printed and every diagnostic so far — [Begin]'s, [Tx.Apply]'s — is about
+// what was read. After it, every file the change touched is its canonical
+// printing, which is what the commit's diagnostics point into, and every file
+// it did not touch is still read from disk as [FileSources] reads it.
+//
+// That matters where the printing is not on disk. A refused change and a dry
+// run wrote nothing, so the disk holds the tree before the change while the
+// diagnostics describe the tree after it, and quoting a line from disk at the
+// position one names would show a line which has nothing to do with it. A
+// change which was written is what is on disk, and the two agree.
+//
+// It may be called after the transaction is finished, which is when a caller
+// holding a commit's diagnostics wants it.
+func (tx *Tx) Sources() SourceMap {
+	return layered{over: tx.printed, under: FileSources{}}
+}
+
 // pending is one file on its way to disk: what is there now, what would be
 // there, and how far the write got.
 type pending struct {
@@ -884,6 +910,10 @@ func (tx *Tx) prepare() ([]*pending, *Graph, []Diagnostic) {
 		after  []digested
 	)
 
+	// What an earlier preparation printed is not what this one prints, and a
+	// diagnostic quoted from it would be quoted from a tree nobody proposed.
+	tx.printed = Sources{}
+
 	// Lexically, which is the order a walk reaches files in, so that a change
 	// is reported and written the same way on every run.
 	for _, key := range slices.Sorted(slices.Values(tx.order)) {
@@ -905,6 +935,10 @@ func (tx *Tx) prepare() ([]*pending, *Graph, []Diagnostic) {
 			diags = append(diags, diagnose(file.path, err))
 			continue
 		}
+
+		// Recorded before it is read back, so that a printing which does not
+		// parse is quoted from the text the parse refused.
+		tx.printed[file.path] = printed.Bytes()
 
 		// The tree is read back rather than reused so that what is validated is
 		// the text which would be on disk. A printer which lost something would

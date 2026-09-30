@@ -222,12 +222,13 @@ func TestRunApplyRefusesABatchWhoseModelWouldNotLoad(t *testing.T) {
 	// What the two produce together is a node contained by itself, which is a
 	// model that does not load — and the batch is refused by it.
 	root := tree(t, authored())
-	path := operationFile(t, root, `{"operations": [
+	written := `{"operations": [
 		{"op": "add-node", "id": "site:S-104", "kind": "Space", "type": "MeetingRoom",
 		 "geometry": "area", "frame": "frame:building"},
 		{"op": "retire", "id": "site:S-101", "reason": "Merged into Meeting Room B.",
 		 "replacement": "site:S-102"}
-	]}`)
+	]}`
+	path := operationFile(t, root, written)
 
 	before := contents(t, root)
 
@@ -237,7 +238,7 @@ func TestRunApplyRefusesABatchWhoseModelWouldNotLoad(t *testing.T) {
 	// it produced was read, so the refusal is diagnostics — and the run writes
 	// them on stdout, with nothing that would describe a change.
 	refusedObject(t, stdout, "apply")
-	assertRoundTrips(t, stdout, stderr)
+	assertRoundTripsOver(t, stdout, stderr, proposed(t, root, written))
 	assert.Equal(t, before, contents(t, root), "a refused batch writes nothing at all")
 	assert.Contains(t, stderr, "site:S-102")
 }

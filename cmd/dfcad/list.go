@@ -1531,6 +1531,11 @@ func assumeGate(cmd command, globals *globals, stdin io.Reader, stderr io.Writer
 
 	assumed, diags, err := dfcad.Assume(globals.Root, batch)
 
+	// Every diagnostic from here on, the refusal's and whatever the read goes
+	// on to render, is about the tree the batch would produce, which is not on
+	// disk, so it is quoted from what the engine printed for it.
+	quoteFrom(stderr, assumed.Sources)
+
 	refused := render(diags, stderr)
 
 	if err != nil {

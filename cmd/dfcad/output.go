@@ -215,6 +215,12 @@ type diagnosticStream struct {
 	// run never held as one — and every diagnostic is then written without
 	// `ids` or `nodes`.
 	model *dfcad.Graph
+
+	// sources is what the run's diagnostics are quoted from where they are not
+	// about the tree on disk: under --assume, the tree the batch would produce,
+	// as [dfcad.Assumption.Sources] hands it over. It is nil on every other run,
+	// and [render] then quotes from disk.
+	sources dfcad.SourceMap
 }
 
 // hold notes on a run's stderr the model the run loaded, so that the
@@ -229,6 +235,31 @@ func hold(stderr io.Writer, model *dfcad.Graph) {
 	if stream, ok := stderr.(*diagnosticStream); ok {
 		stream.model = model
 	}
+}
+
+// quoteFrom notes on a run's stderr what every diagnostic it renders from here
+// on is quoted from, where that is not the disk.
+//
+// It is called where the read gate interprets the model a batch would produce
+// — [assumeGate] — and nowhere else. Every read renders through [render], and a
+// read under --assume renders diagnostics about the model it answered over,
+// which is the tree the batch would produce: a refusal of that tree and a check
+// which fails over it alike point into text nothing wrote. Noting it on the
+// stream is what lets every read quote that text without any of them knowing
+// it was assumed, as [hold] lets them name what it is about.
+func quoteFrom(stderr io.Writer, src dfcad.SourceMap) {
+	if stream, ok := stderr.(*diagnosticStream); ok && src != nil {
+		stream.sources = src
+	}
+}
+
+// sourcesOf is what a rendering on stderr quotes from: what [quoteFrom] noted,
+// or the disk.
+func sourcesOf(stderr io.Writer) dfcad.SourceMap {
+	if stream, ok := stderr.(*diagnosticStream); ok && stream.sources != nil {
+		return stream.sources
+	}
+	return dfcad.FileSources{}
 }
 
 // assume notes on a run's stderr the batch the run answers over, so that the

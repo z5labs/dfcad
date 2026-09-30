@@ -163,6 +163,22 @@ func (FileSources) Source(path string) ([]byte, bool) {
 	return src, true
 }
 
+// layered is a [SourceMap] which answers from over where it holds a path and
+// from under where it does not: the bytes a change would write, over the files
+// it left alone.
+type layered struct {
+	over  Sources
+	under SourceMap
+}
+
+// Source implements [SourceMap].
+func (l layered) Source(path string) ([]byte, bool) {
+	if src, ok := l.over[path]; ok {
+		return src, true
+	}
+	return l.under.Source(path)
+}
+
 // diagnose is a load failure rendered as a diagnostic.
 //
 // A load failure is reported to a caller as an error and to whoever wrote the
